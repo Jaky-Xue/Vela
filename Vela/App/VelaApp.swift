@@ -92,7 +92,6 @@ struct VelaApp: App {
 
     /// Routes a URL the app was opened with.
     ///
-    /// Ported from `BrowserUnifiedLinkApplicationCoordinator` and
     /// `BrowserAppUrlOpenCoordinator`. An `http(s)` URL opens in the active tab
     /// rather than a new one, which is what a user tapping a link in another app
     /// expects; a `vela://` URL is treated as a command.

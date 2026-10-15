@@ -214,8 +214,7 @@ enum ReaderModeService {
       }
 
       var html = content.innerHTML || '';
-      // Under 400 characters is a fragment, not an article. Ported from the
-      // length gate in `ReaderEligibilityService`.
+      // Under 400 characters is a fragment, not an article.
       if (html.replace(/<[^>]*>/g, '').trim().length < 400) {
         return JSON.stringify({ title: title, byline: byline, content: '' });
       }
@@ -230,7 +229,6 @@ enum ReaderModeService {
 
     /// Whether reader mode should be offered for a page.
     ///
-    /// Ported from `ReaderEligibilityService`: the button is enabled from the
     /// URL alone, and the real decision happens at extraction. Checking the URL
     /// for article-shaped paths first avoids offering the mode on a search
     /// results page, where extraction would fail and the failure would look like

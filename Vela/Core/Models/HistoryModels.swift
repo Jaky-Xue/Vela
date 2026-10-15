@@ -57,7 +57,6 @@ public enum HistoryTransition: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// Ported from the `history_urls` row.
 public struct HistoryUrl: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var url: String
@@ -69,7 +68,6 @@ public struct HistoryUrl: Codable, Equatable, Sendable, Identifiable {
     public var visitCount: Int
     public var typedCount: Int
     public var lastVisitAt: Date
-    /// Ported from the `hidden` column: the history manager's soft delete.
     public var hidden: Bool
     public var faviconKey: String
     public var createdAt: Date
@@ -118,7 +116,6 @@ public struct HistoryUrl: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// Ported from the `history_visits` row.
 public struct HistoryVisit: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var urlId: String
@@ -171,7 +168,7 @@ public struct HistoryVisit: Codable, Equatable, Sendable, Identifiable {
 }
 
 /// A URL joined with its visit times — the shape `HistoryManagerPage` groups by
-/// day. Ported from `BrowserHistoryVisitPersistenceCoordinator`'s read model.
+/// day.
 public struct HistoryDayGroup: Identifiable, Sendable {
     public var id: String { dayKey }
     public var dayKey: String
@@ -198,7 +195,6 @@ public struct HistoryDayGroup: Identifiable, Sendable {
     }
 }
 
-/// Ported from `HistoryRemovalScope` — what "删除" means at each level of the
 /// history UI.
 public enum HistoryRemovalScope: String, Codable, Sendable, CaseIterable {
     /// Soft-delete one URL: hide it, keep its visits so a sync peer learns about
@@ -248,7 +244,7 @@ public enum HistoryUrlNormalizer {
         path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
     }
 
-    /// A stable 64-bit hash rendered as hex. Ported from the `url_hash` column.
+    /// A stable 64-bit hash rendered as hex.
     /// FNV-1a is used rather than Swift's `hashValue` because the latter is
     /// seeded per process and would produce a different hash on every launch,
     /// breaking the unique index.

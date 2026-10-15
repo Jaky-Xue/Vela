@@ -88,10 +88,7 @@ public final class BookmarkService {
 
     // MARK: - Writing
 
-    /// Adds a bookmark to a folder. Ported from
-    /// `BrowserBookmarkActionCoordinator`: a bookmark added with no explicit
-    /// folder lands in the root the user is browsing, defaulting to "其他书签"
-    /// for a mobile-sized surface.
+    /// Adds a bookmark to a folder.
     @discardableResult
     public func addBookmark(
         url: String,
@@ -199,8 +196,7 @@ public final class BookmarkService {
         }
     }
 
-    /// Empties a root folder. Ported from the "清空" action in the bookmark
-    /// manager, which is scoped to one root so it can never take the whole tree.
+    /// Empties a root folder.
     public func clearRoot(_ role: BookmarkRootRole) {
         guard let nodeId = rootNodeId(for: role) else { return }
         do {

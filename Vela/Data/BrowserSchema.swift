@@ -52,7 +52,6 @@ public enum BrowserSchema {
 
     /// Every statement needed to bring an empty database to `velaSchemaVersion`.
     public static let creationStatements: [String] = [
-        // Ported from `BROWSER_SCHEMA_STATE_SQL`.
         """
         CREATE TABLE IF NOT EXISTS \(stateTable) (
           key TEXT PRIMARY KEY,
@@ -63,7 +62,7 @@ public enum BrowserSchema {
 
         // MARK: Bookmarks
 
-        // Ported from `BOOKMARK_ROOTS_TABLE`. `role` is the root identity the
+        // `role` is the root identity the
         // bookmark manager shows as top-level sections; `sync_enabled` survives
         // the port because the WebDAV and Personal Server providers use it.
         """
@@ -80,7 +79,7 @@ public enum BrowserSchema {
         ON \(bookmarkRootsTable)(node_id)
         """,
 
-        // Ported from `BOOKMARK_NODES_TABLE`. Folders and bookmarks share one
+        // Folders and bookmarks share one
         // table, discriminated by `type`, with the ordering held separately in
         // `bookmark_orders` so a reorder never rewrites node rows.
         """
@@ -106,7 +105,7 @@ public enum BrowserSchema {
         "CREATE INDEX IF NOT EXISTS idx_bookmark_nodes_origin_id ON \(bookmarkNodesTable)(origin_id)",
         "CREATE INDEX IF NOT EXISTS idx_bookmark_nodes_deleted_at ON \(bookmarkNodesTable)(deleted_at)",
 
-        // Ported from `BOOKMARK_ORDERS_TABLE`. A child appears at most once, so
+        // A child appears at most once, so
         // `child_id` is the primary key and a move is an update, not an insert.
         """
         CREATE TABLE IF NOT EXISTS \(bookmarkOrdersTable) (
@@ -123,7 +122,7 @@ public enum BrowserSchema {
 
         // MARK: History
 
-        // Ported from `HISTORY_URLS_TABLE`. One row per distinct URL; repeat
+        // One row per distinct URL; repeat
         // visits increment `visit_count` and append to `history_visits`.
         // `hidden` is the tombstone the history manager uses for "delete this
         // entry" without breaking the visit rows that reference it.
@@ -154,7 +153,7 @@ public enum BrowserSchema {
         ON \(historyUrlsTable)(hidden, last_visit_at DESC)
         """,
 
-        // Ported from `HISTORY_VISITS_TABLE`. The `sync_*` columns are retained
+        // The `sync_*` columns are retained
         // for WebDAV and Personal Server history sync; the partial unique index
         // on `sync_id` is what makes a re-pushed visit idempotent.
         """
@@ -194,7 +193,7 @@ public enum BrowserSchema {
 
         // MARK: Search
 
-        // Ported from `SEARCH_QUERY_HISTORY_TABLE`. Three normalisations are
+        // Three normalisations are
         // stored so omnibox matching can be exact, case-insensitive and
         // whitespace-insensitive without a collation per query.
         """
@@ -226,7 +225,6 @@ public enum BrowserSchema {
 
         // MARK: Offline pages
 
-        // Ported from `OFFLINE_PAGES_TABLE`.
         """
         CREATE TABLE IF NOT EXISTS \(offlinePagesTable) (
           id TEXT PRIMARY KEY,
@@ -287,7 +285,6 @@ public enum BrowserSchema {
         "CREATE INDEX IF NOT EXISTS idx_tab_sessions_order ON \(tabSessionsTable)(window_id, tab_order)",
         "CREATE INDEX IF NOT EXISTS idx_tab_sessions_active ON \(tabSessionsTable)(window_id, is_active)",
 
-        // Ported from `RECENTLY_CLOSED_TABS_TABLE`.
         """
         CREATE TABLE IF NOT EXISTS \(recentlyClosedTabsTable) (
           id TEXT PRIMARY KEY,
@@ -392,7 +389,6 @@ public enum BrowserSchema {
         """,
         "CREATE INDEX IF NOT EXISTS idx_user_scripts_enabled ON \(userScriptsTable)(enabled, position)",
 
-        // Ported from the GM_ value store that backs `GM_getValue` /
         // `GM_setValue`. Keyed by script id plus key name.
         """
         CREATE TABLE IF NOT EXISTS \(userScriptValuesTable) (

@@ -70,7 +70,7 @@ public final class HistoryRepository: @unchecked Sendable {
 
     /// Records a page view.
     ///
-    /// Ported from `BrowserHistoryVisitPersistenceCoordinator`. The visit row is
+    /// The visit row is
     /// the durable fact; the URL row is derived state that the same call upserts.
     /// A visit whose URL cannot be normalised (a `data:` or `javascript:` URL, a
     /// search-engine internal page) is dropped rather than stored unhashed,
@@ -210,8 +210,7 @@ public final class HistoryRepository: @unchecked Sendable {
         )
 
         // A transition from a known predecessor closes the duration of that
-        // visit, which is how the history list shows time-on-page. Ported from
-        // the duration backfill in the visit coordinator.
+        // visit, which is how the history list shows time-on-page.
         if let fromVisitId {
             let elapsed = try database.query(
                 "SELECT visited_at FROM \(BrowserSchema.historyVisitsTable) WHERE id = ?",
@@ -248,8 +247,7 @@ public final class HistoryRepository: @unchecked Sendable {
         )
     }
 
-    /// Groups recent history into day sections. Ported from the grouping in
-    /// `HistoryManagerPage`.
+    /// Groups recent history into day sections.
     public func dayGroups(profileId: BrowserProfileId, limit: Int = 1000) throws -> [HistoryDayGroup] {
         let urls = try recentUrls(profileId: profileId, limit: limit)
         let calendar = Calendar.current
@@ -288,7 +286,6 @@ public final class HistoryRepository: @unchecked Sendable {
 
     /// The ranked suggestion set for the omnibox.
     ///
-    /// Ported from the ranking in `BrowserSearchSuggestionCoordinator`: hosts
     /// the user typed or bookmarked outrank frequently-visited ones, and a URL
     /// whose host starts with the query outranks one that merely contains it.
     public func omniboxSuggestions(_ query: String, profileId: BrowserProfileId, limit: Int = 8) throws -> [HistoryUrl] {
@@ -458,7 +455,7 @@ public final class HistoryRepository: @unchecked Sendable {
 
     /// Enforces the retention window.
     ///
-    /// Ported from `RetentionRuntimePolicySettingsPage`. Retention is applied on
+    /// Retention is applied on
     /// write rather than on a timer because iOS gives no reliable background
     /// execution window for a maintenance task; pruning the tail of the history
     /// during a visit is bounded and needs no scheduler.

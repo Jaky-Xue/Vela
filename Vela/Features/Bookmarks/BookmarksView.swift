@@ -288,7 +288,6 @@ struct BookmarksView: View {
 
     /// Drag-reorder inside the current folder.
     ///
-    /// Ported from `BookmarkOrdersTable`: the whole child list is rewritten
     /// densely, because a partial rewrite is what leaves gaps that make a later
     /// insert land in the wrong place.
     private func moveItems(from source: IndexSet, to destination: Int) {

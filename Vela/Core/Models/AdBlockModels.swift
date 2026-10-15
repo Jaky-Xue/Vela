@@ -14,7 +14,6 @@
 
 import Foundation
 
-/// Ported from `AdBlockCustomRuleSourceType`.
 public enum AdBlockCustomRuleSourceType: String, Codable, Sendable, CaseIterable {
     /// Shipped with the app.
     case system
@@ -24,7 +23,6 @@ public enum AdBlockCustomRuleSourceType: String, Codable, Sendable, CaseIterable
     case local
 }
 
-/// Ported from `AdBlockResourceType` — the categories a hit is bucketed into for
 /// the protection statistics surface.
 public enum AdBlockResourceType: String, Codable, Sendable, CaseIterable, Identifiable {
     case advertisement
@@ -46,7 +44,6 @@ public enum AdBlockResourceType: String, Codable, Sendable, CaseIterable, Identi
     }
 }
 
-/// Ported from `AdBlockSiteException`.
 public struct AdBlockSiteException: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var host: String
@@ -59,7 +56,6 @@ public struct AdBlockSiteException: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// Ported from `AdBlockCustomRuleSource`.
 public struct AdBlockCustomRuleSource: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var name: String
@@ -120,7 +116,6 @@ public struct AdBlockCustomRuleSource: Codable, Equatable, Sendable, Identifiabl
     ]
 }
 
-/// Ported from `AdBlockStats`.
 public struct AdBlockStats: Codable, Equatable, Sendable {
     public var totalBlocked: Int
     public var todayBlocked: Int
@@ -147,7 +142,6 @@ public struct AdBlockStats: Codable, Equatable, Sendable {
     }
 }
 
-/// Ported from `AdBlockDailyProtectionActivity`.
 public struct AdBlockDailyProtectionActivity: Codable, Equatable, Sendable, Identifiable {
     public var id: String { dayKey }
     public var dayKey: String
@@ -159,7 +153,6 @@ public struct AdBlockDailyProtectionActivity: Codable, Equatable, Sendable, Iden
     }
 }
 
-/// Ported from `AdBlockPreferences`.
 public struct AdBlockPreferences: Codable, Equatable, Sendable {
     public var enabled: Bool
     /// Cosmetic filtering (element hiding), the `##selector` half of a list.
@@ -196,7 +189,6 @@ public struct AdBlockPreferences: Codable, Equatable, Sendable {
     }
 }
 
-/// Ported from `AdBlockSettings`.
 public struct AdBlockSettings: Codable, Equatable, Sendable {
     public var preferences: AdBlockPreferences
     public var ruleSources: [AdBlockCustomRuleSource]
@@ -227,7 +219,7 @@ public struct AdBlockSettings: Codable, Equatable, Sendable {
     }
 }
 
-/// Ported from `ManualElementHideRule`. One entry per element the user pointed
+/// One entry per element the user pointed
 /// at with the element picker.
 public struct ManualElementHideRule: Codable, Equatable, Sendable, Identifiable {
     public var id: String
@@ -241,7 +233,6 @@ public struct ManualElementHideRule: Codable, Equatable, Sendable, Identifiable 
     }
 }
 
-/// Ported from `ManualElementHideSiteRules`.
 public struct ManualElementHideSiteRules: Codable, Equatable, Sendable, Identifiable {
     public var id: String { host }
     public var host: String
@@ -253,7 +244,6 @@ public struct ManualElementHideSiteRules: Codable, Equatable, Sendable, Identifi
     }
 }
 
-/// Ported from `ManualElementHideSettings`.
 public struct ManualElementHideSettings: Codable, Equatable, Sendable {
     public var sites: [ManualElementHideSiteRules]
 

@@ -33,7 +33,7 @@ import Observation
 
 /// Builds the suggestion list.
 ///
-/// Ported from `BrowserSearchSuggestionCoordinator`. Kept as a pure function of
+/// Kept as a pure function of
 /// its inputs rather than a live observer so the omnibox can build a list for
 /// the text currently in the field.
 @MainActor

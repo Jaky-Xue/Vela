@@ -170,7 +170,6 @@ public final class UserScriptRepository: @unchecked Sendable {
 
     /// Removes a script and its value store together.
     ///
-    /// Ported from the delete path in `UserScriptsPage`: leaving the values
     /// behind would let a later reinstall of the same script see stale data it
     /// never wrote in this install.
     public func remove(id: String) throws {
@@ -203,7 +202,7 @@ public final class UserScriptRepository: @unchecked Sendable {
 
     // MARK: - GM_ value store
 
-    /// Ported from the store behind `GM_getValue` / `GM_setValue`. Values are
+    /// Values are
     /// JSON-encoded so a script can round-trip an object, not just a string —
     /// which is what the `GM_setValue(name, object)` overload requires.
     public func setValue(_ jsonValue: String, key: String, scriptId: String) throws {

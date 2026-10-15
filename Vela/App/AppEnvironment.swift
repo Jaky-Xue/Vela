@@ -114,7 +114,6 @@ public final class AppEnvironment {
 
     /// Performs the startup work every service needs.
     ///
-    /// Ported from the boot sequence in `app/bootstrap/`: settings seed the
     /// bookmark roots, the tab session is restored or a first tab created, the
     /// ad-block list is loaded from WebKit's store, and interrupted downloads
     /// are reconciled.
@@ -224,7 +223,6 @@ public final class AppEnvironment {
 
     /// Directory holding downloaded filter lists.
     ///
-    /// Ported from `AdBlockLocalRuleFileService`, which keeps rule text on disk
     /// rather than in the settings document for the same reason: a filter list
     /// is megabytes of text and has no business inside a preferences value.
     private static var filterListDirectory: URL {
@@ -247,7 +245,6 @@ public final class AppEnvironment {
 
     /// Removes every trace of browsing data.
     ///
-    /// Ported from the combined clear in `SettingsSiteDataClearCoordinator`:
     /// the database, the WebKit data store and the on-disk filter lists are
     /// cleared together, because clearing one and not the others leaves the user
     /// believing more was removed than actually was.
@@ -272,7 +269,6 @@ public final class AppEnvironment {
     /// Ends a private session: private tabs close, private records clear, and
     /// WebKit's ephemeral store goes with them.
     ///
-    /// Ported from `BrowserPrivateSessionCleanupCoordinator`.
     public func endPrivateSession() async {
         tabManager.endPrivateSession()
         downloads.clearPrivateRecords()

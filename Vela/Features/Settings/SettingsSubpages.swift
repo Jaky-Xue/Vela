@@ -509,7 +509,7 @@ struct ExternalNavigationSettingsView: View {
 
 // MARK: - Clear data
 
-/// Ported from `SettingsSiteDataClearCoordinator`. Clearing is one action over
+/// Clearing is one action over
 /// several stores, because clearing some and not others leaves the user
 /// believing more was removed than actually was.
 struct ClearDataView: View {

@@ -40,7 +40,7 @@ public final class SearchHistoryRepository: @unchecked Sendable {
     }
 
     /// Records a query, incrementing the counter when the same query has been
-    /// run before. Ported from the upsert in `SearchEngineSelectionService`.
+    /// run before.
     public func record(
         query: String,
         searchEngineId: SearchEngineId,
@@ -110,7 +110,6 @@ public final class SearchHistoryRepository: @unchecked Sendable {
 
     /// Query completions ranked by use count then recency.
     ///
-    /// Ported from the suggestion read in `BrowserSearchSuggestionCoordinator`.
     /// Matching runs against both normalisations so "hello world" matches a
     /// stored "helloworld" and vice versa.
     public func suggestions(
@@ -161,7 +160,7 @@ public final class SearchHistoryRepository: @unchecked Sendable {
         )
     }
 
-    /// Removes one query. Ported from the per-row delete in the omnibox.
+    /// Removes one query.
     public func remove(id: String) throws {
         try database.execute(
             "DELETE FROM \(BrowserSchema.searchQueryHistoryTable) WHERE id = ?",

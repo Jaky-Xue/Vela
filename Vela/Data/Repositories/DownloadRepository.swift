@@ -51,9 +51,7 @@ public final class DownloadRepository: @unchecked Sendable {
 
     // MARK: - Writing
 
-    /// Inserts or updates a task. Ported from the upsert in
-    /// `DownloadV2Repository`, which is called both when a transfer is created
-    /// and on every progress tick.
+    /// Inserts or updates a task.
     public func upsert(_ task: DownloadTask) throws {
         try database.execute(
             """
@@ -124,7 +122,7 @@ public final class DownloadRepository: @unchecked Sendable {
     // MARK: - Reading
 
     /// The download list. Private-mode downloads are filtered out for a regular
-    /// session. Ported from the scope filter in `DownloadManagementPage`.
+    /// session.
     public func tasks(
         privacyMode: BrowserSessionPrivacyMode,
         limit: Int = 300
@@ -149,8 +147,7 @@ public final class DownloadRepository: @unchecked Sendable {
     }
 
     /// Transfers that were in flight when the app stopped. On next launch these
-    /// are offered as resumable. Ported from the record-store load path, which
-    /// separates `activeCount` from `terminalCount` for exactly this purpose.
+    /// are offered as resumable.
     public func interruptedTasks() throws -> [DownloadTask] {
         try database.query(
             """

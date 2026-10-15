@@ -14,7 +14,6 @@
 
 import Foundation
 
-/// Ported from `UserScriptRunAt`.
 public enum UserScriptRunAt: String, Codable, Sendable, CaseIterable {
     case documentStart = "document-start"
     case documentIdle = "document-idle"
@@ -45,7 +44,6 @@ public enum UserScriptRunAt: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// Ported from `UserScriptGrant`.
 public enum UserScriptGrant: String, Codable, Sendable, CaseIterable {
     case none
     case gmAddStyle = "GM_addStyle"
@@ -125,14 +123,12 @@ public enum UserScriptGrant: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// Ported from `UserScriptPackageSource`.
 public enum UserScriptPackageSource: String, Codable, Sendable, CaseIterable {
     case paste
     case url
     case file
 }
 
-/// Ported from `UserScriptInstallSource`.
 public enum UserScriptInstallSource: String, Codable, Sendable, CaseIterable {
     case paste
     case url
@@ -148,7 +144,6 @@ public enum UserScriptInstallSource: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// Ported from `UserScriptResourceDeclaration` / `UserScriptResourceRecord`.
 public struct UserScriptResourceDeclaration: Codable, Equatable, Sendable {
     public var name: String
     public var url: String
@@ -182,7 +177,6 @@ public struct UserScriptResourceRecord: Codable, Equatable, Sendable {
     }
 }
 
-/// Ported from `UserScriptPackageCandidate` — the result of parsing a metadata
 /// block, before the script is installed.
 public struct UserScriptPackageCandidate: Codable, Equatable, Sendable {
     public var name: String
@@ -251,7 +245,6 @@ public struct UserScriptPackageCandidate: Codable, Equatable, Sendable {
     }
 }
 
-/// Ported from `UserScriptMetadataParseResult`.
 public struct UserScriptMetadataParseResult: Sendable {
     public var valid: Bool
     public var candidate: UserScriptPackageCandidate?
@@ -275,7 +268,6 @@ public struct UserScriptMetadataParseResult: Sendable {
     }
 }
 
-/// Ported from `InstalledUserScriptState`, flattened onto the `user_scripts`
 /// table.
 public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiable {
     public var id: String
@@ -366,7 +358,6 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
         return trimmed.isEmpty ? "未命名脚本" : trimmed
     }
 
-    /// Ported from the guard in `UserScriptRuntimeCoordinator`: private browsing
     /// blocks user-script execution entirely, because a script runs with the
     /// page and would defeat the point of the private session.
     public var grantsUnsupportedByVela: [UserScriptGrant] {
@@ -403,7 +394,6 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
     }
 }
 
-/// Ported from `UserScriptSettings`.
 public struct UserScriptSettings: Codable, Equatable, Sendable {
     public var scripts: [InstalledUserScriptState]
     public var autoUpdateEnabled: Bool
@@ -422,7 +412,6 @@ public struct UserScriptSettings: Codable, Equatable, Sendable {
     public static let `default` = UserScriptSettings()
 }
 
-/// Ported from `UserScriptRuntimeEligibility`.
 public enum UserScriptRuntimeBlockReason: String, Codable, Sendable {
     case none
     case privateMode = "private_mode"
@@ -446,7 +435,6 @@ public struct UserScriptRuntimeEligibility: Sendable {
     }
 }
 
-/// Ported from `UserScriptInjectionSummary`.
 public struct UserScriptInjectionSummary: Sendable {
     public var injectedScriptCount: Int
     public var failedScriptNames: [String]

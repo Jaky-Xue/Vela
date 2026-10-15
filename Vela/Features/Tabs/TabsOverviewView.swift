@@ -76,7 +76,6 @@ struct TabsOverviewView: View {
         }
     }
 
-    /// Ported from `GeneralPrivateTabsSettingsViewModel`: the lock is a user
     /// setting, and it only applies to the private grid.
     private var isLocked: Bool {
         env.settings.preferences.lockPrivateTabs
@@ -155,7 +154,6 @@ struct TabsOverviewView: View {
     private var bottomBar: some View {
         HStack(spacing: 20) {
             Button {
-                // Ported from `BrowserRecentlyClosedApplicationCoordinator`: the
                 // reopen action is scoped to the mode being viewed, so a private
                 // tab can never be restored into the regular list.
                 if let tab = tabManager.reopenLastClosedTab(

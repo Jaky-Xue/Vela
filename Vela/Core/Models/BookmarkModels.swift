@@ -12,7 +12,6 @@
 
 import Foundation
 
-/// Ported from `BookmarkNodeType`.
 public enum BookmarkNodeType: String, Codable, Sendable, CaseIterable {
     case folder
     case bookmark
@@ -38,13 +37,11 @@ public enum BookmarkRootRole: String, Codable, Sendable, CaseIterable, Identifia
     }
 }
 
-/// Ported from `BookmarkStorageScope`.
 public enum BookmarkStorageScope: String, Codable, Sendable, CaseIterable {
     case regular
     case `private`
 }
 
-/// Ported from the `bookmark_roots` row.
 public struct BookmarkRoot: Codable, Equatable, Sendable, Identifiable {
     public var id: String { role.rawValue }
     public var role: BookmarkRootRole
@@ -68,7 +65,6 @@ public struct BookmarkRoot: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// Ported from the `bookmark_nodes` row.
 public struct BookmarkNode: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var scope: BookmarkStorageScope
@@ -84,9 +80,7 @@ public struct BookmarkNode: Codable, Equatable, Sendable, Identifiable {
     public var lastModifiedBy: String
     public var deviceId: String
     public var originId: String?
-    /// Non-nil when the node is deleted. Ported from the soft-delete column:
-    /// a tombstone has to survive long enough for a sync provider to see it,
-    /// so deletion is a stamp rather than a row removal.
+    /// Non-nil when the node is deleted.
     public var deletedAt: Date?
 
     public init(
@@ -132,7 +126,7 @@ public struct BookmarkNode: Codable, Equatable, Sendable, Identifiable {
 }
 
 /// A node together with its ordering and resolved children — the shape the
-/// bookmark UI renders. Ported from `BookmarkTreeItem`.
+/// bookmark UI renders.
 public struct BookmarkTreeItem: Identifiable, Sendable {
     public var id: String { node.id }
     public var node: BookmarkNode

@@ -12,7 +12,7 @@
 
 import SwiftUI
 
-/// One toolbar action. Ported from `BrowserBottomPanelActionCatalog`.
+/// One toolbar action.
 enum BrowserToolbarAction: String, CaseIterable, Identifiable, Codable {
     case back
     case forward
@@ -57,18 +57,21 @@ enum BrowserToolbarAction: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// The default order. Ported from the shipped profile in
-    /// `BrowserSplitToolbarCustomizationViewModel`: back, forward, tabs and menu
-    /// are always present; the rest are the ones a phone actually reaches for.
+    /// The default order.
+    ///
+    /// Home sits here rather than in the menu because backing out of a page is
+    /// not the same gesture as returning to the start surface. A browser that
+    /// offers only the first leaves someone scrolling back through a site they
+    /// are done with, or opening a tab they did not want.
     static let defaultOrder: [BrowserToolbarAction] = [
-        .back, .forward, .tabs, .bookmarks, .adBlock, .reader, .menu
+        .back, .forward, .home, .tabs, .bookmarks, .adBlock, .reader, .menu
     ]
 
     /// Actions that cannot be removed, because the shell has no other route to
     /// them.
     var isRequired: Bool {
         switch self {
-        case .back, .forward, .tabs, .menu: return true
+        case .back, .forward, .home, .tabs, .menu: return true
         default: return false
         }
     }

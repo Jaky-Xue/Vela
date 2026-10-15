@@ -31,17 +31,22 @@ public protocol BrowserWebViewConfigurationProviding: AnyObject {
     /// so `TabManager` keeps owning web views without owning preferences, and so
     /// there is one place that decides what a tab looks like to a site.
     func userAgent(for tab: BrowserTabState) -> String
+    /// The delegates a tab's web view reports to.
+    ///
+    /// WebKit holds both weakly, so whatever this returns has to be owned
+    /// somewhere else — the app environment owns it.
+    var navigationDelegate: WKNavigationDelegate? { get }
+    var uiDelegate: WKUIDelegate? { get }
 }
 
 @MainActor
 @Observable
 public final class TabManager {
-    /// Ported from the tab cap in `BrowserMaterializationPolicy`. iOS will
+    /// IOS will
     /// terminate a browser holding far more than this, and each live web view
     /// costs a content process.
     public static let maximumLiveWebViews = 6
 
-    /// Ported from `BrowserRecentlyClosedTabsService`; the list the repository
     /// also caps.
     public static let recentlyClosedLimit = 25
 
@@ -96,7 +101,7 @@ public final class TabManager {
 
     /// Creates a tab and makes it active.
     ///
-    /// Ported from `BrowserForegroundTabCreationCoordinator`. A new tab starts
+    /// A new tab starts
     /// on the home surface (`isHome == true`) rather than loading a blank
     /// document, which is what lets the native new-tab page render without a web
     /// view existing at all.
@@ -135,7 +140,7 @@ public final class TabManager {
 
     /// Restores a saved session.
     ///
-    /// Ported from `BrowserStartupTabRestoreCoordinator`. Private tabs are
+    /// Private tabs are
     /// restored alongside regular ones; a private session that was open when the
     /// app was killed is reopened, and its data is cleared when the user leaves
     /// private mode rather than at launch.
@@ -164,9 +169,7 @@ public final class TabManager {
         activeTabId = restoredActive
 
         if let active = activeTab, !active.isHome {
-            // Materialise only the visible tab. Ported from
-            // `BrowserColdTabMaterializeCoordinator`: restoring cold and loading
-            // the background tabs would start a dozen navigations at launch.
+            // Materialise only the visible tab.
             _ = ensureWebView(for: active)
         }
     }
@@ -189,9 +192,7 @@ public final class TabManager {
         enforceLiveWebViewCap()
     }
 
-    /// Moves the active tab by `offset` in the strip. Ported from
-    /// `BrowserTabSwitchCoordinator`, which is what the address-bar swipe and
-    /// the keyboard shortcuts both drive.
+    /// Moves the active tab by `offset` in the strip.
     public func switchTab(by offset: Int) {
         guard tabs.count > 1, let index = tabs.firstIndex(where: { $0.id == activeTabId }) else { return }
         let next = (index + offset + tabs.count) % tabs.count
@@ -211,7 +212,6 @@ public final class TabManager {
 
     /// Closes a tab, recording it in the recently-closed list.
     ///
-    /// Ported from `BrowserTabCloseCoordinator` / `BrowserBackTerminalBackPlan`.
     /// Closing the last tab does not leave an empty strip: a fresh home tab is
     /// created, which is the behaviour `BrowserHomeTerminalBackPlan` describes.
     public func closeTab(id: String) {
@@ -244,8 +244,7 @@ public final class TabManager {
                 activeTabId = replacement.id
             } else {
                 // Prefer the tab that was opened by the one being closed, else
-                // the neighbour. Ported from the parent-tab plan in
-                // `BrowserTerminalBackPlan`.
+                // the neighbour.
                 let parentId = closing.openerTabId
                 let nextId = tabs.contains(where: { $0.id == parentId })
                     ? parentId
@@ -278,8 +277,7 @@ public final class TabManager {
     /// Reopens the most recently closed tab.
     public func reopenLastClosedTab(privacyMode: BrowserSessionPrivacyMode) -> BrowserTabState? {
         // Only the matching privacy mode is eligible; a private tab must not be
-        // reopened into a regular session from the regular UI. Ported from the
-        // filter in `BrowserRecentlyClosedApplicationCoordinator`.
+        // reopened into a regular session from the regular UI.
         guard let index = recentlyClosed.firstIndex(where: { $0.privacyMode == privacyMode }) else {
             return nil
         }
@@ -301,8 +299,7 @@ public final class TabManager {
         persistSession()
     }
 
-    /// Pins or unpins a tab. Ported from the pin rule that keeps pinned tabs at
-    /// the leading edge in their relative order.
+    /// Pins or unpins a tab.
     public func setPinned(_ pinned: Bool, id: String) {
         guard let tab = tab(id: id) else { return }
         tab.pinned = pinned
@@ -328,6 +325,14 @@ public final class TabManager {
         let webView = WKWebView(frame: .zero, configuration: configuration)
 
         webView.customUserAgent = configurationProvider.userAgent(for: tab)
+
+        // Without these the web view reports nothing: no `didFinish`, so back
+        // and forward never become available; no title, URL or progress; no
+        // navigation policy, so an external scheme is never intercepted. The
+        // message handlers are registered separately in the configuration, so
+        // script traffic worked while all of this silently did not.
+        webView.navigationDelegate = configurationProvider.navigationDelegate
+        webView.uiDelegate = configurationProvider.uiDelegate
 
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsLinkPreview = true
@@ -356,7 +361,7 @@ public final class TabManager {
 
     /// Drops a tab's web view but keeps the tab, its URL and its title.
     ///
-    /// Ported from the discard path in `BrowserMemoryPressureCoordinator`. The
+    /// The
     /// tab becomes `cold`; reactivating it loads the URL again. Scroll position
     /// is kept in the record so the restore can approximate where the user was.
     public func discardWebView(for tabId: String, reason: TabDiscardReason = .memoryPressure) {
@@ -393,7 +398,7 @@ public final class TabManager {
 
     /// Discards the least-recently-used background web views when over the cap.
     ///
-    /// Ported from `BrowserMaterializationPolicy`. The active tab is never a
+    /// The active tab is never a
     /// victim, and pinned tabs are spared until nothing else is left, because a
     /// pinned tab is an explicit statement that the user wants it kept.
     private func enforceLiveWebViewCap() {
@@ -410,8 +415,7 @@ public final class TabManager {
         }
     }
 
-    /// Called on a memory warning. Ported from
-    /// `BrowserSystemMemoryPressureSignal` plus the discard policy it drives.
+    /// Called on a memory warning.
     public func handleMemoryPressure() {
         let backgroundTabs = activationOrder.filter { $0 != activeTabId }
         let victims = backgroundTabs.filter { tab(id: $0)?.pinned != true }
@@ -473,7 +477,7 @@ public final class TabManager {
 
     // MARK: - Persistence
 
-    /// Ported from `BrowserTabSessionPersistenceCoordinator`. The write is
+    /// The write is
     /// fire-and-forget: a session save must never block a navigation.
     public func persistSession() {
         guard let sessionRepository else { return }
@@ -487,7 +491,6 @@ public final class TabManager {
 
     /// Clears private tabs and their records at the end of a private session.
     ///
-    /// Ported from `BrowserPrivateSessionCleanupCoordinator`.
     public func endPrivateSession() {
         closeAllTabs(privacyMode: .private)
         recentlyClosed.removeAll { $0.privacyMode == .private }

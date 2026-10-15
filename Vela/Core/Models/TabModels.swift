@@ -21,7 +21,6 @@
 import Foundation
 import Observation
 
-/// Ported from `TabRuntimeState`.
 public enum TabRuntimeState: String, Codable, Sendable, CaseIterable {
     /// A live `WKWebView` exists and holds the page.
     case active
@@ -40,7 +39,6 @@ public enum TabRuntimeState: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// Ported from `TabDiscardReason`.
 public enum TabDiscardReason: String, Codable, Sendable, CaseIterable {
     case none
     case memoryPressure = "memory_pressure"
@@ -48,14 +46,12 @@ public enum TabDiscardReason: String, Codable, Sendable, CaseIterable {
     case explicit
 }
 
-/// Ported from `TabCrashReason`.
 public enum TabCrashReason: String, Codable, Sendable, CaseIterable {
     case none
     case webContentProcess = "web_content_process"
     case terminated
 }
 
-/// Ported from `TabRestoreReason`.
 public enum TabRestoreReason: String, Codable, Sendable, CaseIterable {
     case none
     case coldStart = "cold_start"
@@ -63,7 +59,6 @@ public enum TabRestoreReason: String, Codable, Sendable, CaseIterable {
     case userRequest = "user_request"
 }
 
-/// Ported from `BrowserTabOpenSource`.
 public enum BrowserTabOpenSource: String, Codable, Sendable, CaseIterable {
     case user
     case bookmark
@@ -103,7 +98,7 @@ public final class BrowserTabState: Identifiable {
     public var lastLoadedAt: Date?
     public var scrollOffsetY: Double
 
-    /// Ported from the `lastGood*` pair. A failed navigation keeps the last
+    /// A failed navigation keeps the last
     /// successfully rendered page so the error surface can offer "回到上一个正常页面"
     /// instead of dropping the user on a blank tab.
     public var lastGoodUrl: String
@@ -114,7 +109,7 @@ public final class BrowserTabState: Identifiable {
     public var openerTabId: String
     public var openSource: BrowserTabOpenSource
 
-    /// Ported from `pinned`. Persisted, and pins the tab to the leading edge of
+    /// Persisted, and pins the tab to the leading edge of
     /// the tab strip.
     public var pinned: Bool
     /// Runtime-only web audio facts, driving the tab audio indicator.
@@ -189,7 +184,6 @@ public final class BrowserTabState: Identifiable {
         self.faviconUrl = faviconUrl
     }
 
-    /// Ported from `isBrowserTabTerminalBackAvailable`.
     public var isTerminalBackAvailable: Bool { !isHome }
 
     /// The data boundary this tab writes under.
@@ -206,7 +200,6 @@ public final class BrowserTabState: Identifiable {
         return "新标签页"
     }
 
-    /// Ported from `BrowserDisplayTitlePolicy`.
     public var displayHost: String {
         guard !url.isEmpty, let parsed = URL(string: url), let host = parsed.host else { return "" }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
@@ -231,7 +224,7 @@ public final class BrowserTabState: Identifiable {
         )
     }
 
-    /// Re-applies a restored record. Ported from `BrowserTabSessionRestoreService`.
+    /// Re-applies a restored record.
     public func apply(_ record: TabRecord, restoreReason: TabRestoreReason) {
         title = record.title
         url = record.url
@@ -250,8 +243,6 @@ public final class BrowserTabState: Identifiable {
     }
 }
 
-/// Ported from `TabRecord` — the persisted form of a tab.
-///
 /// Deliberately excludes runtime fields (progress, back/forward availability,
 /// audio state): those are re-derived from the web view on restore, and
 /// persisting them is what makes a restored session show stale chrome.
@@ -271,15 +262,13 @@ public struct TabRecord: Codable, Equatable, Sendable, Identifiable {
     public var scrollOffsetY: Double
 }
 
-/// Ported from the `BrowserTabMutationResult` bundle.
 public struct BrowserTabMutationResult: Sendable {
     public var tabs: [TabRecord]
     public var activeTabId: String
     public var tabSequence: Int
 }
 
-/// The persisted browsing session. Ported from the shape written by
-/// `BrowserTabSessionPersistenceCoordinator`.
+/// The persisted browsing session.
 ///
 /// Private tabs are persisted too, but only with their URL and title — the
 /// session file lives in the app container and the point of private mode is to
@@ -299,7 +288,6 @@ public struct BrowserSessionSnapshot: Codable, Equatable, Sendable {
     }
 }
 
-/// Ported from `BrowserRecentlyClosedTabsService`.
 public struct RecentlyClosedTabRecord: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var title: String

@@ -14,7 +14,6 @@
 
 import Foundation
 
-/// Ported from the `status` field of `DownloadV2TaskEntity`.
 public enum DownloadStatus: String, Codable, Sendable, CaseIterable {
     case pending
     case running
@@ -39,7 +38,7 @@ public enum DownloadStatus: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// Ported from the `resume_capability` field. On iOS the equivalent fact is
+/// On iOS the equivalent fact is
 /// whether `WKDownload` produced resume data, which the delegate only reports
 /// once a transfer has actually started.
 public enum DownloadResumeCapability: String, Codable, Sendable, CaseIterable {
@@ -56,7 +55,6 @@ public enum DownloadResumeCapability: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// Ported from the `failure` field of `DownloadV2TaskEntity`.
 public struct DownloadFailure: Codable, Equatable, Sendable {
     public var reason: String
     public var errorCode: Int
@@ -68,8 +66,7 @@ public struct DownloadFailure: Codable, Equatable, Sendable {
         self.occurredAt = occurredAt
     }
 
-    /// The message shown in the download list. Ported from the failure copy in
-    /// `DownloadManagementPage`.
+    /// The message shown in the download list.
     public var displayMessage: String {
         if !reason.isEmpty { return reason }
         switch errorCode {
@@ -85,7 +82,6 @@ public struct DownloadFailure: Codable, Equatable, Sendable {
     }
 }
 
-/// Ported from `DownloadV2TaskEntity`, flattened onto the `downloads` table.
 public struct DownloadTask: Codable, Equatable, Sendable, Identifiable {
     public var id: String { guid }
     public var guid: String
@@ -161,7 +157,6 @@ public struct DownloadTask: Codable, Equatable, Sendable, Identifiable {
         return "未命名文件"
     }
 
-    /// Ported from the size formatter in `DownloadManagementPage`.
     public var displaySize: String {
         if totalBytes > 0 {
             return "\(Self.formatBytes(receivedBytes)) / \(Self.formatBytes(totalBytes))"
@@ -210,7 +205,6 @@ public enum DownloadDirectoryPreference: String, Codable, Sendable, CaseIterable
     }
 }
 
-/// Ported from the download prompt decision in
 /// `BrowserDownloadConfirmOverlayCoordinator` / `DownloadSettingsPage`.
 public struct DownloadSettings: Codable, Equatable, Sendable {
     public var directoryPreference: DownloadDirectoryPreference

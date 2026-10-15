@@ -32,7 +32,7 @@ public final class TabSessionRepository: @unchecked Sendable {
 
     /// Replaces the saved session in one transaction.
     ///
-    /// Ported from `BrowserTabSessionPersistenceCoordinator`. The write is a
+    /// The write is a
     /// full replace rather than a diff: the tab list is small, and a replace
     /// cannot leave an orphan row behind from a tab that was closed while the
     /// app was being suspended.
@@ -78,7 +78,7 @@ public final class TabSessionRepository: @unchecked Sendable {
 
     /// Loads the saved session, or nil when there is nothing to restore.
     ///
-    /// Ported from `BrowserStartupTabRestoreCoordinator`. Pinned tabs sort to
+    /// Pinned tabs sort to
     /// the front regardless of their stored order, which is the invariant the
     /// pin operation maintains in memory; enforcing it on read means a session
     /// written by an older build still opens correctly.
@@ -128,7 +128,7 @@ public final class TabSessionRepository: @unchecked Sendable {
 
     // MARK: - Recently closed
 
-    /// Ported from `BrowserRecentlyClosedTabsService`. The list is capped so a
+    /// The list is capped so a
     /// long session cannot grow it without bound.
     public static let recentlyClosedLimit = 25
 
@@ -163,8 +163,7 @@ public final class TabSessionRepository: @unchecked Sendable {
     /// Recently closed tabs for one privacy mode.
     ///
     /// The privacy filter is not cosmetic: a private tab's title and URL must
-    /// not appear in the list a regular tab shows. Ported from the split in
-    /// `BrowserRecentlyClosedApplicationCoordinator`.
+    /// not appear in the list a regular tab shows.
     public func recentlyClosed(
         privacyMode: BrowserSessionPrivacyMode,
         limit: Int = 25

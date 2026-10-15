@@ -14,7 +14,6 @@
 
 import Foundation
 
-/// Ported from `BuiltInSearchEngineId`.
 public enum BuiltInSearchEngineId: String, Codable, Sendable, CaseIterable, Identifiable {
     case bing
     case google
@@ -31,16 +30,13 @@ public enum BuiltInSearchEngineId: String, Codable, Sendable, CaseIterable, Iden
     public var id: String { rawValue }
 }
 
-/// Ported from `SearchEngineId` — built-in ids or opaque custom-engine ids.
 public typealias SearchEngineId = String
 
-/// Ported from `SearchEngineKind`.
 public enum SearchEngineKind: String, Codable, Sendable, CaseIterable {
     case builtIn = "built_in"
     case custom
 }
 
-/// Ported from `SearchEngineResultPageShape`.
 public struct SearchEngineResultPageShape: Codable, Equatable, Sendable {
     public var hosts: [String]
     public var pathSuffixes: [String]
@@ -52,7 +48,6 @@ public struct SearchEngineResultPageShape: Codable, Equatable, Sendable {
         self.queryKeys = queryKeys
     }
 
-    /// Ported from the live-document probe in
     /// `BrowserQuickSearchContinuationService`. A navigation is a genuine result
     /// page when the host matches, the path matches, and the query still carries
     /// the search term under one of the engine's known keys.
@@ -76,7 +71,6 @@ public struct SearchEngineResultPageShape: Codable, Equatable, Sendable {
     }
 }
 
-/// Ported from `SearchEngineOption`.
 public struct SearchEngineOption: Codable, Equatable, Sendable, Identifiable {
     public var id: SearchEngineId
     public var name: String
@@ -111,7 +105,6 @@ public struct SearchEngineOption: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// Ported from `SEARCH_ENGINE_OPTIONS`.
 public let searchEngineOptions: [SearchEngineOption] = [
     SearchEngineOption(
         id: "bing",
@@ -212,10 +205,8 @@ public let searchEngineOptions: [SearchEngineOption] = [
     )
 ]
 
-/// Ported from `DEFAULT_SEARCH_ENGINE_ID`.
 public let defaultSearchEngineId: SearchEngineId = SearchEngineSettings.defaultEngineId
 
-/// Ported from `DEFAULT_ENABLED_BUILT_IN_SEARCH_ENGINE_IDS`.
 public let defaultEnabledBuiltInSearchEngineIds: [BuiltInSearchEngineId] = [
     .bing, .google, .duckduckgo, .baidu, .yandex
 ]
@@ -287,7 +278,6 @@ public struct SearchEngineRecord: Codable, Equatable, Sendable, Identifiable {
 
     /// Substitutes `{searchTerms}` with a percent-encoded query.
     ///
-    /// Ported from the template expansion in `SearchEngineSelectionService`.
     /// A custom engine whose template lacks the placeholder cannot express a
     /// query, so it is treated as unavailable rather than silently searched.
     public func searchUrl(for query: String) -> URL? {
@@ -302,7 +292,6 @@ public struct SearchEngineRecord: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// Ported from `SearchSuggestionPreferences`.
 public struct SearchSuggestionPreferences: Codable, Equatable, Sendable {
     public var regularEnabled: Bool
     public var privateEnabled: Bool
@@ -338,7 +327,6 @@ public struct SearchSuggestionPreferences: Codable, Equatable, Sendable {
     public static let `default` = SearchSuggestionPreferences()
 }
 
-/// Ported from `SearchEngineFallbackSettings`.
 public struct SearchEngineFallbackSettings: Codable, Equatable, Sendable {
     public var enabled: Bool
     public var fallbackSearchEngineId: SearchEngineId
@@ -357,7 +345,6 @@ public struct SearchEngineFallbackSettings: Codable, Equatable, Sendable {
     public static let `default` = SearchEngineFallbackSettings()
 }
 
-/// Ported from `SearchEngineSettings`.
 public struct SearchEngineSettings: Codable, Equatable, Sendable {
     public var defaultSearchEngineId: SearchEngineId
     public var builtInEngineOrder: [SearchEngineId]
@@ -398,7 +385,6 @@ public struct SearchEngineSettings: Codable, Equatable, Sendable {
     /// Every engine the user can pick, in display order: enabled built-ins
     /// (honouring the user's order) followed by custom engines.
     ///
-    /// Ported from the ordering pass in `BrowserSearchEnginePresentationViewModel`.
     public var selectableEngines: [SearchEngineRecord] {
         let builtIns = searchEngineOptions
             .filter { enabledBuiltInEngineIds.contains($0.id) }
@@ -443,7 +429,6 @@ public struct SearchEngineSettings: Codable, Equatable, Sendable {
 
 // MARK: - Search query history
 
-/// Ported from `SearchQueryHistoryRecord`.
 public struct SearchQueryHistoryRecord: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var query: String
@@ -457,7 +442,6 @@ public struct SearchQueryHistoryRecord: Codable, Equatable, Sendable, Identifiab
     public var dataScope: BrowserDataScope
 }
 
-/// Ported from the normalisation used before a query row is written.
 /// Lowercased and whitespace-collapsed for `normalizedQuery`; whitespace removed
 /// entirely for `compactQuery`, which is what makes "hello world" and
 /// "helloworld" collapse into one suggestion.

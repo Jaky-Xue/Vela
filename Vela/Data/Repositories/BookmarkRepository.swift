@@ -261,7 +261,7 @@ public final class BookmarkRepository: @unchecked Sendable {
 
     /// Rewrites the child order under one parent.
     ///
-    /// Ported from the reorder path. Positions are written densely from the
+    /// Positions are written densely from the
     /// array order, so an interrupted reorder can only lose the tail of the
     /// move, never scatter positions.
     public func reorder(parentId: String?, orderedChildIds: [String]) throws {
@@ -317,7 +317,6 @@ public final class BookmarkRepository: @unchecked Sendable {
 
     /// Loads the whole live tree under a root.
     ///
-    /// Ported from `BookmarkTreeItem` assembly: one pass over nodes and orders,
     /// then a recursive build. The order map is keyed by parent so the build is
     /// linear in node count rather than quadratic.
     public func loadTree(rootNodeId: String) throws -> BookmarkTreeItem? {
@@ -367,7 +366,7 @@ public final class BookmarkRepository: @unchecked Sendable {
 
     /// Searches titles and URLs.
     ///
-    /// Ported from `BookmarkSearchIndexRepository`. The index is the `title` and
+    /// The index is the `title` and
     /// `url` indexes rather than a full-text table, which is adequate at the
     /// scale a personal bookmark set reaches.
     public func search(_ query: String, limit: Int = 30) throws -> [BookmarkNode] {
@@ -400,7 +399,6 @@ public final class BookmarkRepository: @unchecked Sendable {
 
     /// Folders a node may be moved into, excluding its own subtree.
     ///
-    /// Ported from `BookmarkFolderSelectionPreparationCoordinator`.
     public func folderPickerItems(excludingSubtreeOf excludedId: String?) throws -> [BookmarkFolderPickerItem] {
         // Orders are read once and grouped by parent. Reading them inside the
         // walk would make the picker quadratic in the number of folders, and a

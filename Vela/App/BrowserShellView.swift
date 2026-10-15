@@ -411,7 +411,7 @@ struct BrowserShellView: View {
     // MARK: - Scrolling
 
     /// Collapses the chrome as the page scrolls down and restores it on any
-    /// upward movement. Ported from `BrowserBottomChromeScrollCoordinator`.
+    /// upward movement.
     ///
     /// The restore is unconditional on direction rather than proportional to
     /// distance: a user who scrolls up even slightly is looking for the
@@ -462,6 +462,12 @@ struct BrowserShellView: View {
 
         case .home:
             guard let tab = activeTab else { return }
+            // Stop the page before leaving it: a home surface over a document
+            // still fetching is a document the user has stopped looking at, and
+            // its callbacks would keep arriving into hidden state.
+            tabManager.webView(for: tab.id)?.stopLoading()
+            isReaderActive = false
+            readerArticle = nil
             tab.isHome = true
             tab.url = ""
             tab.title = ""
@@ -543,9 +549,7 @@ struct BrowserShellView: View {
         Task {
             await env.refreshAdBlockRules()
             // Content rules only apply to a new document, so the page is
-            // reloaded to make the change visible. Ported from
-            // `AdBlockRuntimeGenerationCoordinator`, which reloads for the same
-            // reason.
+            // reloaded to make the change visible.
             tabManager.webView(for: tabManager.activeTabId)?.reload()
         }
     }
@@ -589,8 +593,7 @@ struct BrowserShellView: View {
             return
         }
 
-        // A search records the query; a direct URL does not. Ported from the
-        // split in `BrowserSearchInvocationAdapter`.
+        // A search records the query; a direct URL does not.
         if BrowserUrlResolver.isSearchQuery(input) {
             try? env.searchHistory.record(
                 query: input,

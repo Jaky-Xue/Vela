@@ -94,7 +94,6 @@ struct BrowserColorTokens: Equatable, Sendable {
 
 /// A colour palette.
 ///
-/// Ported from the `features/theme/palettes/` entries, extended to the iOS
 /// appearance model described in the file header.
 struct BrowserPalette: Equatable, Identifiable, Sendable {
     var id: String
@@ -526,9 +525,7 @@ struct SiteIconView: View {
 
 // MARK: - Sheets
 
-/// The bottom sheet detents Vela uses. Ported from
-/// `BrowserSheetResponsiveLayoutViewModel`, which chooses a detent from the
-/// content height so a two-row sheet does not open half-screen.
+/// The bottom sheet detents Vela uses.
 enum BrowserSheetDetent {
     static func forContentHeight(_ height: CGFloat) -> PresentationDetent {
         switch height {
@@ -541,8 +538,7 @@ enum BrowserSheetDetent {
 
 // MARK: - Badges
 
-/// A compact pill that shows the current privacy mode. Ported from the private
-/// indicator in `BrowserShellViewModel`.
+/// A compact pill that shows the current privacy mode.
 struct PrivacyModeBadge: View {
     var mode: BrowserSessionPrivacyMode
 

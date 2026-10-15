@@ -51,7 +51,6 @@ public final class DownloadService: NSObject {
     }
 
     /// Transfers interrupted by an app termination, offered for resume at launch.
-    /// Ported from the record-store load path, which separates active from
     /// terminal records for this purpose.
     @discardableResult
     public func reconcileInterruptedTasks() -> [DownloadTask] {
@@ -86,7 +85,6 @@ public final class DownloadService: NSObject {
 
     /// Resolves a non-colliding destination for a filename.
     ///
-    /// Ported from the filename resolution in `DownloadV2Repository`: a second
     /// download of the same name becomes `report (1).pdf` rather than
     /// overwriting the first.
     public func resolveDestination(suggestedFileName: String) -> URL {
@@ -193,8 +191,7 @@ public final class DownloadService: NSObject {
 
     // MARK: - Completion
 
-    /// Records a finished transfer. Ported from the terminal-state write in
-    /// `DownloadV2Repository`.
+    /// Records a finished transfer.
     public func complete(guid: String, destinationPath: String, resolvedFileName: String) {
         guard var task = try? repository.task(guid: guid) else { return }
         task.status = .completed
@@ -219,7 +216,6 @@ public final class DownloadService: NSObject {
 
     /// Records a failure, keeping the resume blob when WebKit supplied one.
     ///
-    /// Ported from the failure write in `DownloadV2RecordStore`, which stores
     /// `resumeCapability` alongside the error. Here the capability is derived
     /// from whether resume data actually came back.
     public func fail(guid: String, error: Error, resumeData: Data?) {
@@ -310,7 +306,6 @@ public final class DownloadService: NSObject {
     }
 
     /// Clears private download records at the end of a private session.
-    /// Ported from `BrowserPrivateSessionCleanupCoordinator`.
     public func clearPrivateRecords() {
         for (guid, download) in downloads {
             guard let task = try? repository.task(guid: guid), task.privacyMode == .private else { continue }

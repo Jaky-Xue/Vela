@@ -14,13 +14,10 @@
 import Foundation
 
 public enum AdBlockBuiltInRules {
-    /// Ported from `BUILT_IN_AD_BLOCK_RULE_SOURCE_ID`.
     public static let builtInSourceId = "system-built-in-adblock-rules"
 
-    /// Ported from `SMOOTH_MODE_AD_BLOCK_RULE_SOURCE_ID`.
     public static let smoothModeSourceId = "system-smooth-mode-adblock-rules"
 
-    /// Ported from `APP_PROMOTION_BANNER_RULE_SOURCE_ID`.
     public static let appPromotionBannerSourceId = "system-app-promotion-banner-rules"
 
     /// The shipped sources, in the order they are listed in settings.

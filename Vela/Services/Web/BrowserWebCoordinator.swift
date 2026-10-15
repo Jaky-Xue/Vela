@@ -483,6 +483,11 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         )
     }
 
+    /// The coordinator is both of these; WebKit holds them weakly, and the app
+    /// environment is what keeps it alive.
+    public var navigationDelegate: WKNavigationDelegate? { self }
+    public var uiDelegate: WKUIDelegate? { self }
+
     /// Records a visit for a navigation the coordinator allowed.
     public func recordVisit(
         url: URL,
@@ -539,9 +544,9 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                 return
             }
 
-            // 2. A `target="_blank"` link or a `window.open` becomes a new tab.
-            //    Ported from `BrowserNewWindowCoordinator`, which is why Vela
-            //    does not let WebKit create the window itself.
+            // 2. A `target="_blank"` link or a `window.open` becomes a new tab,
+            //    created here rather than by WebKit, so the tab registry stays
+            //    the only thing that knows which web views exist.
             if navigationAction.targetFrame == nil {
                 let created = self.tabManager?.createTab(
                     url: url.absoluteString,
@@ -695,8 +700,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             if let url = webView.url {
                 tab.url = url.absoluteString
                 // The last-good pair is what the error surface offers as "go
-                // back to the page that worked". Ported from the
-                // `lastGoodUrl` / `lastGoodTitle` pair in `BrowserTabState`.
+                // back to the page that worked".
                 tab.lastGoodUrl = url.absoluteString
                 tab.lastGoodTitle = webView.title ?? tab.title
             }
@@ -737,8 +741,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         Task { @MainActor in
             guard let tab = self.tab(for: webView) else { return }
             // A content-process kill is not a load failure: reloading the same
-            // URL usually succeeds. Ported from `BrowserFaultClassifier`, which
-            // distinguishes a crash from a failure for exactly this reason.
+            // URL usually succeeds.
             tab.lastCrashReason = .webContentProcess
             tab.runtimeState = .crashed
             tab.isLoading = false
@@ -766,7 +769,6 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         tab.canGoForward = webView.canGoForward
     }
 
-    /// Ported from `BrowserFaultClassifier`'s error copy.
     static func describe(error: NSError) -> String {
         if error.domain == NSURLErrorDomain {
             switch error.code {
@@ -892,7 +894,6 @@ extension BrowserWebCoordinator: WKUIDelegate {
 
     /// Media capture permission.
     ///
-    /// Ported from `BrowserWebCapabilityPromptApplicationCoordinator` and the
     /// per-site rules in `SitePermissionDefaultSettings`. iOS asks the app once
     /// per origin; Vela answers from the site rule rather than prompting again,
     /// because the app-level permission prompt has already been shown by the
@@ -939,7 +940,7 @@ extension BrowserWebCoordinator: WKUIDelegate {
         request.decisionHandler(allow ? .grant : .deny)
     }
 
-    /// File uploads. Ported from `WebFileSelectorPolicyService`.
+    /// File uploads.
     ///
     /// Returning without calling the completion handler would hang the page, so
     /// the handler is always called; cancelling means calling it with no URL,
@@ -966,7 +967,6 @@ extension BrowserWebCoordinator: WKUIDelegate {
 
     /// The long-press menu for a link or image.
     ///
-    /// Ported from `WebImageContextActionService` and the long-press context
     /// menu spec in `docs/aira-web-longpress-context-menu-implementation.md`.
     /// Returning nil keeps WebKit's own menu, which already offers open, copy,
     /// share and save-image; Vela adds its own entries through the shell instead

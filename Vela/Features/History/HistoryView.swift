@@ -92,7 +92,6 @@ struct HistoryView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    // Ported from the undo affordance in the history manager: a
                     // removal is reversible from the same screen until the user
                     // leaves it.
                     if !recentlyRemoved.isEmpty {

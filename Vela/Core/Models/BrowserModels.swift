@@ -19,23 +19,19 @@ import Foundation
 
 // MARK: - Profile and scope
 
-/// Ported from `BrowserProfileId`.
 public typealias BrowserProfileId = String
 public let browserMainProfileId: BrowserProfileId = "profile-main"
 
-/// Ported from `BrowserSessionPrivacyMode`.
 public enum BrowserSessionPrivacyMode: String, Codable, Sendable, CaseIterable {
     case regular
     case `private`
 }
 
-/// Ported from `BrowserDataScope`.
 public enum BrowserDataScope: String, Codable, Sendable, CaseIterable {
     case profilePersistent = "profile_persistent"
     case sessionEphemeral = "session_ephemeral"
 }
 
-/// Ported from `BrowserDataSource`.
 public enum BrowserDataSource: String, Codable, Sendable, CaseIterable {
     case seed
     case local
@@ -44,7 +40,6 @@ public enum BrowserDataSource: String, Codable, Sendable, CaseIterable {
     case cloudSync = "cloud_sync"
 }
 
-/// Ported from `SyncState`.
 public enum SyncState: String, Codable, Sendable, CaseIterable {
     case localOnly = "local_only"
     case pendingPush = "pending_push"
@@ -62,8 +57,6 @@ public enum SyncProviderId: String, Codable, Sendable, CaseIterable {
 
 // MARK: - Data boundary
 
-/// Ported from `BrowserDataBoundary` / `BrowserDataBoundaryInput`.
-///
 /// One value decides whether a piece of browsing data is written to the durable
 /// database or discarded with the session. Every write path in Vela takes a
 /// boundary rather than reading privacy mode off a tab, so a private tab can
@@ -96,7 +89,6 @@ public struct BrowserDataBoundary: Equatable, Sendable {
     /// True when this boundary may write to the durable database.
     public var persists: Bool { dataScope == .profilePersistent }
 
-    /// Ported from `resolveBrowserDataBoundary`.
     public static func resolve(
         profileId: BrowserProfileId,
         privacyMode: BrowserSessionPrivacyMode
@@ -109,25 +101,21 @@ public struct BrowserDataBoundary: Equatable, Sendable {
     }
 }
 
-/// Ported from `normalizeBrowserProfileId`.
 public func normalizeBrowserProfileId(_ value: String) -> BrowserProfileId {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? browserMainProfileId : trimmed
 }
 
-/// Ported from `normalizeBrowserDataScope`.
 public func normalizeBrowserDataScope(_ value: String) -> BrowserDataScope {
     BrowserDataScope(rawValue: value) ?? .profilePersistent
 }
 
-/// Ported from `normalizeBrowserSessionPrivacyMode`.
 public func normalizeBrowserSessionPrivacyMode(_ value: String) -> BrowserSessionPrivacyMode {
     BrowserSessionPrivacyMode(rawValue: value) ?? .regular
 }
 
 // MARK: - Site permissions
 
-/// Ported from `SitePermissionKind`.
 public enum SitePermissionKind: String, Codable, Sendable, CaseIterable, Identifiable {
     case camera
     case microphone
@@ -148,14 +136,12 @@ public enum SitePermissionKind: String, Codable, Sendable, CaseIterable, Identif
     }
 }
 
-/// Ported from `SitePermissionRule`.
 public enum SitePermissionRule: String, Codable, Sendable, CaseIterable {
     case ask
     case allow
     case block
 }
 
-/// Ported from `SitePermissionDefaultSettings`.
 public struct SitePermissionDefaultSettings: Codable, Equatable, Sendable {
     public var camera: SitePermissionRule
     public var microphone: SitePermissionRule
@@ -203,7 +189,6 @@ public struct SitePermissionDefaultSettings: Codable, Equatable, Sendable {
 
 // MARK: - External navigation
 
-/// Ported from `ExternalNavigationAppOpenPolicy`.
 public enum ExternalNavigationAppOpenPolicy: String, Codable, Sendable, CaseIterable, Identifiable {
     case block
     case ask
@@ -220,7 +205,6 @@ public enum ExternalNavigationAppOpenPolicy: String, Codable, Sendable, CaseIter
     }
 }
 
-/// Ported from `ExternalNavigationSiteRule`.
 public struct ExternalNavigationSiteRule: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var host: String
@@ -242,7 +226,6 @@ public struct ExternalNavigationSiteRule: Codable, Equatable, Sendable, Identifi
 
 // MARK: - Tracking protection
 
-/// Ported from the tracking-protection surface of
 /// `BrowserTrackingProtectionSettingsCoordinator`.
 public enum TrackingProtectionLevel: String, Codable, Sendable, CaseIterable, Identifiable {
     /// No cross-site cookie blocking.
@@ -274,7 +257,6 @@ public enum TrackingProtectionLevel: String, Codable, Sendable, CaseIterable, Id
     }
 }
 
-/// Ported from `BrowserWebSecuritySettings` (secure DNS lives in its own file).
 public struct BrowserWebSecuritySettings: Codable, Equatable, Sendable {
     public var trackingProtection: TrackingProtectionLevel
     /// Send `Do Not Track: 1` on every navigation.
@@ -301,7 +283,6 @@ public struct BrowserWebSecuritySettings: Codable, Equatable, Sendable {
 
 // MARK: - Secure DNS
 
-/// Ported from `SecureDnsSettingsModel`.
 public enum SecureDnsMode: String, Codable, Sendable, CaseIterable, Identifiable {
     case automatic
     case secure
@@ -405,15 +386,11 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var sitePermissions: SitePermissionDefaultSettings
     public var externalNavigationDefault: ExternalNavigationAppOpenPolicy
     public var externalNavigationRules: [ExternalNavigationSiteRule]
-    /// Ported from `GeneralStartupSettingsViewModel`.
     public var restoreTabsOnLaunch: Bool
     public var openNewTabsInBackground: Bool
-    /// Ported from `GeneralTabAutoCloseSettingsViewModel`.
     public var tabAutoCloseEnabled: Bool
     public var tabAutoCloseIdleHours: Int
-    /// Ported from `GeneralHistoryRetentionSettingsPage`.
     public var historyRetentionDays: Int
-    /// Ported from `GeneralPrivateTabsSettingsViewModel`.
     public var lockPrivateTabs: Bool
     public var blurPrivateTabPreviews: Bool
     public var customUserAgent: String
@@ -421,7 +398,6 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var readerModeAvailable: Bool
     public var userScriptsEnabled: Bool
     public var homepageUrl: String
-    /// Ported from the palette selection in `ThemePaletteSettingsPage`.
     public var themePaletteId: String
 
     public init(

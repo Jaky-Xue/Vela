@@ -96,7 +96,6 @@ public enum WebPageScripts {
 
     /// Reports viewport metrics and applies the bottom safe-area inset.
     ///
-    /// Ported from `WebBottomSafeAreaScriptService` and
     /// `BrowserWebViewportCoordinator`. The inset is applied to the document
     /// element rather than by shrinking the web view, because shrinking the web
     /// view would make fixed-position page chrome sit above the toolbar, which
@@ -128,8 +127,7 @@ public enum WebPageScripts {
     }
 
     /// Reports layout metrics back to the host so the toolbar clearance can be
-    /// recomputed after a rotation or a dynamic-toolbar change. Ported from
-    /// `BrowserWebViewportCoordinator`'s measurement pass.
+    /// recomputed after a rotation or a dynamic-toolbar change.
     public static let pageMetricsReporter = """
     (function () {
       if (window.__velaPageMetricsInstalled === true) { return; }
@@ -171,10 +169,7 @@ public enum WebPageScripts {
 
     // MARK: - Scroll
 
-    /// Reports scroll offset and direction. Ported from
-    /// `BrowserBottomChromeScrollCoordinator`, which drives the collapsing
-    /// toolbar. Direction is computed here rather than on the host so the
-    /// threshold is applied once, on the page, where the offset is produced.
+    /// Reports scroll offset and direction.
     public static let scrollReporter = """
     (function () {
       if (window.__velaScrollReporterInstalled === true) { return; }
@@ -215,9 +210,7 @@ public enum WebPageScripts {
     // MARK: - Dark mode
 
     /// Tells the page whether it should render dark, and reads back whether it
-    /// has a dark stylesheet. Ported from `BrowserPageChromeThemeSamplingCoordinator`,
-    /// which samples the page's own background to decide whether the browser
-    /// chrome should be light or dark against it.
+    /// has a dark stylesheet.
     public static func colorSchemeScript(prefersDark: Bool) -> String {
         """
         (function () {
@@ -240,7 +233,7 @@ public enum WebPageScripts {
 
     /// Highlights every match of `query` and reports the count.
     ///
-    /// Ported from `BrowserPageFindCoordinator`. Implemented with a DOM walk
+    /// Implemented with a DOM walk
     /// rather than `window.find()` because `window.find` is not exposed in
     /// WebKit's JavaScript context and selecting text does not survive a scroll
     /// on a long page.
@@ -356,10 +349,7 @@ public enum WebPageScripts {
 
     // MARK: - Element picker
 
-    /// The element picker. Ported from
-    /// `ElementInspectionRuntimeScriptService` and
-    /// `ManualElementHideRuntimeScriptService`: pointing at an element produces
-    /// a CSS selector that hides it and its siblings.
+    /// The element picker.
     ///
     /// The generated selector prefers a stable id, then a class combination,
     /// then a structural path. An auto-generated class such as `css-1x2y3z`
@@ -489,10 +479,7 @@ public enum WebPageScripts {
 
     // MARK: - Page text extraction
 
-    /// Extracts the page text for translation. Ported from
-    /// `WebpageTranslationExtractionService`: text nodes are collected with
-    /// their structural path so a translation can be written back into the same
-    /// node rather than replacing the page.
+    /// Extracts the page text for translation.
     public static let textExtractionScript = """
     (function () {
       var SKIP_TAGS = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, CODE: 1, PRE: 1, TEXTAREA: 1, SVG: 1, CANVAS: 1 };

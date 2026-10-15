@@ -20,7 +20,6 @@ import UIKit
 
 /// Turns typed text into a URL, or decides it is a query.
 ///
-/// Ported from the resolution in `BrowserUnifiedLinkLogic` /
 /// `BrowserAddressDisplayCoordinator`. The rules, in order:
 ///
 /// * An input with a scheme Vela can load is a URL.
@@ -102,7 +101,6 @@ enum BrowserUrlResolver {
 
     /// The URL to load for an omnibox submission.
     ///
-    /// Ported from the submit path in `BrowserShellSearchInvocationAdapter`.
     static func resolveNavigation(
         input: String,
         searchEngine: SearchEngineRecord
