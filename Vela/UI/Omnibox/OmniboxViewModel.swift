@@ -35,6 +35,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import Observation
 
 // MARK: - Suggestion engine
 
@@ -248,7 +249,8 @@ struct OmniboxSuggestionEngine {
 /// field *offers* lives here, which is what makes the list testable without a
 /// window and keeps the shell out of the suggestion business.
 @MainActor
-public final class OmniboxViewModel: ObservableObject {
+@Observable
+public final class OmniboxViewModel {
 
     // MARK: Input
 
@@ -258,7 +260,7 @@ public final class OmniboxViewModel: ObservableObject {
     /// while the omnibox is open. Outside a session the field is just showing
     /// the page's address, and rebuilding a suggestion list nobody can see would
     /// be a database query per navigation.
-    @Published public var text: String = "" {
+    public var text: String = "" {
         didSet {
             guard text != oldValue, isEditing else { return }
             scheduleRefresh()
@@ -266,7 +268,7 @@ public final class OmniboxViewModel: ObservableObject {
     }
 
     /// Whether the omnibox is expanded over the page.
-    @Published public var isEditing: Bool = false
+    public var isEditing: Bool = false
 
     /// The address of the page the omnibox is attached to. The shell keeps it
     /// current; it is what the field falls back to when a session ends without
@@ -275,22 +277,22 @@ public final class OmniboxViewModel: ObservableObject {
 
     // MARK: Suggestions
 
-    @Published public private(set) var groups: [OmniboxSuggestionGroup] = []
+    public private(set) var groups: [OmniboxSuggestionGroup] = []
     /// The rows of the expanded sections, in render order. Keyboard navigation
     /// walks this, so a collapsed section's rows are correctly unreachable.
-    @Published public private(set) var visibleSuggestions: [OmniboxSuggestion] = []
+    public private(set) var visibleSuggestions: [OmniboxSuggestion] = []
     /// The row the keyboard has selected. `nil` means "nothing selected", in
     /// which case return resolves the typed text the way it always has.
-    @Published public private(set) var highlightedId: String?
+    public private(set) var highlightedId: String?
 
     /// Sections the user has explicitly collapsed or expanded.
-    @Published public private(set) var collapsedSections: Set<OmniboxSection> = []
+    public private(set) var collapsedSections: Set<OmniboxSection> = []
 
     // MARK: Chrome
 
-    @Published public private(set) var clipboardHint: OmniboxClipboardHint?
-    @Published public private(set) var availableEngines: [SearchEngineRecord] = []
-    @Published public private(set) var activeEngineName: String = ""
+    public private(set) var clipboardHint: OmniboxClipboardHint?
+    public private(set) var availableEngines: [SearchEngineRecord] = []
+    public private(set) var activeEngineName: String = ""
 
     // MARK: Wiring
 

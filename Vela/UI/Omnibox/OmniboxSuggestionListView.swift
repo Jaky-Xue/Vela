@@ -23,7 +23,7 @@
 import SwiftUI
 
 struct OmniboxSuggestionListView: View {
-    @ObservedObject var viewModel: OmniboxViewModel
+    var viewModel: OmniboxViewModel
     /// The tallest the card may grow, in points. Injected rather than read from
     /// `UIScreen`, because the shell already knows its own size and a screen
     /// measurement would be wrong inside a sheet on iPad.

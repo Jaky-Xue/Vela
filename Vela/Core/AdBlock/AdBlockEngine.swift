@@ -16,6 +16,7 @@
 
 import Foundation
 import WebKit
+import Observation
 
 /// A compiled rule list and what went into it.
 public struct AdBlockCompiledList: Sendable {
@@ -28,7 +29,8 @@ public struct AdBlockCompiledList: Sendable {
 }
 
 @MainActor
-public final class AdBlockEngine: ObservableObject {
+@Observable
+public final class AdBlockEngine {
     /// Identifier prefix for entries Vela owns in the shared WebKit store.
     /// Prefixed so a future list-management UI can find and evict exactly its
     /// own entries without touching another component's.
@@ -42,19 +44,19 @@ public final class AdBlockEngine: ObservableObject {
     /// user expects from "enable another list". Combining preserves source order.
     public static let combinedIdentifier = identifierPrefix + "combined"
 
-    @Published public private(set) var isReady = false
-    @Published public private(set) var ruleCount = 0
-    @Published public private(set) var cosmeticSelectors: [String] = []
-    @Published public private(set) var lastError: String?
-    @Published public private(set) var unsupportedRuleCount = 0
-    @Published public private(set) var invalidRuleCount = 0
-    @Published public private(set) var sourceLineCount = 0
-    @Published public private(set) var lastCompiledAt: Date?
+    public private(set) var isReady = false
+    public private(set) var ruleCount = 0
+    public private(set) var cosmeticSelectors: [String] = []
+    public private(set) var lastError: String?
+    public private(set) var unsupportedRuleCount = 0
+    public private(set) var invalidRuleCount = 0
+    public private(set) var sourceLineCount = 0
+    public private(set) var lastCompiledAt: Date?
 
     /// Per-page count of elements the cosmetic filters actually hid.
     ///
     /// Reported by the injected script. Reset on each main-frame commit.
-    @Published public private(set) var lastPageHiddenCount = 0
+    public private(set) var lastPageHiddenCount = 0
 
     private let store: WKContentRuleListStore
 

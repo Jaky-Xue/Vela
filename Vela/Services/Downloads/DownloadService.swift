@@ -21,12 +21,14 @@
 
 import Foundation
 import WebKit
+import Observation
 
 @MainActor
-public final class DownloadService: NSObject, ObservableObject {
-    @Published public private(set) var tasks: [DownloadTask] = []
-    @Published public private(set) var activeCount: Int = 0
-    @Published public var pendingPrompt: DownloadTask?
+@Observable
+public final class DownloadService: NSObject {
+    public private(set) var tasks: [DownloadTask] = []
+    public private(set) var activeCount: Int = 0
+    public var pendingPrompt: DownloadTask?
 
     private let repository: DownloadRepository
     private let settings: SettingsService

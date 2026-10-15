@@ -15,13 +15,15 @@
 //
 
 import Foundation
+import Observation
 
 @MainActor
-public final class BookmarkService: ObservableObject {
-    @Published public private(set) var toolbarTree: BookmarkTreeItem?
-    @Published public private(set) var otherTree: BookmarkTreeItem?
-    @Published public private(set) var allBookmarks: [BookmarkNode] = []
-    @Published public private(set) var lastError: String?
+@Observable
+public final class BookmarkService {
+    public private(set) var toolbarTree: BookmarkTreeItem?
+    public private(set) var otherTree: BookmarkTreeItem?
+    public private(set) var allBookmarks: [BookmarkNode] = []
+    public private(set) var lastError: String?
 
     private let repository: BookmarkRepository
     private var roots: [BookmarkRoot] = []

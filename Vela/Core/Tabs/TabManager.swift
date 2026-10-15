@@ -19,6 +19,7 @@
 
 import Foundation
 import WebKit
+import Observation
 
 /// Supplies the `WKWebViewConfiguration` for a tab.
 ///
@@ -32,7 +33,8 @@ public protocol BrowserWebViewConfigurationProviding: AnyObject {
 }
 
 @MainActor
-public final class TabManager: ObservableObject {
+@Observable
+public final class TabManager {
     /// Ported from the tab cap in `BrowserMaterializationPolicy`. iOS will
     /// terminate a browser holding far more than this, and each live web view
     /// costs a content process.
@@ -42,9 +44,9 @@ public final class TabManager: ObservableObject {
     /// also caps.
     public static let recentlyClosedLimit = 25
 
-    @Published public private(set) var tabs: [BrowserTabState] = []
-    @Published public private(set) var activeTabId: String = ""
-    @Published public private(set) var recentlyClosed: [RecentlyClosedTabRecord] = []
+    public private(set) var tabs: [BrowserTabState] = []
+    public private(set) var activeTabId: String = ""
+    public private(set) var recentlyClosed: [RecentlyClosedTabRecord] = []
 
     /// Live web views, keyed by tab id. A tab absent from this map is `cold`.
     private var webViews: [String: WKWebView] = [:]

@@ -18,10 +18,11 @@
 //
 
 import Foundation
-import Combine
+import Observation
 
 @MainActor
-public final class SettingsService: ObservableObject {
+@Observable
+public final class SettingsService {
     private enum Key {
         static let preferences = "org.vela.browser.preferences"
         static let userScripts = "org.vela.browser.userscripts"
@@ -29,7 +30,7 @@ public final class SettingsService: ObservableObject {
         static let appearanceMode = "org.vela.browser.appearance-mode"
     }
 
-    @Published public private(set) var preferences: BrowserPreferences {
+    public private(set) var preferences: BrowserPreferences {
         didSet { persistPreferences() }
     }
 
@@ -41,15 +42,15 @@ public final class SettingsService: ObservableObject {
     /// because that document is decoded as a whole: a new non-optional key
     /// would make every existing install's document fail to decode, and the
     /// settings would silently reset to defaults on the next launch.
-    @Published public private(set) var appearanceMode: AppearanceMode {
+    public private(set) var appearanceMode: AppearanceMode {
         didSet { defaults.set(appearanceMode.rawValue, forKey: Key.appearanceMode) }
     }
 
-    @Published public private(set) var downloadSettings: DownloadSettings {
+    public private(set) var downloadSettings: DownloadSettings {
         didSet { persist(downloadSettings, key: "org.vela.browser.download-settings") }
     }
 
-    @Published public private(set) var manualElementHide: ManualElementHideSettings {
+    public private(set) var manualElementHide: ManualElementHideSettings {
         didSet { persist(manualElementHide, key: Key.manualElementHide) }
     }
 

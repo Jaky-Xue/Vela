@@ -16,7 +16,7 @@ import WebKit
 // MARK: - Ad block
 
 struct AdBlockSettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     @State private var newRule = ""
     @State private var updatingSourceId: String?
@@ -237,7 +237,7 @@ struct AdBlockSettingsView: View {
 
 /// Ported from `BrowserTrackingProtectionSettingsPage.ets`.
 struct PrivacySettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     var body: some View {
         List {
@@ -293,7 +293,7 @@ struct PrivacySettingsView: View {
 
 /// Ported from `SecureDnsSettingsPage.ets` and `SecureDnsProfileEditPage.ets`.
 struct SecureDnsSettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     @State private var showingAddProfile = false
     @State private var newProfileName = ""
@@ -385,7 +385,7 @@ struct SecureDnsSettingsView: View {
 /// Ported from `SettingsSitePermissionDefaultPage.ets` and
 /// `SiteControlsCapabilityPage.ets`.
 struct SitePermissionsSettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     var body: some View {
         List {
@@ -426,7 +426,7 @@ struct SitePermissionsSettingsView: View {
 /// Ported from `SettingsExternalNavigationCoordinator` and
 /// `SiteControlsExternalNavigationDefaultPage.ets`.
 struct ExternalNavigationSettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     var body: some View {
         List {
@@ -478,7 +478,7 @@ struct ExternalNavigationSettingsView: View {
 /// several stores, because clearing some and not others leaves the user
 /// believing more was removed than actually was.
 struct ClearDataView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     @State private var clearHistory = true
     @State private var clearCookies = true
@@ -582,7 +582,7 @@ struct ClearDataView: View {
 
 /// Ported from `DownloadSettingsPage.ets`.
 struct DownloadSettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     var body: some View {
         List {

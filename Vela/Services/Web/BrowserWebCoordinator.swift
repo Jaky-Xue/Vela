@@ -22,9 +22,11 @@
 import Foundation
 import UIKit
 import WebKit
+import Observation
 
 @MainActor
-public final class BrowserWebCoordinator: NSObject, ObservableObject {
+@Observable
+public final class BrowserWebCoordinator: NSObject {
     // MARK: - Collaborators
 
     private let settings: SettingsService
@@ -39,20 +41,20 @@ public final class BrowserWebCoordinator: NSObject, ObservableObject {
 
     /// The last message a page asked to show. Published so the shell can render
     /// a native alert rather than a `UIAlertController` owned by this object.
-    @Published public var pendingJavaScriptDialog: JavaScriptDialog?
-    @Published public var pendingExternalNavigation: ExternalNavigationRequest?
-    @Published public var pendingPermissionRequest: SitePermissionRequest?
-    @Published public var pendingElementPick: ElementPickResult?
+    public var pendingJavaScriptDialog: JavaScriptDialog?
+    public var pendingExternalNavigation: ExternalNavigationRequest?
+    public var pendingPermissionRequest: SitePermissionRequest?
+    public var pendingElementPick: ElementPickResult?
 
     /// Find-in-page state, published for the find bar.
-    @Published public var findResult: FindResult = FindResult(count: 0, index: -1)
+    public var findResult: FindResult = FindResult(count: 0, index: -1)
 
     /// Element picker mode is armed by the shell and consumed on the next pick.
-    @Published public private(set) var isElementPickerArmed = false
+    public private(set) var isElementPickerArmed = false
 
     /// A file upload the page is waiting on. The shell presents the picker and
     /// calls the stored handler.
-    @Published public var pendingFileUpload: FileUploadRequest?
+    public var pendingFileUpload: FileUploadRequest?
 
     /// `alert` / `confirm` / `prompt` completion handlers.
     ///

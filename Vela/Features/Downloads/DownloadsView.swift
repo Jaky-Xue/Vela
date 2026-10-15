@@ -16,7 +16,7 @@ import UIKit
 import QuickLook
 
 struct DownloadsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
     @State private var showPrivate = false

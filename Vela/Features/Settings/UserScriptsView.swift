@@ -18,7 +18,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct UserScriptsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     @State private var scripts: [InstalledUserScriptState] = []
     @State private var showingInstall = false
@@ -324,7 +324,7 @@ struct UserScriptsView: View {
 // MARK: - Detail
 
 struct UserScriptDetailView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
     var script: InstalledUserScriptState

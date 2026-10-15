@@ -14,11 +14,13 @@
 //
 
 import Foundation
+import Observation
 
 @MainActor
-public final class HistoryService: ObservableObject {
-    @Published public private(set) var dayGroups: [HistoryDayGroup] = []
-    @Published public private(set) var entryCount: Int = 0
+@Observable
+public final class HistoryService {
+    public private(set) var dayGroups: [HistoryDayGroup] = []
+    public private(set) var entryCount: Int = 0
 
     private let repository: HistoryRepository
     private let settings: SettingsService

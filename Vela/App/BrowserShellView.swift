@@ -30,13 +30,13 @@ import UIKit
 import WebKit
 
 struct BrowserShellView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
     /// The omnibox session. Created here rather than inside the view body
     /// because it is long-lived: it survives every tab switch, and rebuilding it
     /// would throw away the user's collapsed-section choices on each one.
-    @StateObject private var omnibox: OmniboxViewModel
+    @State private var omnibox: OmniboxViewModel
 
     @State private var showTabsOverview = false
     @State private var showBookmarks = false
@@ -69,7 +69,7 @@ struct BrowserShellView: View {
 
     @MainActor
     init(environment: AppEnvironment) {
-        _omnibox = StateObject(wrappedValue: OmniboxViewModel(
+        _omnibox = State(initialValue: OmniboxViewModel(
             settings: environment.settings,
             history: environment.history,
             bookmarks: environment.bookmarks,
@@ -136,23 +136,23 @@ struct BrowserShellView: View {
         .onChange(of: activeTab?.url) { _, _ in syncAddressText() }
         .sheet(isPresented: $showTabsOverview) {
             TabsOverviewView()
-                .environmentObject(env)
+                .environment(env)
         }
         .sheet(isPresented: $showBookmarks) {
             NavigationStack { BookmarksView() }
-                .environmentObject(env)
+                .environment(env)
         }
         .sheet(isPresented: $showHistory) {
             NavigationStack { HistoryView() }
-                .environmentObject(env)
+                .environment(env)
         }
         .sheet(isPresented: $showDownloads) {
             NavigationStack { DownloadsView() }
-                .environmentObject(env)
+                .environment(env)
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack { SettingsView() }
-                .environmentObject(env)
+                .environment(env)
         }
         .sheet(isPresented: $showShareSheet) {
             if let tab = activeTab, let url = URL(string: tab.url) {

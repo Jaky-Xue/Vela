@@ -21,7 +21,7 @@ import UIKit
 import LocalAuthentication
 
 struct TabsOverviewView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
     @State private var showPrivateTabs = false
@@ -200,7 +200,7 @@ struct TabsOverviewView: View {
 
 /// One tab card.
 private struct TabCard: View {
-    @ObservedObject var tab: BrowserTabState
+    var tab: BrowserTabState
     var isActive: Bool
     var blurPreview: Bool
     var onSelect: () -> Void

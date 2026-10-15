@@ -31,7 +31,7 @@ import SwiftUI
 import UIKit
 
 struct NewTabHomeView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
     var onNavigate: (URL) -> Void

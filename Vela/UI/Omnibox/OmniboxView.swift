@@ -29,7 +29,7 @@ import UIKit
 
 /// The address bar.
 struct OmniboxView: View {
-    @ObservedObject var viewModel: OmniboxViewModel
+    var viewModel: OmniboxViewModel
 
     var isLoading: Bool
     var progress: Double

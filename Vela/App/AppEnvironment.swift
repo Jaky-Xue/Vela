@@ -2,33 +2,24 @@
 //  AppEnvironment.swift
 //  Vela
 //
-//  The composition root. Aira wires its services through HarmonyOS
-//  `AppStorage` and module-level singletons (`*Coordinator` classes created in
-//  `app/bootstrap/`). SwiftUI has no equivalent container, so Vela constructs
-//  every service once here and injects it through the environment.
+//  The composition root. Every service is constructed once here and injected
+//  through the SwiftUI environment, so the dependency graph stays visible at
+//  each call site instead of hiding behind a module-level singleton.
 //
-//  One deviation worth naming: Aira keeps its layers wired at module scope so a
-//  coordinator can reach another without a parameter. Vela passes the
-//  environment explicitly, because a SwiftUI view is re-created constantly and
-//  an implicit global would make the app's dependency graph invisible at the
-//  call site.
-//
-//  iOS port enhancement (this revision). The environment republishes every
-//  service's changes. SwiftUI tracks an `ObservableObject` only through the
-//  property wrapper that exposes it, and every view here reaches its services
-//  as `env.settings`, `env.tabManager` and so on — one hop through a nested
-//  object that SwiftUI does not follow. Without the forwarding below, a settings
-//  change, a tab switch and a page's own title and progress updates all landed
-//  in the stores and never reached the screen, which is most of why the chrome
-//  looked inert and why switching appearance did nothing until a relaunch.
+//  The environment is `@Observable` like every other service, but owns no state
+//  beyond `startupError`. A view that reads `env.settings` tracks the settings
+//  service itself: the Observation framework records the property each view
+//  actually reads, however many hops down it sits, so nothing here forwards
+//  change notifications.
 //
 
 import Foundation
-import Combine
 import WebKit
+import Observation
 
 @MainActor
-public final class AppEnvironment: ObservableObject {
+@Observable
+public final class AppEnvironment {
     public let database: BrowserDatabase
     public let settings: SettingsService
     public let bookmarks: BookmarkService
@@ -44,13 +35,7 @@ public final class AppEnvironment: ObservableObject {
     /// Set when the database could not be opened. The shell shows a read-only
     /// error surface rather than crashing, because a browser that cannot start
     /// is worse than one that starts without persistence.
-    @Published public private(set) var startupError: String?
-
-    /// Subscriptions that republish a service's changes as this object's own.
-    private var serviceCancellables = Set<AnyCancellable>()
-    /// One subscription per live tab, so a page's title, URL and progress reach
-    /// the chrome. Keyed by tab id and pruned when a tab closes.
-    private var tabCancellables: [String: AnyCancellable] = [:]
+    public private(set) var startupError: String?
 
     public init() {
         let database = BrowserDatabase.shared
@@ -116,57 +101,7 @@ public final class AppEnvironment: ObservableObject {
         )
 
         coordinator.attach(tabManager: tabManager)
-        forwardServiceChanges()
         boot()
-    }
-
-    // MARK: - Observation
-
-    /// Republishes every service's changes as this object's own.
-    ///
-    /// See the note in the file header: a view reaches its services one hop down
-    /// from the environment, and SwiftUI does not follow that hop. Each service
-    /// is forwarded here so `@EnvironmentObject var env` is enough for any view
-    /// to stay live.
-    private func forwardServiceChanges() {
-        let services: [AnyPublisher<Void, Never>] = [
-            settings.objectWillChange.eraseToAnyPublisher(),
-            bookmarks.objectWillChange.eraseToAnyPublisher(),
-            history.objectWillChange.eraseToAnyPublisher(),
-            downloads.objectWillChange.eraseToAnyPublisher(),
-            webCoordinator.objectWillChange.eraseToAnyPublisher()
-        ]
-
-        for publisher in services {
-            publisher
-                .sink { [weak self] in self?.objectWillChange.send() }
-                .store(in: &serviceCancellables)
-        }
-
-        // The tab list itself, plus a re-subscription pass: a tab is an object
-        // of its own and its title, URL and progress are the chrome's most
-        // frequently changing inputs.
-        tabManager.objectWillChange
-            .sink { [weak self] in
-                self?.objectWillChange.send()
-                self?.observeTabs()
-            }
-            .store(in: &serviceCancellables)
-
-        observeTabs()
-    }
-
-    /// Subscribes to every live tab, and drops the subscriptions of closed ones.
-    private func observeTabs() {
-        for tab in tabManager.tabs where tabCancellables[tab.id] == nil {
-            tabCancellables[tab.id] = tab.objectWillChange
-                .sink { [weak self] in self?.objectWillChange.send() }
-        }
-
-        let live = Set(tabManager.tabs.map(\.id))
-        for id in Array(tabCancellables.keys) where !live.contains(id) {
-            tabCancellables[id] = nil
-        }
     }
 
     /// Performs the startup work every service needs.

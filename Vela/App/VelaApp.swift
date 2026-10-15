@@ -19,14 +19,14 @@ import WebKit
 
 @main
 struct VelaApp: App {
-    @StateObject private var environment = AppEnvironment()
+    @State private var environment = AppEnvironment()
 
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             BrowserShellView(environment: environment)
-                .environmentObject(environment)
+                .environment(environment)
                 // The palette's accent is a dynamic colour, so it re-resolves
                 // in both appearances; that is why the tint is read from the
                 // palette rather than from a fixed constant.

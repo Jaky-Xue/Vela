@@ -14,6 +14,7 @@
 //
 
 import Foundation
+import Observation
 
 /// Ported from `TabRuntimeState`.
 public enum TabRuntimeState: String, Codable, Sendable, CaseIterable {
@@ -77,50 +78,51 @@ public enum BrowserTabOpenSource: String, Codable, Sendable, CaseIterable {
 /// the session store and the SwiftUI list all key off, and reference semantics
 /// match the ArkTS original where a tab is a mutated object, not a value.
 @MainActor
-public final class BrowserTabState: ObservableObject, Identifiable {
+@Observable
+public final class BrowserTabState: Identifiable {
     public let id: String
 
-    @Published public var profileId: BrowserProfileId
-    @Published public var title: String
-    @Published public var url: String
+    public varprofileId: BrowserProfileId
+    public vartitle: String
+    public varurl: String
     /// True while the tab shows the native new-tab surface rather than a document.
-    @Published public var isHome: Bool
-    @Published public var lastActiveAt: Date
+    public varisHome: Bool
+    public varlastActiveAt: Date
     /// A navigation that has been requested but has not committed yet.
-    @Published public var pendingUrl: String
-    @Published public var runtimeState: TabRuntimeState
-    @Published public var lastError: String
-    @Published public var lastRestoreReason: TabRestoreReason
-    @Published public var lastDiscardReason: TabDiscardReason
-    @Published public var lastCrashReason: TabCrashReason
-    @Published public var lastLoadedAt: Date?
-    @Published public var scrollOffsetY: Double
+    public varpendingUrl: String
+    public varruntimeState: TabRuntimeState
+    public varlastError: String
+    public varlastRestoreReason: TabRestoreReason
+    public varlastDiscardReason: TabDiscardReason
+    public varlastCrashReason: TabCrashReason
+    public varlastLoadedAt: Date?
+    public varscrollOffsetY: Double
 
     /// Ported from the `lastGood*` pair. A failed navigation keeps the last
     /// successfully rendered page so the error surface can offer "回到上一个正常页面"
     /// instead of dropping the user on a blank tab.
-    @Published public var lastGoodUrl: String
-    @Published public var lastGoodTitle: String
+    public varlastGoodUrl: String
+    public varlastGoodTitle: String
 
-    @Published public var privacyMode: BrowserSessionPrivacyMode
-    @Published public var dataScope: BrowserDataScope
-    @Published public var openerTabId: String
-    @Published public var openSource: BrowserTabOpenSource
+    public varprivacyMode: BrowserSessionPrivacyMode
+    public vardataScope: BrowserDataScope
+    public varopenerTabId: String
+    public varopenSource: BrowserTabOpenSource
 
     /// Ported from `pinned`. Persisted, and pins the tab to the leading edge of
     /// the tab strip.
-    @Published public var pinned: Bool
+    public varpinned: Bool
     /// Runtime-only web audio facts, driving the tab audio indicator.
-    @Published public var muted: Bool
-    @Published public var audible: Bool
+    public varmuted: Bool
+    public varaudible: Bool
 
     /// Loading progress in 0...1, surfaced by `BrowserLoadingProgressCoordinator`.
-    @Published public var estimatedProgress: Double
-    @Published public var isLoading: Bool
-    @Published public var canGoBack: Bool
-    @Published public var canGoForward: Bool
+    public varestimatedProgress: Double
+    public varisLoading: Bool
+    public varcanGoBack: Bool
+    public varcanGoForward: Bool
     /// Whether the page has a favicon the tab strip can show.
-    @Published public var faviconUrl: String
+    public varfaviconUrl: String
 
     public init(
         id: String = UUID().uuidString,

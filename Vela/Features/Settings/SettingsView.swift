@@ -17,7 +17,7 @@ import SwiftUI
 import UIKit
 
 struct SettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -181,7 +181,7 @@ struct SettingsView: View {
 /// Ported from `SearchDefaultEnginePage.ets`, `SearchBuiltInEnginesPage.ets`
 /// and `SearchEngineEditPage.ets`.
 struct SearchEngineSettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     @State private var showingCustomEngineForm = false
     @State private var editingEngine: SearchEngineRecord?
@@ -398,7 +398,7 @@ private struct CustomSearchEngineForm: View {
 /// Ported from `ThemePaletteSettingsPage.ets`, extended with the iOS appearance
 /// override Aira's HarmonyOS original has no equivalent for.
 struct AppearanceSettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
     var body: some View {
@@ -564,7 +564,7 @@ extension Color {
 /// `GeneralTabAutoCloseSettingsPage.ets` and
 /// `GeneralHistoryRetentionSettingsPage.ets`.
 struct GeneralSettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     private static let retentionChoices: [(String, Int)] = [
         ("不自动清理", 0),
@@ -625,7 +625,7 @@ struct GeneralSettingsView: View {
 
 /// Ported from `BrowserUserAgentSettingsPage.ets`.
 struct UserAgentSettingsView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     var body: some View {
         List {
@@ -667,7 +667,7 @@ struct UserAgentSettingsView: View {
 /// Ported from `SettingsAboutOverviewViewModel.ets`. The attribution section is
 /// what the GPL-3.0 licence and Aira's trademark policy require.
 struct AboutView: View {
-    @EnvironmentObject private var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
 
     var body: some View {
         List {
