@@ -213,33 +213,41 @@ struct OmniboxSuggestionListView: View {
 
     // MARK: - Paste
 
+    /// The paste affordance.
+    ///
+    /// Two parts, because iOS only allows one of them: the row's own label says
+    /// what the paste will *do* ("前往" or "搜索"), and the actual work is done
+    /// by a `PasteButton`, which is the one control the system grants a
+    /// prompt-free pasteboard read to. `PasteButton` always draws the system's
+    /// own label — there is no initializer that takes a custom one — so the
+    /// trailing button is left at its default size rather than being made to
+    /// look like the rest of the row.
     private func pasteRow(_ hint: OmniboxClipboardHint) -> some View {
-        // Every argument is labelled explicitly: with two trailing closures the
-        // compiler picks `init(payloadType:onPaste:)` and then reports the label
-        // closure as extra.
-        PasteButton(
-            payloadType: String.self,
-            onPaste: { (items: [String]) in
+        HStack(spacing: BrowserSpacing.compact) {
+            Image(systemName: hint.symbolName)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(palette.accent)
+                .frame(width: 20)
+
+            Text(hint.text)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(palette.primaryText)
+                .lineLimit(1)
+
+            Spacer(minLength: BrowserSpacing.tight)
+
+            PasteButton(payloadType: String.self) { (items: [String]) in
                 guard let value = items.first else { return }
                 viewModel.pasteAndSubmit(value)
-            },
-            label: {
-                HStack(spacing: BrowserSpacing.compact) {
-                    Image(systemName: hint.symbolName)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(palette.accent)
-                        .frame(width: 20)
-                    Text(hint.text)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(palette.primaryText)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, BrowserSpacing.regular)
-                .frame(height: rowHeight)
-                .contentShape(Rectangle())
             }
-        )
-        .buttonStyle(.plain)
+            .labelStyle(.titleOnly)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+            .tint(palette.accent)
+        }
+        .padding(.horizontal, BrowserSpacing.regular)
+        .frame(minHeight: rowHeight)
+        .contentShape(Rectangle())
     }
 
     private var separator: some View {
