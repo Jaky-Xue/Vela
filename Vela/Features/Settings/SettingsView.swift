@@ -426,7 +426,7 @@ struct AppearanceSettingsView: View {
                 Text("「跟随系统」会随系统的浅色/深色设置实时切换；选择浅色或深色则固定该外观，不随系统变化。")
             }
 
-            Section("配色") {
+            Section {
                 ForEach(BrowserPalette.all) { candidate in
                     Button {
                         env.settings.update { $0.themePaletteId = candidate.id }
@@ -450,6 +450,8 @@ struct AppearanceSettingsView: View {
                         }
                     }
                 }
+            } header: {
+                Text("配色")
             } footer: {
                 Text("每套配色都带有浅色与深色两组颜色，切换外观时会自动使用对应的一组。")
             }
