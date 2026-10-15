@@ -82,47 +82,47 @@ public enum BrowserTabOpenSource: String, Codable, Sendable, CaseIterable {
 public final class BrowserTabState: Identifiable {
     public let id: String
 
-    public varprofileId: BrowserProfileId
-    public vartitle: String
-    public varurl: String
+    public var profileId: BrowserProfileId
+    public var title: String
+    public var url: String
     /// True while the tab shows the native new-tab surface rather than a document.
-    public varisHome: Bool
-    public varlastActiveAt: Date
+    public var isHome: Bool
+    public var lastActiveAt: Date
     /// A navigation that has been requested but has not committed yet.
-    public varpendingUrl: String
-    public varruntimeState: TabRuntimeState
-    public varlastError: String
-    public varlastRestoreReason: TabRestoreReason
-    public varlastDiscardReason: TabDiscardReason
-    public varlastCrashReason: TabCrashReason
-    public varlastLoadedAt: Date?
-    public varscrollOffsetY: Double
+    public var pendingUrl: String
+    public var runtimeState: TabRuntimeState
+    public var lastError: String
+    public var lastRestoreReason: TabRestoreReason
+    public var lastDiscardReason: TabDiscardReason
+    public var lastCrashReason: TabCrashReason
+    public var lastLoadedAt: Date?
+    public var scrollOffsetY: Double
 
     /// Ported from the `lastGood*` pair. A failed navigation keeps the last
     /// successfully rendered page so the error surface can offer "回到上一个正常页面"
     /// instead of dropping the user on a blank tab.
-    public varlastGoodUrl: String
-    public varlastGoodTitle: String
+    public var lastGoodUrl: String
+    public var lastGoodTitle: String
 
-    public varprivacyMode: BrowserSessionPrivacyMode
-    public vardataScope: BrowserDataScope
-    public varopenerTabId: String
-    public varopenSource: BrowserTabOpenSource
+    public var privacyMode: BrowserSessionPrivacyMode
+    public var dataScope: BrowserDataScope
+    public var openerTabId: String
+    public var openSource: BrowserTabOpenSource
 
     /// Ported from `pinned`. Persisted, and pins the tab to the leading edge of
     /// the tab strip.
-    public varpinned: Bool
+    public var pinned: Bool
     /// Runtime-only web audio facts, driving the tab audio indicator.
-    public varmuted: Bool
-    public varaudible: Bool
+    public var muted: Bool
+    public var audible: Bool
 
     /// Loading progress in 0...1, surfaced by `BrowserLoadingProgressCoordinator`.
-    public varestimatedProgress: Double
-    public varisLoading: Bool
-    public varcanGoBack: Bool
-    public varcanGoForward: Bool
+    public var estimatedProgress: Double
+    public var isLoading: Bool
+    public var canGoBack: Bool
+    public var canGoForward: Bool
     /// Whether the page has a favicon the tab strip can show.
-    public varfaviconUrl: String
+    public var faviconUrl: String
 
     public init(
         id: String = UUID().uuidString,
