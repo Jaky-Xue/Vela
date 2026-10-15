@@ -71,9 +71,5 @@
 		<string>snssdk1128</string>
 		<string>orpheuswidget</string>
 	</array>
-
-	<!-- A browser needs a desktop-class User-Agent for most sites to serve the real page. -->
-	<key>WKAppBoundDomains</key>
-	<array/>
 </dict>
 </plist>
