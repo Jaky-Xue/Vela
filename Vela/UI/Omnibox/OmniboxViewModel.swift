@@ -622,19 +622,16 @@ public final class OmniboxViewModel: ObservableObject {
             clipboardHint = nil
             return
         }
-        pasteboard.detectPatterns(for: [.probableWebURL]) { result in
-            let isUrl: Bool
-            switch result {
-            case .success(let patterns): isUrl = patterns.contains(.probableWebURL)
-            case .failure: isUrl = false
-            }
-            Task { @MainActor [weak self] in
-                guard let self, self.isEditing else { return }
-                self.clipboardHint = OmniboxClipboardHint.from(
-                    hasProbableWebURL: isUrl,
-                    hasStrings: pasteboard.hasStrings
-                )
-            }
+
+        Task { [weak self] in
+            let detected = try? await pasteboard.detectPatterns(for: [.probableWebURL])
+            guard let self, self.isEditing else { return }
+            self.clipboardHint = OmniboxClipboardHint.from(
+                hasProbableWebURL: detected?.contains(.probableWebURL) ?? false,
+                // Re-read rather than trusting the check above: the detection is
+                // awaited, and the user can copy something else in the meantime.
+                hasStrings: pasteboard.hasStrings
+            )
         }
     }
 }
