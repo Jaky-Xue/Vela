@@ -276,8 +276,9 @@ public final class DownloadService: NSObject, ObservableObject {
         guard var task = try? repository.task(guid: guid) else { return }
 
         // WebKit only offers the completion-handler form of this call, which
-        // Swift imports as async.
-        guard let download = await webView.resumeDownload(fromResumeData: data) else { return }
+        // Swift imports as async. The download it hands back is non-optional —
+        // a resume that cannot be started reports through the delegate instead.
+        let download = await webView.resumeDownload(fromResumeData: data)
         download.delegate = self
         task.status = .running
         task.failure = nil
