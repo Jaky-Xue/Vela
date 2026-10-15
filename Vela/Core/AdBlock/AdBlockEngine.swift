@@ -162,7 +162,7 @@ public final class AdBlockEngine: ObservableObject {
         // A list whose content has not changed still has to be replaced for the
         // new compile to take effect, so the old entry is removed first rather
         // than looked up.
-        store.removeContentRuleList(forIdentifier: identifier)
+        try await store.removeContentRuleList(forIdentifier: identifier)
 
         return try await withCheckedThrowingContinuation { continuation in
             store.compileContentRuleList(
@@ -211,7 +211,7 @@ public final class AdBlockEngine: ObservableObject {
     }
 
     public func removeCompiledList() async throws {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             store.removeContentRuleList(forIdentifier: Self.combinedIdentifier) { error in
                 if let error {
                     continuation.resume(throwing: error)

@@ -117,7 +117,7 @@ public final class HistoryService: ObservableObject {
 
         guard let existingTitle = try? repository.title(forUrl: url.absoluteString),
               existingTitle != trimmed else { return }
-        guard let urlId = try? repository.urlId(forUrl: url.absoluteString), let urlId else { return }
+        guard let urlId = try? repository.urlId(forUrl: url.absoluteString) else { return }
         try? repository.updateTitle(urlId: urlId, title: trimmed)
         // No reload: this fires on every page finish, and the history list
         // reloads in `onAppear` when someone is actually looking at it.

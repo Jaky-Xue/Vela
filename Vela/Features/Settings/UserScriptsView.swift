@@ -134,7 +134,7 @@ struct UserScriptsView: View {
         }
         .fileImporter(
             isPresented: $showingFilePicker,
-            allowedContentTypes: [.javascript, .plainText, .data],
+            allowedContentTypes: [.javaScript, .plainText, .data],
             allowsMultipleSelection: false
         ) { result in
             handleFileImport(result)

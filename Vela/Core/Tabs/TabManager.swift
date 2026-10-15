@@ -108,11 +108,11 @@ public final class TabManager: ObservableObject {
         let tab = BrowserTabState(
             url: url,
             isHome: url.isEmpty,
+            runtimeState: .cold,
             privacyMode: privacyMode,
             dataScope: privacyMode == .private ? .sessionEphemeral : .profilePersistent,
             openerTabId: openerTabId,
-            openSource: openSource,
-            runtimeState: .cold
+            openSource: openSource
         )
 
         // A pinned tab stays at the leading edge; a new tab lands after the
@@ -145,12 +145,12 @@ public final class TabManager: ObservableObject {
                 title: record.title,
                 url: record.url,
                 isHome: record.isHome,
+                runtimeState: .cold,
                 privacyMode: record.privacyMode,
                 dataScope: record.dataScope,
                 openerTabId: "",
                 openSource: .restore,
-                pinned: record.pinned,
-                runtimeState: .cold
+                pinned: record.pinned
             )
             tab.apply(record, restoreReason: .sessionRestore)
             return tab

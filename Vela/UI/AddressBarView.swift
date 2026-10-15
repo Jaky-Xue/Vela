@@ -25,8 +25,8 @@ import SwiftUI
 import UIKit
 
 /// One row in the suggestion list.
-struct OmniboxSuggestion: Identifiable, Equatable {
-    enum Kind: Equatable {
+public struct OmniboxSuggestion: Identifiable, Equatable {
+    public enum Kind: Equatable {
         case search(engineId: SearchEngineId)
         case url
         case openTab(tabId: String)
@@ -35,15 +35,15 @@ struct OmniboxSuggestion: Identifiable, Equatable {
         case pastQuery(queryId: String)
     }
 
-    var id: String
-    var kind: Kind
-    var title: String
-    var subtitle: String
-    var host: String
+    public var id: String
+    public var kind: Kind
+    public var title: String
+    public var subtitle: String
+    public var host: String
     /// The string the omnibox inserts when the row is chosen.
-    var completion: String
+    public var completion: String
 
-    var iconName: String {
+    public var iconName: String {
         switch kind {
         case .search: return "magnifyingglass"
         case .url: return "globe"

@@ -215,7 +215,7 @@ public let searchEngineOptions: [SearchEngineOption] = [
 ]
 
 /// Ported from `DEFAULT_SEARCH_ENGINE_ID`.
-public let defaultSearchEngineId: SearchEngineId = "bing"
+public let defaultSearchEngineId: SearchEngineId = SearchEngineSettings.defaultEngineId
 
 /// Ported from `DEFAULT_ENABLED_BUILT_IN_SEARCH_ENGINE_IDS`.
 public let defaultEnabledBuiltInSearchEngineIds: [BuiltInSearchEngineId] = [
@@ -370,8 +370,16 @@ public struct SearchEngineSettings: Codable, Equatable, Sendable {
     public var fallbackSearch: SearchEngineFallbackSettings
     public var updatedAt: Date
 
+    /// The engine selected on first launch.
+    ///
+    /// Held on the type as well as in the module-level `DEFAULT_SEARCH_ENGINE_ID`
+    /// port below, because an initialiser default argument cannot refer to a
+    /// global that shares its name with the property being initialised — the
+    /// property wins the name lookup.
+    public static let defaultEngineId: SearchEngineId = "bing"
+
     public init(
-        defaultSearchEngineId: SearchEngineId = defaultSearchEngineId,
+        defaultSearchEngineId: SearchEngineId = SearchEngineSettings.defaultEngineId,
         builtInEngineOrder: [SearchEngineId] = searchEngineOptions.map(\.id),
         enabledBuiltInEngineIds: [SearchEngineId] = defaultEnabledBuiltInSearchEngineIds.map(\.rawValue),
         customEngines: [SearchEngineRecord] = [],

@@ -172,7 +172,7 @@ struct DownloadsView: View {
             if task.status == .paused || task.status == .failed {
                 Button("继续下载", systemImage: "arrow.clockwise") {
                     guard let webView = env.tabManager.webView(for: env.tabManager.activeTabId) else { return }
-                    downloads.resume(guid: task.guid, in: webView)
+                    Task { await downloads.resume(guid: task.guid, in: webView) }
                 }
             }
             if task.status == .running {
@@ -205,7 +205,7 @@ struct DownloadsView: View {
         case .paused, .failed:
             Button {
                 guard let webView = env.tabManager.webView(for: env.tabManager.activeTabId) else { return }
-                downloads.resume(guid: task.guid, in: webView)
+                Task { await downloads.resume(guid: task.guid, in: webView) }
             } label: {
                 Image(systemName: "arrow.clockwise.circle.fill")
                     .font(.system(size: 20))

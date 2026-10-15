@@ -271,11 +271,13 @@ public final class DownloadService: NSObject, ObservableObject {
     /// Aira's resume path re-opens the task through its own engine. On iOS the
     /// only way back in is `WKWebView.resumeDownload(fromResumeData:)`, which
     /// needs a web view to attach the transfer to, so the caller passes one.
-    public func resume(guid: String, in webView: WKWebView) {
-        guard let data = try? repository.resumeData(guid: guid), let data else { return }
+    public func resume(guid: String, in webView: WKWebView) async {
+        guard let data = try? repository.resumeData(guid: guid) else { return }
         guard var task = try? repository.task(guid: guid) else { return }
 
-        let download = webView.resumeDownload(fromResumeData: data)
+        // WebKit only offers the completion-handler form of this call, which
+        // Swift imports as async.
+        guard let download = await webView.resumeDownload(fromResumeData: data) else { return }
         download.delegate = self
         task.status = .running
         task.failure = nil

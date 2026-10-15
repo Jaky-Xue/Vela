@@ -443,7 +443,9 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         let preferences = configuration.preferences
         preferences.javaScriptCanOpenWindowsAutomatically = false
         preferences.isFraudulentWebsiteWarningEnabled = true
-        preferences.allowsAirPlayForMediaPlayback = true
+        // `allowsAirPlayForMediaPlayback` is a macOS-only member of
+        // `WKPreferences`; on iOS media playback is routed through the system
+        // player, so there is no equivalent to set here.
 
         // Element fullscreen and picture-in-picture are what make video playback
         // usable, and both are opt-in on iOS.
@@ -536,7 +538,9 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
 
             // 3. A user-typed or link navigation updates the pending URL so the
             //    address bar shows it immediately, before the page commits.
-            if navigationAction.navigationType == .typed || navigationAction.navigationType == .linkActivated {
+            //    iOS reports an address-bar load as `.other` — there is no
+            //    `.typed` case on `WKNavigationType`, unlike macOS.
+            if navigationAction.navigationType == .other || navigationAction.navigationType == .linkActivated {
                 tab.pendingUrl = url.absoluteString
             }
 
@@ -920,6 +924,12 @@ extension BrowserWebCoordinator: WKUIDelegate {
     /// Returning without calling the completion handler would hang the page, so
     /// the handler is always called; cancelling means calling it with no URL,
     /// which the page sees as "user cancelled".
+    ///
+    /// `WKOpenPanelParameters` only exists on iOS 18.4 and later — WebKit added
+    /// the hook then, and before it the app had no way into the file picker. On
+    /// older systems this delegate method is absent and WebKit's own picker
+    /// handles the input, so uploads still work; they just skip Vela's UI.
+    @available(iOS 18.4, *)
     public nonisolated func webView(
         _ webView: WKWebView,
         runOpenPanelWith parameters: WKOpenPanelParameters,
