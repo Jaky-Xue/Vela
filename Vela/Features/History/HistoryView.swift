@@ -11,6 +11,12 @@
 //  distinct is what stops "delete this" from silently meaning "delete
 //  everything from this site".
 //
+//  iOS port enhancement (this revision). Aira's history page renders every day
+//  it has, expanded, because ArkUI's list has no disclosure control. An imported
+//  or long-lived profile is then thousands of rows in one scroll. Each day is
+//  now a collapsible section — the two most recent days open, the rest folded —
+//  which is the same shape the omnibox's suggestion card uses.
+//
 
 import SwiftUI
 import UIKit
@@ -23,6 +29,13 @@ struct HistoryView: View {
     @State private var selectedEntry: HistoryUrl?
     @State private var recentlyRemoved: [HistoryUrl] = []
     @State private var showClearConfirm = false
+    /// Explicit fold choices, keyed by day. A day absent from this map follows
+    /// the "two most recent days are open" rule, so the default does not have to
+    /// be written on every reload.
+    @State private var dayFoldOverrides: [String: Bool] = [:]
+
+    /// How many days are expanded before the user touches anything.
+    private static let openDayCount = 2
 
     private var history: HistoryService { env.history }
 
@@ -39,7 +52,7 @@ struct HistoryView: View {
         List {
             if isSearching {
                 if searchResults.isEmpty {
-                    BrowserEmptyState(
+                    EmptyState(
                         systemImage: "clock.arrow.circlepath",
                         title: "没有匹配的记录",
                         message: "换个关键词试试。"
@@ -53,18 +66,22 @@ struct HistoryView: View {
                     }
                 }
             } else if history.dayGroups.isEmpty {
-                BrowserEmptyState(
+                EmptyState(
                     systemImage: "clock",
                     title: "还没有浏览记录",
                     message: "访问过的网页会显示在这里。"
                 )
                 .listRowBackground(Color.clear)
             } else {
-                ForEach(history.dayGroups) { group in
-                    Section(group.displayTitle) {
-                        ForEach(group.entries) { entry in
-                            row(entry)
+                ForEach(Array(history.dayGroups.enumerated()), id: \.element.id) { index, group in
+                    Section {
+                        if !isFolded(group, at: index) {
+                            ForEach(group.entries) { entry in
+                                row(entry)
+                            }
                         }
+                    } header: {
+                        dayHeader(group, at: index)
                     }
                 }
             }
@@ -109,6 +126,43 @@ struct HistoryView: View {
             HistoryDetailSheet(entry: entry, visits: history.visits(for: entry))
         }
         .onAppear { history.reload() }
+    }
+
+    @ViewBuilder
+    private func dayHeader(_ group: HistoryDayGroup, at index: Int) -> some View {
+        let folded = isFolded(group, at: index)
+        Button {
+            withAnimation(.snappy(duration: 0.22)) {
+                dayFoldOverrides[group.id] = !folded
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(group.displayTitle)
+                Text("\(group.entries.count)")
+                    .font(.caption2.weight(.medium))
+                    .monospacedDigit()
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Color.secondary.opacity(0.15), in: Capsule())
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .rotationEffect(.degrees(folded ? 0 : 90))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // The inset-grouped style would otherwise uppercase the day name.
+        .textCase(nil)
+        .accessibilityHint(folded ? "展开" : "折叠")
+    }
+
+    /// Whether a day is folded.
+    ///
+    /// An explicit choice always wins; otherwise the first `openDayCount` days
+    /// are open and everything older is folded.
+    private func isFolded(_ group: HistoryDayGroup, at index: Int) -> Bool {
+        dayFoldOverrides[group.id] ?? (index >= Self.openDayCount)
     }
 
     @ViewBuilder

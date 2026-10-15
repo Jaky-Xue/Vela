@@ -15,6 +15,15 @@
 //  kept: the shell owns which surface is visible, and the toolbar, address bar
 //  and overlays are pure functions of that state.
 //
+//  iOS port enhancement (this revision). The omnibox's *session* — the debounced
+//  suggestion list, the highlighted row, the disclosure state — moved out of
+//  this view into `OmniboxViewModel`, which is what let the shell stop holding
+//  `suggestions`, `addressText` and `isEditingAddress` as three pieces of state
+//  that had to be kept in step by hand. Two presentation changes come with it:
+//  the toolbar is removed outright while the omnibox is open rather than being
+//  covered by it, and the chrome's collapse is driven by a spring so the
+//  toolbar's return reads as one movement instead of two.
+//
 
 import SwiftUI
 import UIKit
@@ -24,9 +33,10 @@ struct BrowserShellView: View {
     @EnvironmentObject private var env: AppEnvironment
     @Environment(\.browserPalette) private var palette
 
-    @State private var addressText: String = ""
-    @State private var isEditingAddress = false
-    @State private var suggestions: [OmniboxSuggestion] = []
+    /// The omnibox session. Created here rather than inside the view body
+    /// because it is long-lived: it survives every tab switch, and rebuilding it
+    /// would throw away the user's collapsed-section choices on each one.
+    @StateObject private var omnibox: OmniboxViewModel
 
     @State private var showTabsOverview = false
     @State private var showBookmarks = false
@@ -50,76 +60,77 @@ struct BrowserShellView: View {
     /// compare the new value with itself and the toolbar would never collapse.
     @State private var lastScrollOffset: Double = 0
 
+    /// The one animation the chrome uses.
+    ///
+    /// A spring rather than an ease: the toolbar leaves and returns along a path
+    /// the user's own scroll is also moving, and an ease-out over a fixed
+    /// duration reads as a separate, laggier movement next to the page.
+    private static let chromeAnimation = Animation.spring(response: 0.32, dampingFraction: 0.86)
+
+    @MainActor
+    init(environment: AppEnvironment) {
+        _omnibox = StateObject(wrappedValue: OmniboxViewModel(
+            settings: environment.settings,
+            history: environment.history,
+            bookmarks: environment.bookmarks,
+            searchHistory: environment.searchHistory,
+            tabManager: environment.tabManager
+        ))
+    }
+
     private var tabManager: TabManager { env.tabManager }
 
     private var activeTab: BrowserTabState? { tabManager.activeTab }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            palette.surface.ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack(alignment: .bottom) {
+                palette.surface.ignoresSafeArea()
 
-            // The web surface. A stable identity per tab keeps SwiftUI from
-            // rebuilding the representable when the tab strip changes.
-            if let tab = activeTab {
-                Group {
-                    if tab.isHome {
-                        NewTabHomeView(
-                            onNavigate: { url in navigate(to: url, in: tab) },
-                            onOpenBookmarks: { showBookmarks = true }
-                        )
-                        .id("home-\(tab.id)")
-                    } else if let webView = tabManager.webView(for: tab.id) {
-                        WebViewHost(
-                            webView: webView,
-                            initialUrl: tab.url,
-                            isHome: false,
-                            onScroll: { offset in
-                                handleScroll(offset: offset)
-                            }
-                        )
-                        .id("web-\(tab.id)")
-                    } else {
-                        // A cold tab whose web view was discarded under memory
-                        // pressure. Materialising happens in `onAppear` rather
-                        // than here: creating a web view during view evaluation
-                        // would mutate published state mid-update.
-                        Color.clear
-                            .onAppear {
-                                tabManager.activateTab(id: tab.id)
-                            }
-                    }
+                webSurface
+
+                // The reading surface replaces the web view when reader mode is
+                // on.
+                if isReaderActive, let article = readerArticle {
+                    ReaderView(
+                        article: article,
+                        onClose: {
+                            isReaderActive = false
+                            readerArticle = nil
+                        }
+                    )
+                    .transition(.move(edge: .bottom))
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                BrowserEmptyState(
-                    systemImage: "square.on.square",
-                    title: "没有标签页",
-                    message: "点击标签页按钮新建一个。"
-                )
-            }
 
-            // The reading surface replaces the web view when reader mode is on.
-            if isReaderActive, let article = readerArticle {
-                ReaderView(
-                    article: article,
-                    onClose: {
-                        isReaderActive = false
-                        readerArticle = nil
-                    }
-                )
-                .transition(.move(edge: .bottom))
-            }
+                // A dimmed page behind an open omnibox. Without it the card
+                // floats over an arbitrary photograph and the list's contrast
+                // is whatever the page happens to be; with it, the card is the
+                // only thing competing for attention.
+                if omnibox.isEditing {
+                    Color.black.opacity(0.18)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                        .onTapGesture { omnibox.cancel() }
+                }
 
-            chrome
+                chrome(availableHeight: proxy.size.height)
+            }
+            .environment(\.browserPalette, activePalette)
         }
-        .environment(\.browserPalette, activePalette)
-        .onAppear(perform: syncAddressText)
+        .animation(Self.chromeAnimation, value: omnibox.isEditing)
+        .onAppear {
+            wireOmnibox()
+            syncAddressText()
+        }
         .onChange(of: tabManager.activeTabId) { _, _ in
             isReaderActive = false
             readerArticle = nil
             showFindBar = false
             findQuery = ""
+            toolbarOffset = 0
+            lastScrollOffset = 0
             env.webCoordinator.clearFindInPage()
+            omnibox.endEditing()
             syncAddressText()
         }
         .onChange(of: activeTab?.url) { _, _ in syncAddressText() }
@@ -207,6 +218,54 @@ struct BrowserShellView: View {
         }
     }
 
+    // MARK: - Web surface
+
+    @ViewBuilder
+    private var webSurface: some View {
+        if let tab = activeTab {
+            // A stable identity per tab keeps SwiftUI from rebuilding the
+            // representable when the tab strip changes.
+            Group {
+                if tab.isHome {
+                    NewTabHomeView(
+                        onNavigate: { url in navigate(to: url, in: tab) },
+                        onOpenBookmarks: { showBookmarks = true },
+                        onOpenOmnibox: { openOmnibox() }
+                    )
+                    .id("home-\(tab.id)")
+                } else if let webView = tabManager.webView(for: tab.id) {
+                    WebViewHost(
+                        webView: webView,
+                        initialUrl: tab.url,
+                        isHome: false,
+                        onScroll: { offset in
+                            handleScroll(offset: offset)
+                        }
+                    )
+                    .id("web-\(tab.id)")
+                } else {
+                    // A cold tab whose web view was discarded under memory
+                    // pressure. Materialising happens in `onAppear` rather than
+                    // here: creating a web view during view evaluation would
+                    // mutate published state mid-update.
+                    Color.clear
+                        .onAppear {
+                            tabManager.activateTab(id: tab.id)
+                        }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            EmptyState(
+                systemImage: "square.on.square",
+                title: "没有标签页",
+                message: "新建一个标签页就可以开始浏览了。",
+                actionTitle: "新建标签页",
+                action: { tabManager.createTab(openSource: .user) }
+            )
+        }
+    }
+
     // MARK: - Palette
 
     private var activePalette: BrowserPalette {
@@ -216,7 +275,7 @@ struct BrowserShellView: View {
 
     // MARK: - Chrome
 
-    private var chrome: some View {
+    private func chrome(availableHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             if showFindBar {
                 FindBar(
@@ -233,58 +292,73 @@ struct BrowserShellView: View {
                 .transition(.move(edge: .bottom))
             }
 
-            if isEditingAddress {
-                OmniboxSuggestionList(
-                    suggestions: suggestions,
-                    onSelect: { suggestion in
-                        commitSuggestion(suggestion)
-                    }
-                )
-                .frame(maxHeight: 320)
-                .transition(.opacity)
-            }
-
-            VStack(spacing: 8) {
-                AddressBarView(
-                    text: $addressText,
-                    isEditing: $isEditingAddress,
-                    isLoading: activeTab?.isLoading ?? false,
-                    progress: activeTab?.estimatedProgress ?? 0,
-                    privacyMode: activeTab?.privacyMode ?? .regular,
-                    displayUrl: displayUrl,
-                    onCommit: { input in
-                        isEditingAddress = false
-                        suggestions = []
-                        submitAddressBar(input)
-                    },
-                    onCancel: {
-                        isEditingAddress = false
-                        suggestions = []
-                        syncAddressText()
-                    },
-                    onReload: reloadActiveTab
-                )
-                .onChange(of: addressText) { _, newValue in
-                    guard isEditingAddress else { return }
-                    suggestions = env.makeOmniboxSuggestions(for: newValue)
+            VStack(spacing: BrowserSpacing.tight) {
+                // The card sits above the bar, not below it: the address panel
+                // is pinned to the bottom of the screen (Aira's one-handed
+                // layout), so "under the address bar" is off the bottom edge.
+                if omnibox.isEditing {
+                    OmniboxSuggestionListView(
+                        viewModel: omnibox,
+                        maxHeight: omniboxCardHeight(for: availableHeight)
+                    )
+                    .padding(.horizontal, BrowserSpacing.compact)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)),
+                            removal: .opacity
+                        )
+                    )
                 }
 
-                BottomToolbarView(
-                    actions: BrowserToolbarAction.defaultOrder,
-                    tabCount: tabManager.tabs.count,
-                    canGoBack: activeTab?.canGoBack ?? false,
-                    canGoForward: activeTab?.canGoForward ?? false,
-                    adBlockActive: env.settings.adBlockSettings.preferences.enabled,
-                    readerAvailable: env.settings.preferences.readerModeAvailable && !(activeTab?.isHome ?? true),
-                    onAction: handleToolbarAction
+                OmniboxView(
+                    viewModel: omnibox,
+                    isLoading: activeTab?.isLoading ?? false,
+                    progress: activeTab?.estimatedProgress ?? 0,
+                    placeholder: omniboxPlaceholder,
+                    onReload: reloadActiveTab,
+                    onStop: { tabManager.webView(for: tabManager.activeTabId)?.stopLoading() }
                 )
+
+                // The toolbar is removed rather than covered while the omnibox
+                // is open: a bar underneath a card is a row of controls the user
+                // can still hit by accident.
+                if !omnibox.isEditing {
+                    BottomToolbarView(
+                        actions: BrowserToolbarAction.defaultOrder,
+                        tabCount: tabManager.tabs.count,
+                        canGoBack: activeTab?.canGoBack ?? false,
+                        canGoForward: activeTab?.canGoForward ?? false,
+                        adBlockActive: env.settings.adBlockSettings.preferences.enabled,
+                        readerAvailable: env.settings.preferences.readerModeAvailable && !(activeTab?.isHome ?? true),
+                        onAction: handleToolbarAction
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
+            .padding(.horizontal, BrowserSpacing.compact)
+            .padding(.top, BrowserSpacing.tight)
+            .padding(.bottom, BrowserSpacing.hairline)
             .background(.bar)
             .offset(y: toolbarOffset)
         }
+    }
+
+    /// The tallest the suggestion card may grow.
+    ///
+    /// Two ceilings, because either one alone is wrong somewhere: a fraction of
+    /// the screen keeps a short list on a tall phone from opening a card with a
+    /// lake of empty material in it, and an absolute cap keeps an iPad in
+    /// landscape from covering the page it is suggesting destinations in.
+    private func omniboxCardHeight(for availableHeight: CGFloat) -> CGFloat {
+        min(
+            availableHeight * BrowserMetrics.omniboxCardHeightFraction,
+            BrowserMetrics.omniboxCardMaxHeight
+        )
+    }
+
+    private var omniboxPlaceholder: String {
+        let engine = env.settings.preferences.searchEngine.activeEngine.name
+        return "用 \(engine) 搜索或输入网址"
     }
 
     private var displayUrl: String {
@@ -292,9 +366,33 @@ struct BrowserShellView: View {
         return tab.isHome ? "" : tab.url
     }
 
+    /// Pushes the active tab's address into the omnibox.
+    ///
+    /// The field shows the page's URL while the omnibox is closed — which the
+    /// pre-refactor bar did not, leaving the placeholder on screen instead of
+    /// the address of the page being read.
     private func syncAddressText() {
-        guard !isEditingAddress else { return }
-        addressText = ""
+        omnibox.currentPageUrl = displayUrl
+        guard !omnibox.isEditing else { return }
+        if omnibox.text != displayUrl {
+            omnibox.text = displayUrl
+        }
+    }
+
+    private func openOmnibox() {
+        toolbarOffset = 0
+        omnibox.beginEditing()
+    }
+
+    // MARK: - Omnibox wiring
+
+    private func wireOmnibox() {
+        omnibox.onSelectSuggestion = { suggestion in
+            commitSuggestion(suggestion)
+        }
+        omnibox.onCommitText = { input in
+            submitAddressBar(input)
+        }
     }
 
     // MARK: - Scrolling
@@ -307,17 +405,25 @@ struct BrowserShellView: View {
     /// controls, and making them scroll a threshold's worth first is the
     /// behaviour that makes a collapsing toolbar feel broken.
     private func handleScroll(offset: Double) {
+        // An open omnibox pins the chrome: the user is typing into it, and
+        // sliding it away mid-sentence would be hostile.
+        guard !omnibox.isEditing else { return }
+
         let previous = lastScrollOffset
         lastScrollOffset = offset
 
-        withAnimation(.easeOut(duration: 0.2)) {
-            if offset <= 8 {
-                toolbarOffset = 0
-            } else if offset > previous {
-                toolbarOffset = BrowserMetrics.toolbarHeight + 28
-            } else {
-                toolbarOffset = 0
-            }
+        let target: CGFloat
+        if offset <= 8 {
+            target = 0
+        } else if offset > previous {
+            target = BrowserMetrics.toolbarHeight + BrowserSpacing.loose + 4
+        } else {
+            target = 0
+        }
+        guard target != toolbarOffset else { return }
+
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+            toolbarOffset = target
         }
     }
 
@@ -335,6 +441,7 @@ struct BrowserShellView: View {
                 tab.isHome = true
                 tab.url = ""
                 tab.title = ""
+                syncAddressText()
             }
 
         case .forward:
@@ -461,7 +568,10 @@ struct BrowserShellView: View {
     private func submitAddressBar(_ input: String) {
         guard let tab = activeTab else { return }
         let engine = env.settings.preferences.searchEngine.activeEngine
-        guard let url = BrowserUrlResolver.resolveNavigation(input: input, searchEngine: engine) else { return }
+        guard let url = BrowserUrlResolver.resolveNavigation(input: input, searchEngine: engine) else {
+            omnibox.endEditing()
+            return
+        }
 
         // A search records the query; a direct URL does not. Ported from the
         // split in `BrowserSearchInvocationAdapter`.
@@ -472,6 +582,7 @@ struct BrowserShellView: View {
                 boundary: tab.dataBoundary
             )
         }
+        omnibox.endEditing()
         navigate(to: url, in: tab)
     }
 
@@ -489,83 +600,57 @@ struct BrowserShellView: View {
         webView.load(URLRequest(url: url))
         // The transition is recorded by the navigation delegate, which is the
         // only place that sees the navigation type.
+        syncAddressText()
     }
 
     private func commitSuggestion(_ suggestion: OmniboxSuggestion) {
-        isEditingAddress = false
-        suggestions = []
-
         switch suggestion.kind {
         case .openTab(let tabId):
+            omnibox.endEditing()
             tabManager.activateTab(id: tabId)
+
         case let .search(engineId):
             var engine = env.settings.preferences.searchEngine.activeEngine
             if engine.id != engineId {
                 env.settings.setDefaultSearchEngine(id: engineId)
                 engine = env.settings.preferences.searchEngine.activeEngine
             }
-            guard let url = engine.searchUrl(for: suggestion.title) else { return }
+            guard let url = engine.searchUrl(for: suggestion.title) else {
+                omnibox.endEditing()
+                return
+            }
             try? env.searchHistory.record(
                 query: suggestion.title,
                 searchEngineId: engine.id,
                 boundary: activeTab?.dataBoundary ?? .persistent
             )
+            omnibox.endEditing()
             if let tab = activeTab { navigate(to: url, in: tab) }
-        default:
-            guard let url = URL(string: suggestion.completion) else { return }
-            if let tab = activeTab { navigate(to: url, in: tab) }
-        }
-        addressText = ""
-    }
-}
 
-// MARK: - Suggestion list
-
-struct OmniboxSuggestionList: View {
-    var suggestions: [OmniboxSuggestion]
-    var onSelect: (OmniboxSuggestion) -> Void
-
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(suggestions) { suggestion in
-                    Button {
-                        onSelect(suggestion)
-                    } label: {
-                        HStack(spacing: 12) {
-                            if suggestion.host.isEmpty {
-                                Image(systemName: suggestion.iconName)
-                                    .frame(width: 28, height: 28)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                SiteIconView(host: suggestion.host, size: 28)
-                            }
-
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(suggestion.title)
-                                    .font(.system(size: 15))
-                                    .lineLimit(1)
-                                    .foregroundStyle(.primary)
-                                if !suggestion.subtitle.isEmpty {
-                                    Text(suggestion.subtitle)
-                                        .font(.caption)
-                                        .lineLimit(1)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 9)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Divider().padding(.leading, 56)
-                }
+        case .pastQuery:
+            // A past query is re-run, not loaded: the row's completion is the
+            // query text, not a URL.
+            let engine = env.settings.preferences.searchEngine.activeEngine
+            guard let url = engine.searchUrl(for: suggestion.completion) else {
+                omnibox.endEditing()
+                return
             }
+            try? env.searchHistory.record(
+                query: suggestion.completion,
+                searchEngineId: engine.id,
+                boundary: activeTab?.dataBoundary ?? .persistent
+            )
+            omnibox.endEditing()
+            if let tab = activeTab { navigate(to: url, in: tab) }
+
+        default:
+            guard let url = URL(string: suggestion.completion) else {
+                omnibox.endEditing()
+                return
+            }
+            omnibox.endEditing()
+            if let tab = activeTab { navigate(to: url, in: tab) }
         }
-        .background(.bar)
     }
 }
 
@@ -578,17 +663,18 @@ struct FindBar: View {
     var onPrevious: () -> Void
     var onClose: () -> Void
 
+    @Environment(\.browserPalette) private var palette
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 6) {
+        HStack(spacing: BrowserSpacing.compact) {
+            HStack(spacing: BrowserSpacing.tight) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondaryText)
                 TextField("在页面中查找", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 15))
+                    .font(.subheadline)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .focused($isFocused)
@@ -596,13 +682,13 @@ struct FindBar: View {
                 if !query.isEmpty {
                     Text(result.displayText)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                         .monospacedDigit()
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, BrowserSpacing.compact)
             .frame(height: 36)
-            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(palette.controlFill, in: RoundedRectangle(cornerRadius: BrowserRadius.chip, style: .continuous))
 
             Button(action: onPrevious) {
                 Image(systemName: "chevron.up")
@@ -621,8 +707,8 @@ struct FindBar: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, BrowserSpacing.compact)
+        .padding(.vertical, BrowserSpacing.tight)
         .background(.bar)
         .onAppear { isFocused = true }
     }

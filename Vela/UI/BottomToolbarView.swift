@@ -81,6 +81,11 @@ enum BrowserToolbarAction: String, CaseIterable, Identifiable, Codable {
 struct BottomToolbarView: View {
     @Environment(\.browserPalette) private var palette
 
+    /// The glyph size and the inactive tint both scale, so the bar grows with
+    /// Dynamic Type instead of clipping the tab count drawn inside the tabs
+    /// glyph.
+    @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 19
+
     var actions: [BrowserToolbarAction]
     var tabCount: Int
     var canGoBack: Bool
@@ -103,46 +108,60 @@ struct BottomToolbarView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!isEnabled(action))
-                .foregroundStyle(isEnabled(action) ? Color.primary : Color.secondary.opacity(0.45))
+                .foregroundStyle(
+                    isEnabled(action)
+                        ? palette.primaryText
+                        : palette.secondaryText.opacity(0.45)
+                )
                 .accessibilityLabel(action.displayName)
             }
         }
-        .background(palette.chromeBackground)
+        .background {
+            // Transparent on purpose: the toolbar shares one chrome panel with
+            // the address bar, and the shell paints that panel's material. A
+            // second bar behind this one would stack two materials and darken
+            // the row every time the page behind it changed.
+            Color.clear
+        }
     }
 
     @ViewBuilder
     private func icon(for action: BrowserToolbarAction) -> some View {
         switch action {
-        case .back:
-            Image(systemName: action.systemImage).font(.system(size: 17, weight: .medium))
-        case .forward:
-            Image(systemName: action.systemImage).font(.system(size: 17, weight: .medium))
         case .tabs:
             // The tab count is drawn inside the glyph, which is what Aira's
             // `BrowserOpenTabsButtonViewModel` does and what removes the need
             // for a separate badge that overlaps the icon.
             ZStack {
                 Image(systemName: action.systemImage)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: glyphSize, weight: .medium))
                 if tabCount > 0 {
                     Text("\(min(tabCount, 99))")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: glyphSize * 0.5, weight: .bold))
                         .offset(y: 1)
                 }
             }
         case .adBlock:
             ZStack {
                 Image(systemName: action.systemImage)
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: glyphSize, weight: .medium))
                 if !adBlockActive {
                     // A slash over the shield reads as "off" at a glance, which
                     // a colour change alone does not.
                     Image(systemName: "line.diagonal")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: glyphSize + 1, weight: .bold))
                 }
             }
+        case .reader:
+            // The reader glyph is the one action whose availability is not
+            // obvious from the icon, so it carries the accent when it can be
+            // used.
+            Image(systemName: action.systemImage)
+                .font(.system(size: glyphSize, weight: .medium))
+                .foregroundStyle(readerAvailable ? palette.accent : palette.secondaryText.opacity(0.45))
         default:
-            Image(systemName: action.systemImage).font(.system(size: 17, weight: .medium))
+            Image(systemName: action.systemImage)
+                .font(.system(size: glyphSize, weight: .medium))
         }
     }
 

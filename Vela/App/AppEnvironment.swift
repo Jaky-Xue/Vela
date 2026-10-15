@@ -13,8 +13,18 @@
 //  an implicit global would make the app's dependency graph invisible at the
 //  call site.
 //
+//  iOS port enhancement (this revision). The environment republishes every
+//  service's changes. SwiftUI tracks an `ObservableObject` only through the
+//  property wrapper that exposes it, and every view here reaches its services
+//  as `env.settings`, `env.tabManager` and so on — one hop through a nested
+//  object that SwiftUI does not follow. Without the forwarding below, a settings
+//  change, a tab switch and a page's own title and progress updates all landed
+//  in the stores and never reached the screen, which is most of why the chrome
+//  looked inert and why switching appearance did nothing until a relaunch.
+//
 
 import Foundation
+import Combine
 import WebKit
 
 @MainActor
@@ -35,6 +45,12 @@ public final class AppEnvironment: ObservableObject {
     /// error surface rather than crashing, because a browser that cannot start
     /// is worse than one that starts without persistence.
     @Published public private(set) var startupError: String?
+
+    /// Subscriptions that republish a service's changes as this object's own.
+    private var serviceCancellables = Set<AnyCancellable>()
+    /// One subscription per live tab, so a page's title, URL and progress reach
+    /// the chrome. Keyed by tab id and pruned when a tab closes.
+    private var tabCancellables: [String: AnyCancellable] = [:]
 
     public init() {
         let database = BrowserDatabase.shared
@@ -100,7 +116,57 @@ public final class AppEnvironment: ObservableObject {
         )
 
         coordinator.attach(tabManager: tabManager)
+        forwardServiceChanges()
         boot()
+    }
+
+    // MARK: - Observation
+
+    /// Republishes every service's changes as this object's own.
+    ///
+    /// See the note in the file header: a view reaches its services one hop down
+    /// from the environment, and SwiftUI does not follow that hop. Each service
+    /// is forwarded here so `@EnvironmentObject var env` is enough for any view
+    /// to stay live.
+    private func forwardServiceChanges() {
+        let services: [AnyPublisher<Void, Never>] = [
+            settings.objectWillChange.eraseToAnyPublisher(),
+            bookmarks.objectWillChange.eraseToAnyPublisher(),
+            history.objectWillChange.eraseToAnyPublisher(),
+            downloads.objectWillChange.eraseToAnyPublisher(),
+            webCoordinator.objectWillChange.eraseToAnyPublisher()
+        ]
+
+        for publisher in services {
+            publisher
+                .sink { [weak self] in self?.objectWillChange.send() }
+                .store(in: &serviceCancellables)
+        }
+
+        // The tab list itself, plus a re-subscription pass: a tab is an object
+        // of its own and its title, URL and progress are the chrome's most
+        // frequently changing inputs.
+        tabManager.objectWillChange
+            .sink { [weak self] in
+                self?.objectWillChange.send()
+                self?.observeTabs()
+            }
+            .store(in: &serviceCancellables)
+
+        observeTabs()
+    }
+
+    /// Subscribes to every live tab, and drops the subscriptions of closed ones.
+    private func observeTabs() {
+        for tab in tabManager.tabs where tabCancellables[tab.id] == nil {
+            tabCancellables[tab.id] = tab.objectWillChange
+                .sink { [weak self] in self?.objectWillChange.send() }
+        }
+
+        let live = Set(tabManager.tabs.map(\.id))
+        for id in Array(tabCancellables.keys) where !live.contains(id) {
+            tabCancellables[id] = nil
+        }
     }
 
     /// Performs the startup work every service needs.
@@ -258,22 +324,6 @@ public final class AppEnvironment: ObservableObject {
         }
 
         settings.updateManualElementHide { $0 = .default }
-    }
-
-    /// Builds the omnibox suggestion list for the text currently in the field.
-    ///
-    /// Exposed through the environment because the engine needs four services at
-    /// once and the shell should not have to assemble them.
-    public func makeOmniboxSuggestions(for input: String) -> [OmniboxSuggestion] {
-        let privacyMode = tabManager.activeTab?.privacyMode ?? .regular
-        let engine = OmniboxSuggestionEngine(
-            settings: settings,
-            history: history,
-            bookmarks: bookmarks,
-            searchHistory: searchHistory,
-            tabManager: tabManager
-        )
-        return engine.suggestions(for: input, privacyMode: privacyMode)
     }
 
     /// Ends a private session: private tabs close, private records clear, and

@@ -14,6 +14,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject private var env: AppEnvironment
@@ -394,31 +395,63 @@ private struct CustomSearchEngineForm: View {
 
 // MARK: - Appearance
 
-/// Ported from `ThemePaletteSettingsPage.ets`.
+/// Ported from `ThemePaletteSettingsPage.ets`, extended with the iOS appearance
+/// override Aira's HarmonyOS original has no equivalent for.
 struct AppearanceSettingsView: View {
     @EnvironmentObject private var env: AppEnvironment
+    @Environment(\.browserPalette) private var palette
 
     var body: some View {
         List {
+            Section {
+                Picker("外观", selection: Binding(
+                    get: { env.settings.appearanceMode },
+                    set: { env.settings.setAppearanceMode($0) }
+                )) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Label(mode.displayName, systemImage: mode.symbolName)
+                            .tag(mode)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+
+                // A preview strip, so the choice can be judged without leaving
+                // the screen and flipping the whole app back and forth.
+                AppearancePreviewStrip()
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            } header: {
+                Text("外观模式")
+            } footer: {
+                Text("「跟随系统」会随系统的浅色/深色设置实时切换；选择浅色或深色则固定该外观，不随系统变化。")
+            }
+
             Section("配色") {
-                ForEach(BrowserPalette.all) { palette in
+                ForEach(BrowserPalette.all) { candidate in
                     Button {
-                        env.settings.update { $0.themePaletteId = palette.id }
+                        env.settings.update { $0.themePaletteId = candidate.id }
                     } label: {
                         HStack(spacing: 12) {
                             Circle()
-                                .fill(palette.accent)
+                                .fill(candidate.accent)
                                 .frame(width: 22, height: 22)
-                            Text(palette.displayName)
-                                .foregroundStyle(.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(candidate.displayName)
+                                    .foregroundStyle(.primary)
+                                Text("\(candidate.light.accent.hexDescription) · \(candidate.dark.accent.hexDescription)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                             Spacer()
-                            if env.settings.preferences.themePaletteId == palette.id {
+                            if env.settings.preferences.themePaletteId == candidate.id {
                                 Image(systemName: "checkmark")
                                     .foregroundStyle(.tint)
                             }
                         }
                     }
                 }
+            } footer: {
+                Text("每套配色都带有浅色与深色两组颜色，切换外观时会自动使用对应的一组。")
             }
 
             Section {
@@ -436,6 +469,90 @@ struct AppearanceSettingsView: View {
         }
         .navigationTitle("外观")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// A miniature of the chrome, rendered in the *other* appearance.
+///
+/// The point is side-by-side comparison: the strip always shows the mode the
+/// user is not currently in, so a change to the picker above is visible
+/// immediately without leaving the screen.
+private struct AppearancePreviewStrip: View {
+    @Environment(\.browserPalette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var previewScheme: ColorScheme {
+        colorScheme == .dark ? .light : .dark
+    }
+
+    private var previewTokens: BrowserColorTokens {
+        palette.tokens(for: previewScheme)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.green)
+                Text("vela.example.com")
+                    .font(.footnote)
+                    .foregroundStyle(previewTokens.primaryText)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 38)
+            .background(previewTokens.controlFill, in: RoundedRectangle(cornerRadius: BrowserRadius.field, style: .continuous))
+
+            HStack(spacing: 0) {
+                ForEach(["chevron.left", "chevron.right", "square.on.square", "book", "ellipsis"], id: \.self) { symbol in
+                    Image(systemName: symbol)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(previewTokens.primaryText)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(height: 34)
+            .background(previewTokens.chrome, in: RoundedRectangle(cornerRadius: BrowserRadius.chip, style: .continuous))
+
+            Text(previewScheme == .dark ? "深色预览" : "浅色预览")
+                .font(.caption2)
+                .foregroundStyle(previewTokens.secondaryText)
+        }
+        .padding(10)
+        .background(previewTokens.surface, in: RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                .strokeBorder(previewTokens.cardStroke, lineWidth: 0.5)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("配色预览")
+    }
+}
+
+// MARK: - Colour description
+
+extension Color {
+    /// The colour as `#RRGGBB`, for the settings list.
+    ///
+    /// Resolved against the standard sRGB space and no trait collection: these
+    /// are the palette's authored values, and showing them is the only way a
+    /// user can tell two similar palettes apart in a list.
+    var hexDescription: String {
+        let uiColor = UIColor(self)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return "#------"
+        }
+        return String(
+            format: "#%02X%02X%02X",
+            Int((red * 255).rounded()),
+            Int((green * 255).rounded()),
+            Int((blue * 255).rounded())
+        )
     }
 }
 

@@ -42,7 +42,7 @@ struct TabsOverviewView: View {
                 if showPrivateTabs && isLocked && !isPrivateUnlocked {
                     lockedState
                 } else if visibleTabs.isEmpty {
-                    BrowserEmptyState(
+                    EmptyState(
                         systemImage: "square.on.square",
                         title: "没有标签页",
                         message: showPrivateTabs ? "打开一个无痕标签页开始浏览。" : "打开一个标签页开始浏览。"

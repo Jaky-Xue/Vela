@@ -25,11 +25,16 @@ struct VelaApp: App {
 
     var body: some Scene {
         WindowGroup {
-            BrowserShellView()
+            BrowserShellView(environment: environment)
                 .environmentObject(environment)
-                .tint(BrowserPalette.all.first {
-                    $0.id == environment.settings.preferences.themePaletteId
-                }?.accent ?? BrowserPalette.default.accent)
+                // The palette's accent is a dynamic colour, so it re-resolves
+                // in both appearances; that is why the tint is read from the
+                // palette rather than from a fixed constant.
+                .tint(activePalette.accent)
+                // nil means "follow the system", which is the whole of the
+                // 跟随系统 mode. Applied at the root so the sheet, the alert and
+                // every `UIColor` dynamic provider resolve against it.
+                .preferredColorScheme(environment.settings.appearanceMode.colorScheme)
                 .onOpenURL { url in
                     handleInboundUrl(url)
                 }
@@ -80,6 +85,13 @@ struct VelaApp: App {
                 break
             }
         }
+    }
+
+    /// The palette the user selected, or the shipped default when the stored id
+    /// no longer resolves.
+    private var activePalette: BrowserPalette {
+        BrowserPalette.all.first { $0.id == environment.settings.preferences.themePaletteId }
+            ?? BrowserPalette.default
     }
 
     /// Routes a URL the app was opened with.

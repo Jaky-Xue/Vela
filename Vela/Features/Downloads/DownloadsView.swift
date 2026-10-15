@@ -33,7 +33,7 @@ struct DownloadsView: View {
     var body: some View {
         List {
             if visibleTasks.isEmpty {
-                BrowserEmptyState(
+                EmptyState(
                     systemImage: "arrow.down.circle",
                     title: "没有下载",
                     message: showPrivate ? "无痕模式下的下载会显示在这里。" : "下载的文件会保存在 Vela 的下载文件夹中。"

@@ -55,7 +55,7 @@ struct UserScriptsView: View {
 
             if scripts.isEmpty {
                 Section {
-                    BrowserEmptyState(
+                    EmptyState(
                         systemImage: "curlybraces",
                         title: "还没有用户脚本",
                         message: "脚本可以给网页加功能，例如去除浮窗、增强阅读体验。"

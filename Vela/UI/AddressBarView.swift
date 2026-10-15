@@ -2,191 +2,29 @@
 //  AddressBarView.swift
 //  Vela
 //
-//  The omnibox. Ported from `AiraBrowser/entry/src/main/ets/core/browser/`
-//  — `BrowserSearchSuggestionCoordinator.ets`, `BrowserAddressDisplayCoordinator.ets`,
-//  `AddressDisplayFormatter.ets` and `BrowserRootAddressInputSessionCoordinator.ets`
+//  The address-input logic that is *not* a view. Ported from
+//  `AiraBrowser/entry/src/main/ets/core/browser/`
+//  — `BrowserUnifiedLinkLogic.ets`, `BrowserAddressDisplayCoordinator.ets` and
+//  the submit path in `BrowserShellSearchInvocationAdapter.ets`
 //  (Aira Browser 3.7.4, GPL-3.0).
 //
-//  The suggestion list merges four sources in a fixed priority order, which is
-//  the behaviour Aira's coordinator produces:
+//  iOS port enhancement (this revision). This file used to hold the address bar
+//  view, its suggestion list and its suggestion engine as well. All three moved
+//  out, because all three grew past the point where one file could hold them:
 //
-//    1. A URL the user is typing — always first, because it is what they mean.
-//    2. Open tabs — cheapest to offer and most likely to be what a second tab
-//       was opened for.
-//    3. Bookmarks — a deliberate save, so it outranks mere history.
-//    4. History and past queries, ranked by the repository's relevance score.
+//    * the bar itself is `UI/Omnibox/OmniboxView.swift`,
+//    * the suggestion list is `UI/Omnibox/OmniboxSuggestionListView.swift`,
+//    * the engine and the session are `UI/Omnibox/OmniboxViewModel.swift`,
+//    * the value types are `UI/Omnibox/OmniboxModels.swift`.
 //
-//  Remote suggestions are off by default and stay off unless the user enables
-//  them: Aira Community does not send keystrokes to a provider, and neither does
-//  Vela.
+//  What is left is the part that is genuinely not a view and is depended on from
+//  outside the omnibox — the URL/query resolver, which the new-tab home and the
+//  shell's navigation path both use — plus the progress ring the tab overview
+//  draws.
 //
 
 import SwiftUI
 import UIKit
-
-/// One row in the suggestion list.
-public struct OmniboxSuggestion: Identifiable, Equatable {
-    public enum Kind: Equatable {
-        case search(engineId: SearchEngineId)
-        case url
-        case openTab(tabId: String)
-        case bookmark(nodeId: String)
-        case history(urlId: String)
-        case pastQuery(queryId: String)
-    }
-
-    public var id: String
-    public var kind: Kind
-    public var title: String
-    public var subtitle: String
-    public var host: String
-    /// The string the omnibox inserts when the row is chosen.
-    public var completion: String
-
-    public var iconName: String {
-        switch kind {
-        case .search: return "magnifyingglass"
-        case .url: return "globe"
-        case .openTab: return "square.on.square"
-        case .bookmark: return "bookmark.fill"
-        case .history: return "clock.arrow.circlepath"
-        case .pastQuery: return "magnifyingglass.circle"
-        }
-    }
-}
-
-/// Builds the suggestion list.
-///
-/// Ported from `BrowserSearchSuggestionCoordinator`. Kept as a pure function of
-/// its inputs rather than a live observer so the omnibox can build a list for
-/// the text currently in the field without debouncing against the store.
-@MainActor
-struct OmniboxSuggestionEngine {
-    let settings: SettingsService
-    let history: HistoryService
-    let bookmarks: BookmarkService
-    let searchHistory: SearchHistoryRepository
-    let tabManager: TabManager
-
-    func suggestions(for rawInput: String, privacyMode: BrowserSessionPrivacyMode) -> [OmniboxSuggestion] {
-        let input = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !input.isEmpty else { return [] }
-
-        var results: [OmniboxSuggestion] = []
-        var seen = Set<String>()
-        let preferences = settings.preferences.searchEngine.searchSuggestions
-
-        // 1. A direct URL, when the input already looks like one.
-        if let url = BrowserUrlResolver.resolveDirectUrl(input) {
-            results.append(
-                OmniboxSuggestion(
-                    id: "url:\(url.absoluteString)",
-                    kind: .url,
-                    title: url.absoluteString,
-                    subtitle: "打开网址",
-                    host: url.host ?? "",
-                    completion: url.absoluteString
-                )
-            )
-            seen.insert(url.absoluteString.lowercased())
-        }
-
-        // 2. Open tabs.
-        if preferences.openTabsEnabled {
-            for tab in tabManager.tabs where !tab.isHome {
-                guard tab.privacyMode == privacyMode else { continue }
-                let title = tab.displayTitle
-                guard title.localizedCaseInsensitiveContains(input)
-                    || tab.url.localizedCaseInsensitiveContains(input) else { continue }
-                guard seen.insert("tab:\(tab.id)").inserted else { continue }
-                results.append(
-                    OmniboxSuggestion(
-                        id: "tab:\(tab.id)",
-                        kind: .openTab(tabId: tab.id),
-                        title: title,
-                        subtitle: "已打开的标签页",
-                        host: tab.displayHost,
-                        completion: tab.url
-                    )
-                )
-            }
-        }
-
-        // 3. Bookmarks.
-        if preferences.bookmarksEnabled {
-            for node in bookmarks.search(input).prefix(4) {
-                let url = node.url ?? ""
-                guard seen.insert("bookmark:\(node.id)").inserted else { continue }
-                results.append(
-                    OmniboxSuggestion(
-                        id: "bookmark:\(node.id)",
-                        kind: .bookmark(nodeId: node.id),
-                        title: node.title,
-                        subtitle: "书签 · \(node.displayHost)",
-                        host: node.displayHost,
-                        completion: url
-                    )
-                )
-            }
-        }
-
-        // 4. Past queries.
-        if preferences.historyEnabled {
-            let pastQueries = (try? searchHistory.suggestions(
-                prefix: input,
-                profileId: browserMainProfileId,
-                dataScope: privacyMode == .private ? .sessionEphemeral : .profilePersistent,
-                limit: 3
-            )) ?? []
-            for record in pastQueries {
-                guard seen.insert("query:\(record.id)").inserted else { continue }
-                results.append(
-                    OmniboxSuggestion(
-                        id: "query:\(record.id)",
-                        kind: .pastQuery(queryId: record.id),
-                        title: record.query,
-                        subtitle: "搜索记录",
-                        host: "",
-                        completion: record.query
-                    )
-                )
-            }
-        }
-
-        // 5. Browsing history.
-        if preferences.browsingHistoryEnabled {
-            for entry in history.omniboxSuggestions(input).prefix(5) {
-                guard seen.insert("history:\(entry.id)").inserted else { continue }
-                results.append(
-                    OmniboxSuggestion(
-                        id: "history:\(entry.id)",
-                        kind: .history(urlId: entry.id),
-                        title: entry.displayTitle,
-                        subtitle: entry.displayHost,
-                        host: entry.displayHost,
-                        completion: entry.url
-                    )
-                )
-            }
-        }
-
-        // 6. Search. Always last, and always present, so pressing return with no
-        //    highlighted row does something predictable.
-        let engine = settings.preferences.searchEngine.activeEngine
-        results.append(
-            OmniboxSuggestion(
-                id: "search:\(engine.id)",
-                kind: .search(engineId: engine.id),
-                title: input,
-                subtitle: "用 \(engine.name) 搜索",
-                host: "",
-                completion: input
-            )
-        )
-
-        return results
-    }
-}
 
 /// Turns typed text into a URL, or decides it is a query.
 ///
@@ -284,93 +122,14 @@ enum BrowserUrlResolver {
     }
 }
 
-/// The address bar.
-///
-/// Ported from `BrowserBottomAddressPanelViewModel`'s presentation: the phone
-/// layout puts the address panel at the bottom, above the toolbar, so a
-/// one-handed user can reach it. The editing state replaces the panel with a
-/// full suggestion list.
-struct AddressBarView: View {
-    @Environment(\.browserPalette) private var palette
-
-    @Binding var text: String
-    @Binding var isEditing: Bool
-    var isLoading: Bool
-    var progress: Double
-    var privacyMode: BrowserSessionPrivacyMode
-    /// Shown instead of the URL when the field is not being edited.
-    var displayUrl: String
-    var onCommit: (String) -> Void
-    var onCancel: () -> Void
-    var onReload: () -> Void
-
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        HStack(spacing: 8) {
-            // The lock is the only security indicator iOS exposes; WebKit
-            // reports it through the page's URL scheme, so the badge is derived
-            // from the URL rather than from a certificate inspection.
-            Image(systemName: isSecure ? "lock.fill" : "globe")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(isSecure ? .green : .secondary)
-                .frame(width: 14)
-
-            TextField("搜索或输入网址", text: $text)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .submitLabel(.go)
-                .focused($isFocused)
-                .onSubmit {
-                    let submitted = text
-                    onCommit(submitted)
-                }
-                .onChange(of: isFocused) { _, focused in
-                    isEditing = focused
-                    if focused {
-                        // Selecting everything is what makes the field usable
-                        // one-handed: typing replaces the URL rather than
-                        // appending to it.
-                        text = displayUrl
-                    } else {
-                        text = ""
-                    }
-                }
-
-            if isLoading {
-                // A progress ring doubles as the stop button's slot, so the bar
-                // does not change width while a page loads.
-                ProgressRing(progress: progress)
-                    .frame(width: 16, height: 16)
-            } else if !displayUrl.isEmpty {
-                Button {
-                    onReload()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: BrowserMetrics.addressBarHeight)
-        .background(palette.chromeBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private var isSecure: Bool {
-        displayUrl.lowercased().hasPrefix("https://")
-    }
-}
-
 /// A determinate progress ring.
 ///
 /// Not `ProgressView(.circular)` because the built-in one ignores a fractional
 /// value in its circular style on iOS and shows an indeterminate spinner, which
 /// for a progress indicator is worse than showing nothing.
+///
+/// The address bar no longer uses this — it draws the 2 pt line in
+/// `OmniboxView` — but the tab overview still marks a loading tab with it.
 struct ProgressRing: View {
     var progress: Double
     var lineWidth: CGFloat = 2

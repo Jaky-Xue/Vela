@@ -26,10 +26,23 @@ public final class SettingsService: ObservableObject {
         static let preferences = "org.vela.browser.preferences"
         static let userScripts = "org.vela.browser.userscripts"
         static let manualElementHide = "org.vela.browser.manual-element-hide"
+        static let appearanceMode = "org.vela.browser.appearance-mode"
     }
 
     @Published public private(set) var preferences: BrowserPreferences {
         didSet { persistPreferences() }
+    }
+
+    /// Light, dark, or whatever the system says.
+    ///
+    /// iOS port enhancement. Aira has no equivalent — HarmonyOS applies light
+    /// and dark at the device level and an app cannot override it — so this is
+    /// a Vela-only domain. It lives here rather than inside `BrowserPreferences`
+    /// because that document is decoded as a whole: a new non-optional key
+    /// would make every existing install's document fail to decode, and the
+    /// settings would silently reset to defaults on the next launch.
+    @Published public private(set) var appearanceMode: AppearanceMode {
+        didSet { defaults.set(appearanceMode.rawValue, forKey: Key.appearanceMode) }
     }
 
     @Published public private(set) var downloadSettings: DownloadSettings {
@@ -52,6 +65,10 @@ public final class SettingsService: ObservableObject {
             ?? .default
         self.manualElementHide = Self.load(ManualElementHideSettings.self, key: Key.manualElementHide, from: defaults)
             ?? .default
+        // An unknown or absent value follows the system, which is the only
+        // default that cannot surprise someone who never opens the setting.
+        self.appearanceMode = defaults.string(forKey: Key.appearanceMode)
+            .flatMap(AppearanceMode.init(rawValue:)) ?? .system
 
         // The history repository reads this key directly during its prune pass,
         // so the retention window is mirrored where the write path can see it.
@@ -96,6 +113,13 @@ public final class SettingsService: ObservableObject {
         var copy = manualElementHide
         mutate(&copy)
         manualElementHide = copy
+    }
+
+    // MARK: - Appearance
+
+    public func setAppearanceMode(_ mode: AppearanceMode) {
+        guard mode != appearanceMode else { return }
+        appearanceMode = mode
     }
 
     // MARK: - Search
@@ -292,5 +316,6 @@ public final class SettingsService: ObservableObject {
         preferences = .default
         downloadSettings = .default
         manualElementHide = .default
+        appearanceMode = .system
     }
 }

@@ -24,6 +24,10 @@ struct BookmarksView: View {
     @State private var showingNewFolder = false
     @State private var newFolderName = ""
     @State private var nodeToDelete: BookmarkNode?
+    /// Whether the current folder's contents are unfolded. A `@AppStorage`
+    /// value rather than `@State`, so the choice survives leaving the screen,
+    /// which is what makes it a preference rather than an accident.
+    @AppStorage("org.vela.browser.bookmarks-contents-expanded") private var contentsExpanded = true
 
     private var bookmarks: BookmarkService { env.bookmarks }
 
@@ -56,7 +60,7 @@ struct BookmarksView: View {
     var body: some View {
         List {
             if currentItems.isEmpty {
-                BrowserEmptyState(
+                EmptyState(
                     systemImage: "bookmark",
                     title: isSearching ? "没有匹配的书签" : "还没有书签",
                     message: isSearching
@@ -65,11 +69,17 @@ struct BookmarksView: View {
                 )
                 .listRowBackground(Color.clear)
             } else {
-                ForEach(currentItems) { item in
-                    row(for: item)
+                Section {
+                    if contentsExpanded || currentFolderId == nil {
+                        ForEach(currentItems) { item in
+                            row(for: item)
+                        }
+                        .onDelete(perform: deleteItems)
+                        .onMove(perform: moveItems)
+                    }
+                } header: {
+                    contentsHeader
                 }
-                .onDelete(perform: deleteItems)
-                .onMove(perform: moveItems)
             }
         }
         .listStyle(.plain)
@@ -152,6 +162,33 @@ struct BookmarksView: View {
     }
 
     // MARK: - Rows
+
+    /// The section header.
+    ///
+    /// Inside a folder the header folds the contents away, which is the case
+    /// that matters: a folder is the only place this list can run long. At a
+    /// root it is a plain label, because the list *is* the two roots and folding
+    /// it would hide the only two rows there are.
+    @ViewBuilder
+    private var contentsHeader: some View {
+        if currentFolderId == nil && !isSearching {
+            Text("书签")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(nil)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            CollapsibleSectionHeader(
+                title: isSearching ? "搜索结果" : currentTitle,
+                count: currentItems.count,
+                isExpanded: contentsExpanded,
+                onToggle: {
+                    withAnimation(.snappy(duration: 0.22)) { contentsExpanded.toggle() }
+                }
+            )
+            .textCase(nil)
+        }
+    }
 
     @ViewBuilder
     private func row(for item: BookmarkTreeItem) -> some View {
