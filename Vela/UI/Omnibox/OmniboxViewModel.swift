@@ -616,22 +616,34 @@ public final class OmniboxViewModel: ObservableObject {
     /// system paste prompt, because it reports *which patterns are present*
     /// rather than the contents. The contents are read later, by the
     /// `PasteButton` the hint renders.
+    ///
+    /// The completion-handler overload carries a "deprecated in iOS 15.0"
+    /// warning with no replacement offered, and the SDK ships no async
+    /// `detectPatterns(for:)` to move to — the compiler rejects one. Given that
+    /// the alternative is a paste permission prompt on every focus, the warning
+    /// is the cheaper half of the trade.
     private func refreshClipboardHint() {
         let pasteboard = UIPasteboard.general
         guard pasteboard.hasStrings else {
             clipboardHint = nil
             return
         }
-
-        Task { [weak self] in
-            let detected = try? await pasteboard.detectPatterns(for: [.probableWebURL])
-            guard let self, self.isEditing else { return }
-            self.clipboardHint = OmniboxClipboardHint.from(
-                hasProbableWebURL: detected?.contains(.probableWebURL) ?? false,
-                // Re-read rather than trusting the check above: the detection is
-                // awaited, and the user can copy something else in the meantime.
-                hasStrings: pasteboard.hasStrings
-            )
+        pasteboard.detectPatterns(for: [.probableWebURL]) { result in
+            let isUrl: Bool
+            switch result {
+            case .success(let patterns): isUrl = patterns.contains(.probableWebURL)
+            case .failure: isUrl = false
+            }
+            Task { @MainActor [weak self] in
+                guard let self, self.isEditing else { return }
+                self.clipboardHint = OmniboxClipboardHint.from(
+                    hasProbableWebURL: isUrl,
+                    // Re-read rather than trusting the check above: the
+                    // detection is asynchronous, and the user can copy something
+                    // else while it is in flight.
+                    hasStrings: pasteboard.hasStrings
+                )
+            }
         }
     }
 }
