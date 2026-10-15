@@ -119,7 +119,6 @@ struct VelaApp: App {
             openSource: .externalShare
         )
         environment.tabManager.activateTab(id: tab.id)
-        let webView = environment.tabManager.ensureWebView(for: tab)
-        webView.load(URLRequest(url: url))
+        environment.tabManager.load(url: url, in: tab)
     }
 }

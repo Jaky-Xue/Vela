@@ -16,6 +16,7 @@ import QuickLook
 
 struct DownloadsView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
 
     @State private var showPrivate = false
@@ -45,6 +46,7 @@ struct DownloadsView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .browserListSurface()
         .navigationTitle("下载")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -111,6 +113,7 @@ struct DownloadsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(task.displayName)
                         .font(.subheadline)
+                        .foregroundStyle(palette.primaryText)
                         .lineLimit(2)
                     HStack(spacing: 5) {
                         Text(task.status.displayName)
@@ -121,7 +124,7 @@ struct DownloadsView: View {
                         }
                     }
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondaryText)
                 }
 
                 Spacer(minLength: 0)

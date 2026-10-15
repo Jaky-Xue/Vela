@@ -84,6 +84,8 @@ struct BottomToolbarView: View {
     /// Dynamic Type instead of clipping the tab count drawn inside the tabs
     /// glyph.
     @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 19
+    /// The bar's own height, scaled for the same reason.
+    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = BrowserMetrics.toolbarHeight
 
     var actions: [BrowserToolbarAction]
     var tabCount: Int
@@ -102,26 +104,32 @@ struct BottomToolbarView: View {
                 } label: {
                     icon(for: action)
                         .frame(maxWidth: .infinity)
-                        .frame(height: BrowserMetrics.toolbarHeight)
+                        .frame(height: rowHeight)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ToolbarGlyphButtonStyle())
                 .disabled(!isEnabled(action))
                 .foregroundStyle(
                     isEnabled(action)
                         ? palette.primaryText
-                        : palette.secondaryText.opacity(0.45)
+                        : palette.secondaryText.opacity(0.35)
                 )
                 .accessibilityLabel(action.displayName)
             }
         }
-        .background {
-            // Transparent on purpose: the toolbar shares one chrome panel with
-            // the address bar, and the shell paints that panel's material. A
-            // second bar behind this one would stack two materials and darken
-            // the row every time the page behind it changed.
-            Color.clear
-        }
+        .padding(.horizontal, BrowserChrome.panelPadding)
+        .padding(.vertical, BrowserChrome.panelPadding)
+        // The bar owns its own panel now rather than being a transparent row on
+        // a material the shell paints. A floating pill is what separates the
+        // controls from the screen edge; a full-width strip of the same material
+        // as the address bar above it reads as one slab of chrome at both ends
+        // of the page.
+        .browserFloatingChrome(
+            radius: BrowserRadius.floating,
+            material: .regularMaterial,
+            tintStrength: 0.45,
+            elevation: .floating
+        )
     }
 
     @ViewBuilder
@@ -136,6 +144,7 @@ struct BottomToolbarView: View {
                 if tabCount > 0 {
                     Text("\(min(tabCount, 99))")
                         .font(.system(size: glyphSize * 0.5, weight: .bold))
+                        .monospacedDigit()
                         .offset(y: 1)
                 }
             }
@@ -156,7 +165,7 @@ struct BottomToolbarView: View {
             // used.
             Image(systemName: action.systemImage)
                 .font(.system(size: glyphSize, weight: .medium))
-                .foregroundStyle(readerAvailable ? palette.accent : palette.secondaryText.opacity(0.45))
+                .foregroundStyle(readerAvailable ? palette.accent : palette.secondaryText.opacity(0.35))
         default:
             Image(systemName: action.systemImage)
                 .font(.system(size: glyphSize, weight: .medium))
@@ -170,5 +179,20 @@ struct BottomToolbarView: View {
         case .reader: return readerAvailable
         default: return true
         }
+    }
+}
+
+/// The press feedback for a toolbar glyph.
+///
+/// `.plain` gives none at all, and a row of eight controls that do not respond
+/// to a touch reads as a screenshot rather than as a bar. The scale is small
+/// enough to stay inside the glyph's own frame, so pressing one does not shift
+/// the seven beside it.
+private struct ToolbarGlyphButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.86 : 1)
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }

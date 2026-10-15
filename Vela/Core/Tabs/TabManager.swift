@@ -168,9 +168,11 @@ public final class TabManager {
             : (tabs.first?.id ?? "")
         activeTabId = restoredActive
 
-        if let active = activeTab, !active.isHome {
-            // Materialise only the visible tab.
-            _ = ensureWebView(for: active)
+        if let active = activeTab, !active.isHome, let url = URL(string: active.url) {
+            // Only the visible tab is fetched. The rest stay cold and load when
+            // they are first activated, which is what keeps a restore of twenty
+            // tabs from starting twenty page loads at launch.
+            load(url: url, in: active)
         }
     }
 
@@ -283,11 +285,17 @@ public final class TabManager {
         }
         let record = recentlyClosed.remove(at: index)
         try? sessionRepository?.removeRecentlyClosed(id: record.id)
-        return createTab(
+        let tab = createTab(
             url: record.url,
             privacyMode: record.privacyMode,
             openSource: .restore
         )
+        // Reopening is a request to see the page again, so it is fetched now
+        // rather than when its web view happens to be built.
+        if let url = URL(string: record.url) {
+            load(url: url, in: tab)
+        }
+        return tab
     }
 
     // MARK: - Ordering
@@ -343,8 +351,27 @@ public final class TabManager {
         return webView
     }
 
-    /// Re-applies the `User-Agent` to every live web view.
+    /// Points a tab at a URL and starts the load, creating its web view if it
+    /// does not have one.
     ///
+    /// The single path for "this tab should now be showing this page". Every
+    /// call site that used to pair `createTab(url:)` with `ensureWebView` was
+    /// relying on `WebViewHost` to notice that the tab had a URL and no page and
+    /// start the load itself — which worked for a tab that was on screen and
+    /// silently did nothing for one opened in the background, because a view
+    /// that never appears never runs its update. Loading here means the tab is
+    /// fetched when it is opened, whether or not it is the one being looked at.
+    @discardableResult
+    public func load(url: URL, in tab: BrowserTabState) -> WKWebView {
+        tab.isHome = false
+        tab.url = url.absoluteString
+        tab.pendingUrl = url.absoluteString
+        let webView = ensureWebView(for: tab)
+        webView.load(URLRequest(url: url))
+        return webView
+    }
+
+    /// Re-applies the `User-Agent` to every live web view.    ///
     /// Called when the appearance of a tab to a site changes — the desktop-site
     /// toggle or the custom identifier — because `customUserAgent` only takes
     /// effect on the next request. Backgrounded tabs are updated too: a tab the
@@ -369,26 +396,45 @@ public final class TabManager {
         tab.scrollOffsetY = Double(webView.scrollView.contentOffset.y)
         tab.lastDiscardReason = reason
         tab.runtimeState = .cold
+        // The back/forward list lives in the web view, so it is discarded with
+        // it. Leaving the flags set would leave the toolbar's back and forward
+        // buttons enabled on a tab that can no longer do either — a button that
+        // looks live and does nothing when pressed.
+        tab.canGoBack = false
+        tab.canGoForward = false
+        tab.isLoading = false
+        tab.estimatedProgress = 0
         // Stop loading before release so a transfer in flight cannot deliver a
         // callback to a web view the manager no longer owns.
         webView.stopLoading()
-        webView.navigationDelegate = nil
-        webView.uiDelegate = nil
+        detachDelegates(from: webView)
         webViews.removeValue(forKey: tabId)
     }
 
     private func destroyWebView(for tabId: String) {
         guard let webView = webViews[tabId] else { return }
         webView.stopLoading()
-        webView.navigationDelegate = nil
-        webView.uiDelegate = nil
-        // Detach the message handlers so the user content controller does not
-        // keep this manager alive through a retain cycle.
-        for handler in webView.configuration.userContentController.userScripts {
-            _ = handler
+        detachDelegates(from: webView)
+        if let tab = tab(id: tabId) {
+            tab.canGoBack = false
+            tab.canGoForward = false
+            tab.isLoading = false
         }
         webViews.removeValue(forKey: tabId)
         activationOrder.removeAll { $0 == tabId }
+    }
+
+    /// Severs every link from a web view the manager is letting go.
+    ///
+    /// Both delegates are held weakly by WebKit, so clearing them is about not
+    /// delivering a late callback into the coordinator for a tab that no longer
+    /// has a web view. The message handlers are the half that *is* retained: the
+    /// content controller owns each `MessageBridge`, and each bridge holds the
+    /// coordinator weakly, so the handler objects themselves are released with
+    /// the configuration — which is why nothing has to be unregistered here.
+    private func detachDelegates(from webView: WKWebView) {
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
     }
 
     private func touchActivationOrder(_ tabId: String) {

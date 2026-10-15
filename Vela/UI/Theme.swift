@@ -290,7 +290,14 @@ enum BrowserMetrics {
     static let tabStripItemWidth: CGFloat = 200
     static let tabStripItemHeight: CGFloat = 34
     /// How far the toolbar slides away when the page scrolls down.
-    static let toolbarCollapseDistance: CGFloat = 80
+    ///
+    /// Generously past the panel's own height plus any bottom safe area rather
+    /// than measured exactly. The bar sits against the bottom edge, so
+    /// overshooting by a few points moves it further off-screen and changes
+    /// nothing, while undershooting leaves a strip of chrome material parked at
+    /// the bottom of the page — which is the failure the exact value is most
+    /// likely to produce, because the safe-area inset is not known here.
+    static let toolbarCollapseDistance: CGFloat = 200
 
     // Omnibox. These are the suggestion card's own metrics.
     static let omniboxRowHeight: CGFloat = 52
@@ -314,6 +321,14 @@ enum BrowserRadius {
     static let field: CGFloat = 14
     static let card: CGFloat = 16
     static let sheet: CGFloat = 20
+    /// The address field. Rounder than a generic field because the omnibox is
+    /// the one control the whole chrome is arranged around — at 22 pt on a
+    /// 46 pt bar it reads as a capsule without losing the straight edges that
+    /// keep a long URL from looking squeezed.
+    static let omnibox: CGFloat = 22
+    /// The floating bar the toolbar sits in, and every other panel that has to
+    /// read as detached from the screen edge rather than as a strip of it.
+    static let floating: CGFloat = 26
 }
 
 /// The spacing scale, on a 4-point grid.
@@ -323,6 +338,22 @@ enum BrowserSpacing {
     static let compact: CGFloat = 10
     static let regular: CGFloat = 16
     static let loose: CGFloat = 24
+}
+
+/// The insets the floating chrome uses.
+///
+/// Deliberately not part of the spacing scale: these are the gap between the
+/// chrome and the screen edge, and they answer to the hardware's corner radius
+/// rather than to the spacing rhythm inside the panels.
+enum BrowserChrome {
+    /// How far the omnibox and the toolbar panel sit from the side edges.
+    static let sideInset: CGFloat = 12
+    /// How far the toolbar panel sits above the bottom safe area.
+    static let bottomInset: CGFloat = 8
+    /// How far the omnibox sits below the top safe area.
+    static let topInset: CGFloat = 6
+    /// The gap between the toolbar's glyphs and the panel's own edge.
+    static let panelPadding: CGFloat = 4
 }
 
 /// Elevation. On iOS this is a shadow plus a hairline stroke; the stroke is
@@ -408,6 +439,114 @@ extension View {
     }
 }
 
+// MARK: - List surface
+
+/// Paints a `List` in the active palette.
+///
+/// Without this the list screens keep UIKit's grouped background and read as
+/// system apps with a Vela-coloured navigation bar, which is what makes a
+/// settings screen and the browser chrome look like two different products. The
+/// rows keep a card fill so the grouped rhythm survives the change of surface.
+struct BrowserListSurface: ViewModifier {
+    @Environment(\.browserPalette) private var palette
+
+    /// Whether the rows get a card fill of their own. Off for a plain list,
+    /// where cards-in-a-list would be a third level of nesting.
+    var rowsAreCards: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        content
+            .scrollContentBackground(.hidden)
+            .background(palette.surface)
+            .toolbarBackground(palette.chromeBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .listRowBackground(rowsAreCards ? palette.card : Color.clear)
+    }
+}
+
+extension View {
+    /// Applies the shared list surface.
+    func browserListSurface(rowsAreCards: Bool = true) -> some View {
+        modifier(BrowserListSurface(rowsAreCards: rowsAreCards))
+    }
+}
+
+// MARK: - Floating chrome
+
+/// The treatment for a control that floats above the page rather than being a
+/// strip of the screen: the omnibox, the toolbar panel.
+///
+/// Two things separate this from `browserCard`. The fill is a *tint under a
+/// material* selected for chrome rather than for content, so a panel over a
+/// photograph keeps its own tone instead of taking on the photograph's; and the
+/// stroke is drawn inside the shape, so the panel's silhouette stays crisp
+/// against a busy page without the border growing the view by a point.
+struct BrowserFloatingChrome: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.browserPalette) private var palette
+
+    var radius: CGFloat
+    var material: Material
+    /// How strongly the palette's control fill sits under the material. A higher
+    /// value makes the panel more opaque and more clearly a surface of its own;
+    /// the omnibox wants more of it than the toolbar, because text has to be
+    /// legible on top of it.
+    var tintStrength: Double
+    var elevation: BrowserElevation
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        content
+            .background {
+                shape.fill(palette.controlFill.opacity(tintStrength))
+                shape.fill(material)
+            }
+            .overlay(shape.strokeBorder(palette.cardStroke, lineWidth: 0.5))
+            .clipShape(shape)
+            .shadow(
+                color: elevation.shadowColor(for: colorScheme),
+                radius: elevation.radius,
+                y: elevation.y
+            )
+    }
+}
+
+extension View {
+    /// Wraps the receiver in the floating-chrome treatment.
+    func browserFloatingChrome(
+        radius: CGFloat = BrowserRadius.floating,
+        material: Material = .regularMaterial,
+        tintStrength: Double = 0.5,
+        elevation: BrowserElevation = .floating
+    ) -> some View {
+        modifier(
+            BrowserFloatingChrome(
+                radius: radius,
+                material: material,
+                tintStrength: tintStrength,
+                elevation: elevation
+            )
+        )
+    }
+
+    /// Paints the strip of chrome material the floating controls sit on.
+    ///
+    /// The material reaches past the safe area on `edge` so the status bar and
+    /// the home indicator keep their contrast without the controls themselves
+    /// moving out of the layout — which is what lets the omnibox be inset from
+    /// the top while the blur behind it still starts at the very top of the
+    /// screen.
+    func browserChromeSubstrate(edge: Edge.Set) -> some View {
+        background {
+            Rectangle()
+                .fill(.bar)
+                .ignoresSafeArea(edges: edge)
+        }
+    }
+}
+
 // MARK: - Rows
 
 /// A reusable row used by the settings, bookmark, history and download lists.
@@ -467,10 +606,10 @@ struct BrowserListRow<Leading: View, Trailing: View>: View {
 
 /// A favicon or a letter placeholder.
 ///
-/// A favicon is not readable from outside the page, so this shows the host's
-/// first letter in a deterministic colour until a real icon can be fetched. The
-/// colour is derived from the host, so the same site always gets the same
-/// swatch.
+/// A favicon is not readable from outside the page, so when the site's own icon
+/// cannot be fetched this shows the host's first letter on a deterministic
+/// colour. The colour is derived from the host, so the same site always gets the
+/// same swatch.
 struct SiteIconView: View {
     var host: String
     var size: CGFloat = 28
@@ -478,7 +617,7 @@ struct SiteIconView: View {
 
     var body: some View {
         Group {
-            if let faviconUrl, let url = URL(string: faviconUrl) {
+            if let resolvedFaviconUrl, let url = URL(string: resolvedFaviconUrl) {
                 AsyncImage(url: url) { image in
                     image.resizable().scaledToFit()
                 } placeholder: {
@@ -490,6 +629,22 @@ struct SiteIconView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+    }
+
+    /// The icon URL to try, given what the caller knows.
+    ///
+    /// An explicit URL wins. Otherwise the site's own `/favicon.ico` is used,
+    /// which is what most sites serve and the rest answer with a 404 — in which
+    /// case `AsyncImage` reports a failure and the letter swatch is what stays
+    /// on screen. WebKit does not expose a page's declared icon to the host app,
+    /// so there is no better source than the well-known path. Rows are built
+    /// lazily, so this costs one request per icon actually on screen, and the
+    /// shared URL cache answers the repeats.
+    private var resolvedFaviconUrl: String? {
+        if let faviconUrl, !faviconUrl.isEmpty { return faviconUrl }
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.contains(".") else { return nil }
+        return "https://\(trimmed)/favicon.ico"
     }
 
     private var placeholder: some View {

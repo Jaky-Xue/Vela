@@ -30,6 +30,12 @@ struct WebViewHost: UIViewRepresentable {
     /// Reports scroll offset changes so the toolbar can react without a message
     /// round-trip on every frame.
     let onScroll: ((Double) -> Void)?
+    /// Reports load progress in 0...1.
+    ///
+    /// Observed from the web view rather than read off the tab, because the tab
+    /// only ever learns that a load started and that it finished — so a progress
+    /// line fed from the tab sits at zero and then snaps to full.
+    let onProgress: ((Double) -> Void)?
 
     func makeUIView(context: Context) -> WebViewContainerView {
         let container = WebViewContainerView()
@@ -38,10 +44,10 @@ struct WebViewHost: UIViewRepresentable {
     }
 
     func updateUIView(_ container: WebViewContainerView, context: Context) {
-        // Restart the scroll observation whenever the hosted web view changes,
-        // which happens when a tab is discarded and rebuilt.
+        // Restart the observation whenever the hosted web view changes, which
+        // happens when a tab is discarded and rebuilt.
         if context.coordinator.observedWebView !== webView {
-            context.coordinator.observe(webView: webView, onScroll: onScroll)
+            context.coordinator.observe(webView: webView, onScroll: onScroll, onProgress: onProgress)
         }
 
         if isHome {
@@ -56,12 +62,20 @@ struct WebViewHost: UIViewRepresentable {
         // or an in-page history change makes the web view's URL differ from the
         // one the tab holds, and reloading on that difference would fight the
         // page.
-        if webView.url == nil, let initialUrl, let url = URL(string: initialUrl), !initialUrl.isEmpty {
-            webView.load(URLRequest(url: url))
-        } else if webView.url == nil, initialUrl == nil || initialUrl!.isEmpty {
-            // A tab created empty but not flagged as home still needs something
-            // to show, otherwise the surface is a blank white rectangle.
-            webView.loadHTMLString(Self.blankPageHtml, baseURL: nil)
+        //
+        // `isLoading` is the other half. `TabManager.load(url:in:)` starts the
+        // request itself and SwiftUI re-evaluates this body on the same turn,
+        // before the web view has a URL — so without this guard every
+        // navigation would issue its request twice.
+        if webView.url == nil, !webView.isLoading {
+            if let initialUrl, !initialUrl.isEmpty, let url = URL(string: initialUrl) {
+                webView.load(URLRequest(url: url))
+            } else {
+                // A tab created empty but not flagged as home still needs
+                // something to show, otherwise the surface is a blank white
+                // rectangle.
+                webView.loadHTMLString(Self.blankPageHtml, baseURL: nil)
+            }
         }
     }
 
@@ -76,38 +90,57 @@ struct WebViewHost: UIViewRepresentable {
         Coordinator()
     }
 
-    /// Observes a hosted web view's scroll offset.
+    /// Observes a hosted web view's scroll offset and load progress.
     ///
     /// KVO on `contentOffset` rather than the injected scroll script: the offset
     /// is a property of the view, so observing it directly is both simpler and
     /// immune to a page that swallows scroll events or never installs the
-    /// script.
+    /// script. Progress is observed for the same reason — `estimatedProgress` is
+    /// a `WKWebView` property, so there is nothing for a page to opt out of.
     final class Coordinator {
         private(set) var observedWebView: WKWebView?
-        private var observation: NSKeyValueObservation?
+        private var offsetObservation: NSKeyValueObservation?
+        private var progressObservation: NSKeyValueObservation?
 
-        func observe(webView: WKWebView, onScroll: ((Double) -> Void)?) {
+        func observe(webView: WKWebView, onScroll: ((Double) -> Void)?, onProgress: ((Double) -> Void)?) {
             stopObserving()
             observedWebView = webView
-            guard let onScroll else { return }
-            observation = webView.scrollView.observe(\.contentOffset, options: [.new]) { scrollView, _ in
-                let offset = Double(scrollView.contentOffset.y)
-                // WebKit reports the offset on the main thread; the hop makes
-                // that explicit for the SwiftUI state write it triggers.
-                Task { @MainActor in
-                    onScroll(offset)
+
+            if let onScroll {
+                offsetObservation = webView.scrollView.observe(\.contentOffset, options: [.new]) { scrollView, _ in
+                    let offset = Double(scrollView.contentOffset.y)
+                    // WebKit reports the offset on the main thread; the hop makes
+                    // that explicit for the SwiftUI state write it triggers.
+                    Task { @MainActor in
+                        onScroll(offset)
+                    }
+                }
+            }
+
+            if let onProgress {
+                // `initial` so a tab that is already mid-load when it becomes
+                // visible reports where it actually is rather than waiting for
+                // the next change.
+                progressObservation = webView.observe(\.estimatedProgress, options: [.new, .initial]) { webView, _ in
+                    let progress = webView.estimatedProgress
+                    Task { @MainActor in
+                        onProgress(progress)
+                    }
                 }
             }
         }
 
         func stopObserving() {
-            observation?.invalidate()
-            observation = nil
+            offsetObservation?.invalidate()
+            offsetObservation = nil
+            progressObservation?.invalidate()
+            progressObservation = nil
             observedWebView = nil
         }
 
         deinit {
-            observation?.invalidate()
+            offsetObservation?.invalidate()
+            progressObservation?.invalidate()
         }
     }
 

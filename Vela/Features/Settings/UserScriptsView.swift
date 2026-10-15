@@ -123,6 +123,7 @@ struct UserScriptsView: View {
                 }
             }
         }
+        .browserListSurface()
         .navigationTitle("用户脚本")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: reload)

@@ -138,6 +138,30 @@ public final class BrowserWebCoordinator: NSObject {
             boundary: tab.dataBoundary,
             transition: transition
         )
+
+        // A history-API navigation changes the back/forward list without ever
+        // producing a `didFinish`, so the toolbar would keep showing whatever
+        // the last full load left there — which for a single-page app is "back
+        // disabled" on a page that can in fact go back.
+        syncNavigationAvailability(tab: tab, webView: webView(for: tab.id))
+    }
+
+    /// Copies WebKit's back/forward availability onto the tab.
+    ///
+    /// The single place that answers "can this tab go back", called from every
+    /// event that can change the answer. WebKit owns the list; the tab only ever
+    /// mirrors it, because the toolbar has to be able to read it as plain state.
+    func syncNavigationAvailability(tab: BrowserTabState, webView: WKWebView?) {
+        guard let webView else {
+            // No live web view means no history: a discarded tab's back/forward
+            // list went with it, so leaving the old flags set would offer a
+            // button that does nothing.
+            tab.canGoBack = false
+            tab.canGoForward = false
+            return
+        }
+        tab.canGoBack = webView.canGoBack
+        tab.canGoForward = webView.canGoForward
     }
 
     private func handleScrollMessage(_ message: WKScriptMessage, tab: BrowserTabState, webView: WKWebView) {
@@ -555,19 +579,46 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                     openSource: .webTargetBlank,
                     activate: !self.settings.preferences.openNewTabsInBackground
                 )
-                if let created, !self.settings.preferences.openNewTabsInBackground {
-                    _ = self.tabManager?.ensureWebView(for: created)
+                if let created {
+                    // Loaded even when the tab opened in the background: the
+                    // user asked for the link, and a tab that is still blank
+                    // when they switch to it has not honoured that.
+                    self.tabManager?.load(url: url, in: created)
                 }
                 decisionHandler(.cancel)
                 return
             }
 
-            // 3. A user-typed or link navigation updates the pending URL so the
+            // 3. Only a main-frame navigation is a page view. A subframe — an
+            //    ad iframe, an embedded player, a comment widget — is not a page
+            //    the user visited, and recording it would both flood history and
+            //    put the iframe's URL in the address bar while the real page was
+            //    still loading. `targetFrame` is non-nil here because the
+            //    `target="_blank"` case above already returned.
+            guard navigationAction.targetFrame?.isMainFrame != false else {
+                decisionHandler(.allow)
+                return
+            }
+
+            // 4. A user-typed or link navigation updates the pending URL so the
             //    address bar shows it immediately, before the page commits.
             //    iOS reports an address-bar load as `.other` — there is no
             //    `.typed` case on `WKNavigationType`, unlike macOS.
             if navigationAction.navigationType == .other || navigationAction.navigationType == .linkActivated {
                 tab.pendingUrl = url.absoluteString
+            }
+
+            // 5. Going back, going forward and reloading are re-displays of a
+            //    page already in the history, not new visits. Recording them
+            //    would inflate every visit count — which is what the new-tab
+            //    "常用网站" grid ranks by — and fill the history list with the
+            //    same URL over and over.
+            switch navigationAction.navigationType {
+            case .backForward, .reload, .formResubmitted:
+                decisionHandler(.allow)
+                return
+            default:
+                break
             }
 
             self.history.recordVisit(
@@ -687,6 +738,10 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                 tab.url = url.absoluteString
                 tab.pendingUrl = ""
             }
+            // The back/forward list is already settled at commit time — a
+            // pushState SPA never reaches `didFinish` for the new entry — so the
+            // toolbar is refreshed here as well as at finish.
+            self.syncNavigationAvailability(tab: tab, webView: webView)
         }
     }
 
@@ -757,7 +812,16 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         // A cancellation is not a failure: it is what a redirect or a
         // `decisionHandler(.cancel)` produces, and surfacing it would put an
         // error page over a navigation the user did not notice happening.
+        //
+        // The loading state is still cleared. A cancelled navigation — the
+        // `target="_blank"` path above cancels every one of them — otherwise
+        // leaves the address bar showing a stop button and an indeterminate
+        // progress sweep over a page that finished loading seconds ago, with
+        // nothing left that would ever clear it.
         if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled {
+            tab.isLoading = false
+            tab.pendingUrl = ""
+            self.syncNavigationAvailability(tab: tab, webView: webView)
             return
         }
 
@@ -768,7 +832,6 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         tab.canGoBack = webView.canGoBack
         tab.canGoForward = webView.canGoForward
     }
-
     static func describe(error: NSError) -> String {
         if error.domain == NSURLErrorDomain {
             switch error.code {
@@ -803,6 +866,54 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         guard let tabManager else { return nil }
         return tabManager.tabs.first { tabManager.webView(for: $0.id) === webView }
     }
+
+    /// The live web view for a tab id, or nil when the tab is cold.
+    @MainActor
+    func webView(for tabId: String) -> WKWebView? {
+        tabManager?.webView(for: tabId)
+    }
+}
+
+// MARK: - History navigation
+
+@MainActor
+extension BrowserWebCoordinator {
+    /// Goes back in the active tab's history.
+    ///
+    /// Returns false when there is nothing to go back to, which is the signal
+    /// the shell uses to fall back to the home surface. Asking WebKit and then
+    /// acting — rather than reading a flag the toolbar also reads — keeps the
+    /// two from disagreeing: the button's enabled state is a hint, and this is
+    /// the authority.
+    @discardableResult
+    public func goBack() -> Bool {
+        guard let tab = tabManager?.activeTab,
+              let webView = tabManager?.webView(for: tab.id),
+              webView.canGoBack else { return false }
+        webView.goBack()
+        return true
+    }
+
+    /// Goes forward in the active tab's history.
+    @discardableResult
+    public func goForward() -> Bool {
+        guard let tab = tabManager?.activeTab,
+              let webView = tabManager?.webView(for: tab.id),
+              webView.canGoForward else { return false }
+        webView.goForward()
+        return true
+    }
+
+    /// Re-reads the active tab's back/forward availability from WebKit.
+    ///
+    /// Called by the shell when the visible tab changes: the flags on a
+    /// background tab were written whenever it last finished loading, and a tab
+    /// whose web view was rebuilt in between would otherwise show the state of
+    /// the web view that no longer exists.
+    public func refreshNavigationAvailability() {
+        guard let tab = tabManager?.activeTab else { return }
+        syncNavigationAvailability(tab: tab, webView: tabManager?.webView(for: tab.id))
+    }
 }
 
 // MARK: - UI delegate
@@ -827,8 +938,8 @@ extension BrowserWebCoordinator: WKUIDelegate {
                 openSource: .webWindowOpen,
                 activate: !self.settings.preferences.openNewTabsInBackground
             )
-            if let created, !self.settings.preferences.openNewTabsInBackground {
-                _ = self.tabManager?.ensureWebView(for: created)
+            if let created {
+                self.tabManager?.load(url: url, in: created)
             }
         }
         return nil

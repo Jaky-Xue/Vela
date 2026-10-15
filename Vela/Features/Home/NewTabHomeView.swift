@@ -49,17 +49,55 @@ struct NewTabHomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrowserSpacing.loose) {
+                hero
                 if !shortcuts.isEmpty { shortcutBlock }
                 if !recentlyClosed.isEmpty { recentlyClosedBlock }
                 footer
             }
             .padding(.horizontal, BrowserSpacing.regular + 4)
-            .padding(.top, BrowserSpacing.regular)
+            .padding(.top, BrowserSpacing.loose)
             .padding(.bottom, BrowserSpacing.loose)
         }
         .background(palette.surface)
         .scrollDismissesKeyboard(.immediately)
         .onAppear(perform: reload)
+    }
+
+    // MARK: - Hero
+
+    /// The greeting.
+    ///
+    /// A new-tab surface that opens straight onto a grid of icons gives the eye
+    /// nowhere to land first. The greeting is that landing point, and it is also
+    /// the only place the surface speaks: everything below it is content the
+    /// user brought with them.
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: BrowserSpacing.hairline + 2) {
+            Text(greeting)
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .foregroundStyle(palette.primaryText)
+            Text(subtitle)
+                .font(.subheadline)
+                .foregroundStyle(palette.secondaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, BrowserSpacing.hairline)
+    }
+
+    private var greeting: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 5..<11: return "早上好"
+        case 11..<13: return "中午好"
+        case 13..<18: return "下午好"
+        case 18..<23: return "晚上好"
+        default: return "夜深了"
+        }
+    }
+
+    private var subtitle: String {
+        let engine = env.settings.preferences.searchEngine.activeEngine.name
+        let today = Date().formatted(.dateTime.month(.wide).day().weekday(.wide))
+        return "\(today) · 用 \(engine) 搜索或输入网址"
     }
 
     // MARK: - Shortcuts
@@ -110,16 +148,18 @@ struct NewTabHomeView: View {
             onNavigate(url)
         } label: {
             VStack(spacing: BrowserSpacing.tight) {
-                SiteIconView(host: entry.host, size: 52, faviconUrl: faviconUrl(for: entry))
+                SiteIconView(host: entry.host, size: 52)
                     .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
                 Text(entry.displayHost)
-                    .font(.caption2)
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(palette.secondaryText)
                     .lineLimit(1)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, BrowserSpacing.compact)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ShortcutTileButtonStyle())
         .contextMenu {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {
                 guard let url = URL(string: entry.url) else { return }
@@ -129,23 +169,13 @@ struct NewTabHomeView: View {
                     openSource: .shortcut,
                     activate: false
                 )
-                _ = env.tabManager.ensureWebView(for: tab)
+                env.tabManager.load(url: url, in: tab)
             }
             Button("从常用网站中移除", systemImage: "xmark.circle", role: .destructive) {
                 env.history.remove(entry)
                 reload()
             }
         }
-    }
-
-    /// A favicon URL for a shortcut, or `nil`.
-    ///
-    /// WebKit does not expose a page's icon to the host app, so the only route
-    /// is the site's own `/favicon.ico` — which most sites serve and the rest
-    /// 404, in which case `SiteIconView` falls back to its letter swatch.
-    private func faviconUrl(for entry: HistoryUrl) -> String? {
-        guard let host = URL(string: entry.url)?.host, !host.isEmpty else { return nil }
-        return "https://\(host)/favicon.ico"
     }
 
     // MARK: - Recently closed
@@ -165,7 +195,9 @@ struct NewTabHomeView: View {
                             privacyMode: record.privacyMode,
                             openSource: .restore
                         )
-                        _ = env.tabManager.ensureWebView(for: tab)
+                        if let url = URL(string: record.url) {
+                            env.tabManager.load(url: url, in: tab)
+                        }
                         env.tabManager.removeRecentlyClosedRecord(id: record.id)
                         reload()
                     } label: {
@@ -212,29 +244,41 @@ struct NewTabHomeView: View {
 
     // MARK: - Footer
 
+    /// The two destinations the home surface offers besides a URL.
+    ///
+    /// Pills rather than bare labels, so they read as controls and not as the
+    /// page's own text — and so they do not disappear into the surface the way
+    /// a grey word on a grey background does.
     private var footer: some View {
-        HStack(spacing: BrowserSpacing.regular + 2) {
-            Button {
-                onOpenBookmarks()
-            } label: {
-                Label("书签", systemImage: "book")
-                    .font(.footnote)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(palette.secondaryText)
+        HStack(spacing: BrowserSpacing.compact) {
+            footerPill(title: "书签", systemImage: "book", action: onOpenBookmarks)
 
-            Button {
+            footerPill(title: "无痕标签页", systemImage: "eyeglasses") {
                 env.tabManager.createTab(privacyMode: .private, openSource: .user)
-            } label: {
-                Label("无痕标签页", systemImage: "eyeglasses")
-                    .font(.footnote)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(palette.secondaryText)
 
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(.top, BrowserSpacing.tight)
+    }
+
+    private func footerPill(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(palette.secondaryText)
+                .padding(.horizontal, BrowserSpacing.compact + 4)
+                .padding(.vertical, BrowserSpacing.tight + 2)
+                .background(palette.controlFill.opacity(0.7), in: Capsule())
+                .overlay {
+                    Capsule().strokeBorder(palette.cardStroke, lineWidth: 0.5)
+                }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Data
@@ -257,5 +301,19 @@ struct NewTabHomeView: View {
 
         shortcuts = picked
         recentlyClosed = env.tabManager.recentlyClosed.filter { $0.privacyMode == .regular }
+    }
+}
+
+/// The press feedback for a shortcut tile.
+///
+/// The tile has no panel of its own — the icon and the label float on the
+/// surface — so without this a tap on a shortcut is completely silent until the
+/// page it opens appears.
+private struct ShortcutTileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }

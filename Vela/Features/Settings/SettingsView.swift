@@ -15,6 +15,7 @@ import UIKit
 
 struct SettingsView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -146,6 +147,7 @@ struct SettingsView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .browserListSurface()
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -163,10 +165,11 @@ struct SettingsView: View {
                 .frame(width: 26, height: 26)
                 .background(tint, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             Text(title)
+                .foregroundStyle(palette.primaryText)
             Spacer()
             if !detail.isEmpty {
                 Text(detail)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondaryText)
                     .font(.subheadline)
             }
         }
@@ -429,17 +432,20 @@ struct AppearanceSettingsView: View {
                             Circle()
                                 .fill(candidate.accent)
                                 .frame(width: 22, height: 22)
+                                .overlay {
+                                    Circle().strokeBorder(palette.cardStroke, lineWidth: 0.5)
+                                }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(candidate.displayName)
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(palette.primaryText)
                                 Text("\(candidate.light.accent.hexDescription) · \(candidate.dark.accent.hexDescription)")
                                     .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(palette.secondaryText)
                             }
                             Spacer()
                             if env.settings.preferences.themePaletteId == candidate.id {
                                 Image(systemName: "checkmark")
-                                    .foregroundStyle(.tint)
+                                    .foregroundStyle(palette.accent)
                             }
                         }
                     }

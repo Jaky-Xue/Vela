@@ -19,6 +19,7 @@ import LocalAuthentication
 
 struct TabsOverviewView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
 
     @State private var showPrivateTabs = false
@@ -48,8 +49,12 @@ struct TabsOverviewView: View {
                     grid
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(palette.surface)
             .navigationTitle(showPrivateTabs ? "无痕标签页" : "标签页")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(palette.chromeBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar { toolbarContent }
             .safeAreaInset(edge: .bottom) { bottomBar }
         }
@@ -118,15 +123,18 @@ struct TabsOverviewView: View {
     }
 
     private var lockedState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: BrowserSpacing.regular) {
             Image(systemName: "lock.fill")
                 .font(.system(size: 34))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.accent)
+                .frame(width: 64, height: 64)
+                .background(palette.accent.opacity(0.12), in: Circle())
             Text("无痕标签页已锁定")
                 .font(.headline)
+                .foregroundStyle(palette.primaryText)
             Text("需要验证身份才能查看无痕标签页。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.secondaryText)
                 .multilineTextAlignment(.center)
             Button("解锁") { pendingPrivateUnlock = true }
                 .buttonStyle(.borderedProminent)
@@ -152,7 +160,7 @@ struct TabsOverviewView: View {
     }
 
     private var bottomBar: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: BrowserSpacing.regular) {
             Button {
                 // reopen action is scoped to the mode being viewed, so a private
                 // tab can never be restored into the regular list.
@@ -165,6 +173,7 @@ struct TabsOverviewView: View {
             } label: {
                 Label("重新打开", systemImage: "arrow.uturn.backward")
                     .font(.system(size: 14))
+                    .foregroundStyle(palette.primaryText)
             }
             .buttonStyle(.plain)
             .disabled(tabManager.recentlyClosed.allSatisfy {
@@ -180,21 +189,29 @@ struct TabsOverviewView: View {
             .buttonStyle(.plain)
             .foregroundStyle(.red)
 
-            Spacer()
+            Spacer(minLength: 0)
 
             Text("\(visibleTabs.count) 个标签页")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.secondaryText)
                 .monospacedDigit()
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.horizontal, BrowserSpacing.regular + 4)
+        .padding(.vertical, BrowserSpacing.compact + 2)
         .background(.bar)
     }
 }
 
 /// One tab card.
+///
+/// The card is a tappable surface with a real button inside it, rather than a
+/// `Button` wrapping another `Button`. Nested buttons are resolved by whichever
+/// gesture SwiftUI decides wins, which in practice made the close control also
+/// select the tab it was closing — and closed a different tab than the one the
+/// user aimed at, because selection re-orders the grid under the finger.
 private struct TabCard: View {
+    @Environment(\.browserPalette) private var palette
+
     var tab: BrowserTabState
     var isActive: Bool
     var blurPreview: Bool
@@ -203,89 +220,135 @@ private struct TabCard: View {
     var onPin: () -> Void
 
     var body: some View {
-        Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    SiteIconView(host: tab.displayHost, size: 18, faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl)
-                    Text(tab.displayTitle)
-                        .font(.system(size: 13, weight: .medium))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .foregroundStyle(.primary)
-                    Spacer(minLength: 0)
-                    if tab.pinned {
-                        Image(systemName: "pin.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                    }
-                    if tab.audible {
-                        Image(systemName: tab.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Text(tab.isHome ? "新标签页" : tab.displayHost)
-                    .font(.system(size: 11))
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
-
+        ZStack(alignment: .topTrailing) {
+            VStack(alignment: .leading, spacing: 0) {
+                header
                 Spacer(minLength: 0)
+                footer
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 124)
+            .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+            .onTapGesture(perform: onSelect)
 
-                HStack {
-                    if tab.isLoading {
-                        ProgressRing(progress: tab.estimatedProgress)
-                            .frame(width: 12, height: 12)
-                    }
-                    Spacer()
-                    Button(action: onClose) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .semibold))
-                            .padding(5)
-                            .background(Color(.tertiarySystemFill), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                }
-            }
-            .padding(11)
-            .frame(height: 116)
-            .frame(maxWidth: .infinity)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(isActive ? Color.accentColor : Color.clear, lineWidth: 2)
-            }
-            // The privacy blur is applied to the title block rather than to the
-            // whole card, so the close button stays legible on a locked screen.
-            .blur(radius: blurPreview ? 4 : 0)
+            closeButton
         }
-        .buttonStyle(.plain)
+        .browserCard(
+            material: .thinMaterial,
+            radius: BrowserRadius.card,
+            elevation: .card,
+            tint: cardTint
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                .strokeBorder(
+                    isActive ? palette.accent : palette.cardStroke,
+                    lineWidth: isActive ? 2 : 0.5
+                )
+                .allowsHitTesting(false)
+        }
         .contextMenu {
             Button(tab.pinned ? "取消固定" : "固定标签页", systemImage: tab.pinned ? "pin.slash" : "pin", action: onPin)
             Button("关闭标签页", systemImage: "xmark", role: .destructive, action: onClose)
         }
     }
+
+    /// The active tab is tinted as well as ringed. On a grid of a dozen cards a
+    /// ring alone is easy to lose; the fill is what makes the current tab read
+    /// as the current tab at a glance.
+    private var cardTint: Color {
+        isActive ? palette.accent.opacity(0.14) : palette.card.opacity(0.35)
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: BrowserSpacing.tight + 2) {
+            SiteIconView(
+                host: tab.displayHost,
+                size: 26,
+                faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl
+            )
+            .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(tab.displayTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .foregroundStyle(palette.primaryText)
+                Text(tab.isHome ? "新标签页" : tab.displayHost)
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+                    .foregroundStyle(palette.secondaryText)
+            }
+            .blur(radius: blurPreview ? 4 : 0)
+        }
+        // Room for the close button, which floats over the top-right corner.
+        .padding(.trailing, 22)
+    }
+
+    private var footer: some View {
+        HStack(spacing: BrowserSpacing.tight) {
+            if tab.isLoading {
+                ProgressRing(progress: tab.estimatedProgress)
+                    .frame(width: 12, height: 12)
+            }
+            if tab.pinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(palette.accent)
+            }
+            if tab.audible {
+                Image(systemName: tab.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(palette.secondaryText)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(height: 14)
+    }
+
+    private var closeButton: some View {
+        Button(action: onClose) {
+            Image(systemName: "xmark")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(palette.secondaryText)
+                .frame(width: 20, height: 20)
+                .background(palette.controlFill, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(8)
+        .accessibilityLabel("关闭标签页")
+    }
 }
 
 /// The card that opens a new tab.
 private struct NewTabCard: View {
+    @Environment(\.browserPalette) private var palette
+
     var onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 8) {
+            VStack(spacing: BrowserSpacing.tight) {
                 Image(systemName: "plus")
                     .font(.system(size: 22, weight: .light))
                 Text("新建标签页")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, weight: .medium))
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 116)
-            .foregroundStyle(.secondary)
-            .background(Color(.tertiarySystemFill))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(height: 124)
+            .foregroundStyle(palette.secondaryText)
+            .background(palette.controlFill.opacity(0.5), in: RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+            // A dashed border rather than a stroke: this card is not a tab, and
+            // it should not read as one with an empty title.
+            .overlay {
+                RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                    .strokeBorder(
+                        palette.secondaryText.opacity(0.35),
+                        style: StrokeStyle(lineWidth: 1, dash: [5, 4])
+                    )
+            }
         }
         .buttonStyle(.plain)
     }

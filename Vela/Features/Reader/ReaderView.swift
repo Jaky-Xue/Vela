@@ -37,28 +37,38 @@ struct ReaderView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: BrowserSpacing.compact) {
             Button {
                 onClose()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(palette.secondaryText)
+                    .frame(width: 28, height: 28)
+                    .background(palette.controlFill, in: Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("关闭阅读模式")
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(article.title.isEmpty ? "阅读模式" : article.title)
                     .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(palette.primaryText)
                     .lineLimit(1)
                 if !article.byline.isEmpty {
                     Text(article.byline)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                         .lineLimit(1)
                 }
             }
 
             Spacer(minLength: 0)
+
+            Text("约 \(article.estimatedReadingMinutes) 分钟")
+                .font(.caption)
+                .foregroundStyle(palette.secondaryText)
+                .monospacedDigit()
 
             Menu {
                 Section("字号") {
@@ -78,17 +88,26 @@ struct ReaderView: View {
                 }
             } label: {
                 Image(systemName: "textformat.size")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(palette.primaryText)
+                    .frame(width: 28, height: 28)
+                    .background(palette.controlFill, in: Circle())
             }
-
-            Text("约 \(article.estimatedReadingMinutes) 分钟")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+            .accessibilityLabel("阅读设置")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.bar)
+        .padding(.horizontal, BrowserSpacing.compact + 2)
+        .padding(.vertical, BrowserSpacing.tight)
+        // The same floating panel as the browser's own chrome, so entering
+        // reader mode changes the document rather than the application.
+        .browserFloatingChrome(
+            radius: BrowserRadius.card,
+            material: .regularMaterial,
+            tintStrength: 0.5,
+            elevation: .card
+        )
+        .padding(.horizontal, BrowserChrome.sideInset)
+        .padding(.top, BrowserChrome.topInset)
+        .padding(.bottom, BrowserSpacing.tight)
     }
 
     /// The article HTML with a reading stylesheet around it.

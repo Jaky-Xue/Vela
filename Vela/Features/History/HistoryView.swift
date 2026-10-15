@@ -19,6 +19,7 @@ import UIKit
 
 struct HistoryView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
@@ -83,6 +84,7 @@ struct HistoryView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .browserListSurface()
         .searchable(text: $searchText, prompt: "搜索历史记录")
         .navigationTitle("历史记录")
         .navigationBarTitleDisplayMode(.inline)
@@ -133,12 +135,13 @@ struct HistoryView: View {
         } label: {
             HStack(spacing: 6) {
                 Text(group.displayTitle)
+                    .foregroundStyle(palette.secondaryText)
                 Text("\(group.entries.count)")
                     .font(.caption2.weight(.medium))
                     .monospacedDigit()
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
-                    .background(Color.secondary.opacity(0.15), in: Capsule())
+                    .background(palette.controlFill, in: Capsule())
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .bold))
@@ -171,7 +174,7 @@ struct HistoryView: View {
                     Text(entry.displayTitle)
                         .font(.body)
                         .lineLimit(1)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(palette.primaryText)
                     HStack(spacing: 6) {
                         Text(entry.displayHost)
                             .lineLimit(1)
@@ -185,7 +188,7 @@ struct HistoryView: View {
                             .monospacedDigit()
                     }
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondaryText)
                 }
                 Spacer(minLength: 0)
             }
@@ -240,9 +243,7 @@ struct HistoryView: View {
 
     private func open(_ entry: HistoryUrl) {
         guard let url = URL(string: entry.url), let tab = env.tabManager.activeTab else { return }
-        tab.isHome = false
-        tab.url = url.absoluteString
-        env.tabManager.ensureWebView(for: tab).load(URLRequest(url: url))
+        env.tabManager.load(url: url, in: tab)
         dismiss()
     }
 
@@ -254,7 +255,7 @@ struct HistoryView: View {
             openSource: .history,
             activate: false
         )
-        _ = env.tabManager.ensureWebView(for: tab)
+        env.tabManager.load(url: url, in: tab)
     }
 
     private func removeDay(containing entry: HistoryUrl) {
@@ -286,6 +287,7 @@ struct HistoryView: View {
 
 /// One history entry's detail, with every visit.
 private struct HistoryDetailSheet: View {
+    @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
 
     var entry: HistoryUrl
@@ -298,9 +300,10 @@ private struct HistoryDetailSheet: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(entry.displayTitle)
                             .font(.headline)
+                            .foregroundStyle(palette.primaryText)
                         Text(entry.url)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondaryText)
                             .textSelection(.enabled)
                     }
                     .padding(.vertical, 4)
@@ -336,6 +339,7 @@ private struct HistoryDetailSheet: View {
             }
             .navigationTitle("详细信息")
             .navigationBarTitleDisplayMode(.inline)
+            .browserListSurface()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }

@@ -13,6 +13,7 @@ import UIKit
 
 struct BookmarksView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
 
     @State private var path: [String] = []
@@ -80,6 +81,10 @@ struct BookmarksView: View {
             }
         }
         .listStyle(.plain)
+        // A plain list rather than grouped, so the rows are cards at the root of
+        // the screen and the folder hierarchy shows as indentation-free depth
+        // rather than as a stack of nested panels.
+        .browserListSurface(rowsAreCards: false)
         .searchable(text: $searchText, prompt: "搜索书签")
         .navigationTitle(isSearching ? "搜索结果" : currentTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -171,7 +176,7 @@ struct BookmarksView: View {
         if currentFolderId == nil && !isSearching {
             Text("书签")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.secondaryText)
                 .textCase(nil)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
@@ -201,7 +206,7 @@ struct BookmarksView: View {
                 if node.isFolder {
                     Image(systemName: "folder.fill")
                         .font(.system(size: 16))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(palette.accent)
                         .frame(width: 28, height: 28)
                 } else {
                     SiteIconView(host: node.displayHost, size: 28)
@@ -211,16 +216,16 @@ struct BookmarksView: View {
                     Text(node.title)
                         .font(.body)
                         .lineLimit(1)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(palette.primaryText)
                     if !node.isFolder {
                         Text(node.displayHost)
                             .font(.caption)
                             .lineLimit(1)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondaryText)
                     } else {
                         Text("\(item.descendantCount) 项")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondaryText)
                     }
                 }
 
@@ -229,7 +234,7 @@ struct BookmarksView: View {
                 if node.isFolder {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(palette.secondaryText.opacity(0.6))
                 }
             }
         }
@@ -259,7 +264,7 @@ struct BookmarksView: View {
                         openSource: .bookmark,
                         activate: false
                     )
-                    _ = env.tabManager.ensureWebView(for: tab)
+                    env.tabManager.load(url: url, in: tab)
                 }
                 Button("拷贝网址", systemImage: "doc.on.doc") {
                     UIPasteboard.general.string = node.url
@@ -273,10 +278,7 @@ struct BookmarksView: View {
 
     private func openInBrowser(_ url: URL) {
         guard let tab = env.tabManager.activeTab else { return }
-        tab.isHome = false
-        tab.url = url.absoluteString
-        let webView = env.tabManager.ensureWebView(for: tab)
-        webView.load(URLRequest(url: url))
+        env.tabManager.load(url: url, in: tab)
         dismiss()
     }
 
@@ -335,6 +337,7 @@ private struct BookmarkEditSheet: View {
             }
             .navigationTitle(node.isFolder ? "编辑文件夹" : "编辑书签")
             .navigationBarTitleDisplayMode(.inline)
+            .browserListSurface()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }

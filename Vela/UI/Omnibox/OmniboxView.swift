@@ -57,27 +57,47 @@ struct OmniboxView: View {
 
             trailingAction
         }
-        .padding(.horizontal, BrowserSpacing.compact)
+        .padding(.horizontal, BrowserSpacing.compact + 2)
         .frame(height: BrowserMetrics.addressBarHeight)
         .background {
-            let shape = RoundedRectangle(cornerRadius: BrowserRadius.field, style: .continuous)
-            shape.fill(palette.controlFill.opacity(0.55))
-            shape.fill(.ultraThinMaterial)
+            // The progress line is painted inside the panel rather than over it,
+            // so its ends follow the capsule's corner instead of hanging past it.
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                AddressProgressLine(
+                    progress: progress,
+                    isLoading: isLoading,
+                    tint: palette.accent
+                )
+            }
         }
+        // Floating rather than being a strip of the top bar: the omnibox is the
+        // control the whole chrome is arranged around, and giving it its own
+        // silhouette is what makes that read at a glance. The tint under the
+        // material is heavier here than on the toolbar because a URL has to stay
+        // legible over whatever the page behind it happens to be.
+        .browserFloatingChrome(
+            radius: BrowserRadius.omnibox,
+            material: .regularMaterial,
+            tintStrength: 0.6,
+            elevation: .card
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: BrowserRadius.field, style: .continuous)
-                .strokeBorder(palette.cardStroke, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
+                .strokeBorder(isEditingStroke, lineWidth: 1)
+                .allowsHitTesting(false)
         }
-        .overlay(alignment: .bottom) {
-            AddressProgressLine(
-                progress: progress,
-                isLoading: isLoading,
-                tint: palette.accent
-            )
-        }
-        .clipShape(RoundedRectangle(cornerRadius: BrowserRadius.field, style: .continuous))
-        .animation(.easeOut(duration: 0.15), value: viewModel.isEditing)
+        .animation(.easeOut(duration: 0.18), value: viewModel.isEditing)
         .animation(.easeOut(duration: 0.15), value: viewModel.text.isEmpty)
+    }
+
+    /// The ring drawn around the field while it is open.
+    ///
+    /// The omnibox is the only control whose "focused" state is a mode the rest
+    /// of the chrome reacts to, so the state is drawn rather than left to the
+    /// caret alone.
+    private var isEditingStroke: Color {
+        viewModel.isEditing ? palette.accent.opacity(0.55) : .clear
     }
 
     // MARK: - Field
@@ -124,12 +144,30 @@ struct OmniboxView: View {
     /// The lock is the only security indicator iOS exposes; WebKit reports it
     /// through the page's URL scheme, so the badge is derived from the URL
     /// rather than from a certificate inspection.
+    ///
+    /// Drawn as a tinted disc rather than a bare glyph, so the leading edge of
+    /// the omnibox has the same visual weight as the trailing reload button and
+    /// the field between them reads as the middle of three parts.
     private var securityBadge: some View {
-        Image(systemName: isSecure ? "lock.fill" : "globe")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(isSecure ? Color.green : palette.secondaryText)
-            .frame(width: 14)
+        Image(systemName: securitySymbol)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(securityTint)
+            .frame(width: 26, height: 26)
+            .background(securityTint.opacity(0.14), in: Circle())
             .accessibilityHidden(true)
+    }
+
+    /// The badge's glyph. On the home surface there is no page and so no origin
+    /// to report, and a globe would be a claim about a document that is not
+    /// there — a magnifier says what the field does instead.
+    private var securitySymbol: String {
+        guard !viewModel.currentPageUrl.isEmpty else { return "magnifyingglass" }
+        return isSecure ? "lock.fill" : "globe"
+    }
+
+    private var securityTint: Color {
+        guard !viewModel.currentPageUrl.isEmpty else { return palette.secondaryText }
+        return isSecure ? .green : palette.secondaryText
     }
 
     @ViewBuilder

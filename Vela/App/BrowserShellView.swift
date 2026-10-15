@@ -108,6 +108,12 @@ struct BrowserShellView: View {
             lastScrollOffset = 0
             env.webCoordinator.clearFindInPage()
             omnibox.endEditing()
+            // The tab's back/forward flags were written when it last finished
+            // loading. If its web view was discarded and rebuilt since — which
+            // is what the live-web-view cap does to a background tab — the flags
+            // describe a web view that no longer exists, so they are re-read
+            // from the one that does.
+            env.webCoordinator.refreshNavigationAvailability()
             syncAddressText()
         }
         .onChange(of: activeTab?.url) { _, _ in syncAddressText() }
@@ -122,14 +128,20 @@ struct BrowserShellView: View {
         .sheet(isPresented: $showHistory) {
             NavigationStack { HistoryView() }
                 .environment(env)
+                // Applied to the stack rather than to the list so every pushed
+                // screenshot — the day groups, an entry's detail sheet — shares
+                // the palette without each one restating it.
+                .browserListSurface()
         }
         .sheet(isPresented: $showDownloads) {
             NavigationStack { DownloadsView() }
                 .environment(env)
+                .browserListSurface()
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack { SettingsView() }
                 .environment(env)
+                .browserListSurface()
         }
         .sheet(isPresented: $showShareSheet) {
             if let tab = activeTab, let url = URL(string: tab.url) {
@@ -216,6 +228,9 @@ struct BrowserShellView: View {
                         isHome: false,
                         onScroll: { offset in
                             handleScroll(offset: offset)
+                        },
+                        onProgress: { progress in
+                            tab.estimatedProgress = progress
                         }
                     )
                     .id("web-\(tab.id)")
@@ -254,7 +269,9 @@ struct BrowserShellView: View {
     /// The address bar, pinned to the top.
     ///
     /// The material is painted behind the bar rather than by it, so it reaches
-    /// up under the status bar without the controls themselves moving.
+    /// up under the status bar without the omnibox itself moving — which is what
+    /// lets the omnibox be inset from the top edge and still have the blur
+    /// behind it start at the very top of the screen.
     private var topBar: some View {
         OmniboxView(
             viewModel: omnibox,
@@ -264,13 +281,10 @@ struct BrowserShellView: View {
             onReload: reloadActiveTab,
             onStop: { tabManager.webView(for: tabManager.activeTabId)?.stopLoading() }
         )
-        .padding(.horizontal, BrowserSpacing.compact)
-        .padding(.vertical, BrowserSpacing.tight)
-        .background {
-            Rectangle()
-                .fill(.bar)
-                .ignoresSafeArea(edges: .top)
-        }
+        .padding(.horizontal, BrowserChrome.sideInset)
+        .padding(.top, BrowserChrome.topInset)
+        .padding(.bottom, BrowserChrome.topInset)
+        .browserChromeSubstrate(edge: .top)
     }
 
     /// The page, and whatever floats over it.
@@ -318,7 +332,7 @@ struct BrowserShellView: View {
 
     /// The find bar and the toolbar, pinned to the bottom.
     private var bottomBar: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: BrowserSpacing.tight) {
             if showFindBar {
                 FindBar(
                     query: $findQuery,
@@ -341,8 +355,8 @@ struct BrowserShellView: View {
                 BottomToolbarView(
                     actions: BrowserToolbarAction.defaultOrder,
                     tabCount: tabManager.tabs.count,
-                    canGoBack: activeTab?.canGoBack ?? false,
-                    canGoForward: activeTab?.canGoForward ?? false,
+                    canGoBack: canGoBack,
+                    canGoForward: canGoForward,
                     adBlockActive: env.settings.adBlockSettings.preferences.enabled,
                     readerAvailable: env.settings.preferences.readerModeAvailable && !(activeTab?.isHome ?? true),
                     onAction: handleToolbarAction
@@ -350,15 +364,38 @@ struct BrowserShellView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .padding(.horizontal, BrowserSpacing.compact)
-        .padding(.top, BrowserSpacing.hairline)
-        .padding(.bottom, BrowserSpacing.hairline)
-        .background {
-            Rectangle()
-                .fill(.bar)
-                .ignoresSafeArea(edges: .bottom)
-        }
+        .padding(.horizontal, BrowserChrome.sideInset)
+        .padding(.top, BrowserSpacing.tight)
+        .padding(.bottom, BrowserChrome.bottomInset)
+        .browserChromeSubstrate(edge: .bottom)
         .offset(y: toolbarOffset)
+    }
+
+    // MARK: - Back and forward availability
+
+    /// Whether the back button should be live.
+    ///
+    /// True on any page, not only on a page with history: backing out of the
+    /// first page of a tab returns to the home surface rather than doing
+    /// nothing, which is the behaviour `BrowserHomeTerminalBackPlan` describes.
+    /// It is false on the home surface itself — there is nothing behind it, and
+    /// the web view underneath still holds the page that was left, so leaving
+    /// the button live there would silently re-open it.
+    private var canGoBack: Bool {
+        guard let tab = activeTab else { return false }
+        return !tab.isHome
+    }
+
+    /// Whether the forward button should be live.
+    ///
+    /// Read from the tab's mirrored copy of WebKit's list rather than asked of
+    /// the web view directly, so the toolbar is a pure function of observable
+    /// state and re-renders when the list changes. The home surface pins it off
+    /// for the same reason back is pinned off: the page behind the home surface
+    /// is not a destination the user is currently at.
+    private var canGoForward: Bool {
+        guard let tab = activeTab, !tab.isHome else { return false }
+        return tab.canGoForward
     }
 
     /// The tallest the suggestion card may grow.
@@ -429,7 +466,7 @@ struct BrowserShellView: View {
         if offset <= 8 {
             target = 0
         } else if offset > previous {
-            target = BrowserMetrics.toolbarHeight + BrowserSpacing.loose + 4
+            target = BrowserMetrics.toolbarCollapseDistance
         } else {
             target = 0
         }
@@ -445,33 +482,22 @@ struct BrowserShellView: View {
     private func handleToolbarAction(_ action: BrowserToolbarAction) {
         switch action {
         case .back:
-            guard let tab = activeTab, let webView = tabManager.webView(for: tab.id) else { return }
-            if webView.canGoBack {
-                webView.goBack()
-            } else if tab.isTerminalBackAvailable {
-                // Backing out of the last page returns to the home surface
-                // rather than doing nothing at all.
-                tab.isHome = true
-                tab.url = ""
-                tab.title = ""
-                syncAddressText()
+            guard let tab = activeTab, !tab.isHome else { return }
+            // WebKit is the authority here, not the button's own enabled state:
+            // the flags are a mirror of its list, and acting on the mirror
+            // instead of on the list is what would let a stale `true` issue a
+            // `goBack()` that does nothing. When there is genuinely nothing
+            // behind the page, the fallback is the home surface.
+            if !env.webCoordinator.goBack() {
+                goHome(tab)
             }
 
         case .forward:
-            tabManager.webView(for: activeTab?.id ?? "")?.goForward()
+            env.webCoordinator.goForward()
 
         case .home:
             guard let tab = activeTab else { return }
-            // Stop the page before leaving it: a home surface over a document
-            // still fetching is a document the user has stopped looking at, and
-            // its callbacks would keep arriving into hidden state.
-            tabManager.webView(for: tab.id)?.stopLoading()
-            isReaderActive = false
-            readerArticle = nil
-            tab.isHome = true
-            tab.url = ""
-            tab.title = ""
-            syncAddressText()
+            goHome(tab)
 
         case .tabs:
             showTabsOverview = true
@@ -494,6 +520,30 @@ struct BrowserShellView: View {
         case .menu:
             showMenu = true
         }
+    }
+
+    /// Returns a tab to the native home surface.
+    ///
+    /// The page is stopped before it is left: a home surface over a document
+    /// still fetching is a document the user has stopped looking at, and its
+    /// callbacks would keep arriving into hidden state. The web view keeps its
+    /// history, so the back and forward lists are not disturbed — only the
+    /// address the tab reports is cleared.
+    private func goHome(_ tab: BrowserTabState) {
+        tabManager.webView(for: tab.id)?.stopLoading()
+        isReaderActive = false
+        readerArticle = nil
+        showFindBar = false
+        findQuery = ""
+        tab.isHome = true
+        tab.url = ""
+        tab.title = ""
+        tab.isLoading = false
+        tab.estimatedProgress = 0
+        toolbarOffset = 0
+        lastScrollOffset = 0
+        tabManager.persistSession()
+        syncAddressText()
     }
 
     @ViewBuilder
@@ -613,10 +663,11 @@ struct BrowserShellView: View {
             return
         }
 
-        tab.isHome = false
-        tab.url = url.absoluteString
-        let webView = tabManager.ensureWebView(for: tab)
-        webView.load(URLRequest(url: url))
+        // `TabManager` owns the load, so an address-bar navigation and a link
+        // opened into a new tab go through the same path — including the one
+        // that decides whether to create the tab's web view yet. It also clears
+        // the home flag and writes the URL onto the tab.
+        tabManager.load(url: url, in: tab)
         // The transition is recorded by the navigation delegate, which is the
         // only place that sees the navigation type.
         syncAddressText()
@@ -726,9 +777,18 @@ struct FindBar: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, BrowserSpacing.compact)
+        .foregroundStyle(palette.primaryText)
+        .padding(.horizontal, BrowserSpacing.compact + 2)
         .padding(.vertical, BrowserSpacing.tight)
-        .background(.bar)
+        // The same floating panel as the toolbar it sits above, so opening the
+        // find bar reads as one more control arriving in the chrome rather than
+        // as a second kind of surface.
+        .browserFloatingChrome(
+            radius: BrowserRadius.floating,
+            material: .regularMaterial,
+            tintStrength: 0.5,
+            elevation: .card
+        )
         .onAppear { isFocused = true }
     }
 }

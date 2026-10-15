@@ -184,8 +184,6 @@ public final class BrowserTabState: Identifiable {
         self.faviconUrl = faviconUrl
     }
 
-    public var isTerminalBackAvailable: Bool { !isHome }
-
     /// The data boundary this tab writes under.
     public var dataBoundary: BrowserDataBoundary {
         BrowserDataBoundary(profileId: profileId, dataScope: dataScope, privacyMode: privacyMode)
