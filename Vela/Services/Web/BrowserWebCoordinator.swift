@@ -227,11 +227,18 @@ public final class BrowserWebCoordinator: NSObject {
 
     // MARK: - External navigation
 
+    /// Schemes whose only job is to leave the browser.
+    ///
+    /// A `tel:` or `mailto:` link that quietly did nothing would itself be a
+    /// broken link, so these keep whatever policy the user configured.
+    private static let handoffSchemes: Set<String> = [
+        "tel", "mailto", "sms", "facetime", "itms-apps", "maps", "applemaps"
+    ]
+
     /// Decides whether a non-`http(s)` navigation should leave the browser.
     ///
-    /// Ported from `ExternalNavigationPolicyService` and
-    /// `BrowserUnifiedLinkApplicationCoordinator`. The prompt is only shown when
-    /// the policy is `ask`; `block` silently drops and `allow` opens directly.
+    /// The prompt is only shown when the policy is `ask`; `block` silently drops
+    /// and `allow` opens directly.
     private func handleExternalScheme(_ url: URL, from webView: WKWebView, tab: BrowserTabState) {
         guard let scheme = url.scheme?.lowercased(), scheme != "http", scheme != "https" else { return }
 
@@ -241,9 +248,8 @@ public final class BrowserWebCoordinator: NSObject {
         }
 
         let host = URL(string: tab.url)?.host ?? ""
-        let policy = settings.externalNavigationPolicy(for: host)
 
-        switch policy {
+        switch resolvedExternalPolicy(scheme: scheme, host: host) {
         case .allow:
             UIApplication.shared.open(url)
         case .block:
@@ -255,6 +261,28 @@ public final class BrowserWebCoordinator: NSObject {
                 tabId: tab.id
             )
         }
+    }
+
+    /// The policy that actually applies to a non-`http(s)` navigation.
+    ///
+    /// An app deep link — `bilibili://`, `zhihu://`, `taobao://` and the rest —
+    /// is what a page uses to pull someone out of the browser mid-read, usually
+    /// from an "open in app" overlay the user did not ask for. Prompting still
+    /// interrupts them, every single time, so those are blocked unless the user
+    /// has ruled on this site themselves.
+    ///
+    /// A global default is not consent for every site on the web, which is why
+    /// the check is for an explicit rule rather than for the default. The
+    /// handoff schemes above are the exception: they exist to leave the browser,
+    /// so they follow the configured default.
+    private func resolvedExternalPolicy(scheme: String, host: String) -> ExternalNavigationAppOpenPolicy {
+        if Self.handoffSchemes.contains(scheme) {
+            return settings.externalNavigationPolicy(for: host)
+        }
+        if settings.hasExplicitExternalNavigationRule(for: host) {
+            return settings.externalNavigationPolicy(for: host)
+        }
+        return .block
     }
 
     /// Opens an external URL, optionally remembering the decision.
@@ -441,6 +469,18 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // A description is what a `target="_blank"` popup inherits; without it
         // WebKit refuses to create the configuration at all.
         return configuration
+    }
+
+    /// The identifier this tab presents to sites.
+    ///
+    /// Read through the protocol rather than from the settings service at the
+    /// web-view site, so there is exactly one place that answers "what does a tab
+    /// look like to a site" and the per-tab and global paths cannot disagree.
+    public func userAgent(for tab: BrowserTabState) -> String {
+        BrowserUserAgent.resolve(
+            custom: settings.preferences.customUserAgent,
+            prefersDesktop: settings.preferences.desktopSiteByDefault
+        )
     }
 
     /// Records a visit for a navigation the coordinator allowed.

@@ -622,7 +622,10 @@ struct UserAgentSettingsView: View {
             Section {
                 Toggle("默认请求桌面版网站", isOn: Binding(
                     get: { env.settings.preferences.desktopSiteByDefault },
-                    set: { value in env.settings.update { $0.desktopSiteByDefault = value } }
+                    set: { value in
+                        env.settings.update { $0.desktopSiteByDefault = value }
+                        apply(reload: true)
+                    }
                 ))
             } footer: {
                 Text("关闭后网站会看到 iPhone 的标识，多数网站会给出移动版页面。")
@@ -631,7 +634,10 @@ struct UserAgentSettingsView: View {
             Section {
                 TextField("自定义 User-Agent", text: Binding(
                     get: { env.settings.preferences.customUserAgent },
-                    set: { value in env.settings.update { $0.customUserAgent = value } }
+                    set: { value in
+                        env.settings.update { $0.customUserAgent = value }
+                        apply(reload: false)
+                    }
                 ), axis: .vertical)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -640,15 +646,28 @@ struct UserAgentSettingsView: View {
 
                 Button("恢复默认") {
                     env.settings.update { $0.customUserAgent = "" }
+                    apply(reload: true)
                 }
             } header: {
                 Text("自定义标识")
             } footer: {
-                Text("留空则使用 Vela 的默认标识。修改后需要重新加载页面才会生效。")
+                Text("填写后覆盖上面的开关，此后打开的页面都用这个标识。重新载入当前页面即可看到效果。")
             }
         }
         .navigationTitle("网页标识")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Pushes the identifier onto every open tab, and reloads the active one when
+    /// the change should be visible at once.
+    ///
+    /// A `User-Agent` only takes effect on the next request, so without this the
+    /// screen would save a value that nothing reads until the user happened to
+    /// navigate again — which is exactly how it behaved before.
+    private func apply(reload: Bool) {
+        env.tabManager.applyUserAgentToAllWebViews()
+        guard reload else { return }
+        env.tabManager.webView(for: env.tabManager.activeTabId)?.reload()
     }
 }
 

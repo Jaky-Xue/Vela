@@ -25,6 +25,12 @@ import Observation
 public protocol BrowserWebViewConfigurationProviding: AnyObject {
     func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration
     func recordVisit(url: URL, title: String, boundary: BrowserDataBoundary, transition: HistoryTransition)
+    /// The `User-Agent` a tab's web view should present.
+    ///
+    /// Part of this protocol rather than read off the settings service directly
+    /// so `TabManager` keeps owning web views without owning preferences, and so
+    /// there is one place that decides what a tab looks like to a site.
+    func userAgent(for tab: BrowserTabState) -> String
 }
 
 @MainActor
@@ -321,11 +327,7 @@ public final class TabManager {
         let configuration = configurationProvider.makeConfiguration(for: tab)
         let webView = WKWebView(frame: .zero, configuration: configuration)
 
-        // A desktop-class UA by default. A browser that announces itself as
-        // mobile Safari gets the mobile layout on most sites, which is not what
-        // a user of a tabbed browser expects. Ported from the default in
-        // `BrowserUserAgentService`; the per-site override layer sits on top.
-        webView.customUserAgent = BrowserUserAgent.defaultUserAgent
+        webView.customUserAgent = configurationProvider.userAgent(for: tab)
 
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsLinkPreview = true
@@ -334,6 +336,22 @@ public final class TabManager {
         webViews[tab.id] = webView
         tab.runtimeState = tab.id == activeTabId ? .active : .background
         return webView
+    }
+
+    /// Re-applies the `User-Agent` to every live web view.
+    ///
+    /// Called when the appearance of a tab to a site changes — the desktop-site
+    /// toggle or the custom identifier — because `customUserAgent` only takes
+    /// effect on the next request. Backgrounded tabs are updated too: a tab the
+    /// user switches back to must already be presenting the right identity, or
+    /// the change looks like it did not apply until a reload.
+    public func applyUserAgentToAllWebViews() {
+        for tab in tabs {
+            guard let webView = webViews[tab.id] else { continue }
+            let userAgent = configurationProvider.userAgent(for: tab)
+            guard webView.customUserAgent != userAgent else { continue }
+            webView.customUserAgent = userAgent
+        }
     }
 
     /// Drops a tab's web view but keeps the tab, its URL and its title.
@@ -484,6 +502,8 @@ public final class TabManager {
 /// what actually negotiates a desktop layout. The mobile string is used when the
 /// user asks a specific site for the mobile version.
 public enum BrowserUserAgent {
+    /// The desktop string. It claims a Mac because that is what gets a desktop
+    /// layout out of the sites that branch on the identifier.
     public static var defaultUserAgent: String {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
             + "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
@@ -494,5 +514,16 @@ public enum BrowserUserAgent {
         let version = "\(systemVersion.majorVersion)_\(systemVersion.minorVersion)"
         return "Mozilla/5.0 (iPhone; CPU iPhone OS \(version) like Mac OS X) "
             + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+    }
+
+    /// The identifier a tab presents, given the user's settings.
+    ///
+    /// A custom string wins outright. Someone who typed one asked for that exact
+    /// value, and letting the desktop toggle override it would make the field
+    /// look broken — which is what it was before this was wired up.
+    public static func resolve(custom: String, prefersDesktop: Bool) -> String {
+        let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        return prefersDesktop ? defaultUserAgent : mobileUserAgent
     }
 }

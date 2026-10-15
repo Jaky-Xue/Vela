@@ -284,18 +284,30 @@ public final class SettingsService {
     }
 
     /// Resolves the policy for a host: an explicit rule wins, otherwise the
-    /// default applies. Ported from `ExternalNavigationPolicyService`.
+    /// default applies.
     public func externalNavigationPolicy(for host: String) -> ExternalNavigationAppOpenPolicy {
+        explicitExternalNavigationRule(for: host)?.policy ?? preferences.externalNavigationDefault
+    }
+
+    /// Whether the user has decided this host's policy themselves.
+    ///
+    /// The distinction matters for app deep links. A scheme like `bilibili://`
+    /// asks to leave the browser, and the app refuses that unless the user has
+    /// said otherwise *for that site* — a global default set once is not consent
+    /// for every site on the web to pull the user out of the browser.
+    public func hasExplicitExternalNavigationRule(for host: String) -> Bool {
+        explicitExternalNavigationRule(for: host) != nil
+    }
+
+    /// The most specific rule for a host, or `nil` when none applies.
+    private func explicitExternalNavigationRule(for host: String) -> ExternalNavigationSiteRule? {
         let normalized = host.lowercased()
         if let rule = preferences.externalNavigationRules.first(where: { $0.host == normalized }) {
-            return rule.policy
+            return rule
         }
-        if let parentRule = preferences.externalNavigationRules.first(where: {
+        return preferences.externalNavigationRules.first(where: {
             normalized.hasSuffix("." + $0.host)
-        }) {
-            return parentRule.policy
-        }
-        return preferences.externalNavigationDefault
+        })
     }
 
     // MARK: - Reset

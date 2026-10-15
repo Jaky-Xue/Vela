@@ -28,10 +28,6 @@ struct NewTabHomeView: View {
 
     var onNavigate: (URL) -> Void
     var onOpenBookmarks: () -> Void
-    /// Opens the omnibox in its editing state. The home search box is a button
-    /// into the real omnibox rather than a second text field, so there is one
-    /// suggestion engine, one debounce and one set of behaviours to maintain.
-    var onOpenOmnibox: () -> Void
 
     @State private var shortcuts: [HistoryUrl] = []
     @State private var recentlyClosed: [RecentlyClosedTabRecord] = []
@@ -53,58 +49,17 @@ struct NewTabHomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrowserSpacing.loose) {
-                searchBox
                 if !shortcuts.isEmpty { shortcutBlock }
                 if !recentlyClosed.isEmpty { recentlyClosedBlock }
                 footer
             }
             .padding(.horizontal, BrowserSpacing.regular + 4)
-            .padding(.top, 52)
-            // Room for the chrome, which floats over the page's bottom edge.
-            .padding(.bottom, 160)
+            .padding(.top, BrowserSpacing.regular)
+            .padding(.bottom, BrowserSpacing.loose)
         }
         .background(palette.surface)
         .scrollDismissesKeyboard(.immediately)
         .onAppear(perform: reload)
-    }
-
-    // MARK: - Search
-
-    /// The home search box.
-    ///
-    /// A button, not a `TextField`. A second editable field here would own a
-    /// second suggestion engine and a second set of behaviours, and the two
-    /// would drift; tapping this opens the real omnibox with its list already
-    /// populated.
-    private var searchBox: some View {
-        Button(action: onOpenOmnibox) {
-            HStack(spacing: BrowserSpacing.compact) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(palette.secondaryText)
-
-                Text("用 \(env.settings.preferences.searchEngine.activeEngine.name) 搜索或输入网址")
-                    .font(.system(size: 17))
-                    .foregroundStyle(palette.secondaryText)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, BrowserSpacing.regular)
-            .frame(height: 52)
-            .background {
-                let shape = RoundedRectangle(cornerRadius: BrowserRadius.field + 2, style: .continuous)
-                shape.fill(palette.controlFill)
-                shape.fill(.ultraThinMaterial)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: BrowserRadius.field + 2, style: .continuous)
-                    .strokeBorder(palette.cardStroke, lineWidth: 0.5)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("搜索或输入网址")
     }
 
     // MARK: - Shortcuts

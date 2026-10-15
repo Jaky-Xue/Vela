@@ -418,6 +418,7 @@ struct SitePermissionsSettingsView: View {
 
 struct ExternalNavigationSettingsView: View {
     @Environment(AppEnvironment.self) private var env
+    @State private var newHost = ""
 
     var body: some View {
         List {
@@ -432,34 +433,77 @@ struct ExternalNavigationSettingsView: View {
                 }
                 .pickerStyle(.segmented)
             } header: {
-                Text("当网页要求打开其他 App")
+                Text("默认行为")
             } footer: {
-                Text("很多网站会在你点开链接时尝试拉起自家 App。默认「询问」时 Vela 会先问你是要用 App 打开还是留在浏览器里。")
+                Text("网页里的 bilibili://、taobao:// 这类「唤起 App」链接默认被拦下，留在浏览器里，不会打断阅读。这个开关决定下面列出的例外网站，以及 tel:、mailto: 这类系统链接怎么处理。")
             }
 
             Section {
-                ForEach(env.settings.preferences.externalNavigationRules) { rule in
-                    HStack {
-                        Text(rule.host)
-                        Spacer()
-                        Text(rule.policy.displayName)
-                            .foregroundStyle(.secondary)
-                            .font(.subheadline)
-                    }
-                }
-                .onDelete { offsets in
-                    env.settings.update { preferences in
-                        preferences.externalNavigationRules.remove(atOffsets: offsets)
-                    }
+                HStack {
+                    TextField("例如 bilibili.com", text: $newHost)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                    Button("添加", action: addRule)
+                        .disabled(newHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             } header: {
-                Text("网站例外")
+                Text("添加例外")
             } footer: {
-                Text("在弹窗里选择「记住」之后，该网站会出现在这里。")
+                Text("填入来源网站的主机名，不必带 https://。添加后点该行的行为可以改成「允许」或「阻止」。")
+            }
+
+            if !env.settings.preferences.externalNavigationRules.isEmpty {
+                Section {
+                    ForEach(env.settings.preferences.externalNavigationRules) { rule in
+                        Menu {
+                            ForEach(ExternalNavigationAppOpenPolicy.allCases) { policy in
+                                Button(policy.displayName) {
+                                    env.settings.setExternalNavigationRule(host: rule.host, policy: policy)
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(rule.host)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Text(rule.policy.displayName)
+                                    .foregroundStyle(.secondary)
+                                    .font(.subheadline)
+                            }
+                        }
+                    }
+                    .onDelete { offsets in
+                        env.settings.update { preferences in
+                            preferences.externalNavigationRules.remove(atOffsets: offsets)
+                        }
+                    }
+                } header: {
+                    Text("网站例外")
+                } footer: {
+                    Text("在弹窗里选择「总是允许此网站」也会把网站加到这里的。")
+                }
             }
         }
         .navigationTitle("外部应用跳转")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Adds the typed host as an exception, defaulting to asking.
+    ///
+    /// `.ask` because a new exception means "I want a say for this site", and it
+    /// is one tap to change the row to allow or block.
+    private func addRule() {
+        let host = newHost
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "http://", with: "")
+            .split(separator: "/")
+            .first
+            .map(String.init) ?? ""
+        guard !host.isEmpty else { return }
+        env.settings.setExternalNavigationRule(host: host, policy: .ask)
+        newHost = ""
     }
 }
 

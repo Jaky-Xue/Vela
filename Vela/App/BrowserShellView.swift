@@ -79,36 +79,18 @@ struct BrowserShellView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            ZStack(alignment: .bottom) {
+            ZStack {
                 palette.surface.ignoresSafeArea()
 
-                webSurface
-
-                // The reading surface replaces the web view when reader mode is
-                // on.
-                if isReaderActive, let article = readerArticle {
-                    ReaderView(
-                        article: article,
-                        onClose: {
-                            isReaderActive = false
-                            readerArticle = nil
-                        }
-                    )
-                    .transition(.move(edge: .bottom))
+                // The page sits *between* the bars rather than under them. The
+                // overlay arrangement this replaced let the chrome cover the
+                // last of every document — and covered fixed-position page
+                // headers outright once the address bar moved to the top.
+                VStack(spacing: 0) {
+                    topBar
+                    contentSurface(availableHeight: proxy.size.height)
+                    bottomBar
                 }
-
-                // A dimmed page behind an open omnibox. Without it the card
-                // floats over an arbitrary photograph and the list's contrast
-                // is whatever the page happens to be; with it, the card is the
-                // only thing competing for attention.
-                if omnibox.isEditing {
-                    Color.black.opacity(0.18)
-                        .ignoresSafeArea()
-                        .transition(.opacity)
-                        .onTapGesture { omnibox.cancel() }
-                }
-
-                chrome(availableHeight: proxy.size.height)
             }
             .environment(\.browserPalette, activePalette)
         }
@@ -224,8 +206,7 @@ struct BrowserShellView: View {
                 if tab.isHome {
                     NewTabHomeView(
                         onNavigate: { url in navigate(to: url, in: tab) },
-                        onOpenBookmarks: { showBookmarks = true },
-                        onOpenOmnibox: { openOmnibox() }
+                        onOpenBookmarks: { showBookmarks = true }
                     )
                     .id("home-\(tab.id)")
                 } else if let webView = tabManager.webView(for: tab.id) {
@@ -270,7 +251,73 @@ struct BrowserShellView: View {
 
     // MARK: - Chrome
 
-    private func chrome(availableHeight: CGFloat) -> some View {
+    /// The address bar, pinned to the top.
+    ///
+    /// The material is painted behind the bar rather than by it, so it reaches
+    /// up under the status bar without the controls themselves moving.
+    private var topBar: some View {
+        OmniboxView(
+            viewModel: omnibox,
+            isLoading: activeTab?.isLoading ?? false,
+            progress: activeTab?.estimatedProgress ?? 0,
+            placeholder: omniboxPlaceholder,
+            onReload: reloadActiveTab,
+            onStop: { tabManager.webView(for: tabManager.activeTabId)?.stopLoading() }
+        )
+        .padding(.horizontal, BrowserSpacing.compact)
+        .padding(.vertical, BrowserSpacing.tight)
+        .background {
+            Rectangle()
+                .fill(.bar)
+                .ignoresSafeArea(edges: .top)
+        }
+    }
+
+    /// The page, and whatever floats over it.
+    ///
+    /// The suggestion card drops out of the address bar instead of rising from
+    /// the bottom of the screen, which is where a card anchored to a top bar
+    /// belongs. It dims the page and nothing else — the bar being typed into has
+    /// to stay legible, and the toolbar is gone while the card is up.
+    private func contentSurface(availableHeight: CGFloat) -> some View {
+        ZStack(alignment: .top) {
+            if isReaderActive, let article = readerArticle {
+                ReaderView(
+                    article: article,
+                    onClose: {
+                        isReaderActive = false
+                        readerArticle = nil
+                    }
+                )
+                .transition(.move(edge: .bottom))
+            } else {
+                webSurface
+            }
+
+            if omnibox.isEditing {
+                Color.black.opacity(0.18)
+                    .transition(.opacity)
+                    .onTapGesture { omnibox.cancel() }
+
+                OmniboxSuggestionListView(
+                    viewModel: omnibox,
+                    maxHeight: omniboxCardHeight(for: availableHeight)
+                )
+                .padding(.horizontal, BrowserSpacing.compact)
+                .padding(.top, BrowserSpacing.hairline)
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)),
+                        removal: .opacity
+                    )
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The find bar and the toolbar, pinned to the bottom.
+    private var bottomBar: some View {
         VStack(spacing: 0) {
             if showFindBar {
                 FindBar(
@@ -287,54 +334,31 @@ struct BrowserShellView: View {
                 .transition(.move(edge: .bottom))
             }
 
-            VStack(spacing: BrowserSpacing.tight) {
-                // The card sits above the bar, not below it: the address panel
-                // is pinned to the bottom of the screen, so "under the address
-                // bar" is off the bottom edge.
-                if omnibox.isEditing {
-                    OmniboxSuggestionListView(
-                        viewModel: omnibox,
-                        maxHeight: omniboxCardHeight(for: availableHeight)
-                    )
-                    .transition(
-                        .asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)),
-                            removal: .opacity
-                        )
-                    )
-                }
-
-                OmniboxView(
-                    viewModel: omnibox,
-                    isLoading: activeTab?.isLoading ?? false,
-                    progress: activeTab?.estimatedProgress ?? 0,
-                    placeholder: omniboxPlaceholder,
-                    onReload: reloadActiveTab,
-                    onStop: { tabManager.webView(for: tabManager.activeTabId)?.stopLoading() }
+            // The toolbar is removed rather than covered while the omnibox is
+            // open: a bar underneath a card is a row of controls the user can
+            // still hit by accident.
+            if !omnibox.isEditing {
+                BottomToolbarView(
+                    actions: BrowserToolbarAction.defaultOrder,
+                    tabCount: tabManager.tabs.count,
+                    canGoBack: activeTab?.canGoBack ?? false,
+                    canGoForward: activeTab?.canGoForward ?? false,
+                    adBlockActive: env.settings.adBlockSettings.preferences.enabled,
+                    readerAvailable: env.settings.preferences.readerModeAvailable && !(activeTab?.isHome ?? true),
+                    onAction: handleToolbarAction
                 )
-
-                // The toolbar is removed rather than covered while the omnibox
-                // is open: a bar underneath a card is a row of controls the user
-                // can still hit by accident.
-                if !omnibox.isEditing {
-                    BottomToolbarView(
-                        actions: BrowserToolbarAction.defaultOrder,
-                        tabCount: tabManager.tabs.count,
-                        canGoBack: activeTab?.canGoBack ?? false,
-                        canGoForward: activeTab?.canGoForward ?? false,
-                        adBlockActive: env.settings.adBlockSettings.preferences.enabled,
-                        readerAvailable: env.settings.preferences.readerModeAvailable && !(activeTab?.isHome ?? true),
-                        onAction: handleToolbarAction
-                    )
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .padding(.horizontal, BrowserSpacing.compact)
-            .padding(.top, BrowserSpacing.tight)
-            .padding(.bottom, BrowserSpacing.hairline)
-            .background(.bar)
-            .offset(y: toolbarOffset)
         }
+        .padding(.horizontal, BrowserSpacing.compact)
+        .padding(.top, BrowserSpacing.hairline)
+        .padding(.bottom, BrowserSpacing.hairline)
+        .background {
+            Rectangle()
+                .fill(.bar)
+                .ignoresSafeArea(edges: .bottom)
+        }
+        .offset(y: toolbarOffset)
     }
 
     /// The tallest the suggestion card may grow.
@@ -371,11 +395,6 @@ struct BrowserShellView: View {
         if omnibox.text != displayUrl {
             omnibox.text = displayUrl
         }
-    }
-
-    private func openOmnibox() {
-        toolbarOffset = 0
-        omnibox.beginEditing()
     }
 
     // MARK: - Omnibox wiring
@@ -506,12 +525,16 @@ struct BrowserShellView: View {
     }
 
     private func toggleDesktopSite(for tab: BrowserTabState) {
-        guard let webView = tabManager.webView(for: tab.id) else { return }
-        let preferences = env.settings.preferences
-        let next = !preferences.desktopSiteByDefault
-        env.settings.update { $0.desktopSiteByDefault = next }
-        webView.customUserAgent = next ? BrowserUserAgent.defaultUserAgent : BrowserUserAgent.mobileUserAgent
-        webView.reload()
+        let next = !env.settings.preferences.desktopSiteByDefault
+        // The menu item is an explicit choice between the two built-in
+        // identifiers, so it clears a custom one. Leaving the custom string in
+        // place would make this look like it did nothing.
+        env.settings.update {
+            $0.desktopSiteByDefault = next
+            $0.customUserAgent = ""
+        }
+        tabManager.applyUserAgentToAllWebViews()
+        tabManager.webView(for: tab.id)?.reload()
     }
 
     private func toggleAdBlock() {
