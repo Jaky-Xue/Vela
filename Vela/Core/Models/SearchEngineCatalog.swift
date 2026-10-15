@@ -1,0 +1,467 @@
+//
+//  SearchEngineCatalog.swift
+//  Vela
+//
+//  Swift port of the search surface of
+//  `AiraBrowser/entry/src/main/ets/common/models/BrowserModels.ets`
+//  (Aira Browser 3.7.4, GPL-3.0).
+//
+//  The engine list, URL templates, default engine, default enabled set and
+//  result-page shapes are copied from the ArkTS originals verbatim. Result-page
+//  shapes drive the post-search fallback logic (see `SearchFallbackCoordinator`):
+//  after a search navigation lands, Vela checks whether the document really is a
+//  results page, which is how Aira detects a blocked engine and offers the
+//  fallback engine instead of leaving a blank tab.
+//
+
+import Foundation
+
+/// Ported from `BuiltInSearchEngineId`.
+public enum BuiltInSearchEngineId: String, Codable, Sendable, CaseIterable, Identifiable {
+    case bing
+    case google
+    case duckduckgo
+    case baidu
+    case qihoo
+    case sogou
+    case shenma
+    case brave
+    case startpage
+    case ecosia
+    case yandex
+
+    public var id: String { rawValue }
+}
+
+/// Ported from `SearchEngineId` — built-in ids or opaque custom-engine ids.
+public typealias SearchEngineId = String
+
+/// Ported from `SearchEngineKind`.
+public enum SearchEngineKind: String, Codable, Sendable, CaseIterable {
+    case builtIn = "built_in"
+    case custom
+}
+
+/// Ported from `SearchEngineResultPageShape`.
+public struct SearchEngineResultPageShape: Codable, Equatable, Sendable {
+    public var hosts: [String]
+    public var pathSuffixes: [String]
+    public var queryKeys: [String]
+
+    public init(hosts: [String], pathSuffixes: [String], queryKeys: [String]) {
+        self.hosts = hosts
+        self.pathSuffixes = pathSuffixes
+        self.queryKeys = queryKeys
+    }
+
+    /// Ported from the live-document probe in
+    /// `BrowserQuickSearchContinuationService`. A navigation is a genuine result
+    /// page when the host matches, the path matches, and the query still carries
+    /// the search term under one of the engine's known keys.
+    public func matches(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        let hostMatches = hosts.contains { host == $0 || host.hasSuffix("." + $0) }
+        guard hostMatches else { return false }
+
+        let pathMatches = pathSuffixes.isEmpty || pathSuffixes.contains { url.path.hasSuffix($0) }
+        guard pathMatches else { return false }
+
+        guard !queryKeys.isEmpty else { return true }
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return false
+        }
+        let query = components.queryItems ?? []
+        return query.contains { item in
+            guard queryKeys.contains(item.name) else { return false }
+            return !(item.value ?? "").isEmpty
+        }
+    }
+}
+
+/// Ported from `SearchEngineOption`.
+public struct SearchEngineOption: Codable, Equatable, Sendable, Identifiable {
+    public var id: SearchEngineId
+    public var name: String
+    public var searchUrlTemplate: String
+    public var homepageUrl: String
+    public var availabilityProbeUrl: String?
+    public var availabilityExpectedStatus: Int?
+    public var kind: SearchEngineKind
+    public var isEditable: Bool
+    public var resultPageShape: SearchEngineResultPageShape?
+
+    public init(
+        id: SearchEngineId,
+        name: String,
+        searchUrlTemplate: String,
+        homepageUrl: String,
+        availabilityProbeUrl: String? = nil,
+        availabilityExpectedStatus: Int? = nil,
+        kind: SearchEngineKind,
+        isEditable: Bool,
+        resultPageShape: SearchEngineResultPageShape? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.searchUrlTemplate = searchUrlTemplate
+        self.homepageUrl = homepageUrl
+        self.availabilityProbeUrl = availabilityProbeUrl
+        self.availabilityExpectedStatus = availabilityExpectedStatus
+        self.kind = kind
+        self.isEditable = isEditable
+        self.resultPageShape = resultPageShape
+    }
+}
+
+/// Ported from `SEARCH_ENGINE_OPTIONS`.
+public let searchEngineOptions: [SearchEngineOption] = [
+    SearchEngineOption(
+        id: "bing",
+        name: "Bing",
+        searchUrlTemplate: "https://www.bing.com/search?q={searchTerms}",
+        homepageUrl: "https://www.bing.com",
+        availabilityProbeUrl: "https://www.bing.com",
+        kind: .builtIn,
+        isEditable: false
+    ),
+    SearchEngineOption(
+        id: "google",
+        name: "Google",
+        searchUrlTemplate: "https://www.google.com/search?q={searchTerms}",
+        homepageUrl: "https://www.google.com",
+        availabilityProbeUrl: "https://www.google.com/generate_204",
+        availabilityExpectedStatus: 204,
+        kind: .builtIn,
+        isEditable: false
+    ),
+    SearchEngineOption(
+        id: "duckduckgo",
+        name: "DuckDuckGo",
+        searchUrlTemplate: "https://duckduckgo.com/?q={searchTerms}",
+        homepageUrl: "https://duckduckgo.com",
+        kind: .builtIn,
+        isEditable: false
+    ),
+    SearchEngineOption(
+        id: "baidu",
+        name: "Baidu",
+        searchUrlTemplate: "https://www.baidu.com/s?wd={searchTerms}",
+        homepageUrl: "https://www.baidu.com",
+        availabilityProbeUrl: "https://www.baidu.com",
+        kind: .builtIn,
+        isEditable: false,
+        resultPageShape: SearchEngineResultPageShape(
+            hosts: ["baidu.com", "m.baidu.com"],
+            pathSuffixes: ["/s"],
+            queryKeys: ["wd", "word"]
+        )
+    ),
+    SearchEngineOption(
+        id: "qihoo",
+        name: "360 搜索",
+        searchUrlTemplate: "https://www.so.com/s?q={searchTerms}",
+        homepageUrl: "https://www.so.com",
+        kind: .builtIn,
+        isEditable: false
+    ),
+    SearchEngineOption(
+        id: "sogou",
+        name: "搜狗",
+        searchUrlTemplate: "https://www.sogou.com/web?query={searchTerms}",
+        homepageUrl: "https://www.sogou.com",
+        kind: .builtIn,
+        isEditable: false
+    ),
+    SearchEngineOption(
+        id: "shenma",
+        name: "神马",
+        searchUrlTemplate: "https://m.sm.cn/s?q={searchTerms}",
+        homepageUrl: "https://m.sm.cn",
+        kind: .builtIn,
+        isEditable: false
+    ),
+    SearchEngineOption(
+        id: "brave",
+        name: "Brave Search",
+        searchUrlTemplate: "https://search.brave.com/search?q={searchTerms}",
+        homepageUrl: "https://search.brave.com",
+        kind: .builtIn,
+        isEditable: false
+    ),
+    SearchEngineOption(
+        id: "startpage",
+        name: "Startpage",
+        searchUrlTemplate: "https://www.startpage.com/sp/search?query={searchTerms}",
+        homepageUrl: "https://www.startpage.com",
+        kind: .builtIn,
+        isEditable: false
+    ),
+    SearchEngineOption(
+        id: "ecosia",
+        name: "Ecosia",
+        searchUrlTemplate: "https://www.ecosia.org/search?q={searchTerms}",
+        homepageUrl: "https://www.ecosia.org",
+        kind: .builtIn,
+        isEditable: false
+    ),
+    SearchEngineOption(
+        id: "yandex",
+        name: "Yandex",
+        searchUrlTemplate: "https://yandex.com/search/?text={searchTerms}",
+        homepageUrl: "https://yandex.com",
+        kind: .builtIn,
+        isEditable: false
+    )
+]
+
+/// Ported from `DEFAULT_SEARCH_ENGINE_ID`.
+public let defaultSearchEngineId: SearchEngineId = "bing"
+
+/// Ported from `DEFAULT_ENABLED_BUILT_IN_SEARCH_ENGINE_IDS`.
+public let defaultEnabledBuiltInSearchEngineIds: [BuiltInSearchEngineId] = [
+    .bing, .google, .duckduckgo, .baidu, .yandex
+]
+
+/// Ported from `SearchEngineRecord` — a persisted engine row. Built-in engines
+/// are materialised into this shape on first launch so the settings list, the
+/// ordering and the custom-engine editor all read one homogeneous collection,
+/// exactly as Aira's `SearchEngineSettings` does.
+public struct SearchEngineRecord: Codable, Equatable, Sendable, Identifiable {
+    public var id: SearchEngineId
+    public var kind: SearchEngineKind
+    public var name: String
+    public var searchUrlTemplate: String
+    public var homepageUrl: String
+    public var iconUrl: String?
+    public var availabilityProbeUrl: String?
+    public var availabilityExpectedStatus: Int?
+    public var isEditable: Bool
+    public var position: Int
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    public init(
+        id: SearchEngineId,
+        kind: SearchEngineKind,
+        name: String,
+        searchUrlTemplate: String,
+        homepageUrl: String,
+        iconUrl: String? = nil,
+        availabilityProbeUrl: String? = nil,
+        availabilityExpectedStatus: Int? = nil,
+        isEditable: Bool,
+        position: Int,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.searchUrlTemplate = searchUrlTemplate
+        self.homepageUrl = homepageUrl
+        self.iconUrl = iconUrl
+        self.availabilityProbeUrl = availabilityProbeUrl
+        self.availabilityExpectedStatus = availabilityExpectedStatus
+        self.isEditable = isEditable
+        self.position = position
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// Builds the persisted row for a built-in option.
+    public init(option: SearchEngineOption, position: Int) {
+        self.init(
+            id: option.id,
+            kind: option.kind,
+            name: option.name,
+            searchUrlTemplate: option.searchUrlTemplate,
+            homepageUrl: option.homepageUrl,
+            iconUrl: nil,
+            availabilityProbeUrl: option.availabilityProbeUrl,
+            availabilityExpectedStatus: option.availabilityExpectedStatus,
+            isEditable: option.isEditable,
+            position: position
+        )
+    }
+
+    public var resultPageShape: SearchEngineResultPageShape? {
+        searchEngineOptions.first { $0.id == id }?.resultPageShape
+    }
+
+    /// Substitutes `{searchTerms}` with a percent-encoded query.
+    ///
+    /// Ported from the template expansion in `SearchEngineSelectionService`.
+    /// A custom engine whose template lacks the placeholder cannot express a
+    /// query, so it is treated as unavailable rather than silently searched.
+    public func searchUrl(for query: String) -> URL? {
+        guard searchUrlTemplate.contains("{searchTerms}") else { return nil }
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&+=?#")
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            return nil
+        }
+        let expanded = searchUrlTemplate.replacingOccurrences(of: "{searchTerms}", with: encoded)
+        return URL(string: expanded)
+    }
+}
+
+/// Ported from `SearchSuggestionPreferences`.
+public struct SearchSuggestionPreferences: Codable, Equatable, Sendable {
+    public var regularEnabled: Bool
+    public var privateEnabled: Bool
+    public var openTabsEnabled: Bool
+    public var bookmarksEnabled: Bool
+    public var historyEnabled: Bool
+    public var browsingHistoryEnabled: Bool
+    public var navigationSuggestionsChosen: Bool
+    /// Remote (network) suggestions. Off by default: Vela, like Aira Community,
+    /// does not send keystrokes to a search provider unless the user opts in.
+    public var remoteEnabled: Bool
+
+    public init(
+        regularEnabled: Bool = true,
+        privateEnabled: Bool = false,
+        openTabsEnabled: Bool = true,
+        bookmarksEnabled: Bool = true,
+        historyEnabled: Bool = true,
+        browsingHistoryEnabled: Bool = true,
+        navigationSuggestionsChosen: Bool = false,
+        remoteEnabled: Bool = false
+    ) {
+        self.regularEnabled = regularEnabled
+        self.privateEnabled = privateEnabled
+        self.openTabsEnabled = openTabsEnabled
+        self.bookmarksEnabled = bookmarksEnabled
+        self.historyEnabled = historyEnabled
+        self.browsingHistoryEnabled = browsingHistoryEnabled
+        self.navigationSuggestionsChosen = navigationSuggestionsChosen
+        self.remoteEnabled = remoteEnabled
+    }
+
+    public static let `default` = SearchSuggestionPreferences()
+}
+
+/// Ported from `SearchEngineFallbackSettings`.
+public struct SearchEngineFallbackSettings: Codable, Equatable, Sendable {
+    public var enabled: Bool
+    public var fallbackSearchEngineId: SearchEngineId
+    public var noticeEnabled: Bool
+
+    public init(
+        enabled: Bool = true,
+        fallbackSearchEngineId: SearchEngineId = "duckduckgo",
+        noticeEnabled: Bool = true
+    ) {
+        self.enabled = enabled
+        self.fallbackSearchEngineId = fallbackSearchEngineId
+        self.noticeEnabled = noticeEnabled
+    }
+
+    public static let `default` = SearchEngineFallbackSettings()
+}
+
+/// Ported from `SearchEngineSettings`.
+public struct SearchEngineSettings: Codable, Equatable, Sendable {
+    public var defaultSearchEngineId: SearchEngineId
+    public var builtInEngineOrder: [SearchEngineId]
+    public var enabledBuiltInEngineIds: [SearchEngineId]
+    public var customEngines: [SearchEngineRecord]
+    public var searchSuggestions: SearchSuggestionPreferences
+    public var fallbackSearch: SearchEngineFallbackSettings
+    public var updatedAt: Date
+
+    public init(
+        defaultSearchEngineId: SearchEngineId = defaultSearchEngineId,
+        builtInEngineOrder: [SearchEngineId] = searchEngineOptions.map(\.id),
+        enabledBuiltInEngineIds: [SearchEngineId] = defaultEnabledBuiltInSearchEngineIds.map(\.rawValue),
+        customEngines: [SearchEngineRecord] = [],
+        searchSuggestions: SearchSuggestionPreferences = .default,
+        fallbackSearch: SearchEngineFallbackSettings = .default,
+        updatedAt: Date = Date()
+    ) {
+        self.defaultSearchEngineId = defaultSearchEngineId
+        self.builtInEngineOrder = builtInEngineOrder
+        self.enabledBuiltInEngineIds = enabledBuiltInEngineIds
+        self.customEngines = customEngines
+        self.searchSuggestions = searchSuggestions
+        self.fallbackSearch = fallbackSearch
+        self.updatedAt = updatedAt
+    }
+
+    public static let `default` = SearchEngineSettings()
+
+    /// Every engine the user can pick, in display order: enabled built-ins
+    /// (honouring the user's order) followed by custom engines.
+    ///
+    /// Ported from the ordering pass in `BrowserSearchEnginePresentationViewModel`.
+    public var selectableEngines: [SearchEngineRecord] {
+        let builtIns = searchEngineOptions
+            .filter { enabledBuiltInEngineIds.contains($0.id) }
+            .sorted { lhs, rhs in
+                let li = builtInEngineOrder.firstIndex(of: lhs.id) ?? Int.max
+                let ri = builtInEngineOrder.firstIndex(of: rhs.id) ?? Int.max
+                return li < ri
+            }
+            .enumerated()
+            .map { SearchEngineRecord(option: $0.element, position: $0.offset) }
+
+        let customs = customEngines.sorted { $0.position < $1.position }
+        return builtIns + customs
+    }
+
+    /// The active engine, falling back to the shipped default when the selected
+    /// id no longer resolves — the same guard Aira applies after a custom engine
+    /// is deleted while selected.
+    public var activeEngine: SearchEngineRecord {
+        if let selected = selectableEngines.first(where: { $0.id == defaultSearchEngineId }) {
+            return selected
+        }
+        let fallbackId = defaultSearchEngineId
+        if let builtIn = searchEngineOptions.first(where: { $0.id == fallbackId }) {
+            return SearchEngineRecord(option: builtIn, position: 0)
+        }
+        return SearchEngineRecord(option: searchEngineOptions[0], position: 0)
+    }
+
+    public var fallbackEngine: SearchEngineRecord? {
+        guard fallbackSearch.enabled else { return nil }
+        guard fallbackSearch.fallbackSearchEngineId != defaultSearchEngineId else { return nil }
+        if let found = selectableEngines.first(where: { $0.id == fallbackSearch.fallbackSearchEngineId }) {
+            return found
+        }
+        if let builtIn = searchEngineOptions.first(where: { $0.id == fallbackSearch.fallbackSearchEngineId }) {
+            return SearchEngineRecord(option: builtIn, position: 0)
+        }
+        return nil
+    }
+}
+
+// MARK: - Search query history
+
+/// Ported from `SearchQueryHistoryRecord`.
+public struct SearchQueryHistoryRecord: Codable, Equatable, Sendable, Identifiable {
+    public var id: String
+    public var query: String
+    public var normalizedQuery: String
+    public var compactQuery: String
+    public var searchEngineId: SearchEngineId
+    public var useCount: Int
+    public var firstSearchedAt: Date
+    public var lastSearchedAt: Date
+    public var profileId: BrowserProfileId
+    public var dataScope: BrowserDataScope
+}
+
+/// Ported from the normalisation used before a query row is written.
+/// Lowercased and whitespace-collapsed for `normalizedQuery`; whitespace removed
+/// entirely for `compactQuery`, which is what makes "hello world" and
+/// "helloworld" collapse into one suggestion.
+public func normalizeSearchQuery(_ raw: String) -> (normalized: String, compact: String) {
+    let collapsed = raw
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .split(whereSeparator: { $0.isWhitespace })
+        .joined(separator: " ")
+    let normalized = collapsed.lowercased()
+    let compact = normalized.filter { !$0.isWhitespace }
+    return (normalized, compact)
+}

@@ -1,0 +1,187 @@
+//
+//  BookmarkModels.swift
+//  Vela
+//
+//  Swift port of the bookmark model from
+//  `AiraBrowser/entry/src/main/ets/common/models/BrowserModels.ets` and the
+//  `bookmark_roots` / `bookmark_nodes` / `bookmark_orders` tables in
+//  `data/database/BrowserDatabase.ets` (Aira Browser 3.7.4, GPL-3.0).
+//
+//  The two-level structure is preserved exactly: a node table holding folders
+//  and bookmarks, and a separate order table holding parent/child/position.
+//  Keeping them apart is what makes a drag-reorder a small update instead of a
+//  rewrite of every moved subtree, and it is what lets the WebDAV and Personal
+//  Server providers push order changes independently of content changes.
+//
+
+import Foundation
+
+/// Ported from `BookmarkNodeType`.
+public enum BookmarkNodeType: String, Codable, Sendable, CaseIterable {
+    case folder
+    case bookmark
+}
+
+/// Ported from `BookmarkRootRole`.
+public enum BookmarkRootRole: String, Codable, Sendable, CaseIterable, Identifiable {
+    case toolbar
+    case other
+    /// Vela addition: the mobile reading list Aira exposes as its own root.
+    /// Kept as a raw value that Aira's tree does not use, so a future export
+    /// still round-trips through the `other` root.
+    case readingList = "reading_list"
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .toolbar: return "书签栏"
+        case .other: return "其他书签"
+        case .readingList: return "阅读列表"
+        }
+    }
+}
+
+/// Ported from `BookmarkStorageScope`.
+public enum BookmarkStorageScope: String, Codable, Sendable, CaseIterable {
+    case regular
+    case `private`
+}
+
+/// Ported from the `bookmark_roots` row.
+public struct BookmarkRoot: Codable, Equatable, Sendable, Identifiable {
+    public var id: String { role.rawValue }
+    public var role: BookmarkRootRole
+    public var nodeId: String
+    public var title: String
+    public var position: Int
+    public var syncEnabled: Bool
+
+    public init(
+        role: BookmarkRootRole,
+        nodeId: String,
+        title: String,
+        position: Int,
+        syncEnabled: Bool = false
+    ) {
+        self.role = role
+        self.nodeId = nodeId
+        self.title = title
+        self.position = position
+        self.syncEnabled = syncEnabled
+    }
+}
+
+/// Ported from the `bookmark_nodes` row.
+public struct BookmarkNode: Codable, Equatable, Sendable, Identifiable {
+    public var id: String
+    public var scope: BookmarkStorageScope
+    public var type: BookmarkNodeType
+    public var title: String
+    /// Nil for folders; non-nil for bookmarks.
+    public var url: String?
+    public var createdAt: Date
+    public var updatedAt: Date
+    public var syncState: SyncState
+    public var syncSource: BrowserDataSource
+    public var lastModifiedAt: Date
+    public var lastModifiedBy: String
+    public var deviceId: String
+    public var originId: String?
+    /// Non-nil when the node is deleted. Ported from the soft-delete column:
+    /// a tombstone has to survive long enough for a sync provider to see it,
+    /// so deletion is a stamp rather than a row removal.
+    public var deletedAt: Date?
+
+    public init(
+        id: String = UUID().uuidString,
+        scope: BookmarkStorageScope = .regular,
+        type: BookmarkNodeType,
+        title: String,
+        url: String? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        syncState: SyncState = .localOnly,
+        syncSource: BrowserDataSource = .local,
+        lastModifiedAt: Date = Date(),
+        lastModifiedBy: String = "",
+        deviceId: String = BrowserIdentity.deviceId,
+        originId: String? = nil,
+        deletedAt: Date? = nil
+    ) {
+        self.id = id
+        self.scope = scope
+        self.type = type
+        self.title = title
+        self.url = url
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.syncState = syncState
+        self.syncSource = syncSource
+        self.lastModifiedAt = lastModifiedAt
+        self.lastModifiedBy = lastModifiedBy
+        self.deviceId = deviceId
+        self.originId = originId
+        self.deletedAt = deletedAt
+    }
+
+    public var isFolder: Bool { type == .folder }
+    public var isDeleted: Bool { deletedAt != nil }
+
+    /// The host shown under the title in the bookmark list.
+    public var displayHost: String {
+        guard let url, let parsed = URL(string: url), let host = parsed.host else { return "" }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+}
+
+/// A node together with its ordering and resolved children — the shape the
+/// bookmark UI renders. Ported from `BookmarkTreeItem`.
+public struct BookmarkTreeItem: Identifiable, Sendable {
+    public var id: String { node.id }
+    public var node: BookmarkNode
+    public var position: Int
+    public var children: [BookmarkTreeItem]
+
+    public init(node: BookmarkNode, position: Int, children: [BookmarkTreeItem] = []) {
+        self.node = node
+        self.position = position
+        self.children = children
+    }
+
+    public var childCount: Int { children.count }
+
+    /// Total nodes underneath, used by `BookmarkFolderCountCacheRepository` in
+    /// the ArkTS tree to avoid recounting on every list render.
+    public var descendantCount: Int {
+        children.reduce(children.count) { $0 + $1.descendantCount }
+    }
+}
+
+/// Ported from `BookmarkFolderSelectionPreparationCoordinator` — the folder
+/// picker excludes the subtree being moved so a folder cannot be dropped into
+/// its own descendant.
+public struct BookmarkFolderPickerItem: Identifiable, Sendable {
+    public var id: String { node.id }
+    public var node: BookmarkNode
+    public var depth: Int
+}
+
+/// Process-wide identity values.
+///
+/// Ported from the `device_id` column that Aira stamps on every syncable row.
+/// iOS stores the generated identifier in `UserDefaults` rather than the
+/// HarmonyOS `deviceInfo` API, and it survives reinstalls only as long as the
+/// keychain entry backing it does.
+public enum BrowserIdentity {
+    private static let deviceIdKey = "org.vela.browser.device-id"
+
+    public static let deviceId: String = {
+        if let existing = UserDefaults.standard.string(forKey: deviceIdKey) {
+            return existing
+        }
+        let generated = UUID().uuidString
+        UserDefaults.standard.set(generated, forKey: deviceIdKey)
+        return generated
+    }()
+}

@@ -1,0 +1,101 @@
+name: Build unsigned IPA
+
+# Builds Vela on a GitHub-hosted macOS runner and uploads an unsigned .ipa.
+#
+# This exists so the project can be built without owning a Mac. The runner has
+# Xcode; the resulting IPA carries no signature, which is what a sideloading tool
+# on Windows expects — Sideloadly and AltStore sign the app themselves with your
+# Apple ID when they install it.
+#
+# See BUILD_WITHOUT_MAC.md for the full walkthrough.
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: "Build configuration"
+        required: true
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+
+jobs:
+  build:
+    name: Build Vela
+    # macos-15 ships Xcode 16, which is the minimum for this project: the
+    # Xcode project uses the file-system-synchronized group format
+    # (objectVersion 77) that Xcode 16 introduced.
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Build the app (unsigned)
+        working-directory: .
+        run: |
+          xcodebuild \
+            -project Vela.xcodeproj \
+            -scheme Vela \
+            -configuration ${{ inputs.configuration }} \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Package as an unsigned IPA
+        working-directory: .
+        run: |
+          set -euo pipefail
+          APP_PATH="build/Build/Products/${{ inputs.configuration }}-iphoneos/Vela.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::App bundle not found at $APP_PATH"
+            find build/Build/Products -maxdepth 3 -name '*.app' || true
+            exit 1
+          fi
+
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          # Zip the Payload directory. The .ipa format is exactly this.
+          zip -qry Vela-unsigned.ipa Payload
+          rm -rf Payload
+
+          ls -lh Vela-unsigned.ipa
+
+      - name: Upload the IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vela-unsigned-ipa
+          path: Vela-unsigned.ipa
+          retention-days: 30
+
+      - name: Upload the dSYM bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vela-dSYM
+          path: build/Build/Products/${{ inputs.configuration }}-iphoneos/*.dSYM
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            build/Logs
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Vela</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>3.7.4</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!-- External application navigation, mirroring Aira's ExternalNavigationLaunchService.
+	     Without these entries canOpenURL always returns false and the prompt never appears. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>http</string>
+		<string>https</string>
+		<string>tel</string>
+		<string>mailto</string>
+		<string>sms</string>
+		<string>facetime</string>
+		<string>itms-apps</string>
+		<string>alipay</string>
+		<string>alipays</string>
+		<string>weixin</string>
+		<string>wechat</string>
+		<string>taobao</string>
+		<string>tmall</string>
+		<string>baidumap</string>
+		<string>iosamap</string>
+		<string>qqmap</string>
+		<string>mqq</string>
+		<string>sinaweibo</string>
+		<string>bilibili</string>
+		<string>zhihu</string>
+		<string>douyin</string>
+		<string>snssdk1128</string>
+		<string>orpheuswidget</string>
+	</array>
+
+	<!-- A browser needs a desktop-class User-Agent for most sites to serve the real page. -->
+	<key>WKAppBoundDomains</key>
+	<array/>
+</dict>
+</plist>
