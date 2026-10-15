@@ -30,6 +30,10 @@ public final class AppEnvironment {
     public let searchHistory: SearchHistoryRepository
     public let userScripts: UserScriptRepository
     public let tabSessions: TabSessionRepository
+    /// The page overlays the shell renders: dialogs, prompts, the file picker,
+    /// the find bar. Exposed here rather than through the web engine so a view
+    /// showing a dialog depends on the dialog's state alone.
+    public let overlays: WebPageOverlays
     public let webCoordinator: BrowserWebCoordinator
 
     /// Set when the database could not be opened. The shell shows a read-only
@@ -80,7 +84,11 @@ public final class AppEnvironment {
         let sessionRepository = TabSessionRepository(database: safeConnection)
         self.tabSessions = sessionRepository
 
+        let overlays = WebPageOverlays()
+        self.overlays = overlays
+
         let coordinator = BrowserWebCoordinator(
+            overlays: overlays,
             settings: settings,
             adBlock: adBlock,
             history: history,

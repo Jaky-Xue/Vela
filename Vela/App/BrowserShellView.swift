@@ -163,12 +163,12 @@ struct BrowserShellView: View {
             menuContent
         }
         .alert(
-            env.webCoordinator.pendingJavaScriptDialog?.message ?? "",
+            env.overlays.javascriptDialog?.message ?? "",
             isPresented: Binding(
-                get: { env.webCoordinator.pendingJavaScriptDialog != nil },
+                get: { env.overlays.javascriptDialog != nil },
                 set: { if !$0 { env.webCoordinator.resolveJavaScriptDialog(confirmed: false, text: nil) } }
             ),
-            presenting: env.webCoordinator.pendingJavaScriptDialog
+            presenting: env.overlays.javascriptDialog
         ) { dialog in
             switch dialog.kind {
             case .alert:
@@ -191,10 +191,10 @@ struct BrowserShellView: View {
         .alert(
             "要用其他应用打开吗？",
             isPresented: Binding(
-                get: { env.webCoordinator.pendingExternalNavigation != nil },
+                get: { env.overlays.externalNavigation != nil },
                 set: { if !$0 { env.webCoordinator.dismissExternalNavigation() } }
             ),
-            presenting: env.webCoordinator.pendingExternalNavigation
+            presenting: env.overlays.externalNavigation
         ) { request in
             Button("打开") { env.webCoordinator.confirmExternalNavigation(allow: true, remember: false) }
             Button("总是允许此网站") {
@@ -206,11 +206,11 @@ struct BrowserShellView: View {
         }
         .sheet(
             isPresented: Binding(
-                get: { env.webCoordinator.pendingPermissionRequest != nil },
+                get: { env.overlays.permissionRequest != nil },
                 set: { _ in }
             )
         ) {
-            if let request = env.webCoordinator.pendingPermissionRequest {
+            if let request = env.overlays.permissionRequest {
                 PermissionPromptView(request: request) { allow, remember in
                     env.webCoordinator.resolvePermissionRequest(allow: allow, remember: remember)
                 }
@@ -280,7 +280,7 @@ struct BrowserShellView: View {
             if showFindBar {
                 FindBar(
                     query: $findQuery,
-                    result: env.webCoordinator.findResult,
+                    result: env.overlays.findResult,
                     onNext: { env.webCoordinator.findInPage(findQuery, forward: true) },
                     onPrevious: { env.webCoordinator.findInPage(findQuery, forward: false) },
                     onClose: {

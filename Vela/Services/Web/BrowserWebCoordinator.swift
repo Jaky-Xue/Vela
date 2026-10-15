@@ -39,33 +39,12 @@ public final class BrowserWebCoordinator: NSObject {
     private let sessionRepository: TabSessionRepository
     private weak var tabManager: TabManager?
 
-    /// The last message a page asked to show. Published so the shell can render
-    /// a native alert rather than a `UIAlertController` owned by this object.
-    public var pendingJavaScriptDialog: JavaScriptDialog?
-    public var pendingExternalNavigation: ExternalNavigationRequest?
-    public var pendingPermissionRequest: SitePermissionRequest?
-    public var pendingElementPick: ElementPickResult?
-
-    /// Find-in-page state, published for the find bar.
-    public var findResult: FindResult = FindResult(count: 0, index: -1)
-
-    /// Element picker mode is armed by the shell and consumed on the next pick.
-    public private(set) var isElementPickerArmed = false
-
-    /// A file upload the page is waiting on. The shell presents the picker and
-    /// calls the stored handler.
-    public var pendingFileUpload: FileUploadRequest?
-
-    /// `alert` / `confirm` / `prompt` completion handlers.
-    ///
-    /// WebKit blocks the page on these, so they are held until the user
-    /// dismisses the shell's dialog. Stored here rather than in the extension
-    /// below because an extension cannot add stored properties.
-    fileprivate var javascriptAlertCompletion: (() -> Void)?
-    fileprivate var javascriptConfirmCompletion: ((Bool) -> Void)?
-    fileprivate var javascriptPromptCompletion: ((String?) -> Void)?
+    /// The values the shell renders over a page. Owned by the environment and
+    /// handed in, so a view can observe one dialog without observing the engine.
+    public let overlays: WebPageOverlays
 
     public init(
+        overlays: WebPageOverlays,
         settings: SettingsService,
         adBlock: AdBlockEngine,
         history: HistoryService,
@@ -75,6 +54,7 @@ public final class BrowserWebCoordinator: NSObject {
         searchHistory: SearchHistoryRepository,
         sessionRepository: TabSessionRepository
     ) {
+        self.overlays = overlays
         self.settings = settings
         self.adBlock = adBlock
         self.history = history
@@ -93,11 +73,11 @@ public final class BrowserWebCoordinator: NSObject {
     // MARK: - Element picker
 
     public func armElementPicker() {
-        isElementPickerArmed = true
+        overlays.isElementPickerArmed = true
     }
 
     public func disarmElementPicker(in webView: WKWebView?) {
-        isElementPickerArmed = false
+        overlays.isElementPickerArmed = false
         webView?.evaluateJavaScript(WebPageScripts.stopElementPickerScript)
     }
 
@@ -168,7 +148,7 @@ public final class BrowserWebCoordinator: NSObject {
     private func handlePageMetricsMessage(_ message: WKScriptMessage) {
         guard let payload = message.body as? [String: Any] else { return }
         if let find = payload["findResult"] as? [String: Any] {
-            findResult = FindResult(
+            overlays.findResult = FindResult(
                 count: find["count"] as? Int ?? 0,
                 index: find["index"] as? Int ?? -1
             )
@@ -176,15 +156,15 @@ public final class BrowserWebCoordinator: NSObject {
     }
 
     private func handleElementPickMessage(_ message: WKScriptMessage, tab: BrowserTabState) {
-        guard isElementPickerArmed,
+        guard overlays.isElementPickerArmed,
               let payload = message.body as? [String: Any],
               let selector = payload["selector"] as? String,
               !selector.isEmpty else { return }
 
-        isElementPickerArmed = false
+        overlays.isElementPickerArmed = false
         guard let host = URL(string: tab.url)?.host else { return }
         let count = payload["elementCount"] as? Int ?? 0
-        pendingElementPick = ElementPickResult(selector: selector, host: host, matchedElementCount: count)
+        overlays.elementPick = ElementPickResult(selector: selector, host: host, matchedElementCount: count)
     }
 
     private func handleAdBlockReport(_ message: WKScriptMessage, webView: WKWebView) {
@@ -219,7 +199,7 @@ public final class BrowserWebCoordinator: NSObject {
             // A script notification is surfaced through the app's own banner
             // rather than a page-level alert, so a script cannot block the page.
             if let text = payload["text"] as? String {
-                pendingJavaScriptDialog = JavaScriptDialog(
+                overlays.javascriptDialog = JavaScriptDialog(
                     kind: .alert,
                     message: text,
                     defaultText: "",
@@ -269,7 +249,7 @@ public final class BrowserWebCoordinator: NSObject {
         case .block:
             break
         case .ask:
-            pendingExternalNavigation = ExternalNavigationRequest(
+            overlays.externalNavigation = ExternalNavigationRequest(
                 url: url,
                 sourceHost: host,
                 tabId: tab.id
@@ -279,8 +259,8 @@ public final class BrowserWebCoordinator: NSObject {
 
     /// Opens an external URL, optionally remembering the decision.
     public func confirmExternalNavigation(allow: Bool, remember: Bool) {
-        guard let request = pendingExternalNavigation else { return }
-        defer { pendingExternalNavigation = nil }
+        guard let request = overlays.externalNavigation else { return }
+        defer { overlays.externalNavigation = nil }
 
         if remember, !request.sourceHost.isEmpty {
             settings.setExternalNavigationRule(
@@ -294,7 +274,7 @@ public final class BrowserWebCoordinator: NSObject {
     }
 
     public func dismissExternalNavigation() {
-        pendingExternalNavigation = nil
+        overlays.externalNavigation = nil
     }
 
     // MARK: - Find in page
@@ -302,7 +282,7 @@ public final class BrowserWebCoordinator: NSObject {
     public func findInPage(_ query: String, forward: Bool = true, reset: Bool = false) {
         guard let tab = tabManager?.activeTab,
               let webView = tabManager?.webView(for: tab.id) else { return }
-        let index = reset ? 0 : findResult.index + (forward ? 1 : -1)
+        let index = reset ? 0 : overlays.findResult.index + (forward ? 1 : -1)
         webView.evaluateJavaScript(WebPageScripts.findInPageScript(query: query, forward: forward, focusIndex: index))
     }
 
@@ -310,7 +290,7 @@ public final class BrowserWebCoordinator: NSObject {
         guard let tab = tabManager?.activeTab,
               let webView = tabManager?.webView(for: tab.id) else { return }
         webView.evaluateJavaScript(WebPageScripts.clearFindInPageScript)
-        findResult = FindResult(count: 0, index: -1)
+        overlays.findResult = FindResult(count: 0, index: -1)
     }
 }
 
@@ -429,7 +409,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             }
         }
 
-        if isElementPickerArmed {
+        if overlays.isElementPickerArmed {
             controller.addUserScript(
                 WKUserScript(
                     source: WebPageScripts.elementPickerScript,
@@ -821,7 +801,7 @@ extension BrowserWebCoordinator: WKUIDelegate {
         completionHandler: @escaping () -> Void
     ) {
         Task { @MainActor in
-            self.pendingJavaScriptDialog = JavaScriptDialog(
+            self.overlays.javascriptDialog = JavaScriptDialog(
                 kind: .alert,
                 message: message,
                 defaultText: "",
@@ -831,7 +811,7 @@ extension BrowserWebCoordinator: WKUIDelegate {
             // The pending value is only consumed by the UI, so the completion
             // handler is deferred until the user dismisses it. WebKit blocks the
             // page on this handler, which is the intended `alert()` behaviour.
-            self.javascriptAlertCompletion = completionHandler
+            self.overlays.javascriptAlertCompletion = completionHandler
         }
     }
 
@@ -842,14 +822,14 @@ extension BrowserWebCoordinator: WKUIDelegate {
         completionHandler: @escaping (Bool) -> Void
     ) {
         Task { @MainActor in
-            self.pendingJavaScriptDialog = JavaScriptDialog(
+            self.overlays.javascriptDialog = JavaScriptDialog(
                 kind: .confirm,
                 message: message,
                 defaultText: "",
                 fromUserScript: false,
                 tabId: self.tab(for: webView)?.id ?? ""
             )
-            self.javascriptConfirmCompletion = completionHandler
+            self.overlays.javascriptConfirmCompletion = completionHandler
         }
     }
 
@@ -861,14 +841,14 @@ extension BrowserWebCoordinator: WKUIDelegate {
         completionHandler: @escaping (String?) -> Void
     ) {
         Task { @MainActor in
-            self.pendingJavaScriptDialog = JavaScriptDialog(
+            self.overlays.javascriptDialog = JavaScriptDialog(
                 kind: .prompt,
                 message: prompt,
                 defaultText: defaultText ?? "",
                 fromUserScript: false,
                 tabId: self.tab(for: webView)?.id ?? ""
             )
-            self.javascriptPromptCompletion = completionHandler
+            self.overlays.javascriptPromptCompletion = completionHandler
         }
     }
 
@@ -902,7 +882,7 @@ extension BrowserWebCoordinator: WKUIDelegate {
             case .block:
                 decisionHandler(.deny)
             case .ask:
-                self.pendingPermissionRequest = SitePermissionRequest(
+                self.overlays.permissionRequest = SitePermissionRequest(
                     origin: origin.host,
                     kind: kind,
                     decisionHandler: decisionHandler
@@ -913,8 +893,8 @@ extension BrowserWebCoordinator: WKUIDelegate {
 
     /// Resolves a pending media-capture prompt.
     public func resolvePermissionRequest(allow: Bool, remember: Bool) {
-        guard let request = pendingPermissionRequest else { return }
-        defer { pendingPermissionRequest = nil }
+        guard let request = overlays.permissionRequest else { return }
+        defer { overlays.permissionRequest = nil }
         if remember {
             settings.setSitePermissionDefault(allow ? .allow : .block, kind: request.kind)
         }
@@ -939,7 +919,7 @@ extension BrowserWebCoordinator: WKUIDelegate {
         completionHandler: @escaping ([URL]?) -> Void
     ) {
         Task { @MainActor in
-            self.pendingFileUpload = FileUploadRequest(
+            self.overlays.fileUpload = FileUploadRequest(
                 allowsMultipleSelection: parameters.allowsMultipleSelection,
                 completionHandler: completionHandler
             )
@@ -967,84 +947,24 @@ extension BrowserWebCoordinator: WKUIDelegate {
 extension BrowserWebCoordinator {
     /// Resolves the pending JavaScript dialog.
     public func resolveJavaScriptDialog(confirmed: Bool, text: String?) {
-        guard let dialog = pendingJavaScriptDialog else { return }
-        pendingJavaScriptDialog = nil
+        guard let dialog = overlays.javascriptDialog else { return }
+        overlays.javascriptDialog = nil
 
         switch dialog.kind {
         case .alert:
-            javascriptAlertCompletion?()
-            javascriptAlertCompletion = nil
+            overlays.javascriptAlertCompletion?()
+            overlays.javascriptAlertCompletion = nil
         case .confirm:
-            javascriptConfirmCompletion?(confirmed)
-            javascriptConfirmCompletion = nil
+            overlays.javascriptConfirmCompletion?(confirmed)
+            overlays.javascriptConfirmCompletion = nil
         case .prompt:
-            javascriptPromptCompletion?(text)
-            javascriptPromptCompletion = nil
+            overlays.javascriptPromptCompletion?(text)
+            overlays.javascriptPromptCompletion = nil
         }
     }
 }
 
-// MARK: - Supporting types
-
-/// A page-originated dialog waiting for the shell to render it.
-public struct JavaScriptDialog: Identifiable, Equatable, Sendable {
-    public enum Kind: String, Sendable {
-        case alert
-        case confirm
-        case prompt
-    }
-
-    public let id = UUID()
-    public var kind: Kind
-    public var message: String
-    public var defaultText: String
-    /// True when a user script raised it, which the shell labels differently so
-    /// the user knows the page is not the source.
-    public var fromUserScript: Bool
-    public var tabId: String
-}
-
-public struct ExternalNavigationRequest: Identifiable, Sendable {
-    public let id = UUID()
-    public var url: URL
-    public var sourceHost: String
-    public var tabId: String
-
-    /// The scheme's human name, used by the prompt copy.
-    public var displayScheme: String {
-        url.scheme?.lowercased() ?? "unknown"
-    }
-}
-
-public struct SitePermissionRequest: Identifiable {
-    public let id = UUID()
-    public var origin: String
-    public var kind: SitePermissionKind
-    public var decisionHandler: (WKPermissionDecision) -> Void
-}
-
-public struct FileUploadRequest: Identifiable {
-    public let id = UUID()
-    public var allowsMultipleSelection: Bool
-    public var completionHandler: ([URL]?) -> Void
-}
-
-public struct ElementPickResult: Identifiable, Sendable {
-    public let id = UUID()
-    public var selector: String
-    public var host: String
-    public var matchedElementCount: Int
-}
-
-public struct FindResult: Equatable, Sendable {
-    public var count: Int
-    public var index: Int
-
-    public var displayText: String {
-        guard count > 0, index >= 0 else { return "无结果" }
-        return "\(index + 1)/\(count)"
-    }
-}
+// MARK: - Script message bridge
 
 /// Bridges a `WKScriptMessageHandler` back to the coordinator.
 ///
