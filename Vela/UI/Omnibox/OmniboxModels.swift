@@ -273,20 +273,20 @@ enum OmniboxTextHighlighter {
 /// performed by SwiftUI's `PasteButton`, which is the one control the system
 /// grants a prompt-free read to. Nothing is read, stored or sent until the user
 /// taps the button.
-enum OmniboxClipboardHint: Equatable {
+public enum OmniboxClipboardHint: Equatable, Sendable {
     /// The pasteboard holds something the system classifies as a web address.
     case pasteAndGo
     /// The pasteboard holds text, which would be searched.
     case pasteAndSearch
 
-    var text: String {
+    public var text: String {
         switch self {
         case .pasteAndGo: return "粘贴并前往"
         case .pasteAndSearch: return "粘贴并搜索"
         }
     }
 
-    var symbolName: String {
+    public var symbolName: String {
         switch self {
         case .pasteAndGo: return "doc.on.clipboard"
         case .pasteAndSearch: return "magnifyingglass"
@@ -296,7 +296,7 @@ enum OmniboxClipboardHint: Equatable {
     /// Classifies the pasteboard from the two facts that do not require reading
     /// it. `nil` means "show no affordance", which is the right answer on an
     /// empty clipboard.
-    static func from(hasProbableWebURL: Bool, hasStrings: Bool) -> OmniboxClipboardHint? {
+    public static func from(hasProbableWebURL: Bool, hasStrings: Bool) -> OmniboxClipboardHint? {
         guard hasStrings else { return nil }
         return hasProbableWebURL ? .pasteAndGo : .pasteAndSearch
     }
