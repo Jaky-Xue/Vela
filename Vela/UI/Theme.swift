@@ -317,6 +317,9 @@ enum BrowserMetrics {
     /// A hard ceiling for the same card, so an iPad in landscape does not get a
     /// suggestion list taller than the page it is covering.
     static let omniboxCardMaxHeight: CGFloat = 460
+
+    /// The loading line drawn on the address bar's bottom edge.
+    static let progressLineHeight: CGFloat = 2
 }
 
 /// Corner radii. Named by role rather than by number so a change lands in one
