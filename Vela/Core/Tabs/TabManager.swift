@@ -2,19 +2,15 @@
 //  TabManager.swift
 //  Vela
 //
-//  Swift port of `AiraBrowser/entry/src/main/ets/core/tabs/TabManager.ets` and
-//  the web-view ownership rules in `core/browser/BrowserWebTabsController.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The open tabs: creation, closing, activation, ordering, pinning, the
+//  recently-closed list, and ownership of the live web views.
 //
-//  The ArkTS original tracks a `TabRuntimeState` per tab because an ArkWeb tab
-//  is a Web node that has to be created, backgrounded and destroyed explicitly
-//  under `BrowserMemoryPressureCoordinator`. `WKWebView` is an ordinary object
-//  and WebKit manages the content processes itself, so the state machine here is
-//  simpler: a tab has a live web view or it does not, and `cold` means exactly
-//  that. Discarding a web view to relieve memory is still supported, because
-//  holding thirty live web views is what actually gets an iOS browser
-//  jetsammed, and the discard keeps the tab's URL and title so the restore is
-//  invisible to the user.
+//  Web views are pooled and capped. Holding a live `WKWebView` for every tab is
+//  what actually gets an iOS browser jetsammed once a session grows, so the pool
+//  keeps a bounded number live and discards the least recently used under
+//  pressure — pinned tabs last — while keeping each tab's URL and title so the
+//  reload is invisible to the user. A memory warning clears the backgrounded
+//  ones outright.
 //
 
 import Foundation
@@ -24,8 +20,7 @@ import Observation
 /// Supplies the `WKWebViewConfiguration` for a tab.
 ///
 /// Kept as a protocol so `TabManager` does not depend on the ad-block engine or
-/// the user-script store directly. That mirrors Aira's split between
-/// `TabManager` and `BrowserHostedWebDocumentStartScriptCoordinator`.
+/// the user-script store directly.
 @MainActor
 public protocol BrowserWebViewConfigurationProviding: AnyObject {
     func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration
@@ -118,8 +113,7 @@ public final class TabManager {
         )
 
         // A pinned tab stays at the leading edge; a new tab lands after the
-        // pinned block, before the rest. Ported from the insertion rule in the
-        // ArkTS tab strip.
+        // pinned block, before the rest.
         if let lastPinnedIndex = tabs.lastIndex(where: { $0.pinned }) {
             tabs.insert(tab, at: lastPinnedIndex + 1)
         } else {
@@ -484,13 +478,11 @@ public final class TabManager {
     }
 }
 
-/// The User-Agent values Vela presents.
+/// The User-Agent values presented to pages.
 ///
-/// Ported from `BrowserUserAgentService`. Aira builds the string from the
-/// device's OS version because ArkWeb reports one; iOS reports a fixed
-/// `Safari/605.1.15` token, so the desktop string below is what actually gets a
-/// desktop layout. The mobile string is used when the user asks a specific site
-/// for the mobile version.
+/// iOS reports a fixed `Safari/605.1.15` token, so the desktop string below is
+/// what actually negotiates a desktop layout. The mobile string is used when the
+/// user asks a specific site for the mobile version.
 public enum BrowserUserAgent {
     public static var defaultUserAgent: String {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "

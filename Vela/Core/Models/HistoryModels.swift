@@ -2,22 +2,19 @@
 //  HistoryModels.swift
 //  Vela
 //
-//  Swift port of the history model from
-//  `AiraBrowser/entry/src/main/ets/common/models/HistorySyncModels.ets` and the
-//  `history_urls` / `history_visits` tables in `data/database/BrowserDatabase.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The history model: one row per URL, one row per visit, and the day grouping
+//  the history list renders.
 //
-//  The split between one row per URL and one row per visit is preserved: the URL
-//  row carries the visit counter and the title, the visit row carries the time
-//  and the inbound transition. That is what lets the history list group by day
-//  without a self-join, and what makes `visit_count` a cheap ordering key.
+//  Splitting the URL row from the visit row is what lets the list group by day
+//  without a self-join and makes the visit counter a cheap ordering key. The URL
+//  row carries the title and the count; the visit row carries the time and the
+//  transition it arrived by, which is what gives the list its time-on-page.
 //
 
 import Foundation
 
-/// Ported from the `transition` column. The set matches Chromium's transition
-/// taxonomy, which is what Aira stores and what makes a history import from a
-/// desktop browser round-trip.
+/// How a visit was arrived at. The set matches Chromium's transition taxonomy,
+/// which is what makes a history import from a desktop browser round-trip.
 public enum HistoryTransition: String, Codable, Sendable, CaseIterable {
     case link
     case typed
@@ -30,10 +27,9 @@ public enum HistoryTransition: String, Codable, Sendable, CaseIterable {
     case reload
     case keyword
     case keywordGenerated = "keyword_generated"
-    /// Vela addition: navigations restored from the saved session. Aira
-    /// expresses these as a restore reason on the tab rather than a transition
-    /// on the visit, but on iOS the restore path writes a visit and needs to be
-    /// distinguishable from a user-initiated load in the history list.
+    /// Navigations restored from the saved session. The restore path writes a
+    /// visit, so it has to be distinguishable from a user-initiated load in the
+    /// history list.
     case restore
 
     public var displayName: String {
@@ -52,8 +48,7 @@ public enum HistoryTransition: String, Codable, Sendable, CaseIterable {
     }
 
     /// True when the navigation says something about intent, which is what
-    /// drives the "常访问" ranking in the omnibox. Ported from the `typed_count`
-    /// rule in Aira's history ranking.
+    /// drives the "常访问" ranking in the omnibox.
     public var countsAsIntent: Bool {
         switch self {
         case .typed, .keyword, .autoBookmark, .formSubmit: return true
@@ -216,7 +211,7 @@ public enum HistoryRemovalScope: String, Codable, Sendable, CaseIterable {
     case all
 }
 
-/// Ported from the URL normalisation Aira applies before hashing.
+/// The normalisation applied before a URL is hashed.
 ///
 /// The hash is what enforces one row per URL, so the normalisation has to be
 /// stable: lowercase scheme and host, drop a default port, drop the fragment,

@@ -2,15 +2,11 @@
 //  HistoryService.swift
 //  Vela
 //
-//  Observable history state over `HistoryRepository`. Ported from
-//  `AiraBrowser/entry/src/main/ets/services/history/` and
-//  `core/browser/BrowserHistoryVisitPersistenceCoordinator.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  Observable history state over `HistoryRepository`.
 //
-//  The service owns the visit-tracking chain: it remembers the visit id of the
-//  page the user came from so the repository can close that visit's duration
-//  when the next one starts. Aira does the same through
-//  `from_visit_id`, and without it the history list has no time-on-page.
+//  The service owns the visit chain: it remembers the visit id of the page the
+//  user came from, so the repository can close that visit's duration when the
+//  next one starts. Without that link the history list has no time-on-page.
 //
 
 import Foundation

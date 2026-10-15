@@ -2,15 +2,13 @@
 //  BrowserDatabase.swift
 //  Vela
 //
-//  Connection ownership and the schema-version ladder. Ported from the
-//  lifecycle half of `AiraBrowser/entry/src/main/ets/data/database/BrowserDatabase.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  Connection ownership and the schema-version ladder.
 //
-//  Aira keeps a lazily-opened `relationalStore.RdbStore` behind a promise and
-//  runs `CREATE TABLE IF NOT EXISTS` on every open, then reconciles the version
-//  in `browser_schema_state`. Vela does the same thing over SQLite, with the
-//  same ordering, because the ordering is what makes an interrupted first launch
-//  recoverable: tables first, version row second.
+//  The connection opens lazily and the creation script runs on every open, with
+//  the version reconciled afterwards. That order is what makes an interrupted
+//  first launch recoverable: tables first, version row second, so a crash
+//  between the two leaves a database the next open can finish upgrading rather
+//  than one that claims a version it does not have.
 //
 
 import Foundation
@@ -26,9 +24,8 @@ public final class BrowserDatabase: @unchecked Sendable {
 
     /// Directory holding the database and its WAL sidecars.
     ///
-    /// Ported from Aira's `BrowserDatabase` context resolution, which uses the
-    /// app's own files directory. On iOS this is Application Support, which is
-    /// backed up and not user-visible in the Files app.
+    /// Application Support, which is backed up and not user-visible in the Files
+    /// app.
     public static var storeDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let directory = base.appendingPathComponent("Vela", isDirectory: true)
@@ -68,10 +65,9 @@ public final class BrowserDatabase: @unchecked Sendable {
 
     /// Runs every `CREATE TABLE IF NOT EXISTS` statement.
     ///
-    /// Ported from Aira's `ensureStore`, which applies its full creation script
-    /// on each open rather than only on first launch. This is what lets a
-    /// database created by an older build pick up a table added by a newer one
-    /// without a dedicated migration step.
+    /// The full creation script runs on every open, not only on first launch.
+    /// That is what lets a database created by an older build pick up a table
+    /// added by a newer one without a dedicated migration step.
     private func createTables(in database: SQLiteDatabase) throws {
         for statement in BrowserSchema.creationStatements {
             try database.execute(statement)
@@ -80,10 +76,10 @@ public final class BrowserDatabase: @unchecked Sendable {
 
     /// Reads and updates the version row in `browser_schema_state`.
     ///
-    /// Ported from Aira's version reconciliation. Rows added by a newer build
-    /// are written forward; a database reporting a version newer than this build
-    /// understands is left alone rather than downgraded, because the alternative
-    /// is destroying data the user has not seen yet.
+    /// Rows added by a newer build are written forward; a database reporting a
+    /// version newer than this build understands is left alone rather than
+    /// downgraded, because the alternative is destroying data the user has not
+    /// seen yet.
     private func reconcileSchemaVersion(in database: SQLiteDatabase) throws {
         let key = "schema_version"
         let existing = try database.query(

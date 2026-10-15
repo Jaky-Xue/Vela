@@ -2,17 +2,13 @@
 //  OmniboxViewModel.swift
 //  Vela
 //
-//  The omnibox's state machine. The suggestion *sources* and their priority
-//  order are ported verbatim from
-//  `AiraBrowser/entry/src/main/ets/core/browser/BrowserSearchSuggestionCoordinator.ets`
-//  and `BrowserRootAddressInputSessionCoordinator.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The omnibox's state machine: the suggestion sources, their merge order, and
+//  everything to do with a suggestion session.
 //
-//  The merge order Aira's coordinator produces is kept exactly, because it is
-//  the part users notice:
+//  The merge order is the part users notice:
 //
 //    1. A URL the user is typing — always first, because it is what they mean.
-//    2. Open tabs — cheapest to offer and most likely to be what a second tab
+//    2. Open tabs — cheapest to offer, and most likely to be what a second tab
 //       was opened for.
 //    3. Bookmarks — a deliberate save, so it outranks mere history.
 //    4. Past queries and browsing history, ranked by the repository's score.
@@ -20,16 +16,12 @@
 //       highlighted does something predictable.
 //
 //  Remote suggestions are off by default and stay off unless the user enables
-//  them: Aira Community does not send keystrokes to a provider, and neither
-//  does Vela.
+//  them: nothing here sends keystrokes to a provider.
 //
-//  iOS port enhancement (this revision). What is new relative to Aira is
-//  everything to do with the *session* rather than the sources: input debounce,
-//  the keyboard-highlighted row, per-section disclosure that survives a
-//  relaunch, and row deletion. Aira drives those from four separate
-//  coordinators plus the ArkUI page; on iOS they are one observable object,
-//  because they all mutate the same list and splitting them would mean four
-//  owners of one array.
+//  The session — input debounce, the keyboard-highlighted row, per-section
+//  disclosure that survives a relaunch, row deletion — is one observable object
+//  rather than several, because all of it mutates the same list and splitting it
+//  would mean several owners of one array.
 //
 
 import Foundation
@@ -52,7 +44,7 @@ struct OmniboxSuggestionEngine {
     let searchHistory: SearchHistoryRepository
     let tabManager: TabManager
 
-    /// How many rows each source may contribute. Aira's limits, kept.
+    /// How many rows each source may contribute.
     private enum Limit {
         static let openTabs = 4
         static let bookmarks = 4
@@ -187,11 +179,9 @@ struct OmniboxSuggestionEngine {
 
     /// What the field offers before the user types.
     ///
-    /// Aira's home page shows its most-visited shortcuts here instead, because a
-    /// HarmonyOS device has no persistent keyboard focus in the address bar. On
-    /// iOS the field is focused the moment the omnibox opens, so an empty list
-    /// would be a blank card — the recent queries are the honest answer to
-    /// "what would I type".
+    /// The field is focused the moment the omnibox opens, so an empty list would
+    /// be a blank card — the recent queries are the honest answer to "what would
+    /// I type".
     private func idleSuggestions(privacyMode: BrowserSessionPrivacyMode) -> [OmniboxSuggestion] {
         guard settings.preferences.searchEngine.searchSuggestions.historyEnabled else { return [] }
         let recent = (try? searchHistory.recent(
@@ -314,9 +304,7 @@ public final class OmniboxViewModel {
     /// the instant the field focuses rather than after a debounce.
     private var hasLoadedOnce = false
 
-    /// Ported from the debounce in `BrowserAddressInputDebounceCoordinator`.
-    /// Aira uses 120 ms; iOS keyboards deliver slightly faster bursts, and the
-    /// extra 20 ms is below the threshold where a list feels laggy while still
+    /// 100 ms is below the threshold where a list feels laggy, while still
     /// collapsing a fast typist's keystrokes into one query.
     private static let debounce: Duration = .milliseconds(100)
 

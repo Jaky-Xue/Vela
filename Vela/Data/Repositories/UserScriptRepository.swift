@@ -2,17 +2,12 @@
 //  UserScriptRepository.swift
 //  Vela
 //
-//  Persistence for installed user scripts and the GM_ value store. Ported from
-//  `InstalledUserScriptState` in
-//  `AiraBrowser/entry/src/main/ets/features/userscripts/UserScriptMetadataModels.ets`
-//  (Aira Browser 3.7.4, GPL-3.0), relocated from a preferences document to
-//  SQLite tables.
+//  Persistence for installed user scripts and the GM_ value store.
 //
-//  Migration note: ADR 0038 records that Aira keeps user scripts and ad-block
-//  subscriptions as local-only preferences. Vela keeps the same locality
-//  guarantee — nothing here is synced — but stores rows so the `@match` sets
-//  can be indexed and so `GM_setValue` is a single-row write rather than a
-//  read-modify-write of a whole document.
+//  Rows rather than a preferences document, for two reasons: the `@match` sets
+//  can be indexed, and `GM_setValue` becomes a single-row write instead of a
+//  read-modify-write of a whole document. Nothing here is synced — user scripts
+//  stay local to the device by design.
 //
 
 import Foundation

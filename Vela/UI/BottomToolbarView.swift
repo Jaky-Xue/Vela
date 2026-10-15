@@ -2,16 +2,12 @@
 //  BottomToolbarView.swift
 //  Vela
 //
-//  The bottom action bar. Ported from `AiraBrowser/entry/src/main/ets/core/browser/`
-//  — `BrowserBottomPanelActionCatalog.ets`, `BrowserBottomPanelActionEnablement.ets`,
-//  `BrowserBottomToolbarReorderGesturePolicy.ets` and
-//  `BrowserBottomPanelActionVisualViewModel.ets` (Aira Browser 3.7.4, GPL-3.0).
+//  The bottom action bar.
 //
-//  Aira lets the user reorder these actions and stores the order per device
-//  (ADR 0064, "bottom toolbar uses a device-local interaction profile"). Vela
-//  keeps the same action identities and the same default order; the reorder UI
-//  is not part of this port, but the stored order is honoured, so a future
-//  reorder screen needs no migration.
+//  The action identities and the default order are fixed. A stored per-device
+//  order is honoured, so a reorder screen can be added later without a
+//  migration; the order is device-local because it is a property of how someone
+//  holds this phone rather than of their account.
 //
 
 import SwiftUI
@@ -129,9 +125,8 @@ struct BottomToolbarView: View {
     private func icon(for action: BrowserToolbarAction) -> some View {
         switch action {
         case .tabs:
-            // The tab count is drawn inside the glyph, which is what Aira's
-            // `BrowserOpenTabsButtonViewModel` does and what removes the need
-            // for a separate badge that overlaps the icon.
+            // The tab count is drawn inside the glyph, which removes the need for
+            // a separate badge overlapping the icon.
             ZStack {
                 Image(systemName: action.systemImage)
                     .font(.system(size: glyphSize, weight: .medium))

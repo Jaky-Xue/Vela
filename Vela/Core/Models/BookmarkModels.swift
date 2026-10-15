@@ -2,16 +2,12 @@
 //  BookmarkModels.swift
 //  Vela
 //
-//  Swift port of the bookmark model from
-//  `AiraBrowser/entry/src/main/ets/common/models/BrowserModels.ets` and the
-//  `bookmark_roots` / `bookmark_nodes` / `bookmark_orders` tables in
-//  `data/database/BrowserDatabase.ets` (Aira Browser 3.7.4, GPL-3.0).
+//  The bookmark tree: folders, bookmarks and their ordering.
 //
-//  The two-level structure is preserved exactly: a node table holding folders
-//  and bookmarks, and a separate order table holding parent/child/position.
-//  Keeping them apart is what makes a drag-reorder a small update instead of a
-//  rewrite of every moved subtree, and it is what lets the WebDAV and Personal
-//  Server providers push order changes independently of content changes.
+//  Folders, bookmarks and order are three tables rather than one. Keeping order
+//  apart from content is what makes a drag-reorder a small update instead of a
+//  rewrite of every moved subtree, and it is what lets a sync provider push
+//  order changes independently of content changes.
 //
 
 import Foundation
@@ -22,13 +18,13 @@ public enum BookmarkNodeType: String, Codable, Sendable, CaseIterable {
     case bookmark
 }
 
-/// Ported from `BookmarkRootRole`.
 public enum BookmarkRootRole: String, Codable, Sendable, CaseIterable, Identifiable {
     case toolbar
     case other
-    /// Vela addition: the mobile reading list Aira exposes as its own root.
-    /// Kept as a raw value that Aira's tree does not use, so a future export
-    /// still round-trips through the `other` root.
+    /// The mobile reading list. It is a root of its own rather than a folder
+    /// under `other`, and it is written with a raw value the other roots do not
+    /// use, so an export that only understands `toolbar` and `other` still
+    /// round-trips it.
     case readingList = "reading_list"
 
     public var id: String { rawValue }
@@ -151,16 +147,15 @@ public struct BookmarkTreeItem: Identifiable, Sendable {
 
     public var childCount: Int { children.count }
 
-    /// Total nodes underneath, used by `BookmarkFolderCountCacheRepository` in
-    /// the ArkTS tree to avoid recounting on every list render.
+    /// Total nodes underneath. The list caches this so a folder's count is not
+    /// recomputed on every render.
     public var descendantCount: Int {
         children.reduce(children.count) { $0 + $1.descendantCount }
     }
 }
 
-/// Ported from `BookmarkFolderSelectionPreparationCoordinator` — the folder
-/// picker excludes the subtree being moved so a folder cannot be dropped into
-/// its own descendant.
+/// The folder picker excludes the subtree being moved, so a folder cannot be
+/// dropped into its own descendant.
 public struct BookmarkFolderPickerItem: Identifiable, Sendable {
     public var id: String { node.id }
     public var node: BookmarkNode
@@ -169,10 +164,9 @@ public struct BookmarkFolderPickerItem: Identifiable, Sendable {
 
 /// Process-wide identity values.
 ///
-/// Ported from the `device_id` column that Aira stamps on every syncable row.
-/// iOS stores the generated identifier in `UserDefaults` rather than the
-/// HarmonyOS `deviceInfo` API, and it survives reinstalls only as long as the
-/// keychain entry backing it does.
+/// The device identifier is generated once and kept in `UserDefaults`. It is
+/// stamped on every syncable row, so a reinstall produces a new one and rows
+/// written under the old value read as another device's.
 public enum BrowserIdentity {
     private static let deviceIdKey = "org.vela.browser.device-id"
 

@@ -2,14 +2,12 @@
 //  DownloadRepository.swift
 //  Vela
 //
-//  Persistence for downloads. Ported from `DownloadV2TaskEntity` and the record
-//  store in `AiraBrowser/entry/src/main/ets/data/downloadv2/` (Aira Browser
-//  3.7.4, GPL-3.0), relocated from a preferences document to a SQLite table.
+//  Persistence for downloads.
 //
-//  Migration note: Aira serialises task records to a preferences string. Vela
-//  uses a table because `WKDownload` hands back resume data as an opaque `Data`
-//  blob that has to survive a relaunch, and a preferences value is the wrong
-//  container for a binary payload. The record fields are otherwise identical.
+//  Records live in a table rather than a preferences document because resume
+//  data is an opaque `Data` blob that has to survive a relaunch, and a
+//  preferences value is the wrong container for a binary payload. The record
+//  fields are otherwise the ones the status machine needs.
 //
 
 import Foundation
@@ -107,9 +105,8 @@ public final class DownloadRepository: @unchecked Sendable {
 
     /// Persists the security-scoped bookmark for a user-chosen download folder.
     ///
-    /// Not part of the ported schema: iOS requires a bookmark to regain access to
-    /// a folder outside the app container after relaunch, and Aira has no
-    /// equivalent because HarmonyOS grants a durable path directly. It lives in
+    /// iOS requires a bookmark to regain access to a folder outside the app
+    /// container after relaunch, so the choice is recorded here. It lives in
     /// `UserDefaults` rather than a column because there is exactly one, and it
     /// is not per-task despite being recorded while a task is in flight.
     public func storeDestinationBookmark(_ bookmark: Data?) throws {

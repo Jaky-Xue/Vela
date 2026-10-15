@@ -2,12 +2,9 @@
 //  SettingsSubpages.swift
 //  Vela
 //
-//  The remaining settings destinations. Ported from
-//  `AiraBrowser/entry/src/main/ets/app/pages/AdBlockSettingsPage.ets`,
-//  `SecureDnsSettingsPage.ets`, `SettingsSitePermissionDefaultPage.ets`,
-//  `SettingsExternalNavigationCoordinator`'s page, `SiteControlsCapabilityPage.ets`,
-//  `DownloadSettingsPage.ets` and `SettingsSiteDataClearCoordinator`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The settings destinations past the main list: ad blocking, secure DNS, default
+//  site permissions, external navigation, site controls, downloads, and clearing
+//  site data.
 //
 
 import SwiftUI
@@ -235,7 +232,6 @@ struct AdBlockSettingsView: View {
 
 // MARK: - Privacy
 
-/// Ported from `BrowserTrackingProtectionSettingsPage.ets`.
 struct PrivacySettingsView: View {
     @Environment(AppEnvironment.self) private var env
 
@@ -291,7 +287,6 @@ struct PrivacySettingsView: View {
 
 // MARK: - Secure DNS
 
-/// Ported from `SecureDnsSettingsPage.ets` and `SecureDnsProfileEditPage.ets`.
 struct SecureDnsSettingsView: View {
     @Environment(AppEnvironment.self) private var env
 
@@ -382,8 +377,6 @@ struct SecureDnsSettingsView: View {
 
 // MARK: - Site permissions
 
-/// Ported from `SettingsSitePermissionDefaultPage.ets` and
-/// `SiteControlsCapabilityPage.ets`.
 struct SitePermissionsSettingsView: View {
     @Environment(AppEnvironment.self) private var env
 
@@ -423,8 +416,6 @@ struct SitePermissionsSettingsView: View {
 
 // MARK: - External navigation
 
-/// Ported from `SettingsExternalNavigationCoordinator` and
-/// `SiteControlsExternalNavigationDefaultPage.ets`.
 struct ExternalNavigationSettingsView: View {
     @Environment(AppEnvironment.self) private var env
 
@@ -580,7 +571,6 @@ struct ClearDataView: View {
 
 // MARK: - Downloads
 
-/// Ported from `DownloadSettingsPage.ets`.
 struct DownloadSettingsView: View {
     @Environment(AppEnvironment.self) private var env
 

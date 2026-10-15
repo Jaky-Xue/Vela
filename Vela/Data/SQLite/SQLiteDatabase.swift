@@ -2,15 +2,12 @@
 //  SQLiteDatabase.swift
 //  Vela
 //
-//  Thin SQLite wrapper used by the Vela data layer.
+//  Thin SQLite wrapper used by the data layer.
 //
-//  Aira persists through HarmonyOS ArkData `relationalStore` (`@kit.ArkData`),
-//  configured in `data/database/BrowserDatabase.ets`. iOS ships SQLite as a
-//  system library, so Vela talks to `sqlite3` directly instead of pulling a
-//  third-party wrapper. The table definitions, column names and indexes in
-//  `BrowserSchema.swift` are copied from the ArkTS originals, so a future
-//  file-level migration between the two platforms stays a data move rather than
-//  a schema redesign.
+//  iOS ships SQLite as a system library, so this talks to `sqlite3` directly
+//  rather than taking on a third-party wrapper. The table definitions, column
+//  names and indexes in `BrowserSchema.swift` are the contract it serves, so a
+//  schema change and the queries against it move together.
 //
 
 import Foundation
@@ -242,9 +239,6 @@ public final class SQLiteStatement {
 /// deadlock, and splitting the API into locked and unlocked variants leaks the
 /// distinction into every caller. A recursive lock lets the same thread re-enter
 /// while still excluding other threads, which is exactly the requirement.
-///
-/// That matches the behaviour of ArkData's `relationalStore`, which serialises
-/// writes internally and is what the ArkTS data layer is written against.
 public final class SQLiteDatabase: @unchecked Sendable {
     private var handle: OpaquePointer?
     private let lock = NSRecursiveLock()

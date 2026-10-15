@@ -2,29 +2,21 @@
 //  NewTabHomeView.swift
 //  Vela
 //
-//  The native new-tab surface. Ported from `features/newtab/`,
-//  `BrowserHomePresentationViewModel.ets` and
-//  `BrowserHomeActionAvailabilityCoordinator.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The native new-tab surface: search, most-visited shortcuts and recently
+//  closed, in that order.
 //
-//  Aira's home is a configurable web document the user can replace with their
-//  own HTML (`CustomHomepageSettingsPage`, ADR 0046). Vela keeps the native
-//  surface because the port has no custom-homepage runtime, and renders the same
-//  three blocks in the same order: search, most-visited shortcuts, and recently
-//  closed.
+//  The surface is native rather than a web document because there is no
+//  custom-homepage runtime to load one into.
 //
-//  Shortcuts are derived from history rather than stored separately. ADR 0044
-//  ("home web shortcuts are independent from bookmarks") is the reason Aira
-//  keeps them apart; on iOS, deriving them costs one indexed query and removes
-//  an entire second store from the port.
+//  Shortcuts are derived from history rather than stored separately. Keeping them
+//  apart from bookmarks is deliberate — a shortcut is a place you went, not a
+//  place you saved — and deriving them costs one indexed query instead of an
+//  entire second store.
 //
-//  iOS port enhancement (this revision). Aira's home is a fixed page: it renders
-//  every shortcut it has and the recently-closed block in full, because on a
-//  HarmonyOS phone that fits. Imported history does not fit — eight shortcuts is
-//  already a screenful, and a user with a week of history had a home page that
-//  was a wall of icons above a wall of rows. Every block below the search box is
-//  therefore collapsible, the shortcut grid folds after eight, and the fold
-//  state is remembered per surface.
+//  Every block below the search box is collapsible, and the shortcut grid folds
+//  after eight. Rendering everything in full works until a profile has imported
+//  history, at which point the home page becomes a wall of icons above a wall of
+//  rows. The fold state is remembered per surface.
 //
 
 import SwiftUI

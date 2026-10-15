@@ -2,22 +2,16 @@
 //  OmniboxSuggestionListView.swift
 //  Vela
 //
-//  The omnibox suggestion card. Ported from the presentation described in
-//  `AiraBrowser/entry/src/main/ets/features/search/BrowserSearchSuggestionPanel*`
-//  — `BrowserSearchSuggestionSectionViewModel.ets`,
-//  `BrowserSearchSuggestionRowViewModel.ets` and
-//  `BrowserSearchSuggestionPanelVisualTokens.ets` (Aira Browser 3.7.4, GPL-3.0).
+//  The omnibox suggestion card.
 //
-//  iOS port enhancement (this revision). Aira renders its suggestions inside the
-//  browser page, pushing the web document down, because ArkUI has no overlay
-//  that can float above a `Web` component. Vela floats the list as a card over
-//  the page instead, which is what the iOS omnibox is expected to look like —
-//  and it is why this file owns its own height budget, its own material and its
-//  own disclosure state rather than inheriting them from a layout parent.
+//  The list floats over the page rather than pushing the document down, which is
+//  what the iOS omnibox is expected to look like. That is why this file owns its
+//  own height budget, its own material and its own disclosure state instead of
+//  inheriting them from a layout parent.
 //
-//  Three behaviours in here have no Aira counterpart and are called out where
-//  they live: per-section disclosure, swipe-to-delete, and the pop-up engine
-//  switcher.
+//  Three behaviours here are called out where they live, because none is implied
+//  by the rest of the design: per-section disclosure, swipe-to-delete, and the
+//  pop-up engine switcher.
 //
 
 import SwiftUI
@@ -133,11 +127,10 @@ struct OmniboxSuggestionListView: View {
         .buttonStyle(.plain)
         .contentShape(Rectangle())
 
-        // Long-press to re-run the query elsewhere. Aira switches engines from a
-        // settings page; the row's own menu is the version that does not cost a
-        // navigation away from what the user is typing. Attached only to the
-        // search row, so a long press on a bookmark does nothing rather than
-        // opening an empty menu.
+        // Long-press to re-run the query elsewhere. The row's own menu is the
+        // version that does not cost a navigation away from what the user is
+        // typing. Attached only to the search row, so a long press on a bookmark
+        // does nothing rather than opening an empty menu.
         if suggestion.section.supportsEngineSwitch, viewModel.availableEngines.count > 1 {
             content.contextMenu { engineMenu(for: suggestion) }
         } else {

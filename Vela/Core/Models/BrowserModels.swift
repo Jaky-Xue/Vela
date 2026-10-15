@@ -2,14 +2,17 @@
 //  BrowserModels.swift
 //  Vela
 //
-//  Swift port of `AiraBrowser/entry/src/main/ets/common/models/BrowserModels.ets`
-//  (Aira Browser 3.7.4, GPL-3.0). Type names and cases are kept identical to the
-//  ArkTS originals so the two trees stay diffable.
+//  The shared browser vocabulary: profiles, data scopes, privacy modes, site
+//  permissions, external-navigation policy, tracking protection, and the
+//  preferences document these are read from.
 //
-//  Platform note: HarmonyOS exposes `BrowserProfileId` as a single fixed profile
-//  ('profile-main'). iOS keeps the same shape; private browsing is expressed as a
-//  session privacy mode over an ephemeral `WKWebsiteDataStore`, exactly as Aira
-//  expresses it via `BrowserSessionPrivacyMode`.
+//  Private browsing is a session privacy mode layered over an ephemeral
+//  `WKWebsiteDataStore` rather than a second profile. The profile is fixed for
+//  the life of the install; what changes is which data store a tab writes to,
+//  and that is a property of the session, not of the identity.
+//
+//  Raw values are stable strings because they are persisted in the preferences
+//  document and stored in the schema.
 //
 
 import Foundation
@@ -49,9 +52,8 @@ public enum SyncState: String, Codable, Sendable, CaseIterable {
     case conflict
 }
 
-/// Ported from `SyncProviderId`. Vela ships the Community surface only: the
-/// user-owned providers. Huawei-account backed providers are Official-only and
-/// are deliberately absent, matching Aira's Community distribution rules.
+/// The sync providers this app supports: user-owned ones only. Account-backed
+/// cloud providers are deliberately absent.
 public enum SyncProviderId: String, Codable, Sendable, CaseIterable {
     case none
     case webdav
@@ -330,7 +332,7 @@ public struct SecureDnsProfile: Codable, Equatable, Sendable, Identifiable {
         self.isBuiltIn = isBuiltIn
     }
 
-    /// The built-in catalogue, mirroring Aira's `SecureDnsProfileEditPage` presets.
+    /// The built-in catalogue of DNS providers.
     public static let builtInProfiles: [SecureDnsProfile] = [
         SecureDnsProfile(
             id: "alidns",
@@ -389,10 +391,12 @@ public struct SecureDnsSettings: Codable, Equatable, Sendable {
 
 // MARK: - Preferences bundle
 
-/// The full device-local settings document. Ported from the aggregate that Aira
-/// spreads across `PreferencesRepository` and the `data/preferences/*` adapters,
-/// collapsed here into one `Codable` value because iOS has a single settings
-/// store (`UserDefaults`) and no ArkData Preferences adapter layer.
+/// The full device-local settings document.
+///
+/// One `Codable` value rather than a key per setting, stored as a single
+/// `UserDefaults` entry. Decoding it as a whole is why a new field has to be
+/// optional: a required key would fail to decode on every existing install and
+/// the settings would silently reset.
 public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var searchEngine: SearchEngineSettings
     public var adBlock: AdBlockSettings

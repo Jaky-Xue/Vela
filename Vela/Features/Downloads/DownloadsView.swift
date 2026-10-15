@@ -2,13 +2,12 @@
 //  DownloadsView.swift
 //  Vela
 //
-//  The download list. Ported from `AiraBrowser/entry/src/main/ets/app/pages/DownloadManagementPage.ets`
-//  and `DownloadSettingsPage.ets` (Aira Browser 3.7.4, GPL-3.0).
+//  The download list.
 //
-//  Actions map onto what `WKDownload` can actually do: pause and resume exist
-//  because WebKit hands back resume data, retry exists because a fresh request
-//  is always possible, and there is no queue reorder because WebKit has no
-//  transfer queue to reorder.
+//  The actions map onto what `WKDownload` can actually do: pause and resume exist
+//  because WebKit hands back resume data, retry exists because a fresh request is
+//  always possible, and there is no queue reorder because WebKit has no transfer
+//  queue to reorder.
 //
 
 import SwiftUI

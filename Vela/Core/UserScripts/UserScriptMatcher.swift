@@ -2,16 +2,13 @@
 //  UserScriptMatcher.swift
 //  Vela
 //
-//  Decides whether a user script should run on a URL, and builds the
-//  `WKUserScript` that runs it. Ported from the matching in Aira's
-//  `features/userscripts/UserScriptRuntimeModels.ets` and the eligibility gate
-//  in `UserScriptRuntimeCoordinator` (Aira Browser 3.7.4, GPL-3.0).
+//  Decides whether a user script should run on a URL.
 //
 //  `@match` and `@include` are different grammars and both have to be honoured:
 //  `@match` uses the strict Chrome extension pattern syntax, while `@include`
-//  allows a loose glob that users rely on, including a bare `*`. Treating them
-//  as one thing is the classic way a userscript manager silently stops matching
-//  the scripts people actually install.
+//  allows a loose glob people rely on, including a bare `*`. Treating the two as
+//  one thing is the classic way a userscript manager silently stops matching the
+//  scripts its users actually install.
 //
 
 import Foundation
@@ -49,11 +46,11 @@ public enum UserScriptMatcher {
             }
     }
 
-    /// Ported from `UserScriptRuntimeEligibility`.
+    /// Which scripts may run on a URL.
     ///
-    /// Private browsing blocks user scripts outright. That is Aira's rule and it
-    /// is the right one here: a script runs with page privileges and can read
-    /// and modify everything on the page, which would defeat the session.
+    /// Private browsing blocks user scripts outright: a script runs with page
+    /// privileges and can read and modify everything on the page, which would
+    /// defeat the session.
     public static func eligibility(
         scripts: [InstalledUserScriptState],
         url: URL,

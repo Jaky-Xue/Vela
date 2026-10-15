@@ -2,25 +2,17 @@
 //  AddressBarView.swift
 //  Vela
 //
-//  The address-input logic that is *not* a view. Ported from
-//  `AiraBrowser/entry/src/main/ets/core/browser/`
-//  — `BrowserUnifiedLinkLogic.ets`, `BrowserAddressDisplayCoordinator.ets` and
-//  the submit path in `BrowserShellSearchInvocationAdapter.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The address-input logic that is *not* a view: the URL-versus-query
+//  resolver, and the progress ring the tab overview draws.
 //
-//  iOS port enhancement (this revision). This file used to hold the address bar
-//  view, its suggestion list and its suggestion engine as well. All three moved
-//  out, because all three grew past the point where one file could hold them:
+//  The resolver lives outside the omnibox even though it is what the omnibox
+//  mostly does, because the new-tab home and the shell's navigation path both
+//  call it. The rest of the address bar is elsewhere:
 //
 //    * the bar itself is `UI/Omnibox/OmniboxView.swift`,
 //    * the suggestion list is `UI/Omnibox/OmniboxSuggestionListView.swift`,
 //    * the engine and the session are `UI/Omnibox/OmniboxViewModel.swift`,
 //    * the value types are `UI/Omnibox/OmniboxModels.swift`.
-//
-//  What is left is the part that is genuinely not a view and is depended on from
-//  outside the omnibox — the URL/query resolver, which the new-tab home and the
-//  shell's navigation path both use — plus the progress ring the tab overview
-//  draws.
 //
 
 import SwiftUI

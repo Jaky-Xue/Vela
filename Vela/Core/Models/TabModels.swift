@@ -2,15 +2,20 @@
 //  TabModels.swift
 //  Vela
 //
-//  Swift port of `BrowserTabState`, `TabRecord` and the tab enums from
-//  `AiraBrowser/entry/src/main/ets/core/tabs/TabManager.ets` and
-//  `common/models/BrowserModels.ets` (Aira Browser 3.7.4, GPL-3.0).
+//  A tab's observable state, its persisted record, and the enums describing how
+//  it got there.
 //
-//  Aira's tab model carries far more runtime bookkeeping than iOS needs because
-//  ArkWeb tabs are hosted Web nodes that must be materialised, backgrounded and
-//  torn down explicitly. iOS `WKWebView` instances are ordinary objects, so the
-//  runtime-state machine collapses to the states Vela actually acts on. The
-//  persisted record and the user-visible fields are kept identical.
+//  `BrowserTabState` is a reference type because it is the identity the web-view
+//  host, the session store and the tab list all key off, and because the web
+//  engine mutates it as a page loads.
+//
+//  The runtime-state machine is deliberately small. A `WKWebView` is an ordinary
+//  object and WebKit manages content processes itself, so a tab either has a
+//  live web view or it does not, and `cold` means exactly that.
+//
+//  The persisted record holds only what cannot be re-derived from the web view.
+//  Writing progress and back/forward availability to disk is what makes a
+//  restored session come back showing stale chrome.
 //
 
 import Foundation
@@ -72,11 +77,11 @@ public enum BrowserTabOpenSource: String, Codable, Sendable, CaseIterable {
     case download
 }
 
-/// Ported from `BrowserTabState`.
+/// One open tab.
 ///
-/// A class rather than a struct: the tab is the identity that the web-view host,
-/// the session store and the SwiftUI list all key off, and reference semantics
-/// match the ArkTS original where a tab is a mutated object, not a value.
+/// A class rather than a struct: the tab is the identity the web-view host, the
+/// session store and the SwiftUI list all key off, and the web engine mutates it
+/// in place as a page loads.
 @MainActor
 @Observable
 public final class BrowserTabState: Identifiable {

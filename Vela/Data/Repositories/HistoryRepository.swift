@@ -2,14 +2,11 @@
 //  HistoryRepository.swift
 //  Vela
 //
-//  Persistence for browsing history. Ported from
-//  `AiraBrowser/entry/src/main/ets/data/repositories/` (history half) and
-//  `data/database/BrowserDatabase.ets` (Aira Browser 3.7.4, GPL-3.0).
+//  Persistence for browsing history.
 //
 //  Every write takes a `BrowserDataBoundary` rather than reading privacy mode
-//  off the calling tab. That is the port of ADR 0065 ("private browsing uses
-//  effect policy"): a private session suppresses the write at the repository,
-//  so no caller can forget the check.
+//  off the calling tab. A private session therefore suppresses the write at the
+//  repository, where no caller can forget the check.
 //
 
 import Foundation
@@ -91,8 +88,8 @@ public final class HistoryRepository: @unchecked Sendable {
         guard let normalized = HistoryUrlNormalizer.normalize(rawUrl),
               let parsed = URL(string: normalized) else { return nil }
 
-        // Internal surfaces are not history. Ported from the guard in Aira's
-        // visit coordinator, extended with Vela's own home scheme.
+        // Internal surfaces are not history: only http and https navigations are
+        // recorded, so a `vela://` command or an about page never lands here.
         let scheme = parsed.scheme?.lowercased() ?? ""
         guard scheme == "http" || scheme == "https" else { return nil }
 
@@ -387,10 +384,9 @@ public final class HistoryRepository: @unchecked Sendable {
 
     /// Applies a removal at the scope the history UI asked for.
     ///
-    /// Ported from the removal switch in Aira's history manager. `singleUrl`
-    /// stamps `hidden` and keeps the visits — the visits are what a sync peer
-    /// reconciles against, so removing them locally would look like new data on
-    /// the next pull.
+    /// `singleUrl` stamps `hidden` and keeps the visits: the visits are what a
+    /// sync peer reconciles against, so removing them locally would look like
+    /// new data on the next pull.
     public func remove(scope: HistoryRemovalScope, url: HistoryUrl? = nil, profileId: BrowserProfileId) throws {
         switch scope {
         case .singleUrl:

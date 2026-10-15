@@ -5,13 +5,15 @@
 //  Owns every `WKWebView` interaction: configuration, navigation policy,
 //  window-open handling, permissions, downloads and script messages.
 //
-//  Ported from `AiraBrowser/entry/src/main/ets/core/browser/` — specifically
-//  `BrowserWebHostCoordinator.ets`, `BrowserWebNavigationInterceptionCoordinator.ets`,
-//  `BrowserNewWindowCoordinator.ets`, `BrowserWebCapabilityPromptApplicationCoordinator.ets`
-//  and `BrowserHostedWebDocumentStartScriptCoordinator.ets` (Aira Browser 3.7.4,
-//  GPL-3.0). Aira splits these across many coordinators because ArkWeb delivers
-//  correspondingly many callbacks. `WKNavigationDelegate` and `WKUIDelegate`
-//  cover the same surface in two protocols, so they live in one place here.
+//  All of it is one object because WebKit asks for it that way. A web view's
+//  delegates come as a small set of protocols — `WKNavigationDelegate`,
+//  `WKUIDelegate`, `WKScriptMessageHandler` — and all of them need the same tab
+//  registry and the same services, so splitting them would only mean passing
+//  that state around.
+//
+//  The values the delegates produce go somewhere else. Anything the shell renders
+//  and the user answers lives on `WebPageOverlays`, so a view showing a dialog
+//  observes the dialog rather than the engine.
 //
 //  Concurrency note: the delegate methods are `nonisolated` and hop to the main
 //  actor before touching state. WebKit calls them on the main thread anyway, but
@@ -110,9 +112,8 @@ public final class BrowserWebCoordinator: NSObject {
         }
     }
 
-    /// Ported from `BrowserHistoryApiBridge.ets`'s host side: a single-page app
-    /// changed its URL without navigating, so the tab's URL and the history must
-    /// both be updated, and the change recorded as a visit.
+    /// A single-page app changed its URL without navigating, so the tab's URL and
+    /// the history both have to be updated, and the change recorded as a visit.
     private func handleHistoryApiMessage(_ message: WKScriptMessage, tab: BrowserTabState) {
         guard let payload = message.body as? [String: Any],
               let kind = payload["kind"] as? String,
@@ -173,9 +174,8 @@ public final class BrowserWebCoordinator: NSObject {
         adBlock.applyReport(hiddenCount: count)
     }
 
-    /// Ported from `UserScriptNativeBridgeModels.ets`. Writes from a script come
-    /// back as messages; the store is the authority, so an inbound write is
-    /// applied and the page's own copy is already up to date.
+    /// Writes from a script come back as messages. The store is the authority, so
+    /// an inbound write is applied and the page's own copy is already up to date.
     private func handleUserScriptMessage(_ message: WKScriptMessage, tab: BrowserTabState, webView: WKWebView) {
         guard let payload = message.body as? [String: Any],
               let type = payload["type"] as? String,
@@ -220,9 +220,9 @@ public final class BrowserWebCoordinator: NSObject {
     }
 
     private func handleConsoleMessage(_ message: WKScriptMessage, tab: BrowserTabState) {
-        // Console output is intentionally dropped. Aira collects it for the
-        // element inspector; Vela has no inspector, and buffering every
-        // console line of every page is a memory cost with no reader.
+        // Console output is intentionally dropped. There is no element inspector
+        // to read it, and buffering every console line of every page is a memory
+        // cost with no reader.
     }
 
     // MARK: - External navigation
@@ -303,8 +303,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     ///
     /// * Data store. A private tab gets `WKWebsiteDataStore.nonPersistent()`,
     ///   which is what makes private mode real on iOS: cookies, cache and local
-    ///   storage live in a store that is discarded with the session. Ported from
-    ///   Aira's split between `profile_persistent` and `session_ephemeral`.
+    ///   storage live in a store that is discarded with the session.
     /// * Content rules. The compiled `WKContentRuleList` is attached here, per
     ///   navigation, because a list compiled after a web view existed is not
     ///   picked up retroactively.
@@ -420,8 +419,8 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         }
 
         // Preferences. `javaScriptCanOpenWindowsAutomatically` stays false: a
-        // page that opens a window without a user gesture is a popup, and Aira
-        // gates that behind `BrowserNewWindowPolicyService` too.
+        // page that opens a window without a user gesture is a popup, and popups
+        // are routed through the new-tab path instead.
         let preferences = configuration.preferences
         preferences.javaScriptCanOpenWindowsAutomatically = false
         preferences.isFraudulentWebsiteWarningEnabled = true
@@ -537,9 +536,8 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         }
     }
 
-    /// Maps WebKit's navigation type onto the ported transition taxonomy, so a
-    /// typed URL and a clicked link are distinguishable in history exactly as
-    /// they are in Aira.
+    /// Maps WebKit's navigation type onto the history transition taxonomy, so a
+    /// typed URL and a clicked link stay distinguishable in the history list.
     static func transition(for type: WKNavigationType) -> HistoryTransition {
         switch type {
         case .linkActivated: return .link

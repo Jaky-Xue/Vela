@@ -2,21 +2,17 @@
 //  DownloadService.swift
 //  Vela
 //
-//  Download handling over `WKDownload`. Ported from
-//  `AiraBrowser/entry/src/main/ets/services/downloadv2/` and the state machine
-//  in `domain/downloadv2/` (Aira Browser 3.7.4, GPL-3.0).
+//  Download handling over `WKDownload`.
 //
-//  Engine divergence, stated plainly: Aira drives a native C++ downloader
-//  (`entry/src/main/cpp/download_core.cpp`) over NAPI because ArkWeb exposes no
-//  download API and no resume support. iOS does: `WKNavigationDelegate` offers a
-//  `WKDownload` for any response it would otherwise render, `WKDownloadDelegate`
-//  chooses the destination, and cancelling hands back resume data. So Vela
-//  implements the ported status machine and the ported UI, and lets WebKit move
-//  the bytes.
+//  WebKit moves the bytes. `WKNavigationDelegate` offers a `WKDownload` for any
+//  response it would otherwise render, `WKDownloadDelegate` chooses the
+//  destination, and cancelling hands back resume data — so this file drives the
+//  status machine and the UI, and lets WebKit own the transfer.
 //
-//  What that changes for the user: chunked multi-connection downloading, the
-//  per-task driver/queue model and the "smooth mode" throttle have no iOS
-//  equivalent and are not ported. Single-connection transfers with resume are.
+//  What the user gives up for that: chunked multi-connection downloading, a
+//  per-task driver and queue model, and a bandwidth throttle have no iOS
+//  equivalent and are not implemented. Single-connection transfers with resume
+//  are.
 //
 
 import Foundation
@@ -78,7 +74,7 @@ public final class DownloadService: NSObject {
     /// `Documents/Downloads` rather than `tmp`: a file the user asked to keep
     /// must survive the next launch, and the Documents directory is what makes
     /// it visible under "我的 iPhone ▸ Vela" in the Files app, which is the
-    /// closest iOS gets to Aira's user-chosen save path.
+    /// closest iOS gets to a user-chosen save path.
     public var downloadsDirectory: URL {
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let directory = base.appendingPathComponent("Downloads", isDirectory: true)
@@ -270,8 +266,7 @@ public final class DownloadService: NSObject {
 
     /// Resumes a paused transfer from its stored blob.
     ///
-    /// Aira's resume path re-opens the task through its own engine. On iOS the
-    /// only way back in is `WKWebView.resumeDownload(fromResumeData:)`, which
+    /// The only way back in is `WKWebView.resumeDownload(fromResumeData:)`, which
     /// needs a web view to attach the transfer to, so the caller passes one.
     public func resume(guid: String, in webView: WKWebView) async {
         guard let data = try? repository.resumeData(guid: guid) else { return }

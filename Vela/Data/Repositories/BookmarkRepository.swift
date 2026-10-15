@@ -2,14 +2,11 @@
 //  BookmarkRepository.swift
 //  Vela
 //
-//  Persistence for the bookmark tree. Ported from the read/write paths in
-//  `AiraBrowser/entry/src/main/ets/data/repositories/` and the bookmark half of
-//  `data/database/BrowserDatabase.ets` (Aira Browser 3.7.4, GPL-3.0).
+//  Persistence for the bookmark tree.
 //
-//  Deletion is a stamp on `deleted_at`, never a row removal. That is what ADR
-//  0009 ("platform sync does not own bookmark conflicts") depends on: a
-//  tombstone has to outlive the local delete so a sync peer can observe it.
-//  Every read in this file therefore filters `deleted_at IS NULL`.
+//  Deletion is a stamp on `deleted_at`, never a row removal. A tombstone has to
+//  outlive the local delete so a sync peer can observe it, which is why every
+//  read in this file filters `deleted_at IS NULL`.
 //
 
 import Foundation
@@ -25,9 +22,8 @@ public final class BookmarkRepository: @unchecked Sendable {
 
     /// Ensures the two shipped roots exist and returns them.
     ///
-    /// Ported from the root bootstrap in Aira's bookmark bootstrap path. The
-    /// check is "does a root row exist", not "is the table empty", so a user who
-    /// deleted every bookmark still gets their roots back on next launch.
+    /// The check is "does a root row exist", not "is the table empty", so a user
+    /// who deleted every bookmark still gets their roots back on next launch.
     @discardableResult
     public func ensureRoots() throws -> [BookmarkRoot] {
         var roots = try loadRoots()
@@ -162,9 +158,8 @@ public final class BookmarkRepository: @unchecked Sendable {
 
     /// Soft-deletes a node and every descendant.
     ///
-    /// Ported from the recursive delete in Aira's bookmark write path: a folder
-    /// tombstone alone would leave its children live and visible to a sync peer,
-    /// so the whole subtree is stamped in one transaction.
+    /// A folder tombstone alone would leave its children live and visible to a
+    /// sync peer, so the whole subtree is stamped in one transaction.
     public func softDeleteSubtree(rootId: String) throws {
         let allOrders = try loadOrders()
         let allNodes = try loadAllNodesIncludingDeleted()
@@ -229,9 +224,8 @@ public final class BookmarkRepository: @unchecked Sendable {
 
     /// Appends a node to the end of its parent's child list.
     ///
-    /// Ported from the "next position" computation in Aira's bookmark insert:
-    /// order is dense, so the new position is `max + 1` within the parent, not
-    /// a global counter.
+    /// Order is dense, so the new position is `max + 1` within the parent rather
+    /// than a global counter.
     public func appendToParent(parentId: String?, childId: String) throws {
         let next = try nextPosition(inParent: parentId)
         try database.execute(
@@ -462,9 +456,8 @@ public final class BookmarkRepository: @unchecked Sendable {
 // MARK: - Timestamp helpers
 
 extension Date {
-    /// Milliseconds since the epoch. Every timestamp column in the ported schema
-    /// is an INTEGER in milliseconds, matching the ArkTS originals which use
-    /// `Date.now()`.
+    /// Milliseconds since the epoch. Every timestamp column in the schema is an
+    /// INTEGER in milliseconds, which is what an imported database holds too.
     public var milliseconds: Int64 {
         Int64((timeIntervalSince1970 * 1000).rounded())
     }

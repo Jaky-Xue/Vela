@@ -2,19 +2,17 @@
 //  SettingsService.swift
 //  Vela
 //
-//  Device-local settings. Ported from the aggregate Aira spreads across
-//  `data/preferences/PreferencesRepository.ets` and the `core/settings/*`
-//  coordinators (Aira Browser 3.7.4, GPL-3.0).
+//  Device-local settings.
 //
-//  Aira persists through the ArkData Preferences adapter, which is a
-//  key-value store with a per-key change observer. iOS's equivalent is
-//  `UserDefaults`, so this service is the direct translation: one JSON document
-//  per settings domain, published as a single observable value.
+//  `UserDefaults` holds one JSON document per settings domain, decoded as a whole
+//  and republished as a single observable value. Keeping a domain in one document
+//  is why a new field is only safe to add when it is optional: a required key
+//  would make every existing install's document fail to decode, and the settings
+//  would silently reset to defaults on the next launch.
 //
-//  The one Aira behaviour deliberately kept: nothing here is synced by default.
-//  ADR 0038 makes user scripts and ad-block subscriptions local-only, and Vela
-//  extends that to the whole settings document — a user who wants settings on
-//  their other devices opts into WebDAV explicitly.
+//  Nothing here is synced by default. User scripts and ad-block subscriptions are
+//  local-only, and that extends to the whole settings document — a user who wants
+//  settings on their other devices opts into WebDAV explicitly.
 //
 
 import Foundation
@@ -36,12 +34,12 @@ public final class SettingsService {
 
     /// Light, dark, or whatever the system says.
     ///
-    /// iOS port enhancement. Aira has no equivalent — HarmonyOS applies light
-    /// and dark at the device level and an app cannot override it — so this is
-    /// a Vela-only domain. It lives here rather than inside `BrowserPreferences`
-    /// because that document is decoded as a whole: a new non-optional key
-    /// would make every existing install's document fail to decode, and the
-    /// settings would silently reset to defaults on the next launch.
+    /// A user-chosen appearance override, which is what makes "follow the system"
+    /// something that can be departed from. It lives here rather than inside
+    /// `BrowserPreferences` because that document is decoded as a whole: a new
+    /// non-optional key would make every existing install's document fail to
+    /// decode, and the settings would silently reset to defaults on the next
+    /// launch.
     public private(set) var appearanceMode: AppearanceMode {
         didSet { defaults.set(appearanceMode.rawValue, forKey: Key.appearanceMode) }
     }

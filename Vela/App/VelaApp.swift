@@ -2,16 +2,12 @@
 //  VelaApp.swift
 //  Vela
 //
-//  The application entry point. Ported from the ability bootstrap in
-//  `AiraBrowser/entry/src/main/ets/app/abilities/` and
-//  `app/abilitystage/` (Aira Browser 3.7.4, GPL-3.0).
+//  The application entry point.
 //
-//  HarmonyOS drives lifecycle through `UIAbility.onForeground` / `onBackground`
-//  and `AbilityStage`; SwiftUI drives it through `ScenePhase`. The obligations
-//  are the same three, and they are the ones handled below: persist the tab
-//  session when the app leaves the foreground, run the private-session cleanup
-//  when it is backgrounded with private tabs open, and hand an inbound URL to
-//  the browser instead of opening a second window.
+//  SwiftUI drives the lifecycle through `ScenePhase`, and three obligations
+//  hang off it: persist the tab session when the app leaves the foreground, run
+//  the private-session cleanup when it is backgrounded with private tabs open,
+//  and hand an inbound URL to the browser instead of opening a second window.
 //
 
 import SwiftUI

@@ -3,12 +3,10 @@
 //  Vela
 //
 //  Builds the `WKUserScript` objects that run installed user scripts.
-//  Ported from `UserScriptNativeBridgeModels.ets` and the injection path in
-//  Aira's `services/userscripts/` (Aira Browser 3.7.4, GPL-3.0).
 //
-//  The hard part on iOS is that `GM_getValue` is synchronous in the userscript
-//  API but `WKScriptMessageHandler` is asynchronous. The solution — the same one
-//  every iOS userscript manager uses — is to snapshot the whole value store into
+//  The hard part is that `GM_getValue` is synchronous in the userscript API
+//  while `WKScriptMessageHandler` is asynchronous. The solution — the one every
+//  iOS userscript manager arrives at — is to snapshot the whole value store into
 //  the page at document start, read from that snapshot, and write changes back
 //  through the message bridge. A script that sets a value and reads it back in
 //  the same tick therefore sees its own write, which is the behaviour scripts

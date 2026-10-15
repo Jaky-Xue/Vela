@@ -2,15 +2,13 @@
 //  AdBlockRuleCompiler.swift
 //  Vela
 //
-//  Translates Adblock Plus filter syntax into WebKit content-blocker JSON.
+//  Translates Adblock Plus filter syntax into WebKit content-blocker JSON: the
+//  bridge between the lists users actually subscribe to and the only format a
+//  `WKWebView` will apply.
 //
-//  Aira evaluates filters in its own Rust core
-//  (`entry/src/main/cpp/rust/aira_adblock_core`, wrapping Brave's adblock
-//  engine) because it owns the network stack. Inside a `WKWebView` there is no
-//  way to intercept a subresource request, so iOS browsers must express
-//  blocking as a `WKContentRuleList`: a JSON array of trigger/action pairs that
-//  WebKit compiles and applies in its own process. This file is the bridge
-//  between the filter lists users actually subscribe to and that format.
+//  A `WKWebView` offers no way to intercept a subresource request, so blocking
+//  has to be expressed declaratively — trigger/action pairs that WebKit compiles
+//  and applies in its own process.
 //
 //  What is supported (the overwhelming majority of real-world rules):
 //    ||example.com^          domain anchor
@@ -23,9 +21,9 @@
 //
 //  What is not: regex rules (`/pattern/`), `$csp`, `$rewrite`, `$removeparam`,
 //  scriptlet injection (`##+js(...)`), and extended CSS selectors
-//  (`:has-text`, `:xpath`). Each of those has no representation in WebKit's
-//  rule format; `unsupportedRuleCount` reports how many were skipped so the
-//  settings screen can be honest about it rather than silently under-blocking.
+//  (`:has-text`, `:xpath`). Each has no representation in WebKit's rule format;
+//  `unsupportedRuleCount` reports how many were skipped so the settings screen
+//  can be honest about it rather than silently under-blocking.
 //
 
 import Foundation

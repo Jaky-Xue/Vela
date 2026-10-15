@@ -2,16 +2,14 @@
 //  SearchEngineCatalog.swift
 //  Vela
 //
-//  Swift port of the search surface of
-//  `AiraBrowser/entry/src/main/ets/common/models/BrowserModels.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The search engines the omnibox can use, and the shapes that identify their
+//  result pages.
 //
-//  The engine list, URL templates, default engine, default enabled set and
-//  result-page shapes are copied from the ArkTS originals verbatim. Result-page
-//  shapes drive the post-search fallback logic (see `SearchFallbackCoordinator`):
-//  after a search navigation lands, Vela checks whether the document really is a
-//  results page, which is how Aira detects a blocked engine and offers the
-//  fallback engine instead of leaving a blank tab.
+//  The result-page shapes drive the post-search fallback: after a search lands,
+//  the shell checks whether the document really is a results page, and if it is
+//  not it offers the next engine rather than leaving the user on a blank tab.
+//  That is the whole mechanism behind a blocked or unreachable engine being
+//  survivable.
 //
 
 import Foundation
@@ -222,10 +220,9 @@ public let defaultEnabledBuiltInSearchEngineIds: [BuiltInSearchEngineId] = [
     .bing, .google, .duckduckgo, .baidu, .yandex
 ]
 
-/// Ported from `SearchEngineRecord` — a persisted engine row. Built-in engines
-/// are materialised into this shape on first launch so the settings list, the
-/// ordering and the custom-engine editor all read one homogeneous collection,
-/// exactly as Aira's `SearchEngineSettings` does.
+/// A persisted engine row. Built-in engines are materialised into this shape on
+/// first launch, so the settings list, the ordering and the custom-engine editor
+/// all read one homogeneous collection.
 public struct SearchEngineRecord: Codable, Equatable, Sendable, Identifiable {
     public var id: SearchEngineId
     public var kind: SearchEngineKind
@@ -314,8 +311,8 @@ public struct SearchSuggestionPreferences: Codable, Equatable, Sendable {
     public var historyEnabled: Bool
     public var browsingHistoryEnabled: Bool
     public var navigationSuggestionsChosen: Bool
-    /// Remote (network) suggestions. Off by default: Vela, like Aira Community,
-    /// does not send keystrokes to a search provider unless the user opts in.
+    /// Remote (network) suggestions. Off by default: nothing here sends
+    /// keystrokes to a search provider unless the user opts in.
     public var remoteEnabled: Bool
 
     public init(
@@ -418,8 +415,8 @@ public struct SearchEngineSettings: Codable, Equatable, Sendable {
     }
 
     /// The active engine, falling back to the shipped default when the selected
-    /// id no longer resolves — the same guard Aira applies after a custom engine
-    /// is deleted while selected.
+    /// id no longer resolves — which is what happens when a custom engine is
+    /// deleted while it is selected.
     public var activeEngine: SearchEngineRecord {
         if let selected = selectableEngines.first(where: { $0.id == defaultSearchEngineId }) {
             return selected

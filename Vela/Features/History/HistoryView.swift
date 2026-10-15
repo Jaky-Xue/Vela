@@ -2,20 +2,16 @@
 //  HistoryView.swift
 //  Vela
 //
-//  The history manager. Ported from `AiraBrowser/entry/src/main/ets/app/pages/HistoryManagerPage.ets`
-//  and the removal scopes in `HistorySyncModels` (Aira Browser 3.7.4, GPL-3.0).
+//  The history manager.
 //
 //  Grouped by day, with the three removal scopes the data layer supports exposed
-//  as swipe actions: one entry, the whole host, or the whole day. Ported from the
-//  scope switch in `SettingsSiteDataClearCoordinator`; keeping the scopes
-//  distinct is what stops "delete this" from silently meaning "delete
+//  as swipe actions: one entry, the whole host, or the whole day. Keeping the
+//  scopes distinct is what stops "delete this" from silently meaning "delete
 //  everything from this site".
 //
-//  iOS port enhancement (this revision). Aira's history page renders every day
-//  it has, expanded, because ArkUI's list has no disclosure control. An imported
-//  or long-lived profile is then thousands of rows in one scroll. Each day is
-//  now a collapsible section — the two most recent days open, the rest folded —
-//  which is the same shape the omnibox's suggestion card uses.
+//  Each day is a collapsible section — the two most recent open, the rest folded.
+//  An imported or long-lived profile is otherwise thousands of rows in one scroll.
+//  It is the same shape the omnibox's suggestion card uses.
 //
 
 import SwiftUI

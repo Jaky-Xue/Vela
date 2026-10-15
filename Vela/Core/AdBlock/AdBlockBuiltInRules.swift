@@ -2,17 +2,13 @@
 //  AdBlockBuiltInRules.swift
 //  Vela
 //
-//  The rule list shipped inside the app.
+//  The rule list that ships inside the app.
 //
-//  Aira defines its built-in sources as constants
-//  (`AdBlockBuiltInRuleSource.ets`: `BUILT_IN_AD_BLOCK_RULE_SOURCE_ID`,
-//  `SMOOTH_MODE_AD_BLOCK_RULE_SOURCE_ID`,
-//  `APP_PROMOTION_BANNER_RULE_SOURCE_ID`) and materialises the rule text from
-//  its own engine. Vela ships the same three source identities with a small
-//  curated rule body, because a shipped list has to stay inside WebKit's
-//  150,000-rule ceiling once subscriptions are added on top of it, and because a
-//  stale embedded list ages badly. The intent is the same: block the common
-//  case out of the box and let the user subscribe to EasyList China for depth.
+//  Three source identities ship enabled, each with a small curated rule body
+//  behind it. The body is short on purpose: WebKit caps a content-rule list at
+//  150,000 rules, and a shipped list has to leave room for whatever the user
+//  subscribes to on top of it. The intent is to cover the common case out of the
+//  box and let subscriptions supply the depth.
 //
 
 import Foundation
@@ -175,7 +171,8 @@ public enum AdBlockBuiltInRules {
     ##.login-prompt-bar
     """
 
-    /// The floating app-promotion banner rule set Aira exposes separately.
+    /// The floating app-promotion banner rule set, kept as its own source so it
+    /// can be switched off on its own.
     private static let appPromotionBannerRules = """
     ! Vela built-in app promotion banner rules
     ##.float-app-banner

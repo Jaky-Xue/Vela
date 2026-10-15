@@ -2,18 +2,12 @@
 //  OmniboxModels.swift
 //  Vela
 //
-//  The omnibox's value types. Ported from the suggestion model in
-//  `AiraBrowser/entry/src/main/ets/core/browser/BrowserSearchSuggestionCoordinator.ets`
-//  and the section catalogue in `BrowserSearchSuggestionSection*.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The omnibox's value types: sections, rows, the matched-substring highlight
+//  and the clipboard hint.
 //
-//  iOS port enhancement (this revision). Aira's coordinator returns a flat list
-//  and its page renders one section per source, because ArkUI has no disclosure
-//  control and the sections are short. The iOS omnibox merges six sources over a
-//  card the width of the screen, so the list is *grouped and collapsible*, the
-//  matched substring is *highlighted*, and each row carries the identity the
-//  delete and engine-switch gestures need. Those three facts are what the types
-//  in this file exist to carry.
+//  The list is grouped and collapsible, the matched substring is highlighted, and
+//  every row carries the identity the delete and engine-switch gestures need.
+//  Those three facts are what the types in this file exist to carry.
 //
 
 import SwiftUI
@@ -22,8 +16,8 @@ import SwiftUI
 
 /// One group of suggestions.
 ///
-/// The case order *is* the priority order: it is the order Aira's coordinator
-/// appends to its result list, and the order the card renders in.
+/// The case order *is* the priority order: it is the order the suggestion
+/// sources are merged in, and the order the card renders in.
 public enum OmniboxSection: String, CaseIterable, Codable, Sendable, Identifiable {
     /// A URL the input already resolves to — including a LAN address.
     case directAccess
@@ -165,11 +159,10 @@ public struct OmniboxSuggestionGroup: Identifiable, Equatable, Sendable {
 
 /// Builds the attributed strings the suggestion rows draw.
 ///
-/// Ported from Aira's `BrowserSearchSuggestionHighlight`, which splits a title
-/// on the query and renders the matching run in the accent colour. The iOS port
-/// matches *per token* rather than on the whole query, because the query in the
-/// field is usually still being typed: with "git hu" the user wants both runs
-/// marked, not neither.
+/// Splits a title on the query and renders the matching run in the accent
+/// colour. Matching is *per token* rather than on the whole query, because the
+/// query in the field is usually still being typed: with "git hu" the user wants
+/// both runs marked, not neither.
 enum OmniboxTextHighlighter {
     /// - Parameters:
     ///   - text: the string to draw.
@@ -266,9 +259,8 @@ enum OmniboxTextHighlighter {
 
 /// What the paste affordance offers, decided from the pasteboard's *shape*.
 ///
-/// Aira has no equivalent — HarmonyOS routes paste through the system pasteboard
-/// with no inline affordance. On iOS, reading the pasteboard from code raises
-/// the system paste prompt, so the hint is derived from `detectPatterns`, which
+/// Reading the pasteboard from code raises the system paste prompt, so the hint
+/// is derived from `detectPatterns`, which
 /// classifies the contents without revealing them, and the actual paste is
 /// performed by SwiftUI's `PasteButton`, which is the one control the system
 /// grants a prompt-free read to. Nothing is read, stored or sent until the user

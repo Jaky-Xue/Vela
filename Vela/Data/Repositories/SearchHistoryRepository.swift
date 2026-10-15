@@ -2,15 +2,12 @@
 //  SearchHistoryRepository.swift
 //  Vela
 //
-//  Persistence for the omnibox query log. Ported from the
-//  `search_query_history` table and its readers in
-//  `AiraBrowser/entry/src/main/ets/data/database/BrowserDatabase.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  Persistence for the omnibox query log.
 //
-//  The three stored normalisations (verbatim, lowercased, whitespace-stripped)
-//  exist so omnibox matching can be exact, case-insensitive and
-//  whitespace-insensitive without a per-query collation. `use_count` is what
-//  ranks the suggestion list.
+//  Three normalisations are stored per query — verbatim, lowercased and
+//  whitespace-stripped — so omnibox matching can be exact, case-insensitive or
+//  whitespace-insensitive without a per-query collation. The stored use count is
+//  what ranks the suggestion list.
 //
 
 import Foundation

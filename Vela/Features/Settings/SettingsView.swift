@@ -2,15 +2,12 @@
 //  SettingsView.swift
 //  Vela
 //
-//  The settings centre and its sub-pages. Ported from
-//  `AiraBrowser/entry/src/main/ets/app/pages/SettingsCenterPage.ets` plus the
-//  per-domain pages under `app/pages/` (Aira Browser 3.7.4, GPL-3.0).
+//  The settings centre and the sub-pages that hang off it.
 //
-//  Aira has 84 settings pages and a catalog that owns their order
-//  (`SettingsDestinationCatalog.ets`). Vela ports the destinations that have a
-//  backing implementation, and says so on the About page rather than shipping
-//  rows that lead nowhere — a settings row that opens an empty screen is worse
-//  than an absent one.
+//  Only destinations with a backing implementation are listed, and the About page
+//  records which of the remaining ones are absent rather than shipping rows that
+//  lead nowhere. A settings row that opens an empty screen is worse than an
+//  absent row.
 //
 
 import SwiftUI
@@ -178,8 +175,6 @@ struct SettingsView: View {
 
 // MARK: - Search engines
 
-/// Ported from `SearchDefaultEnginePage.ets`, `SearchBuiltInEnginesPage.ets`
-/// and `SearchEngineEditPage.ets`.
 struct SearchEngineSettingsView: View {
     @Environment(AppEnvironment.self) private var env
 
@@ -395,8 +390,7 @@ private struct CustomSearchEngineForm: View {
 
 // MARK: - Appearance
 
-/// Ported from `ThemePaletteSettingsPage.ets`, extended with the iOS appearance
-/// override Aira's HarmonyOS original has no equivalent for.
+/// The palette picker, plus the per-app appearance override.
 struct AppearanceSettingsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
@@ -560,9 +554,6 @@ extension Color {
 
 // MARK: - General
 
-/// Ported from `GeneralStartupSettingsPage.ets`,
-/// `GeneralTabAutoCloseSettingsPage.ets` and
-/// `GeneralHistoryRetentionSettingsPage.ets`.
 struct GeneralSettingsView: View {
     @Environment(AppEnvironment.self) private var env
 
@@ -623,7 +614,6 @@ struct GeneralSettingsView: View {
 
 // MARK: - User agent
 
-/// Ported from `BrowserUserAgentSettingsPage.ets`.
 struct UserAgentSettingsView: View {
     @Environment(AppEnvironment.self) private var env
 
@@ -664,8 +654,8 @@ struct UserAgentSettingsView: View {
 
 // MARK: - About
 
-/// Ported from `SettingsAboutOverviewViewModel.ets`. The attribution section is
-/// what the GPL-3.0 licence and Aira's trademark policy require.
+/// The attribution section below is what the GPL-3.0 licence and the upstream
+/// trademark policy require.
 struct AboutView: View {
     @Environment(AppEnvironment.self) private var env
 
@@ -705,7 +695,7 @@ struct AboutView: View {
             }
 
             Section {
-                Text("Vela 是 Aira Browser 鸿蒙客户端的 iOS 移植。它保留了 Aira 的分层结构、数据表结构和功能语义，并针对 iOS 平台重新实现。")
+                Text("Vela 是 Aira Browser 的 iOS 移植。它保留了 Aira 的数据表结构和功能语义，并针对 iOS 平台重新实现。")
                     .font(.footnote)
                 Text("上游项目：Aira Browser，以 GPL-3.0 发布。Vela 是修改后的分发版本，按照上游商标政策使用了自己的名称、应用标识和视觉标识。")
                     .font(.footnote)
@@ -714,18 +704,18 @@ struct AboutView: View {
             }
 
             Section {
-                Text("iOS 不允许使用第三方浏览器内核，因此 Vela 的网页渲染、网络请求和广告过滤都通过 WebKit 完成。这与 Aira 在鸿蒙上自建网络栈和 Rust 过滤引擎的实现方式不同：")
+                Text("iOS 不允许使用第三方浏览器内核，因此 Vela 的网页渲染、网络请求和广告过滤都通过 WebKit 完成。以下能力因此受限：")
                     .font(.footnote)
                 VStack(alignment: .leading, spacing: 6) {
-                    limitation("广告过滤", "使用系统的 WKContentRuleList，而不是 Aira 的 Rust 引擎。规则语法支持常见的 Adblock Plus 子集，但正则规则、$csp、$rewrite 和扩展选择器无法表达。")
+                    limitation("广告过滤", "使用系统的 WKContentRuleList。规则语法支持常见的 Adblock Plus 子集，但正则规则、$csp、$rewrite 和扩展选择器无法表达。")
                     limitation("用户脚本", "在页面内执行，因此 GM_xmlhttpRequest、GM_download、GM_cookie 这类需要特权的接口不可用。申请了这些权限的脚本仍可安装，详情页会标注。")
-                    limitation("下载", "由 WKDownload 完成，支持断点续传，但没有 Aira 的分片多连接和下载队列。")
+                    limitation("下载", "由 WKDownload 完成，支持断点续传，但没有分片多连接和下载队列。")
                     limitation("统计", "WebKit 不报告被拦截的请求数，所以 Vela 不显示这个数字，只显示规则条数和实际隐藏的元素数。")
                     limitation("同步", "WebDAV 与自建 Personal Server 的数据模型已移植，客户端的同步调度尚未实现。")
                 }
                 .font(.caption)
             } header: {
-                Text("与鸿蒙版的差异")
+                Text("能力边界")
             }
 
             Section {

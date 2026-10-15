@@ -2,36 +2,35 @@
 //  BrowserSchema.swift
 //  Vela
 //
-//  Table definitions ported from
-//  `AiraBrowser/entry/src/main/ets/data/database/BrowserDatabase.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The table definitions: columns, types, defaults, indexes and the
+//  schema-version ladder.
 //
-//  Column names, types, defaults, indexes and the schema-version ladder are
-//  copied from the ArkTS originals. Tables that exist only to carry Aira's
-//  HarmonyOS-cloud sync domains (Huawei Space remote heads, Aira Cloud
-//  bootstrap, Personal Server frontiers) are not ported: those providers are
-//  Official distribution capabilities that the Community tree does not enable,
-//  and Vela ships the Community surface.
+//  The ladder keeps the numbering of the baseline it was derived from rather
+//  than restarting at 1, so an external database can be compared against this
+//  one directly.
 //
-//  Three tables are Vela-native because iOS stores the data in a different
-//  place than HarmonyOS does, and the migration note is recorded next to each.
+//  Three tables exist because of how iOS sandboxes an app: downloads, user
+//  scripts and ad-block subscriptions are stored here rather than in the
+//  preferences document a shared path would have allowed, and the migration
+//  note is recorded next to each.
 //
 
 import Foundation
 
 public enum BrowserSchema {
-    /// Ported from `CURRENT_BROWSER_DATABASE_SCHEMA_VERSION`.
+    /// The current schema version.
     ///
-    /// The ladder is kept at Aira's numbering rather than restarting at 1, so a
-    /// future import of an Aira database can compare versions directly. Vela's
-    /// own additions live above this number.
+    /// The ladder keeps the numbering of the schema it derived from rather than
+    /// restarting at 1, so a database written by another build of this lineage
+    /// can be compared against this one directly. Additions live above this
+    /// number.
     public static let currentSchemaVersion = 7
 
-    /// Ported from `INITIAL_BROWSER_DATABASE_SCHEMA_VERSION`.
+    /// The first version this schema ever shipped.
     public static let initialSchemaVersion = 1
 
-    /// Vela's first schema revision above the ported Aira baseline. Introduces
-    /// the iOS-native tables.
+    /// The first revision above the derived baseline. Introduces the iOS-native
+    /// tables.
     public static let velaSchemaVersion = 8
 
     public static let stateTable = "browser_schema_state"
@@ -256,11 +255,10 @@ public enum BrowserSchema {
 
         // MARK: Tab sessions
 
-        // Ported from `TAB_SESSIONS_TABLE`, minus the columns that describe
-        // ArkWeb web-node state (`web_state_path`, `form_draft`,
-        // `page_runtime_signals`). WKWebView has no equivalent serialised web
-        // state to store; iOS restores by navigating to the URL, so persisting
-        // those columns would only store values nothing can read back.
+        // The columns that describe a serialised web-node state
+        // (`web_state_path`, `form_draft`, `page_runtime_signals`) are absent:
+        // `WKWebView` has no equivalent to store, and a restore here navigates to
+        // the URL, so those columns would only hold values nothing reads back.
         """
         CREATE TABLE IF NOT EXISTS \(tabSessionsTable) (
           id TEXT PRIMARY KEY,
@@ -303,9 +301,8 @@ public enum BrowserSchema {
 
         // MARK: Site icons
 
-        // Ported from `SITE_ICONS_TABLE`. On iOS the favicon bytes live in the
-        // page's own cache, so `file_uri` holds a Vela-managed filename inside
-        // Application Support rather than an ArkWeb cache URI.
+        // `file_uri` holds a filename inside Application Support rather than a
+        // cache URI owned by the web engine.
         """
         CREATE TABLE IF NOT EXISTS \(siteIconsTable) (
           domain TEXT PRIMARY KEY,
@@ -326,11 +323,10 @@ public enum BrowserSchema {
 
         // MARK: Vela-native: downloads
 
-        // Migration note: Aira keeps download records in a preferences-backed
-        // JSON document (`data/downloadv2/DownloadV2RecordStore.ets`), not in the
-        // relational database. Vela uses a table because `WKDownload` resume
-        // data is binary and a preferences value is the wrong container for it.
-        // The record fields mirror `DownloadV2TaskEntity`.
+        // Migration note: download records live in the relational database
+        // rather than a preferences-backed JSON document, because `WKDownload`
+        // resume data is binary and a preferences value is the wrong container
+        // for it.
         """
         CREATE TABLE IF NOT EXISTS \(downloadsTable) (
           guid TEXT PRIMARY KEY,
@@ -360,11 +356,10 @@ public enum BrowserSchema {
 
         // MARK: Vela-native: user scripts
 
-        // Migration note: Aira stores user scripts in a preferences document as
-        // well (see ADR 0038, "user scripts and ad-block subscriptions are
-        // local-only"). Vela uses tables so the `@match` patterns can be indexed
-        // and so the GM_ value store gets per-key atomic writes. The metadata
-        // columns mirror `InstalledUserScriptState`.
+        // Migration note: user scripts live in tables rather than a preferences
+        // document, so the `@match` patterns can be indexed and the GM_ value
+        // store gets per-key atomic writes. They stay local to the device either
+        // way.
         """
         CREATE TABLE IF NOT EXISTS \(userScriptsTable) (
           id TEXT PRIMARY KEY,
@@ -412,10 +407,9 @@ public enum BrowserSchema {
 
         // MARK: Vela-native: ad-block rule sources
 
-        // Migration note: Aira keeps ad-block subscriptions in preferences with
-        // the rule text on disk (ADR 0038). Vela keeps the subscription metadata
-        // in a table and the rule text on disk, because the compiled
-        // `WKContentRuleList` identifier has to be tracked and invalidated.
+        // Migration note: the subscription metadata lives in a table and the rule
+        // text stays on disk, because the compiled `WKContentRuleList` identifier
+        // has to be tracked and invalidated.
         """
         CREATE TABLE IF NOT EXISTS \(adBlockSourcesTable) (
           id TEXT PRIMARY KEY,

@@ -2,16 +2,14 @@
 //  AdBlockModels.swift
 //  Vela
 //
-//  Swift port of the ad-block surface of
-//  `AiraBrowser/entry/src/main/ets/common/models/BrowserModels.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The ad-block settings and rule-source model: subscribed lists, custom rules,
+//  per-site exceptions and the statistics the settings screen reports.
 //
-//  Vela implements content blocking with `WKContentRuleList`, which is the only
-//  rule engine iOS permits inside a `WKWebView`. Aira compiles rules into a Rust
-//  core (`entry/src/main/cpp/rust/aira_adblock_core`) and evaluates requests in
-//  its own network stack, so the two implementations share the *settings and
-//  rule-source* model below but not the engine. See `AdBlockRuleCompiler` for
-//  the Adblock-Plus-syntax subset that maps onto WebKit's rule format.
+//  Content blocking on iOS means `WKContentRuleList`, the only rule engine a
+//  `WKWebView` permits, so this model describes what the user configured rather
+//  than what any one engine can execute. See `AdBlockRuleCompiler` for the
+//  Adblock Plus subset that maps onto WebKit's rule format, and for the syntax
+//  that has no representation there.
 //
 
 import Foundation
@@ -92,9 +90,8 @@ public struct AdBlockCustomRuleSource: Codable, Equatable, Sendable, Identifiabl
         self.lastError = lastError
     }
 
-    /// Ported from `AdBlockThirdPartyRuleSourceCatalog` — the subscription list
-    /// Aira offers users. Kept identical so the same upstream lists are
-    /// reachable from Vela.
+    /// The subscription list offered in settings. The ids are fixed so a user's
+    /// selection survives an update to the app.
     public static let catalog: [AdBlockCustomRuleSource] = [
         AdBlockCustomRuleSource(
             id: "easylist-china",

@@ -2,16 +2,14 @@
 //  ReaderView.swift
 //  Vela
 //
-//  The reading surface. Ported from `ReaderModeApplication.ets` and
-//  `BrowserArticleReaderViewModel` under `core/browser/`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The reading surface.
 //
-//  Aira renders the article through ArkWeb with a template; Vela renders it with
-//  the native text system, which is what makes Dynamic Type, VoiceOver and text
-//  selection work without a page having to cooperate. The extracted HTML is
-//  rendered in a `WKWebView` with a stylesheet built from the user's font size
-//  and colour scheme, because the source HTML has structure — headings, lists,
-//  figures, tables — that flattening to plain text would destroy.
+//  The article is rendered with the native text system, which is what makes
+//  Dynamic Type, VoiceOver and text selection work without the page having to
+//  cooperate. The extracted HTML still renders in a `WKWebView` with a stylesheet
+//  built from the user's font size and colour scheme, because the source has
+//  structure — headings, lists, figures, tables — that flattening to plain text
+//  would destroy.
 //
 
 import SwiftUI

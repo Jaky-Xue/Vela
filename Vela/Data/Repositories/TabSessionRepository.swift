@@ -2,17 +2,13 @@
 //  TabSessionRepository.swift
 //  Vela
 //
-//  Persistence for the saved tab list and the recently-closed list. Ported from
-//  the `tab_sessions` / `recently_closed_tabs` tables in
-//  `AiraBrowser/entry/src/main/ets/data/database/BrowserDatabase.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  Persistence for the saved tab list and the recently-closed list.
 //
-//  Private tabs are written here like any other tab. Aira does the same, and the
-//  reason is that "private" means "no durable browsing *history*", not "the app
-//  forgets what is open" — killing the app mid-session and reopening it into an
-//  empty private window would be a worse outcome than the row existing for the
-//  seconds between suspend and the cleanup pass at quit, which
-//  `BrowserPrivateSessionCleanupCoordinator` performs.
+//  Private tabs are written here like any other tab. "Private" means no durable
+//  browsing history, not that the app forgets what is open: killing the app
+//  mid-session and reopening it into an empty private window would be a worse
+//  outcome than a row that lives only for the seconds between suspend and the
+//  cleanup pass at quit.
 //
 
 import Foundation

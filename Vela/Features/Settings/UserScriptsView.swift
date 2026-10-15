@@ -2,15 +2,12 @@
 //  UserScriptsView.swift
 //  Vela
 //
-//  The user-script manager. Ported from
-//  `AiraBrowser/entry/src/main/ets/app/pages/UserScriptsPage.ets`,
-//  `UserScriptDetailPage.ets` and `UserScriptSourceEditPage.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The user-script manager.
 //
-//  Install sources are the three Aira supports: paste, a URL, or a file. The
-//  detail screen reports the grants a script asks for and marks the ones Vela
-//  cannot honour, which is the honest thing to do — silently dropping a grant
-//  makes a script that half-works look like a bug in the browser.
+//  Three install sources: paste, a URL, or a file. The detail screen reports the
+//  grants a script asks for and marks the ones this app cannot honour — silently
+//  dropping a grant makes a script that half-works look like a bug in the
+//  browser.
 //
 
 import SwiftUI

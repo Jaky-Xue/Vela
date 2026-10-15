@@ -3,16 +3,13 @@
 //  Vela
 //
 //  Parses a user-script metadata block into a `UserScriptPackageCandidate`.
-//  Ported from the metadata parsing in Aira's
-//  `features/userscripts/UserScriptMetadataModels.ets` and the install flow in
-//  `UserScriptsPage` / `UserScriptSourceEditPage` (Aira Browser 3.7.4, GPL-3.0).
 //
 //  A script is metadata-block driven: everything before the closing marker is
 //  `// @key value`, everything after is the body that runs on the page. The
 //  parser is deliberately permissive about unknown `@keys` — a script written
-//  for a manager with extensions should still install — and strict about the
-//  two things that make a script unrunnable: a missing `@name` and a metadata
-//  block with neither `@match` nor `@include`.
+//  for a manager with extensions should still install — and strict about the two
+//  things that make a script unrunnable: a missing `@name`, and a metadata block
+//  with neither `@match` nor `@include`.
 //
 
 import Foundation

@@ -4,17 +4,15 @@
 //
 //  Hosts a tab's pooled `WKWebView` inside SwiftUI.
 //
-//  Ported in spirit from `BrowserHostedWebOwnershipCoordinator.ets` and
-//  `BrowserHostedWebLayerGeometryCache.ets` (Aira Browser 3.7.4, GPL-3.0). Aira
-//  has to solve the same problem for ArkWeb: the web surface is owned by the
-//  tab, not by the view tree, so a "view" for it is really an attachment.
+//  The web surface belongs to the tab, not to the view tree, so the
+//  representable here is an attachment point rather than an owner.
 //
 //  Why a container view rather than returning the `WKWebView` directly from
 //  `makeUIView`: SwiftUI calls `makeUIView` once per representable identity, but
-//  a tab's web view is created and replaced by `TabManager` under memory
-//  pressure. A container lets the host swap which web view is attached without
-//  SwiftUI tearing the representable down, which is what keeps the page from
-//  reloading every time the tab strip changes.
+//  `TabManager` creates and replaces a tab's web view under memory pressure. A
+//  container lets the host swap which web view is attached without SwiftUI
+//  tearing the representable down, which is what keeps the page from reloading
+//  every time the tab strip changes.
 //
 
 import SwiftUI

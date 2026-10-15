@@ -2,17 +2,13 @@
 //  WebPageScripts.swift
 //  Vela
 //
-//  The document-start and document-end scripts Vela injects into every page.
-//  Ported from `AiraBrowser/entry/src/main/ets/core/web/BrowserHistoryApiBridge.ets`,
-//  `WebBottomSafeAreaScriptService.ets`, `WebToolbarClearanceScriptService.ets`,
-//  `WebScrollSmoothModeService.ets` and `ElementInspectionRuntimeScriptService.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The document-start and document-end scripts injected into every page.
 //
-//  These exist because a `WKWebView` tells its host about a navigation only when
-//  the document changes. A single-page app that calls `history.pushState` changes
-//  the URL without ever navigating, so without the bridge below the address bar
-//  keeps showing the URL the user arrived on and back/forward stop reflecting
-//  where they actually are. Aira solves the same problem the same way.
+//  These exist because a `WKWebView` reports a navigation only when the document
+//  changes. A single-page app calling `history.pushState` changes the URL without
+//  ever navigating, so without the bridge below the address bar keeps showing the
+//  URL the user arrived on, and back and forward stop reflecting where they
+//  actually are.
 //
 
 import Foundation
@@ -35,10 +31,9 @@ public enum WebPageScripts {
     // MARK: - History API bridge
 
     /// Reports `pushState` / `replaceState` / `popstate` / `hashchange` to the
-    /// host. Ported near-verbatim from `BrowserHistoryApiBridge.ets`, including
-    /// the "only report a real change" guard: a `replaceState` that keeps the
-    /// same URL must not produce an event, or an SPA that normalises its URL on
-    /// every render would fire a spurious navigation on each frame.
+    /// host, with a "only report a real change" guard: a `replaceState` that
+    /// keeps the same URL must not produce an event, or an SPA that normalises
+    /// its URL on every render would fire a spurious navigation on each frame.
     public static let historyApiBridge = """
     (function () {
       if (window.__velaHistoryApiBridgeInstalled === true) { return; }

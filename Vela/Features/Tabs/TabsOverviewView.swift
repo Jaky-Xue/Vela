@@ -2,18 +2,15 @@
 //  TabsOverviewView.swift
 //  Vela
 //
-//  The tab switcher. Ported from `core/browser/tabsOverview/`,
-//  `BrowserTabsOverviewViewModel.ets`, `BrowserTabsOverviewActionBarPolicy.ets`
-//  and `BrowserTabsSwitcherLayoutViewModel` (Aira Browser 3.7.4, GPL-3.0).
+//  The tab switcher.
 //
-//  Aira renders a paged grid with captured page previews
-//  (`BrowserTabPreviewCaptureService`). Vela shows a grid of title cards
-//  instead, because a `WKWebView` snapshot costs a full render pass per tab and
-//  the iOS tab switcher is expected to open instantly — a preview that arrives
-//  a second late is worse than a title that is there immediately.
+//  A grid of title cards rather than captured previews: a `WKWebView` snapshot
+//  costs a full render pass per tab, and the tab switcher is expected to open
+//  instantly — a preview that arrives a second late is worse than a title that
+//  is there immediately.
 //
-//  The privacy split is kept exactly: regular and private tabs never appear in
-//  the same list, and the private grid is what the lock setting gates.
+//  The privacy split is exact: regular and private tabs never appear in the same
+//  list, and the private grid is what the lock setting gates.
 //
 
 import SwiftUI
@@ -298,9 +295,8 @@ private struct NewTabCard: View {
 
 /// The identity check shown before the private tab list.
 ///
-/// Ported from `GeneralPrivateTabsSettingsViewModel`'s gate. `LAContext` is the
-/// same mechanism Aira reaches through HarmonyOS's user-auth kit, so the
-/// biometric prompt a user sees is the standard one.
+/// `LAContext` is what gates the private list, so the biometric prompt a user
+/// sees is the standard system one.
 private struct PrivateUnlockSheet: View {
     var onUnlock: () -> Void
     var onCancel: () -> Void

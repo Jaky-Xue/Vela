@@ -2,27 +2,22 @@
 //  BrowserShellView.swift
 //  Vela
 //
-//  The browser screen. Ported from `AiraBrowser/entry/src/main/ets/app/pages/BrowserShellPage.ets`
-//  and the shell coordinates it drives — `BrowserShellViewModel.ets`,
-//  `BrowserShellPresentationCoordinator.ets`, `BrowserShellRouteCoordinator.ets`
-//  and `BrowserRootBottomPanelSessionCoordinator.ets` (Aira Browser 3.7.4,
-//  GPL-3.0).
+//  The browser screen: the web surface, the address bar, the bottom toolbar
+//  and every overlay the shell can present.
 //
-//  Aira splits the shell across a page, a view model and about twenty
-//  coordinators because ArkUI has no observation system that can survive that
-//  much state in one component. SwiftUI's `@Observable`/`@Published` handles it
-//  in one view, so the layering collapses — but the *composition rules* are
-//  kept: the shell owns which surface is visible, and the toolbar, address bar
-//  and overlays are pure functions of that state.
+//  One view holds all of it because SwiftUI can express it that way. What the
+//  shell owns is *which surface is visible*; the toolbar, the address bar and
+//  the overlays are pure functions of that, so a layering of intermediate
+//  objects would have nothing to arbitrate.
 //
-//  iOS port enhancement (this revision). The omnibox's *session* — the debounced
-//  suggestion list, the highlighted row, the disclosure state — moved out of
-//  this view into `OmniboxViewModel`, which is what let the shell stop holding
-//  `suggestions`, `addressText` and `isEditingAddress` as three pieces of state
-//  that had to be kept in step by hand. Two presentation changes come with it:
-//  the toolbar is removed outright while the omnibox is open rather than being
-//  covered by it, and the chrome's collapse is driven by a spring so the
-//  toolbar's return reads as one movement instead of two.
+//  The omnibox session — the debounced suggestion list, the highlighted row,
+//  the disclosure state — lives in `OmniboxViewModel` rather than here, which
+//  is what keeps the suggestion list, the field text and the editing flag from
+//  being three pieces of state that have to be kept in step by hand. Two
+//  presentation choices follow from the platform: the toolbar is removed
+//  outright while the omnibox is open rather than being covered by it, and the
+//  chrome collapses under a spring so the toolbar's return reads as one
+//  movement instead of two.
 //
 
 import SwiftUI
@@ -294,8 +289,8 @@ struct BrowserShellView: View {
 
             VStack(spacing: BrowserSpacing.tight) {
                 // The card sits above the bar, not below it: the address panel
-                // is pinned to the bottom of the screen (Aira's one-handed
-                // layout), so "under the address bar" is off the bottom edge.
+                // is pinned to the bottom of the screen, so "under the address
+                // bar" is off the bottom edge.
                 if omnibox.isEditing {
                     OmniboxSuggestionListView(
                         viewModel: omnibox,
@@ -435,8 +430,8 @@ struct BrowserShellView: View {
             if webView.canGoBack {
                 webView.goBack()
             } else if tab.isTerminalBackAvailable {
-                // Backing out of the last page returns to the home surface,
-                // which is `BrowserHomeTerminalBackPlan` in the ArkTS tree.
+                // Backing out of the last page returns to the home surface
+                // rather than doing nothing at all.
                 tab.isHome = true
                 tab.url = ""
                 tab.title = ""
@@ -486,8 +481,7 @@ struct BrowserShellView: View {
             guard let tab = activeTab, let webView = tabManager.webView(for: tab.id) else { return }
             env.webCoordinator.armElementPicker()
             // The picker script has to be in the page, and a configuration only
-            // applies to the next navigation, so the page is reloaded. Aira has
-            // the same constraint and reloads too.
+            // applies to the next navigation, so the page is reloaded.
             webView.reload()
         }
         Button("设置", systemImage: "gearshape") { showSettings = true }

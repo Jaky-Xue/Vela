@@ -2,13 +2,10 @@
 //  BookmarksView.swift
 //  Vela
 //
-//  The bookmark manager. Ported from `AiraBrowser/entry/src/main/ets/app/pages/BookmarkManagerPage.ets`,
-//  `BrowserBookmarkScopeService.ets` and `BookmarkFolderSelectionViewModel.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  The bookmark manager.
 //
 //  Two roots, one list. A folder opens in place rather than pushing a screen,
-//  which is what Aira's ArkUI list does and what keeps the toolbar counts
-//  meaningful at every depth.
+//  which is what keeps the toolbar counts meaningful at every depth.
 //
 
 import SwiftUI

@@ -2,16 +2,12 @@
 //  BookmarkService.swift
 //  Vela
 //
-//  Observable bookmark state over `BookmarkRepository`. Ported from
-//  `AiraBrowser/entry/src/main/ets/services/bookmarks/` and the bookmark
-//  coordinators under `core/browser/BrowserBookmark*`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  Observable bookmark state over `BookmarkRepository`.
 //
-//  The service holds no state of its own beyond the published trees: every
-//  mutation goes to the repository and then re-reads. That is slower than
-//  patching an in-memory model, but it makes the tree impossible to drift from
-//  the database, which matters because the same rows are what the WebDAV and
-//  Personal Server providers push.
+//  The service holds no state beyond the trees it publishes: every mutation goes
+//  to the repository and then re-reads. That is slower than patching an in-memory
+//  model, but it makes the tree impossible to drift from the database — which
+//  matters because the same rows are what the sync providers push.
 //
 
 import Foundation

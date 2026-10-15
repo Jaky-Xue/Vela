@@ -2,16 +2,14 @@
 //  UserScriptModels.swift
 //  Vela
 //
-//  Swift port of `AiraBrowser/entry/src/main/ets/features/userscripts/UserScriptMetadataModels.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  Everything a user script declares: the metadata-block fields, the `@grant`
+//  catalogue, the `@run-at` values and the parse result.
 //
-//  The `@grant` catalogue, the `@run-at` values, the metadata-block fields and
-//  the parse-result shape are copied from the ArkTS originals. Vela executes
-//  scripts with `WKUserScript`, which fixes the injection points to document
-//  start and document end; grants that Aira implements through its native bridge
-//  (`GM_xmlhttpRequest`, `GM_download`, `GM_cookie`) are declared here so a
-//  script that requests them is still installable, and the ones Vela cannot
-//  honour are reported on the script detail screen rather than silently dropped.
+//  Scripts run through `WKUserScript`, which fixes the injection points to
+//  document start and document end. Grants the userscript API defines but this
+//  app cannot honour are still declared, so a script requesting them installs;
+//  the ones that will not work are reported on the script's detail screen rather
+//  than silently dropped.
 //
 
 import Foundation
@@ -38,7 +36,7 @@ public enum UserScriptRunAt: String, Codable, Sendable, CaseIterable {
     }
 
     /// True when the script body should be injected into the page at all.
-    /// Menu-only values are not injected on load, matching Aira's behaviour.
+    /// Menu-only values are not injected on load.
     public var injectsOnLoad: Bool {
         switch self {
         case .documentStart, .documentIdle, .documentEnd: return true

@@ -2,28 +2,19 @@
 //  Theme.swift
 //  Vela
 //
-//  Shared visual tokens. Ported from Aira's theme layer —
-//  `core/theme/`, `features/theme/palettes/` and
-//  `BrowserModalPresentationTokens.ets`, `BrowserTabsOverviewVisualTokens.ets`
-//  (Aira Browser 3.7.4, GPL-3.0).
+//  Shared visual tokens.
 //
-//  Aira ships a named-palette catalogue the user can pick from. Vela keeps the
-//  same structure — a palette is a value, not a set of asset-catalogue colours —
-//  because that is what lets a palette be swapped at runtime without a relaunch,
-//  which is a promise the settings screen makes to the user.
+//  A palette is a value, not a set of asset-catalogue colours. That is what lets
+//  a palette be swapped at runtime without a relaunch, which is a promise the
+//  settings screen makes to the user.
 //
-//  iOS port enhancement (this revision). Aira's palettes are a single set of
-//  colours per theme, because ArkUI applies theming at the page root and a
-//  HarmonyOS device rarely flips appearance under a running app. iOS does the
-//  opposite: the user can pull Control Centre and switch appearance while Vela
-//  is on screen. A palette carrying one set of colours is therefore stuck in
-//  whichever mode it was authored for — which is exactly what "光感没有适应化"
-//  was.
-//
-//  Every token here is a light/dark *pair*, resolved through a dynamic
-//  `UIColor`, so a single `palette.chromeBackground` is correct in both modes
-//  and re-resolves without a rebuild. Nothing in the chrome reads a fixed
-//  colour any more.
+//  Every token is a light/dark pair resolved through a dynamic `UIColor`, so a
+//  single `palette.chromeBackground` is correct in both appearances and
+//  re-resolves without a rebuild. That matters more than the token list
+//  suggests: the user can pull Control Centre and switch appearance while the
+//  app is on screen, so a palette carrying one set of fixed colours is stuck in
+//  whichever mode it was authored for. Nothing in the chrome reads a fixed
+//  colour.
 //
 
 import SwiftUI
@@ -33,9 +24,8 @@ import UIKit
 
 /// Which appearance the user asked for.
 ///
-/// Aira has no equivalent: HarmonyOS has a device-wide light/dark setting and
-/// no per-app override. iOS has both, so the per-app mode is its own setting,
-/// and `nil` from `colorScheme` means "follow the system".
+/// iOS offers both a system setting and a per-app override, so the per-app mode
+/// is its own setting, and `nil` from `colorScheme` means "follow the system".
 public enum AppearanceMode: String, CaseIterable, Codable, Sendable, Identifiable {
     case system
     case light
@@ -137,8 +127,7 @@ struct BrowserPalette: Equatable, Identifiable, Sendable {
     // MARK: Resolved tokens
 
     var accent: Color { adaptive(\.accent) }
-    /// The chrome background. Retained under its Aira name because the address
-    /// bar and the toolbar both read it.
+    /// The chrome background, read by the address bar and the toolbar.
     var chromeBackground: Color { adaptive(\.chrome) }
     var surface: Color { adaptive(\.surface) }
     var card: Color { adaptive(\.card) }
@@ -291,23 +280,20 @@ struct BrowserPalette: Equatable, Identifiable, Sendable {
 
 // MARK: - Metrics
 
-/// Layout metrics shared by the chrome. Ported from
-/// `BrowserBottomAddressPanelMetrics.ets` and `BrowserLayoutTokens`.
+/// Layout metrics shared by the chrome.
 enum BrowserMetrics {
     /// The bottom address panel, which is the primary chrome on a phone.
     static let addressBarHeight: CGFloat = 46
     static let toolbarHeight: CGFloat = 48
-    /// Ported from the max width in `CenteredDialogWidthViewModel`.
+    /// The widest a centred dialog grows.
     static let dialogMaxWidth: CGFloat = 420
     /// The tab strip's cell size on a large screen.
     static let tabStripItemWidth: CGFloat = 200
     static let tabStripItemHeight: CGFloat = 34
-    /// How far the toolbar slides away when the page scrolls down. Ported from
-    /// `BrowserBottomChromeScrollCoordinator`'s collapse distance.
+    /// How far the toolbar slides away when the page scrolls down.
     static let toolbarCollapseDistance: CGFloat = 80
 
-    // Omnibox. iOS port enhancement: Aira's omnibox is a full-height page, so
-    // it has no row metrics to port; these are the iOS card's own.
+    // Omnibox. These are the suggestion card's own metrics.
     static let omniboxRowHeight: CGFloat = 52
     static let omniboxHeaderHeight: CGFloat = 34
     /// The tallest the suggestion card may grow before it scrolls internally.
@@ -331,7 +317,7 @@ enum BrowserRadius {
     static let sheet: CGFloat = 20
 }
 
-/// The spacing scale. Aira's `BrowserLayoutTokens` uses the same 4-point grid.
+/// The spacing scale, on a 4-point grid.
 enum BrowserSpacing {
     static let hairline: CGFloat = 2
     static let tight: CGFloat = 6
@@ -427,8 +413,7 @@ extension View {
 
 /// A reusable row used by the settings, bookmark, history and download lists.
 ///
-/// Aira has a separate view model per list screen; the visual row is the same in
-/// all of them, so it lives here once.
+/// The same visual row is used by every list screen, so it lives here once.
 struct BrowserListRow<Leading: View, Trailing: View>: View {
     @Environment(\.browserPalette) private var palette
 
@@ -483,10 +468,10 @@ struct BrowserListRow<Leading: View, Trailing: View>: View {
 
 /// A favicon or a letter placeholder.
 ///
-/// Aira renders a site icon from its `site_icons` cache. On iOS a favicon is not
-/// readable from outside the page, so Vela shows the host's first letter in a
-/// deterministic colour until a real icon can be fetched. The colour is derived
-/// from the host so the same site always gets the same swatch.
+/// A favicon is not readable from outside the page, so this shows the host's
+/// first letter in a deterministic colour until a real icon can be fetched. The
+/// colour is derived from the host, so the same site always gets the same
+/// swatch.
 struct SiteIconView: View {
     var host: String
     var size: CGFloat = 28
@@ -621,10 +606,8 @@ struct EmptyState: View {
 /// A section header that folds its content away, with the count and the chevron
 /// on the trailing edge.
 ///
-/// Aira has no equivalent — ArkUI's `List` has no disclosure affordance and its
-/// home surface is a fixed three-block page. The iOS surfaces have more to show
-/// than fits, so the header is a control rather than a label: everything below
-/// the first fold is one tap away.
+/// The surfaces here have more to show than fits, so the header is a control
+/// rather than a label: everything below the first fold is one tap away.
 struct CollapsibleSectionHeader: View {
     var title: String
     var systemImage: String?

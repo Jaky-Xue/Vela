@@ -2,15 +2,11 @@
 //  ReaderModeService.swift
 //  Vela
 //
-//  Article extraction for reader mode. Ported from the role of
-//  `AiraBrowser/entry/src/main/ets/services/reader/ReaderExtractionService.ets`
-//  and `ReaderEligibilityService.ets` (Aira Browser 3.7.4, GPL-3.0).
+//  Article extraction, and the eligibility check that decides whether reader
+//  mode is worth offering at all.
 //
-//  Aira bundles Mozilla Readability (`third_party/mozilla-readability`) and runs
-//  it in the page. Vela implements the same scoring idea directly, because the
-//  bundled copy in the upstream tree ships only its licence and readme — there
-//  is no script to carry over — and because Readability's own heuristics are a
-//  well-known algorithm that is straightforward to express:
+//  The extraction is the well-known paragraph-scoring algorithm, implemented
+//  directly rather than taken on as a dependency:
 //
 //    1. Score every paragraph by text length, comma count and link density.
 //    2. Credit each paragraph's score to its parent and grandparent.
@@ -18,7 +14,7 @@
 //    4. Reject the result when it is too short to be an article.
 //
 //  The link-density term is what stops a navigation list from winning: an index
-//  page has long paragraphs too, but most of their text is inside anchors.
+//  page has long paragraphs too, but most of their text sits inside anchors.
 //
 
 import Foundation
@@ -32,9 +28,9 @@ struct ReaderArticle: Equatable, Sendable {
     var url: String
 
     var wordCount: Int {
-        // A rough count over the extracted HTML. Aira counts characters for its
-        // reading-time estimate; CJK text has no spaces, so counting characters
-        // is the only measure that works for both scripts.
+        // A rough count over the extracted HTML. Counting characters rather than
+        // words is the only measure that works for both scripts: CJK text has no
+        // spaces to split on.
         contentHtml.reduce(into: 0) { count, character in
             if character.isLetter || character.isNumber { count += 1 }
         }

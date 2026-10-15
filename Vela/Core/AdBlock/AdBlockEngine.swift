@@ -2,16 +2,14 @@
 //  AdBlockEngine.swift
 //  Vela
 //
-//  Owns the compiled `WKContentRuleList` and the cosmetic filter injection.
+//  Compiles filter lists into a `WKContentRuleList` and injects the cosmetic
+//  filters a rule list cannot express.
 //
-//  Engine note: Aira counts blocked requests because it evaluates every
-//  subresource in its own network stack (`AdBlockNativeAuthorityMetrics`,
-//  `AdBlockPingRequestSignalService`). WebKit does not report which rules fired
-//  or how often, and there is no API that exposes it, so Vela does not fabricate
-//  a blocked-request counter. What it *can* measure is cosmetic hiding, which it
-//  performs itself via injected CSS and can count exactly, plus the number of
-//  rules and lists actually loaded. The settings screen surfaces those two and
-//  labels them for what they are.
+//  Only two of the numbers here are real, and the settings screen says so.
+//  WebKit does not report which rules fired or how often, so there is no
+//  blocked-request count to show and none is fabricated. What this app can
+//  measure is the cosmetic hiding it performs itself through injected CSS —
+//  which it counts exactly — plus the rules and lists it actually loaded.
 //
 
 import Foundation
@@ -244,8 +242,8 @@ public final class AdBlockEngine {
 
     // MARK: - Cosmetic injection
 
-    /// The style text hidden elements receive. Ported from the selectors Aira's
-    /// cosmetic injector writes (`AdBlockCosmeticRuntimeScriptService`).
+    /// The `id` the injected cosmetic `<style>` element carries, so the page and
+    /// the injected script can both find it.
     public static let cosmeticStyleIdentifier = "org.vela.browser.adblock.cosmetic"
 
     /// Builds the CSS for a host, including the user's manual element hides.

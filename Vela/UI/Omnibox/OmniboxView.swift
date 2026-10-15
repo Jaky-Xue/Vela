@@ -3,14 +3,10 @@
 //  Vela
 //
 //  The address bar itself: the field, its accessories and its progress line.
-//  Ported from `AiraBrowser/entry/src/main/ets/core/browser/`
-//  — `BrowserAddressDisplayCoordinator.ets`, `AddressDisplayFormatter.ets` and
-//  `BrowserRootAddressInputSessionCoordinator.ets` (Aira Browser 3.7.4, GPL-3.0).
 //
-//  iOS port enhancement (this revision). Everything about *suggesting* moved to
-//  `OmniboxViewModel`; this file owns the input control and nothing else. Two
-//  deliberate iOS-specific choices are made here and both are explained where
-//  they occur:
+//  Everything about *suggesting* lives in `OmniboxViewModel`; this file owns the
+//  input control and nothing else. Two choices here are specific to iOS and both
+//  are explained where they occur:
 //
 //    * The field is a `UITextField` bridged into SwiftUI rather than a
 //      `TextField`. The omnibox has to answer the hardware arrow keys on an
@@ -19,8 +15,8 @@
 //      declaring the keys as `keyCommands` is the only place the keyboard
 //      navigation can be implemented.
 //
-//    * The bar carries a 2 pt progress line on its bottom edge instead of the
-//      ring Aira draws inside the panel. The ring competed with the stop/reload
+//    * The bar carries a 2 pt progress line on its bottom edge rather than a
+//      progress ring inside the panel. The ring competed with the stop/reload
 //      button for the same slot; the line costs no layout at all.
 //
 

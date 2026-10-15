@@ -2,15 +2,14 @@
 //  DownloadModels.swift
 //  Vela
 //
-//  Swift port of the download model from
-//  `AiraBrowser/entry/src/main/ets/domain/downloadv2/` and
-//  `data/downloadv2/DownloadV2RecordStore.ets` (Aira Browser 3.7.4, GPL-3.0).
+//  The download model: one record per task, plus the status vocabulary the list
+//  and the settings screen render.
 //
-//  Aira's downloader is a native C++ engine (`entry/src/main/cpp/download_core.cpp`)
-//  driven over NAPI, which exists because ArkWeb does not expose a resumable
-//  download API. iOS does: `WKDownload` with `WKDownloadDelegate`, plus
-//  `cancel(_:completionHandler:)` handing back resume data. So the state machine
-//  and the user-visible statuses are ported, and the transfer engine is not.
+//  WebKit performs the transfer. A `WKDownload` is created for any response the
+//  web view would otherwise render, and cancelling one hands back resume data,
+//  so the state machine here tracks what WebKit is doing rather than driving a
+//  connection of its own. That is also why every status below has a real event
+//  behind it and none is inferred.
 //
 
 import Foundation
@@ -183,10 +182,9 @@ public struct DownloadTask: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// Ported from `DownloadDirectoryPreference`. Aira lets the user pick a save
-/// location because HarmonyOS exposes a real file system path. iOS sandboxing
-/// means the choice is limited to "inside the app container" or "the system
-/// Files picker", which is what the two real cases below express.
+/// Where a download is written. iOS sandboxing limits the choice to "inside the
+/// app container" or "the system Files picker", which is what the two cases
+/// below express.
 public enum DownloadDirectoryPreference: String, Codable, Sendable, CaseIterable, Identifiable {
     /// `Documents/Downloads` in the app container, visible in the Files app.
     case appDownloads = "app_downloads"
