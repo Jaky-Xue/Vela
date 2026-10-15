@@ -303,7 +303,9 @@ public final class SQLiteDatabase: @unchecked Sendable {
                     message: String(cString: sqlite3_errmsg(connection))
                 )
             }
-            defer { sqlite3_finalize(statement) }
+            // `SQLiteStatement` owns the handle and finalises it in its `deinit`.
+            // Finalising here as well frees the same statement twice, which
+            // segfaults inside libsqlite3 on the second call.
             let wrapped = SQLiteStatement(handle: statement)
             try wrapped.bind(values)
             try wrapped.step()
@@ -327,7 +329,9 @@ public final class SQLiteDatabase: @unchecked Sendable {
                     message: String(cString: sqlite3_errmsg(connection))
                 )
             }
-            defer { sqlite3_finalize(statement) }
+            // `SQLiteStatement` owns the handle and finalises it in its `deinit`.
+            // Finalising here as well frees the same statement twice, which
+            // segfaults inside libsqlite3 on the second call.
             let wrapped = SQLiteStatement(handle: statement)
             try wrapped.bind(values)
             var collected: [T] = []
