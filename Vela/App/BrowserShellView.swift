@@ -301,7 +301,6 @@ struct BrowserShellView: View {
                         viewModel: omnibox,
                         maxHeight: omniboxCardHeight(for: availableHeight)
                     )
-                    .padding(.horizontal, BrowserSpacing.compact)
                     .transition(
                         .asymmetric(
                             insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)),
