@@ -371,7 +371,8 @@ public final class TabManager {
         return webView
     }
 
-    /// Re-applies the `User-Agent` to every live web view.    ///
+    /// Re-applies the `User-Agent` to every live web view.
+    ///
     /// Called when the appearance of a tab to a site changes — the desktop-site
     /// toggle or the custom identifier — because `customUserAgent` only takes
     /// effect on the next request. Backgrounded tabs are updated too: a tab the

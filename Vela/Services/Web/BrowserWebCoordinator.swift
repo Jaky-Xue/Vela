@@ -832,6 +832,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         tab.canGoBack = webView.canGoBack
         tab.canGoForward = webView.canGoForward
     }
+
     static func describe(error: NSError) -> String {
         if error.domain == NSURLErrorDomain {
             switch error.code {

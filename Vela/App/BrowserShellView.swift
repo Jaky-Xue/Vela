@@ -377,13 +377,20 @@ struct BrowserShellView: View {
     ///
     /// True on any page, not only on a page with history: backing out of the
     /// first page of a tab returns to the home surface rather than doing
-    /// nothing, which is the behaviour `BrowserHomeTerminalBackPlan` describes.
-    /// It is false on the home surface itself — there is nothing behind it, and
-    /// the web view underneath still holds the page that was left, so leaving
-    /// the button live there would silently re-open it.
+    /// nothing.
+    ///
+    /// True on the home surface too, when there is a page behind it. The home
+    /// surface is not a document — it is the shell choosing to show the native
+    /// surface instead of the web view, which still holds the page — so backing
+    /// out of it returns to that page rather than walking WebKit's list. That
+    /// distinction matters: with the old code, pressing back from the home
+    /// surface called `goBack()` on the hidden web view, which stepped one
+    /// entry *further* down the history and re-opened the page before the one
+    /// the user had actually been reading.
     private var canGoBack: Bool {
         guard let tab = activeTab else { return false }
-        return !tab.isHome
+        if tab.isHome { return !tab.url.isEmpty }
+        return true
     }
 
     /// Whether the forward button should be live.
@@ -391,8 +398,8 @@ struct BrowserShellView: View {
     /// Read from the tab's mirrored copy of WebKit's list rather than asked of
     /// the web view directly, so the toolbar is a pure function of observable
     /// state and re-renders when the list changes. The home surface pins it off
-    /// for the same reason back is pinned off: the page behind the home surface
-    /// is not a destination the user is currently at.
+    /// because the list's position is only meaningful relative to a document
+    /// that is on screen.
     private var canGoForward: Bool {
         guard let tab = activeTab, !tab.isHome else { return false }
         return tab.canGoForward
@@ -482,7 +489,12 @@ struct BrowserShellView: View {
     private func handleToolbarAction(_ action: BrowserToolbarAction) {
         switch action {
         case .back:
-            guard let tab = activeTab, !tab.isHome else { return }
+            guard let tab = activeTab else { return }
+            if tab.isHome {
+                // Coming back out of the home surface, which is not a page.
+                returnToPage(tab)
+                return
+            }
             // WebKit is the authority here, not the button's own enabled state:
             // the flags are a mirror of its list, and acting on the mirror
             // instead of on the list is what would let a stale `true` issue a
@@ -526,23 +538,45 @@ struct BrowserShellView: View {
     ///
     /// The page is stopped before it is left: a home surface over a document
     /// still fetching is a document the user has stopped looking at, and its
-    /// callbacks would keep arriving into hidden state. The web view keeps its
-    /// history, so the back and forward lists are not disturbed — only the
-    /// address the tab reports is cleared.
+    /// callbacks would keep arriving into hidden state.
+    ///
+    /// The tab keeps its URL, its title and its web view. That is what makes the
+    /// surface a place the user can come back from — the address bar already
+    /// shows nothing while `isHome` is set, so there is no reason to throw the
+    /// page away, and throwing it away is what made the old home button a
+    /// one-way door.
     private func goHome(_ tab: BrowserTabState) {
         tabManager.webView(for: tab.id)?.stopLoading()
         isReaderActive = false
         readerArticle = nil
         showFindBar = false
         findQuery = ""
+        env.webCoordinator.clearFindInPage()
         tab.isHome = true
-        tab.url = ""
-        tab.title = ""
         tab.isLoading = false
         tab.estimatedProgress = 0
         toolbarOffset = 0
         lastScrollOffset = 0
         tabManager.persistSession()
+        syncAddressText()
+    }
+
+    /// Shows the page a tab is already holding, without navigating.
+    ///
+    /// The counterpart to `goHome`. The URL is taken from the web view when it
+    /// has one, because an in-page history change updates the web view before
+    /// anything else knows about it, and the tab's copy would otherwise restore
+    /// the address of an earlier document.
+    private func returnToPage(_ tab: BrowserTabState) {
+        if let current = tabManager.webView(for: tab.id)?.url?.absoluteString, !current.isEmpty {
+            tab.url = current
+        }
+        guard !tab.url.isEmpty else { return }
+        tab.isHome = false
+        // The flags were last written when the tab was on this page, but the web
+        // view may have been rebuilt since; re-reading them is what keeps the
+        // forward button honest the moment the page reappears.
+        env.webCoordinator.refreshNavigationAvailability()
         syncAddressText()
     }
 

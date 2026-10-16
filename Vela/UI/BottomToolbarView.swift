@@ -4,10 +4,11 @@
 //
 //  The bottom action bar.
 //
-//  The action identities and the default order are fixed. A stored per-device
-//  order is honoured, so a reorder screen can be added later without a
-//  migration; the order is device-local because it is a property of how someone
-//  holds this phone rather than of their account.
+//  The action identities and the order are fixed here, in one list, rather than
+//  assembled at the call site: a reorder screen would need a stored order and a
+//  migration, and there is no such screen. `defaultOrder` is the single place to
+//  change what the bar shows, and `isRequired` records which of them the shell
+//  has no other route to.
 //
 
 import SwiftUI
