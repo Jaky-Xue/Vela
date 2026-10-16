@@ -257,7 +257,7 @@ struct SearchEngineSettingsView: View {
                 Text("网址模板中用 {searchTerms} 表示搜索词。")
             }
 
-            Section("搜索建议") {
+            Section {
                 Toggle("显示搜索建议", isOn: Binding(
                     get: { env.settings.preferences.searchEngine.searchSuggestions.regularEnabled },
                     set: { value in
@@ -276,6 +276,8 @@ struct SearchEngineSettingsView: View {
                         env.settings.update { $0.searchEngine.searchSuggestions.openTabsEnabled = value }
                     }
                 ))
+            } header: {
+                Text("搜索建议")
             } footer: {
                 Text("「显示搜索建议」是这一组的总开关：关闭后地址栏不再显示任何建议，直接回车执行搜索。")
             }
