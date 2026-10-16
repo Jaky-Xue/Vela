@@ -56,6 +56,13 @@ struct OmniboxSuggestionEngine {
 
     /// The full list, in priority order.
     func suggestions(for rawInput: String, privacyMode: BrowserSessionPrivacyMode) -> [OmniboxSuggestion] {
+        // The master switch of the 搜索建议 section: off, the omnibox offers
+        // nothing at all rather than a list that ignores part of its own
+        // settings — the idle list included.
+        guard settings.preferences.searchEngine.searchSuggestions.regularEnabled else {
+            return []
+        }
+
         let input = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return idleSuggestions(privacyMode: privacyMode) }
 

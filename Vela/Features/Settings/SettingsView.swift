@@ -63,28 +63,6 @@ struct SettingsView: View {
 
             Section("隐私与安全") {
                 NavigationLink {
-                    PrivacySettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "hand.raised",
-                        tint: .indigo,
-                        title: "跟踪保护",
-                        detail: env.settings.preferences.webSecurity.trackingProtection.displayName
-                    )
-                }
-
-                NavigationLink {
-                    SecureDnsSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "network.badge.shield.half.filled",
-                        tint: .teal,
-                        title: "安全 DNS",
-                        detail: env.settings.preferences.secureDns.mode.displayName
-                    )
-                }
-
-                NavigationLink {
                     SitePermissionsSettingsView()
                 } label: {
                     settingsRow(icon: "lock.shield", tint: .cyan, title: "网站权限")
@@ -133,7 +111,7 @@ struct SettingsView: View {
                         icon: "safari",
                         tint: .brown,
                         title: "网页标识",
-                        detail: env.settings.preferences.desktopSiteByDefault ? "桌面版" : "手机版"
+                        detail: userAgentDetail
                     )
                 }
 
@@ -166,6 +144,18 @@ struct SettingsView: View {
                 Button("完成") { dismiss() }
             }
         }
+    }
+
+    /// What the 网页标识 row says is in force — the same answer the identifier
+    /// screen gives, so the two cannot disagree: a chosen preset by its name,
+    /// a hand-typed string as 自定义, and the desktop-site toggle only when no
+    /// string overrides it.
+    private var userAgentDetail: String {
+        let stored = env.settings.preferences.customUserAgent
+        if !stored.isEmpty {
+            return BrowserUserAgentPreset.all.first { $0.userAgent == stored }?.title ?? "自定义"
+        }
+        return env.settings.preferences.desktopSiteByDefault ? "桌面版" : "手机版"
     }
 
     private func settingsRow(icon: String, tint: Color, title: String, detail: String = "") -> some View {
@@ -286,31 +276,8 @@ struct SearchEngineSettingsView: View {
                         env.settings.update { $0.searchEngine.searchSuggestions.openTabsEnabled = value }
                     }
                 ))
-            }
-
-            Section {
-                Toggle("搜索失败时自动切换引擎", isOn: Binding(
-                    get: { env.settings.preferences.searchEngine.fallbackSearch.enabled },
-                    set: { value in
-                        env.settings.update { $0.searchEngine.fallbackSearch.enabled = value }
-                    }
-                ))
-                if env.settings.preferences.searchEngine.fallbackSearch.enabled {
-                    Picker("备用引擎", selection: Binding(
-                        get: { env.settings.preferences.searchEngine.fallbackSearch.fallbackSearchEngineId },
-                        set: { value in
-                            env.settings.update { $0.searchEngine.fallbackSearch.fallbackSearchEngineId = value }
-                        }
-                    )) {
-                        ForEach(env.settings.preferences.searchEngine.selectableEngines) { engine in
-                            Text(engine.name).tag(engine.id)
-                        }
-                    }
-                }
-            } header: {
-                Text("搜索回退")
             } footer: {
-                Text("搜索引擎被网络阻断时，Vela 会检测到结果页没有真正加载，并提示切换到备用引擎。")
+                Text("「显示搜索建议」是这一组的总开关：关闭后地址栏不再显示任何建议，直接回车执行搜索。")
             }
         }
         .navigationTitle("搜索引擎")
@@ -713,17 +680,46 @@ struct UserAgentSettingsView: View {
         return BrowserUserAgentPreset.all.first { $0.userAgent == stored }
     }
 
+    /// The name of what is in force. With the desktop-site toggle on and no
+    /// preset chosen, the identity is Vela's default in its desktop form —
+    /// saying just 「Vela 默认」 there would contradict the string below it.
+    private var effectivePresetTitle: String {
+        guard let preset = selectedPreset else { return "自定义" }
+        if preset.id == BrowserUserAgentPreset.all[0].id,
+           env.settings.preferences.customUserAgent.isEmpty,
+           env.settings.preferences.desktopSiteByDefault {
+            return "\(preset.title) · 桌面版"
+        }
+        return preset.title
+    }
+
+    /// The string the next request will actually carry, computed the way the
+    /// web view computes it — through `BrowserUserAgent.identity`, which is
+    /// the one place that answers the question. Reading the stored fields
+    /// directly instead is what let this row show the mobile identifier while
+    /// pages were receiving the desktop one.
+    private var effectiveOutgoingIdentifier: String {
+        let identity = BrowserUserAgent.identity(
+            custom: env.settings.preferences.customUserAgent,
+            prefersDesktop: env.settings.preferences.desktopSiteByDefault
+        )
+        return identity.customUserAgent
+            ?? (env.settings.preferences.desktopSiteByDefault
+                ? BrowserUserAgent.desktopIdentifier
+                : BrowserUserAgent.mobileIdentifier)
+    }
+
     var body: some View {
         List {
             Section {
                 HStack {
                     Text("默认网页标识")
                     Spacer(minLength: 8)
-                    Text(selectedPreset?.title ?? "自定义")
+                    Text(effectivePresetTitle)
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("选择一个标识后，此后打开的页面都会以它的身份出现。重新载入当前页面即可看到效果。")
+                Text("选择一个标识后，此后打开的页面都会以它的身份出现。页面菜单里的「请求桌面网站」开启且未选预设时，页面收到的是 Vela 的桌面版标识。重新载入当前页面即可看到效果。")
             }
 
             Section("移动端网页") {
@@ -773,14 +769,12 @@ struct UserAgentSettingsView: View {
                     Divider()
                     identifierRow(
                         title: "将要发出",
-                        value: env.settings.preferences.customUserAgent.isEmpty
-                            ? BrowserUserAgent.mobileIdentifier
-                            : env.settings.preferences.customUserAgent,
+                        value: effectiveOutgoingIdentifier,
                         note: nil
                     )
                 }
                 Button {
-                    UIPasteboard.general.string = identifierReportedByPage ?? BrowserUserAgent.mobileIdentifier
+                    UIPasteboard.general.string = identifierReportedByPage ?? effectiveOutgoingIdentifier
                 } label: {
                     Label("复制标识", systemImage: "doc.on.doc")
                 }
@@ -873,6 +867,17 @@ struct UserAgentSettingsView: View {
 struct AboutView: View {
     @Environment(AppEnvironment.self) private var env
 
+    /// Read from the bundle rather than written down: a version typed into a
+    /// string is the one fact in this screen guaranteed to drift from the
+    /// build it describes.
+    private static let marketingVersion = Bundle.main.object(
+        forInfoDictionaryKey: "CFBundleShortVersionString"
+    ) as? String ?? "?"
+
+    private static let buildVersion = Bundle.main.object(
+        forInfoDictionaryKey: "CFBundleVersion"
+    ) as? String ?? "?"
+
     var body: some View {
         List {
             Section {
@@ -882,7 +887,7 @@ struct AboutView: View {
                         .foregroundStyle(.tint)
                     Text("Vela")
                         .font(.title2.weight(.semibold))
-                    Text("版本 3.7.4 (1)")
+                    Text("版本 \(Self.marketingVersion) (\(Self.buildVersion))")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

@@ -2,8 +2,8 @@
 //  SettingsSubpages.swift
 //  Vela
 //
-//  The settings destinations past the main list: ad blocking, secure DNS, default
-//  site permissions, external navigation, site controls, downloads, and clearing
+//  The settings destinations past the main list: ad blocking, default
+//  site permissions, external navigation, downloads, and clearing
 //  site data.
 //
 
@@ -230,151 +230,6 @@ struct AdBlockSettingsView: View {
     }
 }
 
-// MARK: - Privacy
-
-struct PrivacySettingsView: View {
-    @Environment(AppEnvironment.self) private var env
-
-    var body: some View {
-        List {
-            Section {
-                ForEach(TrackingProtectionLevel.allCases) { level in
-                    Button {
-                        env.settings.update { $0.webSecurity.trackingProtection = level }
-                    } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(level.displayName)
-                                    .foregroundStyle(.primary)
-                                Text(level.detail)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            Spacer(minLength: 0)
-                            if env.settings.preferences.webSecurity.trackingProtection == level {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(.tint)
-                            }
-                        }
-                    }
-                }
-            } header: {
-                Text("跟踪保护")
-            } footer: {
-                Text("iOS 上的第三方 Cookie 拦截由 WebKit 执行，与这里的选择一致。")
-            }
-
-            Section {
-                Toggle("发送「请勿跟踪」请求", isOn: Binding(
-                    get: { env.settings.preferences.webSecurity.sendDoNotTrack },
-                    set: { value in env.settings.update { $0.webSecurity.sendDoNotTrack = value } }
-                ))
-                Toggle("优先使用 HTTPS", isOn: Binding(
-                    get: { env.settings.preferences.webSecurity.httpsFirstNavigation },
-                    set: { value in env.settings.update { $0.webSecurity.httpsFirstNavigation = value } }
-                ))
-            } header: {
-                Text("浏览安全")
-            } footer: {
-                Text("「请勿跟踪」依赖网站自觉，多数网站会忽略它。")
-            }
-        }
-        .navigationTitle("跟踪保护")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// MARK: - Secure DNS
-
-struct SecureDnsSettingsView: View {
-    @Environment(AppEnvironment.self) private var env
-
-    @State private var showingAddProfile = false
-    @State private var newProfileName = ""
-    @State private var newProfileTemplate = ""
-
-    var body: some View {
-        List {
-            Section {
-                ForEach(SecureDnsMode.allCases) { mode in
-                    Button {
-                        env.settings.update { $0.secureDns.mode = mode }
-                    } label: {
-                        HStack {
-                            Text(mode.displayName).foregroundStyle(.primary)
-                            Spacer()
-                            if env.settings.preferences.secureDns.mode == mode {
-                                Image(systemName: "checkmark").foregroundStyle(.tint)
-                            }
-                        }
-                    }
-                }
-            } header: {
-                Text("模式")
-            } footer: {
-                Text("「自动」由系统选择服务商。自定义服务器需要 iOS 配置描述文件才能对所有网络生效；在 Vela 内它用于 DoH 探测与站点连接信息展示。")
-            }
-
-            if env.settings.preferences.secureDns.mode == .secure {
-                Section("服务器") {
-                    ForEach(env.settings.preferences.secureDns.allProfiles) { profile in
-                        Button {
-                            env.settings.update { $0.secureDns.selectedProfileId = profile.id }
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(profile.name).foregroundStyle(.primary)
-                                    Text(profile.template)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                                if env.settings.preferences.secureDns.selectedProfileId == profile.id {
-                                    Image(systemName: "checkmark").foregroundStyle(.tint)
-                                }
-                            }
-                        }
-                        .swipeActions {
-                            if !profile.isBuiltIn {
-                                Button("删除", role: .destructive) {
-                                    env.settings.update { preferences in
-                                        preferences.secureDns.customProfiles.removeAll { $0.id == profile.id }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Button("添加自定义服务器", systemImage: "plus") {
-                        newProfileName = ""
-                        newProfileTemplate = ""
-                        showingAddProfile = true
-                    }
-                }
-            }
-        }
-        .navigationTitle("安全 DNS")
-        .navigationBarTitleDisplayMode(.inline)
-        .alert("添加 DNS 服务器", isPresented: $showingAddProfile) {
-            TextField("名称", text: $newProfileName)
-            TextField("https://example.com/dns-query", text: $newProfileTemplate)
-            Button("取消", role: .cancel) {}
-            Button("添加") {
-                let name = newProfileName.trimmingCharacters(in: .whitespaces)
-                let template = newProfileTemplate.trimmingCharacters(in: .whitespaces)
-                guard !name.isEmpty, template.hasPrefix("https://") else { return }
-                env.settings.update { preferences in
-                    preferences.secureDns.customProfiles.append(
-                        SecureDnsProfile(id: UUID().uuidString, name: name, template: template)
-                    )
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Site permissions
 
 struct SitePermissionsSettingsView: View {
@@ -383,7 +238,11 @@ struct SitePermissionsSettingsView: View {
     var body: some View {
         List {
             Section {
-                ForEach(SitePermissionKind.allCases) { kind in
+                // Only the kinds a web view actually asks about. The model
+                // carries location, sensor and clipboard too, but iOS never
+                // routes those through a web view, so a picker for them was a
+                // setting that decided nothing.
+                ForEach([SitePermissionKind.camera, .microphone]) { kind in
                     Picker(kind.displayName, selection: Binding(
                         get: { env.settings.preferences.sitePermissions[kind] },
                         set: { value in env.settings.setSitePermissionDefault(value, kind: kind) }
@@ -397,16 +256,15 @@ struct SitePermissionsSettingsView: View {
             } header: {
                 Text("默认行为")
             } footer: {
-                Text("网站请求这些能力时按这里的设置处理。「询问」会在页面上弹出确认。系统级权限（相机、麦克风、位置）仍需要你在系统设置中允许 Vela 使用。")
+                Text("网站请求相机或麦克风时按这里的设置处理。「询问」会在页面上弹出确认。系统级权限仍需要你在系统设置中允许 Vela 使用，系统层面拒绝时这里的「允许」不会生效。")
             }
 
             Section {
                 Label("相机与麦克风", systemImage: "camera")
-                Label("位置", systemImage: "location")
             } header: {
                 Text("系统权限")
             } footer: {
-                Text("如果系统层面拒绝了权限，这里的「允许」不会生效。请到「设置 ▸ Vela」中开启。")
+                Text("请到「设置 ▸ Vela」中开启。")
             }
         }
         .navigationTitle("网站权限")

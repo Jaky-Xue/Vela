@@ -1013,6 +1013,10 @@ struct BrowserShellView: View {
         case .findInPage:
             showFindBar = true
         case .reader:
+            // The general setting gates the entry: with reader mode switched
+            // off, the menu item does nothing rather than opening a mode the
+            // user asked the browser not to offer.
+            guard env.settings.preferences.readerModeAvailable else { break }
             activateReaderMode()
         case .hideElements:
             guard tabManager.webView(for: tab.id) != nil else { return }

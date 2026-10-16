@@ -180,7 +180,11 @@ struct OmniboxView: View {
                 Image(systemName: isLoading ? "xmark" : "arrow.clockwise")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(palette.secondaryText)
-                    .frame(width: 22, height: 22)
+                    // The glyph is small but the target is not: a 22 pt square
+                    // is half of what a finger lands on reliably, and a miss
+                    // here reads as the button doing nothing.
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isLoading ? "停止" : "重新载入")

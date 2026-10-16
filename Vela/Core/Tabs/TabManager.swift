@@ -477,20 +477,28 @@ public final class TabManager {
     /// reload is a new navigation, and a tab left showing `finished` while a
     /// fresh request was in flight is exactly the desync the state machine
     /// exists to prevent.
+    ///
+    /// Only a committed, non-placeholder document can be re-displayed by
+    /// WebKit's own `reload()`. Everything else — a web view that was just
+    /// rebuilt, a provisional navigation that never committed, the empty
+    /// document a failed connection leaves behind — has nothing to re-show,
+    /// and handing it to `reload()` is a silent no-op: the button reads as
+    /// dead. Those cases issue the request fresh from the tab's URL.
     @discardableResult
     public func reload(tab: BrowserTabState) -> Bool {
-        guard !tab.isHome, let webView = webViews[tab.id] else { return false }
-        if webView.url == nil, let url = URL(string: tab.url) {
-            // Nothing committed to reload — a page that failed, or a web view
-            // that was just rebuilt. This is a fresh request, not a re-display.
-            load(url: url, in: tab)
+        guard !tab.isHome else { return false }
+        if let webView = webViews[tab.id],
+           let url = webView.url,
+           !url.absoluteString.lowercased().hasPrefix("about:") {
+            tab.loadState = .requested
+            tab.isLoading = true
+            tab.lastFailure = nil
+            tab.serverStatus = 0
+            webView.reload()
             return true
         }
-        tab.loadState = .requested
-        tab.isLoading = true
-        tab.lastFailure = nil
-        tab.serverStatus = 0
-        webView.reload()
+        guard let url = URL(string: tab.url) else { return false }
+        load(url: url, in: tab)
         return true
     }
 
