@@ -93,7 +93,11 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     func testJavaScriptExecutesInTheLoadedPage() async {
         let tab = harness.open(url("/scripted"))
-        await waitForSettled(tab)
+        // The title is also script-updated, and a title arriving a moment after
+        // `didFinish` is documented behaviour rather than a fault: WebKit can
+        // finish a small document before its title observer has run, and the
+        // coordinator fills that gap by asking the document.
+        await waitForSettled(tab, expectingTitle: "after")
 
         XCTAssertEqual(tab.loadState, .finished)
         guard let webView = harness.tabManager.webView(for: tab.id) else {

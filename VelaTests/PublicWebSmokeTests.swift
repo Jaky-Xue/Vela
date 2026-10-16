@@ -125,7 +125,11 @@ final class PublicWebSmokeTests: XCTestCase {
         guard let url = URL(string: "http://example.com/") else { return XCTFail("bad test URL") }
         let tab = harness.open(url)
 
-        let settled = await waitUntil("the cleartext page to settle", timeout: 30) {
+        // Polled without failing first, so that "no answer at all" and "Vela was
+        // refused" can be told apart before anything is reported. An earlier
+        // version asserted the timeout and then skipped, which made an
+        // environment that drops cleartext traffic look like a red run.
+        let settled = await pollUntil(timeout: 30) {
             !tab.loadState.isInFlight && !tab.isLoading
         }
 
@@ -136,11 +140,12 @@ final class PublicWebSmokeTests: XCTestCase {
         // milliseconds, and that is what this test is for.
         if tab.loadState == .failed {
             XCTFail("App Transport Security blocked web content: \(harness.trace(for: tab))")
+            return
         }
         // No callback at all is a different thing, and not something about Vela:
         // it means the runner's egress never answered a cleartext request. Skipped
         // rather than passed, so it cannot be mistaken for a passing exemption —
-        // and it is reported with the reason.
+        // and it carries the reason.
         guard settled else {
             throw XCTSkip("the runner never answered a cleartext request: \(harness.trace(for: tab))")
         }
