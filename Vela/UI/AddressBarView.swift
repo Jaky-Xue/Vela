@@ -41,18 +41,16 @@ enum BrowserUrlResolver {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        // An explicit loadable scheme wins outright.
-        if let schemeRange = trimmed.range(of: "://") {
-            let scheme = String(trimmed[trimmed.startIndex..<schemeRange.lowerBound]).lowercased()
-            if loadableSchemes.contains(scheme) {
-                return URL(string: trimmed)
-            }
-            if externalSchemes.contains(scheme) {
-                return URL(string: trimmed)
-            }
-        }
-        // `about:blank` and friends have no `://`.
-        if trimmed.hasPrefix("about:") || trimmed.hasPrefix("data:") {
+        // An explicit scheme wins outright, whether or not it carries an
+        // authority.
+        //
+        // The `://` spelling is the common one but not the only one: `mailto:`,
+        // `tel:` and `sms:` are written without it, and an address bar that only
+        // recognised the authority form would send every one of them to the
+        // search engine — so the "email this" link the user copied would become
+        // a search for the literal text of the address.
+        if let scheme = scheme(of: trimmed),
+           loadableSchemes.contains(scheme) || externalSchemes.contains(scheme) {
             return URL(string: trimmed)
         }
 
@@ -88,6 +86,24 @@ enum BrowserUrlResolver {
     /// True when the input should be searched rather than navigated.
     static func isSearchQuery(_ input: String) -> Bool {
         resolveDirectUrl(input) == nil
+    }
+
+    /// The scheme an input declares, if it declares one.
+    ///
+    /// Read from the text rather than from `URL`, because the question being
+    /// asked is "did the user name a scheme", and `URL(string:)` will happily
+    /// parse a bare host as a schemeless URL. A scheme is a letter followed by
+    /// letters, digits, `+`, `-` or `.` — which is what keeps `localhost:8080`
+    /// and `192.168.1.1:3000` out of this path, since neither `localhost` nor a
+    /// numeric host is a legal scheme.
+    private static func scheme(of input: String) -> String? {
+        guard let colon = input.firstIndex(of: ":") else { return nil }
+        let candidate = String(input[input.startIndex..<colon]).lowercased()
+        guard let first = candidate.first, first.isLetter else { return nil }
+        guard candidate.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "+" || $0 == "-" || $0 == "." }) else {
+            return nil
+        }
+        return candidate
     }
 
     private static func isIPv4(_ value: String) -> Bool {
