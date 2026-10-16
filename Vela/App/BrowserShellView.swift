@@ -128,11 +128,24 @@ struct BrowserShellView: View {
             let end = (note.userInfo?[UIApplication.keyboardFrameEndUserInfoKey] as? NSValue)?
                 .cgRectValue ?? .zero
             let screenHeight = max(UIScreen.main.bounds.height, end.maxY)
+            // A docked keyboard runs from its top edge to the bottom of the
+            // screen, so the occlusion is that whole span. A floating keyboard
+            // — an iPad panel — does not: it covers only its own frame, and
+            // measuring to the screen bottom would credit it with occluding
+            // half the page and shrink the suggestion card for nothing.
+            let occlusion: CGFloat
+            if end.isEmpty {
+                occlusion = 0
+            } else if screenHeight - end.maxY < 40 {
+                occlusion = max(0, screenHeight - end.minY)
+            } else {
+                occlusion = end.height
+            }
             // The keyboard's rise and fall are animated by the system with the
             // same duration, so the card tracks it with a spring of its own
             // rather than snapping between the two states.
             withAnimation(Self.chromeAnimation) {
-                keyboardHeight = end.isEmpty ? 0 : max(0, screenHeight - end.minY)
+                keyboardHeight = occlusion
             }
         }
         .onChange(of: tabManager.activeTabId) { _, _ in
@@ -329,7 +342,7 @@ struct BrowserShellView: View {
                     viewModel: omnibox,
                     maxHeight: omniboxCardHeight
                 )
-                .padding(.horizontal, BrowserChrome.sideInset - 2)
+                .padding(.horizontal, BrowserChrome.sideInset)
                 .padding(.top, BrowserChrome.topChromeHeight + 6)
                 .transition(
                     .asymmetric(

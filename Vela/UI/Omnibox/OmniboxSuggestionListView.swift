@@ -239,7 +239,13 @@ struct OmniboxSuggestionListView: View {
             .tint(palette.accent)
         }
         .padding(.horizontal, BrowserSpacing.regular)
-        .frame(minHeight: rowHeight)
+        // Pinned rather than `minHeight`: the card's height budget counts every
+        // row as exactly `rowHeight`, so a row free to grow past it — a
+        // two-line row, or one line at an enlarged text size — overflows the
+        // budget and the last row is cut by the card's own bottom edge. The
+        // metric scales with Dynamic Type, so the pinned height grows with the
+        // text and nothing is squeezed at accessibility sizes.
+        .frame(height: rowHeight)
         .contentShape(Rectangle())
     }
 
@@ -266,9 +272,12 @@ struct OmniboxSuggestionListView: View {
                 height += CGFloat(group.count) * rowHeight
             }
         }
-        // A little slack absorbs the separator hairlines and the List's own
-        // content offset, which are not worth modelling exactly.
-        return min(height + 4, maxHeight)
+        // Slack absorbs the parts of a `List` this side of the model — the
+        // separator hairlines and the scroll view's own content offsets. Too
+        // little slack and the last row is clipped by the card's bottom edge,
+        // which reads as a rendering bug even though the row is reachable by
+        // scrolling.
+        return min(height + 10, maxHeight)
     }
 }
 
@@ -312,7 +321,13 @@ struct OmniboxSuggestionRow: View {
             }
         }
         .padding(.horizontal, BrowserSpacing.regular)
-        .frame(minHeight: rowHeight)
+        // Pinned rather than `minHeight`: the card's height budget counts every
+        // row as exactly `rowHeight`, so a row free to grow past it — a
+        // two-line row, or one line at an enlarged text size — overflows the
+        // budget and the last row is cut by the card's own bottom edge. The
+        // metric scales with Dynamic Type, so the pinned height grows with the
+        // text and nothing is squeezed at accessibility sizes.
+        .frame(height: rowHeight)
         .contentShape(Rectangle())
     }
 
