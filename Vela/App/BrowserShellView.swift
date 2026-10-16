@@ -68,6 +68,10 @@ struct BrowserShellView: View {
     /// `body` except through the two modifiers below, so the per-frame writes
     /// cost nothing beyond the offset itself.
     @State private var chromeDragOffset: CGFloat = 0
+    /// How far the user has dragged the bar upward, mid-gesture — the gesture
+    /// that returns to the home surface. The bar lifts a little with the
+    /// finger as the promise of what releasing will do.
+    @State private var chromeLiftOffset: CGFloat = 0
 
     /// Whether the bar is off screen right now.
     ///
@@ -233,6 +237,7 @@ struct BrowserShellView: View {
                 canActOnPage: canActOnPage,
                 isPrivateMode: activeTab?.privacyMode == .private,
                 adBlockEnabled: env.settings.adBlockSettings.preferences.enabled,
+                pageTitle: menuPanelTitle,
                 onPerform: handleMenuAction
             )
             .environment(env)
@@ -502,9 +507,16 @@ struct BrowserShellView: View {
                 chromeButton(symbol: "chevron.left", isEnabled: canGoBack) {
                     goBack()
                 }
+                // Long-press lists the pages behind the current one — the
+                // standard way to jump several entries at once. The menu is
+                // inert on a disabled button, which is exactly the state with
+                // no history in that direction.
+                .contextMenu { backHistoryMenu }
+
                 chromeButton(symbol: "chevron.right", isEnabled: canGoForward) {
                     env.webCoordinator.goForward()
                 }
+                .contextMenu { forwardHistoryMenu }
             }
             .padding(.horizontal, 5)
             .frame(height: BrowserChrome.barHeight)
@@ -537,10 +549,12 @@ struct BrowserShellView: View {
         .padding(.bottom, BrowserChrome.barGap + safeBottom)
         // Sliding fully out — past the bottom edge — with a fade reads as the
         // bar dissolving into the page rather than parking behind the home
-        // indicator. Mid-drag the bar follows the finger and fades with
-        // distance, so the gesture feels like moving the bar rather than
-        // arming a trigger.
-        .offset(y: chromeIsHidden ? BrowserChrome.barHeight + BrowserChrome.barGap + safeBottom + 12 : chromeDragOffset)
+        // indicator. Mid-drag the bar follows the finger downward and fades
+        // with distance; dragged upward it lifts a little, promising the home
+        // surface on release.
+        .offset(y: chromeIsHidden
+            ? BrowserChrome.barHeight + BrowserChrome.barGap + safeBottom + 12
+            : (chromeDragOffset > 0 ? chromeDragOffset : chromeLiftOffset))
         // The search page covers the screen completely, so the bar yields to it
         // while the omnibox session is open — a bottom bar under a search page
         // is chrome the user did not ask for.
@@ -549,22 +563,34 @@ struct BrowserShellView: View {
         .animation(Self.chromeAnimation, value: chromeHidden)
         .animation(Self.chromeAnimation, value: omnibox.isEditing)
         // Dragging the bar downward dismisses it, off the bottom edge the way
-        // a sheet leaves. The minimum distance keeps a tap on the omnibox or a
-        // button from reading as a drag, and the gesture stands down while the
-        // omnibox session is open, where a downward drag means dismissing the
-        // keyboard.
+        // a sheet leaves; dragging it upward returns to the home surface, the
+        // same promise the home button makes. The minimum distance keeps a tap
+        // on the omnibox or a button from reading as a drag, and the gesture
+        // stands down while the omnibox session is open, where a downward drag
+        // means dismissing the keyboard.
         .gesture(
             DragGesture(minimumDistance: 12)
                 .onChanged { value in
                     guard canDragChromeAway, !chromeIsHidden else { return }
-                    chromeDragOffset = max(0, value.translation.height)
+                    if value.translation.height > 0 {
+                        chromeDragOffset = value.translation.height
+                        chromeLiftOffset = 0
+                    } else {
+                        chromeLiftOffset = max(-36, value.translation.height * 0.35)
+                        chromeDragOffset = 0
+                    }
                 }
                 .onEnded { value in
-                    if canDragChromeAway, !chromeIsHidden, value.translation.height > 56 {
-                        setChromeHidden(true)
+                    if canDragChromeAway, !chromeIsHidden {
+                        if value.translation.height > 56 {
+                            setChromeHidden(true)
+                        } else if value.translation.height < -64, let tab = activeTab {
+                            goHome(tab)
+                        }
                     }
                     withAnimation(Self.chromeAnimation) {
                         chromeDragOffset = 0
+                        chromeLiftOffset = 0
                     }
                 },
             isEnabled: !omnibox.isEditing
@@ -592,6 +618,55 @@ struct BrowserShellView: View {
         .accessibilityLabel(
             symbol == "chevron.left" ? "后退" : symbol == "chevron.right" ? "前进" : "菜单"
         )
+    }
+
+    /// The pages behind the current one, newest first, for the back button's
+    /// long-press menu — the way to skip several entries at once.
+    @ViewBuilder
+    private var backHistoryMenu: some View {
+        if let tab = activeTab, let webView = tabManager.webView(for: tab.id) {
+            let items = Array(webView.backForwardList.backList.suffix(6).reversed())
+            if items.isEmpty {
+                Text("没有更早的页面")
+            } else {
+                ForEach(Array(items.enumerated()), id: \.element.uniqueID) { _, item in
+                    Button {
+                        _ = webView.go(to: item)
+                    } label: {
+                        Label(
+                            item.title?.isEmpty == false
+                                ? item.title!
+                                : (item.url.host ?? item.url.absoluteString),
+                            systemImage: "clock.arrow.circlepath"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /// The pages ahead, oldest first, for the forward button's long-press menu.
+    @ViewBuilder
+    private var forwardHistoryMenu: some View {
+        if let tab = activeTab, let webView = tabManager.webView(for: tab.id) {
+            let items = Array(webView.backForwardList.forwardList.prefix(6))
+            if items.isEmpty {
+                Text("没有更晚的页面")
+            } else {
+                ForEach(Array(items.enumerated()), id: \.element.uniqueID) { _, item in
+                    Button {
+                        _ = webView.go(to: item)
+                    } label: {
+                        Label(
+                            item.title?.isEmpty == false
+                                ? item.title!
+                                : (item.url.host ?? item.url.absoluteString),
+                            systemImage: "clock.arrow.circlepath"
+                        )
+                    }
+                }
+            }
+        }
     }
 
     /// The tab switcher button, with the count drawn inside the glyph.
@@ -857,6 +932,13 @@ struct BrowserShellView: View {
     private var canActOnPage: Bool {
         guard let tab = activeTab, !tab.isHome else { return false }
         return tabManager.webView(for: tab.id) != nil
+    }
+
+    /// What the menu panel's header names as its subject.
+    private var menuPanelTitle: String {
+        guard let tab = activeTab, !tab.isHome else { return "菜单" }
+        if !tab.title.isEmpty { return tab.title }
+        return tab.url.isEmpty ? "菜单" : tab.url
     }
 
     /// Runs one tile from the menu panel.

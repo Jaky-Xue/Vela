@@ -70,11 +70,11 @@ struct OmniboxSearchPageView: View {
                 colorScheme: colorScheme
             )
 
-            if viewModel.text.isEmpty && viewModel.groups.isEmpty {
-                Button("取消") { viewModel.cancel() }
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(palette.accent)
-            }
+            // Always present: the search page covers the page the user came
+            // from, and the command bar with it — this button is the way back.
+            Button("取消") { viewModel.cancel() }
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(palette.accent)
         }
         .padding(.leading, 14)
         .padding(.trailing, 14)

@@ -101,6 +101,9 @@ struct MenuPanelView: View {
     var isPrivateMode: Bool
     /// Shown so the ad-block tile can reflect the current state.
     var adBlockEnabled: Bool
+    /// What the panel is acting on — the page's title, or "菜单" on a
+    /// page-less surface. Drawn in the header row.
+    var pageTitle: String
     var onPerform: (VelaMenuAction) -> Void
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 5)
@@ -113,21 +116,48 @@ struct MenuPanelView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 8)
 
-            LazyVGrid(columns: columns, spacing: BrowserSpacing.regular + 2) {
-                ForEach(VelaMenuAction.allCases.filter { $0 != .leavePrivate }) { action in
-                    menuItem(action)
+            headerRow
+
+            // The grid scrolls inside the panel: at the compact detent the
+            // first rows are on screen and the rest are one drag away, and
+            // pulling the panel taller reveals them — the content adapts to
+            // the detent instead of leaving a lake under a short grid.
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: BrowserSpacing.regular + 2) {
+                    ForEach(VelaMenuAction.allCases.filter { $0 != .leavePrivate }) { action in
+                        menuItem(action)
+                    }
                 }
+                .padding(.bottom, BrowserSpacing.compact)
             }
             .padding(.horizontal, BrowserSpacing.regular)
-            .padding(.bottom, BrowserSpacing.loose)
         }
         .frame(maxWidth: .infinity)
         .background(palette.surface)
-        // A height detent that fits the grid: the named detents sized the
-        // sheet to a fraction of the screen and left lakes of empty material
-        // above and below the tiles. Fourteen actions make three rows.
         .presentationDetents([.height(330), .large])
         .presentationDragIndicator(.hidden)
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: BrowserSpacing.compact) {
+            Text(pageTitle.isEmpty ? "菜单" : pageTitle)
+                .font(.system(size: 15, weight: .semibold))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                onPerform(.settings)
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(palette.primaryText)
+                    .frame(width: 36, height: 36)
+                    .background(palette.controlFill.opacity(0.75), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("设置")
+        }
+        .padding(.horizontal, BrowserSpacing.regular)
     }
 
     private func menuItem(_ action: VelaMenuAction) -> some View {
