@@ -310,39 +310,82 @@ final class BrowserUrlResolverTests: XCTestCase {
 
 // MARK: - User agent
 
+/// The identifier a tab presents.
+///
+/// The default is to present none at all, which is the property that matters and
+/// the one that was broken: the app used to write its own string with
+/// `Version/17.0` and `Mobile/15E148` baked in, so on a device running a later
+/// iOS every site was told the browser was Safari 17 and the ones that check
+/// answered "浏览器版本太低". The engine was current; only the label was stale.
+@MainActor
 final class BrowserUserAgentTests: XCTestCase {
-    func testTheDesktopStringIsUsedWhenAskedFor() {
-        let agent = BrowserUserAgent.resolve(custom: "", prefersDesktop: true)
-        XCTAssertEqual(agent, BrowserUserAgent.defaultUserAgent)
-        XCTAssertTrue(agent.contains("Macintosh"))
+    func testTheDefaultIdentifierIsTheSystemsOwn() {
+        // nil means `customUserAgent` is left unset, so the request carries
+        // exactly what WebKit would have sent by itself — the same string Safari
+        // sends, which no site can call out of date.
+        XCTAssertNil(BrowserUserAgent.resolved(custom: "", prefersDesktop: false))
     }
 
-    func testTheMobileStringIsTheDefault() {
-        let agent = BrowserUserAgent.resolve(custom: "", prefersDesktop: false)
-        XCTAssertTrue(agent.contains("iPhone"))
-    }
-
-    func testACustomStringWinsOverTheToggle() {
-        // Someone who typed one asked for that exact value; letting the desktop
-        // toggle override it is what made the field look broken.
+    func testACustomIdentifierWinsOverTheToggle() {
         XCTAssertEqual(
-            BrowserUserAgent.resolve(custom: "MyAgent/9", prefersDesktop: true),
+            BrowserUserAgent.resolved(custom: "MyAgent/9", prefersDesktop: true),
             "MyAgent/9"
         )
     }
 
-    func testAWhitespaceOnlyCustomStringIsNotACustomString() {
+    func testAWhitespaceOnlyCustomIdentifierIsNotACustomIdentifier() {
+        XCTAssertNil(BrowserUserAgent.resolved(custom: "   \n ", prefersDesktop: false))
+    }
+
+    func testTheCustomIdentifierIsTrimmed() {
         XCTAssertEqual(
-            BrowserUserAgent.resolve(custom: "   \n ", prefersDesktop: true),
-            BrowserUserAgent.defaultUserAgent
+            BrowserUserAgent.resolved(custom: "  MyAgent/9  ", prefersDesktop: false),
+            "MyAgent/9"
         )
     }
 
-    func testTheCustomStringIsTrimmed() {
-        XCTAssertEqual(
-            BrowserUserAgent.resolve(custom: "  MyAgent/9  ", prefersDesktop: false),
-            "MyAgent/9"
+    /// The version tokens describe the running engine rather than a number
+    /// written down when the string was authored.
+    func testTheFallbackIdentifierReportsTheRunningSystem() {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        let expected = "Version/\(version.majorVersion).\(version.minorVersion)"
+        XCTAssertTrue(
+            BrowserUserAgent.mobileIdentifier.contains(expected),
+            BrowserUserAgent.mobileIdentifier
         )
+        XCTAssertFalse(BrowserUserAgent.mobileIdentifier.contains("Version/17.0"))
+    }
+
+    func testDesktopModeClaimsAMacPlatformAndDropsTheMobileMarker() {
+        let desktop = BrowserUserAgent.resolved(custom: "", prefersDesktop: true)
+        XCTAssertEqual(desktop?.contains("Macintosh"), true)
+        XCTAssertEqual(desktop?.contains("Mozilla/5.0"), true)
+        // ` Mobile/` is the token that makes a string read as mobile, and macOS
+        // Safari does not send it.
+        XCTAssertEqual(desktop?.contains("Mobile/"), false)
+    }
+
+    func testTheDesktopFormKeepsTheEngineTokens() {
+        let mobile = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Mobile/15E148 Safari/604.1"
+        XCTAssertEqual(
+            BrowserUserAgent.desktopForm(of: mobile),
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/604.1"
+        )
+    }
+
+    func testAnIdentifierThatIsNotAMobileSafariOneIsLeftAlone() {
+        // A custom or unusual string must survive rather than be mangled into
+        // something half-changed.
+        let value = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+        XCTAssertEqual(BrowserUserAgent.desktopForm(of: value), value)
+    }
+
+    func testTheDesktopFormIsIdempotentOnAMacIdentifier() {
+        let mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/604.1"
+        XCTAssertEqual(BrowserUserAgent.desktopForm(of: mac), mac)
     }
 }
 

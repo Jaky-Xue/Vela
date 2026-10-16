@@ -527,13 +527,13 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         return configuration
     }
 
-    /// The identifier this tab presents to sites.
+    /// The identifier this tab presents to sites, or nil for the system's own.
     ///
     /// Read through the protocol rather than from the settings service at the
     /// web-view site, so there is exactly one place that answers "what does a tab
     /// look like to a site" and the per-tab and global paths cannot disagree.
-    public func userAgent(for tab: BrowserTabState) -> String {
-        BrowserUserAgent.resolve(
+    public func userAgent(for tab: BrowserTabState) -> String? {
+        BrowserUserAgent.resolved(
             custom: settings.preferences.customUserAgent,
             prefersDesktop: settings.preferences.desktopSiteByDefault
         )

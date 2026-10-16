@@ -535,13 +535,19 @@ public final class BrowserTabState: Identifiable {
         pendingUrl = ""
     }
 
-    /// True when a fresh web view for this tab still needs its URL fetched.
+    /// True when this tab's page is not settled and may need fetching again.
     ///
-    /// This is the question the whole "who starts the load" split used to answer
-    /// by inference, from `webView.url == nil` in the view layer. It is asked
-    /// here instead, on the tab, where the answer is knowable: a tab that has a
-    /// URL, no committed document, nothing in flight, and no failure waiting for
-    /// the user to acknowledge one.
+    /// This is the half of "does this tab need its page fetched" that is a
+    /// property of the tab: it has a URL, nothing is in flight, and no failure is
+    /// waiting for the user to acknowledge one. The other half — is a document
+    /// already on screen — belongs to the web view and is not knowable from here,
+    /// so `TabManager` pairs the two. See `TabManager.shouldFetchPage`.
+    ///
+    /// A cancelled tab answers yes, deliberately: a stopped load leaves no
+    /// document, and refusing to fetch would mean a tab that shows a blank
+    /// rectangle for the rest of the session. It is the web view's URL check that
+    /// keeps a page which *is* displayed — one whose secondary navigation was
+    /// cancelled — from being fetched over.
     public var needsPageFetch: Bool {
         guard !isHome, !url.isEmpty else { return false }
         guard !loadState.isInFlight, !loadState.isFailure else { return false }

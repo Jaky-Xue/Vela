@@ -519,6 +519,117 @@ final class WebNavigationIntegrationTests: XCTestCase {
         XCTAssertEqual(tab.loadState, .finished)
     }
 
+    /// A page-initiated navigation that WebKit abandons must not cost the user
+    /// the page that is displayed.
+    ///
+    /// This is the case a real log showed on a Bing results page: the results
+    /// load and finish, then the page fires a click-tracking beacon as a
+    /// main-frame navigation, and WebKit reports it interrupted by a policy
+    /// change. The tab's state became `cancelled` while the results were still on
+    /// screen — and because a cancelled tab is treated as one whose page was
+    /// never shown, switching away and back re-fetched it, reloading the results
+    /// and losing the user's place.
+    func testACancelledSecondaryNavigationDoesNotCostTheDisplayedPage() async {
+        let tab = harness.open(url("/one"))
+        await waitForSettled(tab, expectingTitle: "Page One")
+        let requestsAfterLoad = server.requestCount(for: "/one")
+
+        // A navigation the page starts and does not finish — the shape of a
+        // beacon — stopped while it is in flight.
+        harness.tabManager.load(url: url("/slow"), in: tab)
+        _ = await waitUntil("the beacon navigation to start") { tab.loadState == .provisional }
+        harness.tabManager.stopLoading(tab: tab)
+        _ = await waitUntil("the beacon navigation to be cancelled") { tab.loadState == .cancelled }
+
+        // The page it was fired from is still the one on screen.
+        guard let webView = harness.tabManager.webView(for: tab.id) else {
+            return XCTFail("no web view")
+        }
+        XCTAssertEqual(webView.url?.absoluteString, url("/one").absoluteString)
+
+        // Leaving and coming back must not re-fetch it.
+        let other = harness.tabManager.openTab(url: url("/two"))
+        await waitForSettled(other, expectingTitle: "Page Two")
+        harness.tabManager.activateTab(id: tab.id)
+
+        XCTAssertEqual(
+            server.requestCount(for: "/one"),
+            requestsAfterLoad,
+            "the displayed page was fetched again because a beacon was cancelled: "
+                + harness.trace(for: tab)
+        )
+    }
+
+    /// The other half of the same rule: a tab whose *only* navigation was stopped
+    /// has no document, and activating it does fetch again — the alternative is a
+    /// tab that shows a blank rectangle for the rest of the session.
+    func testATabWhoseOnlyNavigationWasStoppedIsFetchedAgain() async {
+        let tab = harness.open(url("/slow"))
+        _ = await waitUntil("the navigation to start") { tab.loadState == .provisional }
+        harness.tabManager.stopLoading(tab: tab)
+        _ = await waitUntil("the navigation to be cancelled") { tab.loadState == .cancelled }
+
+        guard let webView = harness.tabManager.webView(for: tab.id) else {
+            return XCTFail("no web view")
+        }
+        XCTAssertNil(webView.url, "nothing should have committed")
+
+        let other = harness.tabManager.openTab(url: url("/one"))
+        await waitForSettled(other, expectingTitle: "Page One")
+
+        let before = server.requestCount(for: "/slow")
+        harness.tabManager.activateTab(id: tab.id)
+
+        let refetched = await waitUntil("the stopped tab to be fetched again") {
+            server.requestCount(for: "/slow") > before
+        }
+        XCTAssertTrue(refetched, "events: \(harness.trace(for: tab))")
+    }
+
+    // MARK: - The identifier presented to sites
+
+    /// The default identifier is the system's own.
+    ///
+    /// The app used to write its own, with `Version/17.0` and `Mobile/15E148`
+    /// baked in — so a device running a later iOS told every site it was Safari
+    /// 17, and the ones that check answered "浏览器版本太低". The assertion here is
+    /// that the version the page sees tracks the running system, whatever the
+    /// simulator happens to be.
+    func testTheDefaultIdentifierTracksTheRunningSystem() async {
+        let tab = harness.open(url("/one"))
+        await waitForSettled(tab, expectingTitle: "Page One")
+
+        guard let webView = harness.tabManager.webView(for: tab.id) else {
+            return XCTFail("no web view")
+        }
+        XCTAssertNil(webView.customUserAgent, "the default should not pin an identifier at all")
+
+        let value = try? await webView.evaluateJavaScript("navigator.userAgent")
+        let identifier = value as? String ?? ""
+        let major = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+
+        XCTAssertTrue(identifier.contains("Safari/"), identifier)
+        XCTAssertTrue(identifier.contains("Version/\(major)."), identifier)
+        XCTAssertFalse(identifier.contains("Version/17.0"), identifier)
+    }
+
+    func testDesktopModePresentsADesktopIdentifierToThePage() async {
+        harness.settings.update { $0.desktopSiteByDefault = true }
+
+        let tab = harness.open(url("/one"))
+        await waitForSettled(tab, expectingTitle: "Page One")
+
+        guard let webView = harness.tabManager.webView(for: tab.id) else {
+            return XCTFail("no web view")
+        }
+        XCTAssertEqual(webView.customUserAgent?.contains("Macintosh"), true)
+
+        let value = try? await webView.evaluateJavaScript("navigator.userAgent")
+        let identifier = value as? String ?? ""
+        XCTAssertTrue(identifier.contains("Macintosh"), identifier)
+        XCTAssertFalse(identifier.contains("Mobile/"), identifier)
+    }
+
     // MARK: - Privacy
 
     func testAPrivateTabLoadsToo() async {

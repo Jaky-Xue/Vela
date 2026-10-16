@@ -59,7 +59,7 @@ Aira Browser 3.7.4 → Vela 的逐模块对照。
 | `ExternalNavigationPolicyService.ets` + `BrowserUnifiedLinkApplicationCoordinator.ets` | 同上，`handleExternalScheme` | 等价实现。阻止/询问/允许三级 + 站点例外 + "记住" |
 | `BrowserWebCapabilityPromptApplicationCoordinator.ets` | 同上，`requestMediaCapturePermissionFor` | 等价实现。按 `SitePermissionDefaultSettings` 自动应答或弹窗 |
 | `BrowserFaultClassifier.ets` | 同上，`describe(error:)` + `handleLoadFailure` | 等价实现。区分"取消"（不报错）和真实失败；区分内容进程崩溃（重载）和加载失败（报错页） |
-| `BrowserUserAgentService.ets` | `TabManager` 的 `BrowserUserAgent` | 等价实现。**偏离**：Aira 从鸿蒙 `deviceInfo` 拼 UA；iOS 报固定的 `Safari/605.1.15`，所以桌面版 UA 是硬编码的 macOS 串——这才是真正能让网站给桌面布局的串 |
+| `BrowserUserAgentService.ets` | `TabManager` 的 `BrowserUserAgent` | **偏离**：Aira 从鸿蒙 `deviceInfo` 拼 UA；iOS 侧不能这样拼。默认**不给 web view 设置 `customUserAgent`**，也就是让 WebKit 发系统自己的串（和 Safari 完全一致）。早先的实现自己拼串，把 `Version/17.0` 和 `Mobile/15E148` 写死，于是在更新的 iOS 上每个网站被告知这是 Safari 17，会检查版本的网站就直接回「浏览器版本太低」——引擎是新的，只有标签是旧的。桌面版是刻意的例外：为了让按平台标识分流的网站给桌面布局，平台标识必须是 Mac；但它由当前系统的版本号拼出，`Version/` 和 `AppleWebKit/` 都描述真实运行的引擎，只有平台标识和 `Mobile/` 标记是假的 |
 | `BrowserFaviconCoordinator.ets` + `data/siteicons` | `UI/Theme.swift` 的 `SiteIconView` | **刻意偏离**。`site_icons` 表已移植，但 iOS 上读不到页面的 favicon，所以在拿到真图标前用域名首字母 + FNV-1a 派生的稳定颜色。用 FNV-1a 而不是 `hashValue` 的理由和上面一样：站点颜色不该每次启动都变 |
 
 ### Core / 广告过滤

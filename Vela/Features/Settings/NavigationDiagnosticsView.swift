@@ -48,7 +48,7 @@ struct NavigationDiagnosticsView: View {
             } header: {
                 Text("诊断")
             } footer: {
-                Text("记录只保存在本次运行的记忆中，退出应用即清空，也不会写入浏览历史。地址中的查询参数只记录数量，不记录内容；Cookie、请求头和表单内容从不记录。")
+                Text("记录只保存在本次运行的记忆中，退出应用即清空，也不会写入浏览历史。地址中的查询参数只记录数量，不记录内容；Cookie、请求头和表单内容从不记录。\n\n事件为 cancel 时，表示 WebKit 中断了一次 Vela 已经放行的导航——通常是页面自己发起的次要导航（点击统计、埋点）。Vela 主动拒绝的导航不会记成 cancel：在新标签页打开记成 newTab，交给其他应用记成 externalScheme。")
             }
 
             Section {

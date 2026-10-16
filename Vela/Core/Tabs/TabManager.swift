@@ -24,12 +24,13 @@ import Observation
 @MainActor
 public protocol BrowserWebViewConfigurationProviding: AnyObject {
     func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration
-    /// The `User-Agent` a tab's web view should present.
+    /// The `User-Agent` a tab's web view should present, or nil to present the
+    /// system's own.
     ///
     /// Part of this protocol rather than read off the settings service directly
     /// so `TabManager` keeps owning web views without owning preferences, and so
     /// there is one place that decides what a tab looks like to a site.
-    func userAgent(for tab: BrowserTabState) -> String
+    func userAgent(for tab: BrowserTabState) -> String?
     /// The delegates a tab's web view reports to.
     ///
     /// WebKit holds both weakly, so whatever this returns has to be owned
@@ -230,8 +231,8 @@ public final class TabManager {
         // created; a private web view is never built for a tab the user has not
         // opened, so the ephemeral store's lifetime tracks real use.
         if !tab.isHome {
-            _ = ensureWebView(for: tab)
-            if tab.needsPageFetch {
+            let webView = ensureWebView(for: tab)
+            if shouldFetchPage(for: tab, webView: webView) {
                 if let url = URL(string: tab.url) {
                     load(url: url, in: tab)
                 } else {
@@ -246,6 +247,26 @@ public final class TabManager {
         }
         touchActivationOrder(id)
         enforceLiveWebViewCap()
+    }
+
+    /// Whether activating a tab should issue a request for its page.
+    ///
+    /// `needsPageFetch` answers the half that is a property of the tab: it has a
+    /// URL, nothing is in flight, and no failure is waiting to be acknowledged.
+    /// The web view answers the other half, which the tab's state cannot — is a
+    /// document already on screen?
+    ///
+    /// That second half is what stops a page that is *displayed* from being
+    /// reloaded. A page navigates itself without being asked: Bing fires a
+    /// click-tracking beacon as a main-frame navigation, and WebKit can then
+    /// abandon it and report it as cancelled — which leaves the tab's state at
+    /// `cancelled` while the search results are still displayed and finished.
+    /// Without this check, switching away from those results and back reloads
+    /// them, and the user loses their place because a hidden beacon was
+    /// interrupted.
+    private func shouldFetchPage(for tab: BrowserTabState, webView: WKWebView) -> Bool {
+        guard tab.needsPageFetch else { return false }
+        return webView.url == nil
     }
 
     /// Moves the active tab by `offset` in the strip.
@@ -388,6 +409,8 @@ public final class TabManager {
         let configuration = configurationProvider.makeConfiguration(for: tab)
         let webView = WKWebView(frame: .zero, configuration: configuration)
 
+        // Left unset when the tab should present the system's own identifier,
+        // which is what makes the default exact rather than approximately right.
         webView.customUserAgent = configurationProvider.userAgent(for: tab)
 
         // Without these the web view reports nothing: no `didFinish`, so back
@@ -675,32 +698,79 @@ public final class TabManager {
 
 /// The User-Agent values presented to pages.
 ///
-/// iOS reports a fixed `Safari/605.1.15` token, so the desktop string below is
-/// what actually negotiates a desktop layout. The mobile string is used when the
-/// user asks a specific site for the mobile version.
+/// The default is to present **none** — that is, to let WebKit send the
+/// identifier the system itself sends, which is the same string Safari sends.
+///
+/// A browser that writes its own `User-Agent` is a browser that will eventually
+/// be presenting a version that no longer exists. This one did: it hardcoded
+/// `Version/17.0` and `Mobile/15E148`, so on a device running a later iOS every
+/// site was told the browser was Safari 17 — years out of date — and the ones
+/// that check answered "浏览器版本太低". The engine was current; only the label
+/// was stale, and the label is the whole basis of the site's judgement.
+///
+/// Desktop mode is the exception, and it is a deliberate approximation: the only
+/// way to get a desktop layout out of a site that branches on the platform token
+/// is to claim a desktop platform. It is built from the running system's own
+/// version numbers, so every token a site compares against — `Version/`,
+/// `AppleWebKit/` — describes the engine that is actually running. Only the
+/// platform token and the `Mobile/` marker are not true, and those are the lie
+/// the user asked for.
 public enum BrowserUserAgent {
-    /// The desktop string. It claims a Mac because that is what gets a desktop
-    /// layout out of the sites that branch on the identifier.
-    public static var defaultUserAgent: String {
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
-            + "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
-    }
 
-    public static var mobileUserAgent: String {
-        let systemVersion = ProcessInfo.processInfo.operatingSystemVersion
-        let version = "\(systemVersion.majorVersion)_\(systemVersion.minorVersion)"
-        return "Mozilla/5.0 (iPhone; CPU iPhone OS \(version) like Mac OS X) "
-            + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-    }
-
-    /// The identifier a tab presents, given the user's settings.
+    /// The identifier a tab should present, or nil to present the system's own.
     ///
-    /// A custom string wins outright. Someone who typed one asked for that exact
-    /// value, and letting the desktop toggle override it would make the field
-    /// look broken — which is what it was before this was wired up.
-    public static func resolve(custom: String, prefersDesktop: Bool) -> String {
+    /// nil is the default, and returning it rather than a string is what makes
+    /// the default correct: `customUserAgent` is left unset, so the request
+    /// carries whatever WebKit would have sent by itself.
+    public static func resolved(custom: String, prefersDesktop: Bool) -> String? {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Someone who typed a string asked for that exact value. Letting the
+        // desktop toggle override it is what made the field look broken.
         if !trimmed.isEmpty { return trimmed }
-        return prefersDesktop ? defaultUserAgent : mobileUserAgent
+        return prefersDesktop ? desktopIdentifier : nil
+    }
+
+    /// A desktop identifier, for the "请求桌面网站" toggle.
+    public static var desktopIdentifier: String {
+        desktopForm(of: mobileIdentifier)
+    }
+
+    /// A mobile Safari identifier, used as the base for the desktop one.
+    ///
+    /// Built from the running system's version numbers rather than from a fixed
+    /// string, so it cannot claim to be older than the device it runs on. The
+    /// default path never uses it: the default presents no identifier at all.
+    public static var mobileIdentifier: String {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        let os = "\(version.majorVersion)_\(version.minorVersion)"
+        return "Mozilla/5.0 (iPhone; CPU iPhone OS \(os) like Mac OS X) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+            + "Version/\(version.majorVersion).\(version.minorVersion) Mobile/15E148 Safari/604.1"
+    }
+
+    /// Rewrites a mobile Safari identifier into a desktop one.
+    ///
+    /// Only the platform token and the `Mobile/` marker change. Rewriting the
+    /// version tokens as well is how the identifier goes stale, so they are left
+    /// describing the engine that is actually running.
+    static func desktopForm(of identifier: String) -> String {
+        var text = identifier
+
+        // `(iPhone; CPU iPhone OS 26_1 like Mac OS X)` → a Mac platform token.
+        // The group is what a site branches on to choose a layout; everything
+        // after it describes WebKit, which is the same either way.
+        if let start = text.range(of: "(iPhone;"),
+           let end = text.range(of: ") ", range: start.upperBound..<text.endIndex) {
+            text.replaceSubrange(start.lowerBound..<end.lowerBound, with: "(Macintosh; Intel Mac OS X 10_15_7")
+        }
+
+        // ` Mobile/15E148` is the marker that makes a string read as mobile, and
+        // macOS Safari does not send it.
+        if let start = text.range(of: " Mobile/"),
+           let end = text.range(of: " ", range: start.upperBound..<text.endIndex) {
+            text.removeSubrange(start.lowerBound..<end.lowerBound)
+        }
+
+        return text
     }
 }

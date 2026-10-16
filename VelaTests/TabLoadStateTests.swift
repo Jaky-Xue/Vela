@@ -242,7 +242,10 @@ final class TabPageFetchTests: XCTestCase {
     /// The alternative is worse: a stopped load leaves the tab with no committed
     /// document, so refusing to refetch means a tab that shows a blank rectangle
     /// for the rest of the session. The refetch happens only on an explicit
-    /// activation, so it cannot loop.
+    /// activation, so it cannot loop — and the web view's own URL is what keeps
+    /// it from happening when a document *is* on screen, which is the case a page
+    /// firing a beacon creates. See `TabManager.shouldFetchPage` and
+    /// `testACancelledSecondaryNavigationDoesNotCostTheDisplayedPage`.
     func testAStoppedTabIsRefetchedWhenItIsActivatedAgain() {
         XCTAssertTrue(tab(url: "https://example.com", loadState: .cancelled).needsPageFetch)
     }
