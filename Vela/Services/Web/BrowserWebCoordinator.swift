@@ -516,8 +516,12 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // `WKPreferences`; on iOS media playback is routed through the system
         // player, so there is no equivalent to set here.
 
-        // Element fullscreen and picture-in-picture are what make video playback
-        // usable, and both are opt-in on iOS.
+        // Element fullscreen — the Fullscreen API a page calls from script, and
+        // the path a custom video player's fullscreen button takes — and
+        // picture-in-picture are both opt-in on iOS. (The other half of the
+        // fullscreen story is `UIRequiresFullScreen` in Info.plist: an iPad app
+        // that supports multitasking cannot host the system's fullscreen video
+        // presentation at all.)
         if #available(iOS 15.4, *) {
             preferences.isElementFullscreenEnabled = true
         }
@@ -532,14 +536,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
-
-        // Element fullscreen is the Fullscreen API a page calls from script —
-        // `video.requestFullscreen()` on a custom player, which is what most
-        // video sites use rather than the stock controls' button. WebKit ships
-        // the API switched off in WKWebView, so without this the button does
-        // nothing at all, and the system player the user expects never
-        // appears. (Deployment target is 17, so no availability gate.)
-        configuration.preferences.isElementFullscreenEnabled = true
 
         // A description is what a `target="_blank"` popup inherits; without it
         // WebKit refuses to create the configuration at all.

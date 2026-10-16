@@ -29,6 +29,20 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- Full-screen only, no Split View or Slide Over.
+
+	     An iPad app that supports multitasking cannot host the system's
+	     fullscreen video presentation: the player needs to drive rotation and
+	     fill the whole screen, and a slide-over card forbids both, so the
+	     fullscreen button in a video player misbehaves or does nothing. A
+	     browser is a full-screen surface by nature — Safari itself is one —
+	     and the native player the user expects is worth more here than a
+	     side-by-side layout. All four iPad orientations are declared, as
+	     required for this key. -->
+	<key>UIRequiresFullScreen</key>
+	<true/>
+
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

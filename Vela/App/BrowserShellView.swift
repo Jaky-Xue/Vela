@@ -61,6 +61,13 @@ struct BrowserShellView: View {
 
     /// Whether the command bar has slid out of the way under the status bar.
     @State private var chromeHidden = false
+    /// How far the user has dragged the bar downward, mid-gesture.
+    ///
+    /// The bar follows the finger while the drag is in progress and either
+    /// commits to hiding or springs back when the finger lifts. Never read in
+    /// `body` except through the two modifiers below, so the per-frame writes
+    /// cost nothing beyond the offset itself.
+    @State private var chromeDragOffset: CGFloat = 0
 
     /// Whether the bar is off screen right now.
     ///
@@ -70,6 +77,16 @@ struct BrowserShellView: View {
     /// there. A page-less surface is a place the user is looking for the bar.
     private var chromeIsHidden: Bool {
         chromeHidden && !(activeTab?.isHome ?? false)
+    }
+
+    /// Whether the current surface allows the drag-to-hide gesture at all.
+    ///
+    /// The home surface pins the bar visible, so it also refuses to let the
+    /// user drag it away — the two rules are the same rule seen from the
+    /// gesture's side.
+    private var canDragChromeAway: Bool {
+        guard !omnibox.isEditing, let tab = activeTab else { return false }
+        return !tab.isHome
     }
     /// The previous scroll offset, used to derive a direction.
     ///
@@ -444,7 +461,12 @@ struct BrowserShellView: View {
                         }
                     )
                     .id("web-\(tab.id)")
-                    .ignoresSafeArea(edges: .top)
+                    // Every edge: the frame has to cover the whole screen, or
+                    // the safe-area strip at the bottom shows the bare surface
+                    // colour behind a page that believes it owns it. The scroll
+                    // view manages the chrome inset itself and takes none at
+                    // the bottom, so the document runs edge to edge.
+                    .ignoresSafeArea()
                 } else {
                     // A cold tab with no web view at all. Materialising happens
                     // in `onAppear` rather than here: creating a web view during
@@ -540,10 +562,32 @@ struct BrowserShellView: View {
         .padding(.bottom, BrowserChrome.barGap)
         // Sliding fully out — past the safe area — with a fade reads as the bar
         // dissolving into the page rather than parking behind the status bar.
-        .offset(y: chromeIsHidden ? -(BrowserChrome.topChromeHeight + safeTop + 12) : 0)
-        .opacity(chromeIsHidden ? 0 : 1)
+        // Mid-drag the bar follows the finger and fades with distance, so the
+        // gesture feels like moving the bar rather than arming a trigger.
+        .offset(y: chromeIsHidden ? -(BrowserChrome.topChromeHeight + safeTop + 12) : chromeDragOffset)
+        .opacity(chromeIsHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
         .allowsHitTesting(!chromeIsHidden)
         .animation(Self.chromeAnimation, value: chromeHidden)
+        // Dragging the bar downward dismisses it, the way a sheet leaves. The
+        // minimum distance keeps a tap on the omnibox or a button from reading
+        // as a drag, and the gesture stands down while the omnibox session is
+        // open, where a downward drag means dismissing the keyboard.
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .onChanged { value in
+                    guard canDragChromeAway, !chromeIsHidden else { return }
+                    chromeDragOffset = max(0, value.translation.height)
+                }
+                .onEnded { value in
+                    if canDragChromeAway, !chromeIsHidden, value.translation.height > 56 {
+                        setChromeHidden(true)
+                    }
+                    withAnimation(Self.chromeAnimation) {
+                        chromeDragOffset = 0
+                    }
+                },
+            isEnabled: !omnibox.isEditing
+        )
         .accessibilityHidden(chromeIsHidden)
     }
 
