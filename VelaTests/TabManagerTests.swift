@@ -244,8 +244,8 @@ final class TabManagerTests: XCTestCase {
     func testClosingATabWithAnOpenerReturnsToIt() {
         let manager = makeManager()
         let opener = manager.createTab()
-        let child = manager.createTab(
-            url: "https://example.com",
+        let child = manager.openTab(
+            url: URL(string: "https://example.com")!,
             openerTabId: opener.id
         )
         manager.closeTab(id: child.id)

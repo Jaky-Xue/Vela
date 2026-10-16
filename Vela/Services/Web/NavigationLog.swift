@@ -228,7 +228,11 @@ public final class NavigationLog {
     // MARK: - Redaction
 
     /// The scheme of a raw URL string, without parsing the rest of it.
-    public static func scheme(of raw: String) -> String {
+    ///
+    /// `nonisolated` because it is a pure function of its argument: the log
+    /// itself is main-actor state, but redaction is not, and a caller that only
+    /// wants to reduce a URL should not have to hop actors to do it.
+    nonisolated public static func scheme(of raw: String) -> String {
         guard let colon = raw.firstIndex(of: ":") else { return "" }
         let candidate = String(raw[raw.startIndex..<colon]).lowercased()
         guard let first = candidate.first, first.isLetter else { return "" }
@@ -245,7 +249,7 @@ public final class NavigationLog {
     /// A parse failure returns the scheme and a placeholder rather than the
     /// original string: an unparseable URL is exactly the sort of thing that
     /// carries something unexpected.
-    public static func redact(_ raw: String) -> String {
+    nonisolated public static func redact(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
 
