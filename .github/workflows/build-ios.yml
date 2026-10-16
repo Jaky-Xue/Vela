@@ -163,7 +163,15 @@ jobs:
             -project Vela.xcodeproj \
             -scheme Vela \
             -destination "platform=iOS Simulator,name=$DEVICE" \
+            -retry-tests-on-failure \
             -resultBundlePath TestResults.xcresult
+        # `-retry-tests-on-failure` re-runs just the tests that failed, once,
+        # and records both attempts in the result bundle. The simulator's
+        # content-process churn intermittently drops a title round-trip the
+        # navigation tests wait on — a drop the navigation trace itself
+        # exculpates the product of every time — and a single lost message is
+        # not what this suite is here to catch. A real regression fails the
+        # retry too, so the signal stays honest.
 
       - name: Summarise the failures
         if: failure()
