@@ -24,13 +24,12 @@ import Observation
 @MainActor
 public protocol BrowserWebViewConfigurationProviding: AnyObject {
     func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration
-    /// The `User-Agent` a tab's web view should present, or nil to present the
-    /// system's own.
+    /// The `User-Agent` a tab's web view should present.
     ///
     /// Part of this protocol rather than read off the settings service directly
     /// so `TabManager` keeps owning web views without owning preferences, and so
     /// there is one place that decides what a tab looks like to a site.
-    func userAgent(for tab: BrowserTabState) -> String?
+    func userAgent(for tab: BrowserTabState) -> String
     /// The delegates a tab's web view reports to.
     ///
     /// WebKit holds both weakly, so whatever this returns has to be owned
@@ -266,7 +265,10 @@ public final class TabManager {
     /// interrupted.
     private func shouldFetchPage(for tab: BrowserTabState, webView: WKWebView) -> Bool {
         guard tab.needsPageFetch else { return false }
-        return webView.url == nil
+        // `webView.url` cannot answer this: it reports the navigation in flight,
+        // so a stopped or cancelled navigation leaves it naming the page that was
+        // never shown. `committedUrl` names the document that actually arrived.
+        return tab.committedUrl.isEmpty
     }
 
     /// Moves the active tab by `offset` in the strip.
@@ -409,8 +411,6 @@ public final class TabManager {
         let configuration = configurationProvider.makeConfiguration(for: tab)
         let webView = WKWebView(frame: .zero, configuration: configuration)
 
-        // Left unset when the tab should present the system's own identifier,
-        // which is what makes the default exact rather than approximately right.
         webView.customUserAgent = configurationProvider.userAgent(for: tab)
 
         // Without these the web view reports nothing: no `didFinish`, so back
@@ -545,6 +545,7 @@ public final class TabManager {
         tab.loadState = .idle
         tab.lastFailure = nil
         tab.serverStatus = 0
+        tab.committedUrl = ""
         tab.pendingUrl = ""
         // Stop loading before release so a transfer in flight cannot deliver a
         // callback to a web view the manager no longer owns.
@@ -698,36 +699,37 @@ public final class TabManager {
 
 /// The User-Agent values presented to pages.
 ///
-/// The default is to present **none** — that is, to let WebKit send the
-/// identifier the system itself sends, which is the same string Safari sends.
-///
-/// A browser that writes its own `User-Agent` is a browser that will eventually
-/// be presenting a version that no longer exists. This one did: it hardcoded
+/// The identifier is built from the running system's version numbers, which is
+/// the correction that matters: the previous implementation hardcoded
 /// `Version/17.0` and `Mobile/15E148`, so on a device running a later iOS every
-/// site was told the browser was Safari 17 — years out of date — and the ones
-/// that check answered "浏览器版本太低". The engine was current; only the label
-/// was stale, and the label is the whole basis of the site's judgement.
+/// site was told the browser was Safari 17 — years old — and the ones that check
+/// answered 「浏览器版本太低」. The engine was current; only the label was stale,
+/// and the label is the entire basis of the site's judgement.
 ///
-/// Desktop mode is the exception, and it is a deliberate approximation: the only
-/// way to get a desktop layout out of a site that branches on the platform token
-/// is to claim a desktop platform. It is built from the running system's own
-/// version numbers, so every token a site compares against — `Version/`,
-/// `AppleWebKit/` — describes the engine that is actually running. Only the
-/// platform token and the `Mobile/` marker are not true, and those are the lie
-/// the user asked for.
+/// The *shape* of the string is not incidental either. A bare `WKWebView` does
+/// not present Safari's identifier: measured in the simulator, it sends
+///
+///     Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15
+///     (KHTML, like Gecko) Mobile/15E148
+///
+/// — no `Version/`, no `Safari/`, because those two tokens are ones Safari adds
+/// for itself. Handing that to a site is how a browser gets told to open the page
+/// in Safari instead, so the identifier below adds them, with the same version
+/// number the system reports. Everything else is byte-identical to what WebKit
+/// would have sent.
+///
+/// Desktop mode is a deliberate approximation on top of that: the only way to get
+/// a desktop layout out of a site that branches on the platform token is to claim
+/// a desktop platform, so the platform token and the `Mobile/` marker are the
+/// lie the user asked for. The version tokens stay real.
 public enum BrowserUserAgent {
-
-    /// The identifier a tab should present, or nil to present the system's own.
-    ///
-    /// nil is the default, and returning it rather than a string is what makes
-    /// the default correct: `customUserAgent` is left unset, so the request
-    /// carries whatever WebKit would have sent by itself.
-    public static func resolved(custom: String, prefersDesktop: Bool) -> String? {
+    /// The identifier a tab should present.
+    public static func resolved(custom: String, prefersDesktop: Bool) -> String {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
         // Someone who typed a string asked for that exact value. Letting the
         // desktop toggle override it is what made the field look broken.
         if !trimmed.isEmpty { return trimmed }
-        return prefersDesktop ? desktopIdentifier : nil
+        return prefersDesktop ? desktopIdentifier : mobileIdentifier
     }
 
     /// A desktop identifier, for the "请求桌面网站" toggle.
@@ -735,11 +737,10 @@ public enum BrowserUserAgent {
         desktopForm(of: mobileIdentifier)
     }
 
-    /// A mobile Safari identifier, used as the base for the desktop one.
+    /// The identifier a phone-sized tab presents.
     ///
     /// Built from the running system's version numbers rather than from a fixed
-    /// string, so it cannot claim to be older than the device it runs on. The
-    /// default path never uses it: the default presents no identifier at all.
+    /// string, so it cannot claim to be older than the device it runs on.
     public static var mobileIdentifier: String {
         let version = ProcessInfo.processInfo.operatingSystemVersion
         let os = "\(version.majorVersion)_\(version.minorVersion)"

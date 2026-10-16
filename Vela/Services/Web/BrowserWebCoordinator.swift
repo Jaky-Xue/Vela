@@ -159,6 +159,9 @@ public final class BrowserWebCoordinator: NSObject {
         guard kind != "init" else { return }
 
         tab.url = newUrl
+        // A single-page app changed the address of the document it is showing,
+        // so the displayed document's URL changed with it.
+        tab.committedUrl = newUrl
         tab.isHome = false
         if !tab.lastGoodUrl.isEmpty {
             tab.lastGoodUrl = newUrl
@@ -527,12 +530,12 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         return configuration
     }
 
-    /// The identifier this tab presents to sites, or nil for the system's own.
+    /// The identifier this tab presents to sites.
     ///
     /// Read through the protocol rather than from the settings service at the
     /// web-view site, so there is exactly one place that answers "what does a tab
     /// look like to a site" and the per-tab and global paths cannot disagree.
-    public func userAgent(for tab: BrowserTabState) -> String? {
+    public func userAgent(for tab: BrowserTabState) -> String {
         BrowserUserAgent.resolved(
             custom: settings.preferences.customUserAgent,
             prefersDesktop: settings.preferences.desktopSiteByDefault
@@ -877,6 +880,10 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             tab.loadState = .committed
             if let url = webView.url {
                 tab.url = url.absoluteString
+                // The one write of `committedUrl`: a document arrived, and this
+                // is it. Everything else that changes `tab.url` is a request or a
+                // hope, not a document.
+                tab.committedUrl = url.absoluteString
                 tab.pendingUrl = ""
             }
             // The back/forward list is already settled at commit time — a

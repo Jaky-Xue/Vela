@@ -312,18 +312,25 @@ final class BrowserUrlResolverTests: XCTestCase {
 
 /// The identifier a tab presents.
 ///
-/// The default is to present none at all, which is the property that matters and
-/// the one that was broken: the app used to write its own string with
-/// `Version/17.0` and `Mobile/15E148` baked in, so on a device running a later
-/// iOS every site was told the browser was Safari 17 and the ones that check
-/// answered "浏览器版本太低". The engine was current; only the label was stale.
+/// Two properties matter and both were wrong before. The version has to come from
+/// the running system rather than from a number written down when the string was
+/// authored: the app hardcoded `Version/17.0`, so on a later iOS every site was
+/// told the browser was Safari 17 and the ones that check answered
+/// 「浏览器版本太低」. And the string has to be Safari-shaped: a bare `WKWebView`
+/// sends neither `Version/` nor `Safari/`, and a site that looks for them treats
+/// their absence as an embedded browser.
 @MainActor
 final class BrowserUserAgentTests: XCTestCase {
-    func testTheDefaultIdentifierIsTheSystemsOwn() {
-        // nil means `customUserAgent` is left unset, so the request carries
-        // exactly what WebKit would have sent by itself — the same string Safari
-        // sends, which no site can call out of date.
-        XCTAssertNil(BrowserUserAgent.resolved(custom: "", prefersDesktop: false))
+    func testTheDefaultIdentifierIsTheSafariShapedOne() {
+        // Not "no identifier": a bare `WKWebView` presents one without
+        // `Version/` or `Safari/`, because those tokens are ones Safari adds for
+        // itself, and a site that looks for them treats their absence as an
+        // embedded browser. The identifier has to carry them.
+        let identifier = BrowserUserAgent.resolved(custom: "", prefersDesktop: false)
+        XCTAssertTrue(identifier.contains("Version/"), identifier)
+        XCTAssertTrue(identifier.contains("Safari/"), identifier)
+        XCTAssertTrue(identifier.contains("Mobile/"), identifier)
+        XCTAssertEqual(identifier, BrowserUserAgent.mobileIdentifier)
     }
 
     func testACustomIdentifierWinsOverTheToggle() {
@@ -334,7 +341,10 @@ final class BrowserUserAgentTests: XCTestCase {
     }
 
     func testAWhitespaceOnlyCustomIdentifierIsNotACustomIdentifier() {
-        XCTAssertNil(BrowserUserAgent.resolved(custom: "   \n ", prefersDesktop: false))
+        XCTAssertEqual(
+            BrowserUserAgent.resolved(custom: "   \n ", prefersDesktop: false),
+            BrowserUserAgent.mobileIdentifier
+        )
     }
 
     func testTheCustomIdentifierIsTrimmed() {
@@ -358,11 +368,15 @@ final class BrowserUserAgentTests: XCTestCase {
 
     func testDesktopModeClaimsAMacPlatformAndDropsTheMobileMarker() {
         let desktop = BrowserUserAgent.resolved(custom: "", prefersDesktop: true)
-        XCTAssertEqual(desktop?.contains("Macintosh"), true)
-        XCTAssertEqual(desktop?.contains("Mozilla/5.0"), true)
+        XCTAssertTrue(desktop.contains("Macintosh"))
+        XCTAssertTrue(desktop.contains("Mozilla/5.0"))
         // ` Mobile/` is the token that makes a string read as mobile, and macOS
         // Safari does not send it.
-        XCTAssertEqual(desktop?.contains("Mobile/"), false)
+        XCTAssertFalse(desktop.contains("Mobile/"))
+        // The version tokens are the running engine's, not a number written down
+        // when the string was authored.
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        XCTAssertTrue(desktop.contains("Version/\(version.majorVersion)."), desktop)
     }
 
     func testTheDesktopFormKeepsTheEngineTokens() {

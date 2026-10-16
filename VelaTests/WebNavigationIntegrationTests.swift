@@ -542,10 +542,11 @@ final class WebNavigationIntegrationTests: XCTestCase {
         _ = await waitUntil("the beacon navigation to be cancelled") { tab.loadState == .cancelled }
 
         // The page it was fired from is still the one on screen.
-        guard let webView = harness.tabManager.webView(for: tab.id) else {
-            return XCTFail("no web view")
-        }
-        XCTAssertEqual(webView.url?.absoluteString, url("/one").absoluteString)
+        XCTAssertEqual(
+            tab.committedUrl,
+            url("/one").absoluteString,
+            "the tab should still be showing the page the beacon was fired from"
+        )
 
         // Leaving and coming back must not re-fetch it.
         let other = harness.tabManager.openTab(url: url("/two"))
@@ -572,7 +573,12 @@ final class WebNavigationIntegrationTests: XCTestCase {
         guard let webView = harness.tabManager.webView(for: tab.id) else {
             return XCTFail("no web view")
         }
-        XCTAssertNil(webView.url, "nothing should have committed")
+        // Nothing committed — which is not the same as `webView.url` being nil:
+        // WebKit reports the navigation in flight there, so it names the page
+        // that was never shown. That distinction is the reason `committedUrl`
+        // exists.
+        XCTAssertTrue(tab.committedUrl.isEmpty, "nothing should have committed")
+        XCTAssertEqual(webView.url?.absoluteString, url("/slow").absoluteString)
 
         let other = harness.tabManager.openTab(url: url("/one"))
         await waitForSettled(other, expectingTitle: "Page One")
@@ -588,21 +594,26 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     // MARK: - The identifier presented to sites
 
-    /// The default identifier is the system's own.
+    /// The identifier presented is Safari-shaped and reports the running system.
     ///
-    /// The app used to write its own, with `Version/17.0` and `Mobile/15E148`
-    /// baked in — so a device running a later iOS told every site it was Safari
-    /// 17, and the ones that check answered "浏览器版本太低". The assertion here is
-    /// that the version the page sees tracks the running system, whatever the
-    /// simulator happens to be.
-    func testTheDefaultIdentifierTracksTheRunningSystem() async {
+    /// Two properties, both of which were wrong before:
+    ///
+    /// * The version is the device's, not a number written down when the string
+    ///   was authored. The app hardcoded `Version/17.0`, so on a later iOS every
+    ///   site was told the browser was Safari 17 and the ones that check answered
+    ///   「浏览器版本太低」.
+    /// * The identifier carries `Version/` and `Safari/`. A bare `WKWebView` does
+    ///   not send them — they are tokens Safari adds for itself — and a site that
+    ///   looks for them treats their absence as an embedded browser, which is the
+    ///   other way a site tells the user to go and open Safari.
+    func testTheIdentifierPresentedIsSafariShapedAndCurrent() async {
         let tab = harness.open(url("/one"))
         await waitForSettled(tab, expectingTitle: "Page One")
 
         guard let webView = harness.tabManager.webView(for: tab.id) else {
             return XCTFail("no web view")
         }
-        XCTAssertNil(webView.customUserAgent, "the default should not pin an identifier at all")
+        XCTAssertEqual(webView.customUserAgent, BrowserUserAgent.mobileIdentifier)
 
         let value = try? await webView.evaluateJavaScript("navigator.userAgent")
         let identifier = value as? String ?? ""

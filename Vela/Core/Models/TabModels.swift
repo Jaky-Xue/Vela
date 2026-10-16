@@ -379,6 +379,24 @@ public final class BrowserTabState: Identifiable {
     /// page that says "not found" — conflating the two is what makes a browser
     /// show a network-error page over a working page.
     public var serverStatus: Int
+    /// The URL of the document this tab has actually committed and is showing.
+    ///
+    /// Written in exactly one place — `didCommit` — because that is the only
+    /// event that means a document arrived. It exists because neither of the two
+    /// obvious answers to "is a page on screen" is usable:
+    ///
+    /// * `WKWebView.url` reports the navigation *in flight*, not the document
+    ///   being displayed. Measured: after a navigation to `/slow` was stopped
+    ///   while `/one` was still on screen, `webView.url` read `/slow`.
+    /// * `url` above is written optimistically by `TabManager.load`, so it names
+    ///   the page that was *asked for* from the moment the request is issued.
+    ///
+    /// Without it, a tab whose secondary navigation was cancelled looked like a
+    /// tab with nothing on screen, and activating it re-fetched the page — which
+    /// is how a cancelled click-tracking beacon cost a user their place in a
+    /// search results page.
+    public var committedUrl: String
+
     public var lastRestoreReason: TabRestoreReason
     public var lastDiscardReason: TabDiscardReason
     public var lastCrashReason: TabCrashReason
@@ -424,6 +442,7 @@ public final class BrowserTabState: Identifiable {
         navigationSerial: Int = 0,
         lastFailure: TabNavigationFailure? = nil,
         serverStatus: Int = 0,
+        committedUrl: String = "",
         lastRestoreReason: TabRestoreReason = .none,
         lastDiscardReason: TabDiscardReason = .none,
         lastCrashReason: TabCrashReason = .none,
@@ -456,6 +475,7 @@ public final class BrowserTabState: Identifiable {
         self.navigationSerial = navigationSerial
         self.lastFailure = lastFailure
         self.serverStatus = serverStatus
+        self.committedUrl = committedUrl
         self.lastRestoreReason = lastRestoreReason
         self.lastDiscardReason = lastDiscardReason
         self.lastCrashReason = lastCrashReason
@@ -532,6 +552,7 @@ public final class BrowserTabState: Identifiable {
         loadState = .idle
         lastFailure = nil
         serverStatus = 0
+        committedUrl = ""
         pendingUrl = ""
     }
 
