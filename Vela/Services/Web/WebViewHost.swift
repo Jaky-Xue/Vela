@@ -51,6 +51,9 @@ struct WebViewHost: UIViewRepresentable {
     /// fixed while the chrome hides, so the page does not jump under the user's
     /// finger; hiding the bar simply reveals more of the document.
     let topContentInset: CGFloat
+    /// The bottom content inset: the command bar's height plus the safe area,
+    /// so the page's last lines stay scrollable clear of the bar.
+    let bottomContentInset: CGFloat
     /// Reports scroll offset changes so the toolbar can react without a message
     /// round-trip on every frame.
     let onScroll: ((Double) -> Void)?
@@ -78,15 +81,19 @@ struct WebViewHost: UIViewRepresentable {
         let scrollView = webView.scrollView
         // The page runs to the bottom edge of the screen — a reserved strip
         // above the home indicator reads as something sitting on the page. The
-        // top inset is managed explicitly below (the chrome the page scrolls
-        // under), and `.never` stops WebKit from adding its own bottom inset,
-        // which is what kept every page from reaching the edge.
+        // insets are managed explicitly here (`.never` stops WebKit from adding
+        // its own): the command bar's height at the bottom, and whatever the
+        // shell passes for the top.
         if scrollView.contentInsetAdjustmentBehavior != .never {
             scrollView.contentInsetAdjustmentBehavior = .never
         }
         if scrollView.contentInset.top != topContentInset {
             scrollView.contentInset.top = topContentInset
             scrollView.verticalScrollIndicatorInsets.top = topContentInset
+        }
+        if scrollView.contentInset.bottom != bottomContentInset {
+            scrollView.contentInset.bottom = bottomContentInset
+            scrollView.verticalScrollIndicatorInsets.bottom = bottomContentInset
         }
     }
 

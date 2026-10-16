@@ -143,9 +143,8 @@ struct BrowserShellView: View {
             contentSurface
         }
         .background { safeAreaReader }
-        .overlay(alignment: .top) { topScrim }
-        .overlay(alignment: .top) { topChrome }
-        .overlay(alignment: .top) { floatingTools }
+        .overlay(alignment: .bottom) { commandBar }
+        .overlay(alignment: .bottom) { floatingTools }
         .animation(Self.chromeAnimation, value: omnibox.isEditing)
         .onAppear {
             wireOmnibox()
@@ -363,7 +362,7 @@ struct BrowserShellView: View {
 
     /// The page, and whatever floats over it.
     private var contentSurface: some View {
-        ZStack(alignment: .top) {
+        ZStack(alignment: .bottom) {
             mainSurface
 
             if omnibox.isEditing {
@@ -376,10 +375,10 @@ struct BrowserShellView: View {
                     maxHeight: omniboxCardHeight
                 )
                 .padding(.horizontal, BrowserChrome.sideInset)
-                .padding(.top, BrowserChrome.topChromeHeight + 6)
+                .padding(.bottom, safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap + 6)
                 .transition(
                     .asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)),
+                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)),
                         removal: .opacity
                     )
                 )
@@ -407,11 +406,10 @@ struct BrowserShellView: View {
             )
             .id("reader")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea(edges: .bottom)
-            .safeAreaInset(edge: .top) {
-                // The header starts below the chrome, stacked on the device's
-                // own safe area — the same arrangement the home surface uses.
-                Color.clear.frame(height: BrowserChrome.topChromeHeight)
+            .safeAreaInset(edge: .bottom) {
+                // The command bar floats over the surface's tail; the spacer
+                // keeps the article's last lines scrollable above it.
+                Color.clear.frame(height: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap)
             }
         } else if let tab = activeTab {
             // A stable identity per tab keeps SwiftUI from rebuilding the
@@ -422,13 +420,10 @@ struct BrowserShellView: View {
                         onNavigate: { url in navigate(to: url, in: tab) }
                     )
                     .id("home-\(tab.id)")
-                    .safeAreaInset(edge: .top) {
-                        // The home surface's content starts below the chrome.
-                        // The spacer stacks on the device's own safe area — the
-                        // view does not opt out of it — so the first row lands
-                        // a safe-area's height plus the chrome below the top of
-                        // the screen, where the glass cannot cover it.
-                        Color.clear.frame(height: BrowserChrome.topChromeHeight)
+                    .safeAreaInset(edge: .bottom) {
+                        // The command bar floats over the surface's tail; the
+                        // spacer keeps the last tiles scrollable above it.
+                        Color.clear.frame(height: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap)
                     }
                 } else if let failure = tab.lastFailure, tab.loadState.isFailure {
                     // A failed navigation shows the error surface *instead of*
@@ -445,14 +440,14 @@ struct BrowserShellView: View {
                         onHome: { goHome(tab) }
                     )
                     .id("error-\(tab.id)-\(tab.navigationSerial)")
-                    .ignoresSafeArea(edges: .bottom)
-                    .safeAreaInset(edge: .top) {
-                        Color.clear.frame(height: BrowserChrome.topChromeHeight)
+                    .safeAreaInset(edge: .bottom) {
+                        Color.clear.frame(height: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap)
                     }
                 } else if let webView = tabManager.webView(for: tab.id) {
                     WebViewHost(
                         webView: webView,
-                        topContentInset: BrowserChrome.topChromeHeight,
+                        topContentInset: 0,
+                        bottomContentInset: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap,
                         onScroll: { offset in
                             handleScroll(offset: offset)
                         },
@@ -492,35 +487,16 @@ struct BrowserShellView: View {
 
     // MARK: - Chrome
 
-    /// The soft wash behind the status bar.
-    ///
-    /// The page runs to the very top of the screen, so the clock and the
-    /// battery sit over whatever the page happens to be showing. A gradient of
-    /// the chrome colour fading to nothing gives them a consistent ground
-    /// without drawing a hard edge the way a bar would.
-    private var topScrim: some View {
-        LinearGradient(
-            stops: [
-                .init(color: palette.chromeBackground.opacity(0.9), location: 0),
-                .init(color: palette.chromeBackground.opacity(0.45), location: 0.6),
-                .init(color: .clear, location: 1)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .frame(height: BrowserChrome.topChromeHeight + 26)
-        .frame(maxWidth: .infinity)
-        .ignoresSafeArea(edges: .top)
-        .allowsHitTesting(false)
-    }
-
     /// The single command bar: back and forward, the omnibox, tabs and menu.
     ///
     /// Three glass surfaces in one row — a pair of history buttons, the
     /// omnibox, and a pair of view controls — because the omnibox is the centre
     /// of the chrome and the four buttons around it are its context. Everything
     /// else in the browser hangs off the menu button.
-    private var topChrome: some View {
+    ///
+    /// The bar sits at the bottom of the screen, above the home indicator,
+    /// where a thumb reaches it and where the system's own toolbars live.
+    private var commandBar: some View {
         HStack(spacing: 8) {
             HStack(spacing: 2) {
                 chromeButton(symbol: "chevron.left", isEnabled: canGoBack) {
@@ -558,20 +534,21 @@ struct BrowserShellView: View {
             .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
         }
         .padding(.horizontal, BrowserChrome.sideInset)
-        .padding(.top, BrowserChrome.topInset)
-        .padding(.bottom, BrowserChrome.barGap)
-        // Sliding fully out — past the safe area — with a fade reads as the bar
-        // dissolving into the page rather than parking behind the status bar.
-        // Mid-drag the bar follows the finger and fades with distance, so the
-        // gesture feels like moving the bar rather than arming a trigger.
-        .offset(y: chromeIsHidden ? -(BrowserChrome.topChromeHeight + safeTop + 12) : chromeDragOffset)
+        .padding(.bottom, BrowserChrome.barGap + safeBottom)
+        // Sliding fully out — past the bottom edge — with a fade reads as the
+        // bar dissolving into the page rather than parking behind the home
+        // indicator. Mid-drag the bar follows the finger and fades with
+        // distance, so the gesture feels like moving the bar rather than
+        // arming a trigger.
+        .offset(y: chromeIsHidden ? BrowserChrome.barHeight + BrowserChrome.barGap + safeBottom + 12 : chromeDragOffset)
         .opacity(chromeIsHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
         .allowsHitTesting(!chromeIsHidden)
         .animation(Self.chromeAnimation, value: chromeHidden)
-        // Dragging the bar downward dismisses it, the way a sheet leaves. The
-        // minimum distance keeps a tap on the omnibox or a button from reading
-        // as a drag, and the gesture stands down while the omnibox session is
-        // open, where a downward drag means dismissing the keyboard.
+        // Dragging the bar downward dismisses it, off the bottom edge the way
+        // a sheet leaves. The minimum distance keeps a tap on the omnibox or a
+        // button from reading as a drag, and the gesture stands down while the
+        // omnibox session is open, where a downward drag means dismissing the
+        // keyboard.
         .gesture(
             DragGesture(minimumDistance: 12)
                 .onChanged { value in
@@ -668,7 +645,7 @@ struct BrowserShellView: View {
             }
         }
         .padding(.horizontal, BrowserChrome.sideInset)
-        .padding(.top, BrowserChrome.topChromeHeight + 6)
+        .padding(.bottom, safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap + 6)
         .animation(Self.chromeAnimation, value: showFindBar)
     }
 
@@ -708,14 +685,16 @@ struct BrowserShellView: View {
 
     /// The tallest the suggestion card may grow.
     ///
-    /// Measured from the card's top edge down to the keyboard: a card that
-    /// ignored the keyboard would put its last rows where they can never be
-    /// tapped, which is the "list cut off" failure this budget exists to
-    /// prevent. The card still sizes to its content — this is only the ceiling.
+    /// Measured from the card's bottom edge (just above the command bar) up to
+    /// the keyboard: a card that ignored the keyboard would put its last rows
+    /// where they can never be tapped, which is the "list cut off" failure this
+    /// budget exists to prevent. The card still sizes to its content — this is
+    /// only the ceiling.
     private var omniboxCardHeight: CGFloat {
-        let spaceBelowChrome = safeRectHeight + safeBottom - keyboardHeight
-            - BrowserChrome.topChromeHeight - 6
-        return min(max(200, spaceBelowChrome), BrowserMetrics.omniboxCardMaxHeight)
+        let screenHeight = safeRectHeight + safeTop + safeBottom
+        let spaceAboveBar = screenHeight - keyboardHeight
+            - safeBottom - BrowserChrome.barHeight - BrowserChrome.barGap - 6
+        return min(max(200, spaceAboveBar), BrowserMetrics.omniboxCardMaxHeight)
     }
 
     private var omniboxPlaceholder: String {

@@ -415,6 +415,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // place before the page's own scripts can call pushState.
         let startScripts: [String] = [
             WebPageScripts.historyApiBridge,
+            WebPageScripts.fullscreenBridge,
             WebPageScripts.colorSchemeScript(prefersDark: tab.privacyMode == .private)
         ]
 
