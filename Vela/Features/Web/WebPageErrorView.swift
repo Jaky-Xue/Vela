@@ -156,6 +156,7 @@ struct WebPageErrorView: View {
         case .dns: return "questionmark.circle"
         case .timeout: return "clock.badge.exclamationmark"
         case .refused, .connectionLost: return "bolt.horizontal.circle"
+        case .emptyResponse: return "rectangle.slash"
         case .tls: return "lock.trianglebadge.exclamationmark"
         case .crashed: return "exclamationmark.triangle"
         case .cancelled: return "xmark.circle"

@@ -209,6 +209,36 @@ final class LocalHTTPServer {
         default: return "Status"
         }
     }
+
+    /// A loopback port that nothing is listening on.
+    ///
+    /// Found by binding a listener and cancelling it rather than by naming a
+    /// number: the number is then genuinely refused rather than merely assumed to
+    /// be closed, and a fixed low number turns out to be a poor choice anyway —
+    /// connecting to a privileged port from the simulator does not fail the way
+    /// an ordinary refused connection does.
+    static func closedLoopbackPort() async throws -> UInt16 {
+        let listener = try NWListener(using: .tcp, on: .any)
+        let port: UInt16 = try await withCheckedThrowingContinuation { continuation in
+            var resumed = false
+            listener.stateUpdateHandler = { state in
+                guard !resumed else { return }
+                switch state {
+                case .ready:
+                    resumed = true
+                    continuation.resume(returning: listener.port?.rawValue ?? 0)
+                case let .failed(error):
+                    resumed = true
+                    continuation.resume(throwing: error)
+                default:
+                    break
+                }
+            }
+            listener.start(queue: DispatchQueue(label: "org.vela.tests.closed-port"))
+        }
+        listener.cancel()
+        return port
+    }
 }
 
 // MARK: - Pages
@@ -299,13 +329,11 @@ final class BrowserHarness {
         let searchHistory = SearchHistoryRepository(database: database)
         let sessions = TabSessionRepository(database: database)
 
-        // A rule-list store in a temporary directory: compiling the shipped
-        // rules is part of what a navigation goes through, and a test must not
-        // collide with the app's real store.
-        let storeDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("vela-tests-rules-\(UUID().uuidString)", isDirectory: true)
-        try? FileManager.default.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
-        let adBlock = AdBlockEngine(store: WKContentRuleListStore(url: storeDirectory))
+        // The same store the app uses. A temporary store of the test's own would
+        // be tidier, but the point of these tests is to exercise what ships, and
+        // a rule list WebKit refuses to compile into one store is not evidence
+        // about the store that matters.
+        let adBlock = AdBlockEngine(store: .default())
         self.adBlock = adBlock
 
         let navigationLog = NavigationLog()

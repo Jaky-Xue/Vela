@@ -106,6 +106,15 @@ public struct TabNavigationFailure: Equatable, Sendable {
         case connectionLost
         case tls
         case httpStatus
+        /// The navigation completed but delivered no document.
+        ///
+        /// WebKit does this without reporting an error at all: a connection it
+        /// cannot make is sometimes answered with its own empty `about:blank`
+        /// document, which then commits and finishes. Taking that at face value
+        /// reports a page that was never received as a success, and leaves the
+        /// user with a blank rectangle — the exact symptom that is
+        /// indistinguishable from the browser being broken.
+        case emptyResponse
         case crashed
         case invalidUrl
         case other
@@ -221,6 +230,21 @@ extension TabNavigationFailure {
         )
     }
 
+    /// The failure a completed navigation that delivered nothing produces.
+    ///
+    /// Raised by the coordinator when WebKit commits its own empty document over
+    /// a tab that asked for a real page.
+    public static func emptyDocument(url: String) -> TabNavigationFailure {
+        TabNavigationFailure(
+            kind: .emptyResponse,
+            title: title(for: .emptyResponse),
+            detail: detail(for: .emptyResponse, error: NSError(domain: "", code: 0)),
+            url: url,
+            errorDomain: "",
+            errorCode: 0
+        )
+    }
+
     private static func title(for kind: Kind) -> String {
         switch kind {
         case .cancelled: return "已取消加载"
@@ -231,6 +255,7 @@ extension TabNavigationFailure {
         case .connectionLost: return "网络连接已断开"
         case .tls: return "安全连接失败"
         case .httpStatus: return "服务器返回错误"
+        case .emptyResponse: return "服务器没有返回内容"
         case .crashed: return "页面已停止响应"
         case .invalidUrl: return "网址无法打开"
         case .other: return "无法载入页面"
@@ -253,6 +278,8 @@ extension TabNavigationFailure {
             return "网络连接中断，请确认网络稳定后重试。"
         case .tls:
             return "该网站的证书存在问题，Vela 不会跳过证书校验。"
+        case .emptyResponse:
+            return "连接没有建立，或者服务器在应答前就关闭了连接。"
         case .invalidUrl:
             return "这个地址不是一个可以打开的网页地址。"
         case .other:

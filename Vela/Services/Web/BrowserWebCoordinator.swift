@@ -866,6 +866,13 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         Task { @MainActor in
             guard let tab = self.tab(for: webView),
                   !self.isStale(navigation, in: webView) else { return }
+            // WebKit commits its own empty document when it cannot make a
+            // connection and has no error to report. Adopting that URL would
+            // replace the address the user typed with `about:blank` and then
+            // call the navigation a success; `didFinish` turns it into a failure
+            // instead, so nothing is written here.
+            guard !self.isPlaceholderDocument(in: webView, tab: tab) else { return }
+
             tab.isHome = false
             tab.loadState = .committed
             if let url = webView.url {
@@ -889,6 +896,30 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         Task { @MainActor in
             guard let tab = self.tab(for: webView),
                   !self.isStale(navigation, in: webView) else { return }
+
+            if self.isPlaceholderDocument(in: webView, tab: tab) {
+                // A finished navigation that produced an empty document is not a
+                // page. Reporting it as one is what leaves a blank rectangle on
+                // screen and no explanation anywhere.
+                let url = tab.pendingUrl.isEmpty ? tab.url : tab.pendingUrl
+                tab.loadState = .failed
+                tab.isLoading = false
+                tab.estimatedProgress = 0
+                tab.url = url
+                tab.pendingUrl = ""
+                tab.lastFailure = TabNavigationFailure.emptyDocument(url: url)
+                tab.canGoBack = webView.canGoBack
+                tab.canGoForward = webView.canGoForward
+                self.log(
+                    tab: tab,
+                    event: .fail,
+                    url: url,
+                    duration: self.elapsedMilliseconds(for: webView),
+                    outcome: .failure
+                )
+                return
+            }
+
             tab.loadState = .finished
             tab.isLoading = false
             tab.estimatedProgress = 1
@@ -1031,8 +1062,16 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
     @MainActor
     private func handleLoadFailure(webView: WKWebView, navigation: WKNavigation?, error: Error) {
         guard let tab = tab(for: webView) else { return }
-        guard !isStale(navigation, in: webView) else { return }
         let nsError = error as NSError
+
+        // A callback for a navigation this web view has moved past says nothing
+        // about what it is doing now — *but only while it is doing something*.
+        // WebKit does not always hand over the same `WKNavigation` object it
+        // announced the navigation with, so a failure that arrives with an
+        // unexpected identity while nothing else is in flight is the failure of
+        // the request the tab actually made. Dropping it there is what leaves a
+        // tab stuck on a page that never loads with nothing to show for it.
+        if isStale(navigation, in: webView), webView.isLoading { return }
 
         if TabNavigationFailure.isCancellation(nsError) {
             // A page that already committed is still on screen and is not
@@ -1068,6 +1107,24 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             error: nsError,
             outcome: .failure
         )
+    }
+
+    /// True when WebKit is showing its own empty document to a tab that asked
+    /// for a real page.
+    ///
+    /// A brand-new web view's initial document is `about:blank`, and WebKit also
+    /// commits one when it cannot make a connection and has no error to report.
+    /// The two are indistinguishable here, and both mean the same thing for a tab
+    /// whose `pendingUrl` is an `http(s)` address: the document on screen is not
+    /// the one that was asked for. The pending URL is what tells them apart from
+    /// a page that legitimately *is* `about:blank`, which the address bar accepts
+    /// and which is only ever loaded with no pending request behind it.
+    @MainActor
+    private func isPlaceholderDocument(in webView: WKWebView, tab: BrowserTabState) -> Bool {
+        let document = webView.url?.absoluteString.lowercased() ?? ""
+        guard document.hasPrefix("about:") else { return false }
+        let pending = tab.pendingUrl.lowercased()
+        return pending.hasPrefix("http://") || pending.hasPrefix("https://")
     }
 
     // MARK: - Traces

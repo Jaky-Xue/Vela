@@ -129,6 +129,19 @@ final class TabNavigationFailureTests: XCTestCase {
         XCTAssertFalse(crash.title.isEmpty)
     }
 
+    /// WebKit sometimes answers a connection it cannot make with its own empty
+    /// document, and reports no error at all. That has to be a failure rather
+    /// than a page: it is the difference between "this site did not load, here is
+    /// why" and a blank rectangle.
+    func testAnEmptyDocumentIsItsOwnKindOfFailure() {
+        let failure = TabNavigationFailure.emptyDocument(url: "https://example.com/")
+        XCTAssertEqual(failure.kind, .emptyResponse)
+        XCTAssertEqual(failure.url, "https://example.com/")
+        XCTAssertFalse(failure.title.isEmpty)
+        XCTAssertFalse(failure.detail.isEmpty)
+        XCTAssertTrue(failure.isRetryable, "reloading is the obvious thing to try")
+    }
+
     func testEveryKindHasATitleAndRetryPolicy() {
         for kind in TabNavigationFailure.Kind.allCases {
             let reported = TabNavigationFailure(
