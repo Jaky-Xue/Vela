@@ -392,8 +392,19 @@ public final class TabManager {
     /// The
     /// tab becomes `cold`; reactivating it loads the URL again. Scroll position
     /// is kept in the record so the restore can approximate where the user was.
-    public func discardWebView(for tabId: String, reason: TabDiscardReason = .memoryPressure) {
-        guard let webView = webViews[tabId], let tab = tab(id: tabId) else { return }
+    /// Releases a tab's web view, reporting whether there was one to release.
+    ///
+    /// The cap needs the answer. `activationOrder` records tabs in the order
+    /// they were *activated*, not the order they were given a web view, so a tab
+    /// in it can already be cold — and counting a no-op as one of the victims
+    /// means the cap stops after freeing nothing, leaving more web views alive
+    /// than it allows.
+    @discardableResult
+    public func discardWebView(
+        for tabId: String,
+        reason: TabDiscardReason = .memoryPressure
+    ) -> Bool {
+        guard let webView = webViews[tabId], let tab = tab(id: tabId) else { return false }
         tab.scrollOffsetY = Double(webView.scrollView.contentOffset.y)
         tab.lastDiscardReason = reason
         tab.runtimeState = .cold
@@ -410,6 +421,7 @@ public final class TabManager {
         webView.stopLoading()
         detachDelegates(from: webView)
         webViews.removeValue(forKey: tabId)
+        return true
     }
 
     private func destroyWebView(for tabId: String) {
@@ -445,9 +457,15 @@ public final class TabManager {
 
     /// Discards the least-recently-used background web views when over the cap.
     ///
-    /// The active tab is never a
-    /// victim, and pinned tabs are spared until nothing else is left, because a
-    /// pinned tab is an explicit statement that the user wants it kept.
+    /// The active tab is never a victim, and pinned tabs are spared until
+    /// nothing else is left, because a pinned tab is an explicit statement that
+    /// the user wants it kept.
+    ///
+    /// The loop counts only the discards that actually released a web view.
+    /// `activationOrder` records tabs in the order they were activated, and a
+    /// tab in it can already be cold, so a victim list built from it may contain
+    /// entries with nothing to release — and crediting one of those as a freed
+    /// web view is what let the pool stay over the cap.
     private func enforceLiveWebViewCap() {
         guard webViews.count > Self.maximumLiveWebViews else { return }
 
@@ -456,9 +474,11 @@ public final class TabManager {
             + candidates.filter { tab(id: $0)?.pinned == true }
 
         var excess = webViews.count - Self.maximumLiveWebViews
-        for victim in orderedVictims where excess > 0 {
-            discardWebView(for: victim)
-            excess -= 1
+        for victim in orderedVictims {
+            guard excess > 0 else { return }
+            if discardWebView(for: victim) {
+                excess -= 1
+            }
         }
     }
 

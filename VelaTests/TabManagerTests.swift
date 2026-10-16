@@ -162,6 +162,23 @@ final class TabManagerTests: XCTestCase {
         XCTAssertNotNil(manager.webView(for: manager.activeTabId))
     }
 
+    func testTheCapStillEnforcesWhenAVictimHasNoWebView() {
+        // `activationOrder` follows activation, not web-view creation, so the
+        // victim list can contain a tab that has nothing to release. Crediting
+        // that as a freed web view is what let the pool sit above the cap
+        // indefinitely: the loop spent its one discard on a no-op and stopped.
+        let manager = makeManager()
+        let home = manager.createTab()
+        XCTAssertTrue(home.isHome)
+        manager.activateTab(id: home.id)
+
+        for index in 0..<(TabManager.maximumLiveWebViews + 2) {
+            manager.createTab(url: "https://site\(index).example")
+        }
+
+        XCTAssertEqual(manager.liveWebViewCount, TabManager.maximumLiveWebViews)
+    }
+
     func testPinnedTabOutlivesAnUnpinnedOneUnderPressure() {
         let manager = makeManager()
         let pinned = manager.createTab(url: "https://pinned.example", activate: false)
@@ -259,8 +276,23 @@ final class TabManagerTests: XCTestCase {
 
         XCTAssertEqual(manager.tabs.map(\.id), [third.id, first.id, second.id])
 
+        // Unpinning keeps the tab where it is rather than teleporting it back
+        // to where it sat before it was pinned. It was at the front, so it stays
+        // at the front — now as the leading unpinned tab.
         manager.setPinned(false, id: third.id)
-        XCTAssertEqual(manager.tabs.map(\.id), [first.id, second.id, third.id])
+        XCTAssertEqual(manager.tabs.map(\.id), [third.id, first.id, second.id])
+    }
+
+    func testPinnedTabsKeepTheirRelativeOrder() {
+        let manager = makeManager()
+        let first = manager.createTab()
+        let second = manager.createTab()
+        let third = manager.createTab()
+
+        manager.setPinned(true, id: third.id)
+        manager.setPinned(true, id: second.id)
+
+        XCTAssertEqual(manager.tabs.map(\.id), [third.id, second.id, first.id])
     }
 
     func testSwitchTabWrapsInBothDirections() {
