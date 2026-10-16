@@ -10,7 +10,7 @@
 //  inheriting them from a layout parent.
 //
 //  Three behaviours here are called out where they live, because none is implied
-//  by the rest of the design: per-section disclosure, swipe-to-delete, and the
+//  by the rest of the design: per-section disclosure, long-press delete, and the
 //  pop-up engine switcher.
 //
 
@@ -66,41 +66,37 @@ struct OmniboxSuggestionListView: View {
 
     private var suggestionList: some View {
         ScrollViewReader { proxy in
-            List {
-                ForEach(viewModel.groups) { group in
-                    Section {
-                        if !viewModel.isCollapsed(group.section) {
-                            ForEach(group.suggestions) { suggestion in
-                                row(suggestion)
-                                    .id(suggestion.id)
-                                    .listRowInsets(EdgeInsets())
-                                    .listRowBackground(rowBackground(for: suggestion))
-                                    .listRowSeparatorTint(palette.separator)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        if group.section.isDeletable {
-                                            Button(role: .destructive) {
-                                                withAnimation(.easeOut(duration: 0.2)) {
-                                                    viewModel.delete(suggestion)
-                                                }
-                                            } label: {
-                                                Label("删除", systemImage: "trash")
-                                            }
-                                        }
+            ScrollView {
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    ForEach(viewModel.groups) { group in
+                        Section {
+                            if !viewModel.isCollapsed(group.section) {
+                                ForEach(group.suggestions) { suggestion in
+                                    row(suggestion)
+                                        .id(suggestion.id)
+                                        .background(rowBackground(for: suggestion))
+
+                                    if !(group.id == viewModel.groups.last?.id
+                                            && suggestion.id == group.suggestions.last?.id) {
+                                        separator
                                     }
+                                }
                             }
+                        } header: {
+                            sectionHeader(group)
                         }
-                    } header: {
-                        sectionHeader(group)
-                            .listRowInsets(EdgeInsets())
-                            .listRowSeparator(.hidden)
                     }
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+            // The card takes exactly the height its content needs, capped at
+            // the ceiling the shell proposes: a short list gets a short card
+            // and a long one scrolls. Nothing about the height is modelled,
+            // so nothing can drift out from under the card's own edge — which
+            // is what the List this replaced kept doing, its row arithmetic
+            // losing a few points on every surface and slicing the last row.
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxHeight: maxHeight, alignment: .top)
             .scrollIndicators(.visible)
-            .environment(\.defaultMinListRowHeight, 0)
-            .frame(height: listHeight)
             .onChange(of: viewModel.highlightedId) { _, id in
                 // Keyboard navigation can walk past the card's edge, so the
                 // highlighted row is always pulled into view.
@@ -127,14 +123,34 @@ struct OmniboxSuggestionListView: View {
         .buttonStyle(.plain)
         .contentShape(Rectangle())
 
-        // Long-press to re-run the query elsewhere. The row's own menu is the
-        // version that does not cost a navigation away from what the user is
-        // typing. Attached only to the search row, so a long press on a bookmark
-        // does nothing rather than opening an empty menu.
+        // Long-press menus: re-run the query elsewhere on a search row, delete
+        // on a row that came from stored history. (The List this card grew out
+        // of offered swipe-to-delete; on the self-sizing stack the long-press
+        // menu carries it instead.)
         if suggestion.section.supportsEngineSwitch, viewModel.availableEngines.count > 1 {
-            content.contextMenu { engineMenu(for: suggestion) }
+            content.contextMenu {
+                engineMenu(for: suggestion)
+                if suggestion.section.isDeletable {
+                    Divider()
+                    deleteButton(for: suggestion)
+                }
+            }
+        } else if suggestion.section.isDeletable {
+            content.contextMenu {
+                deleteButton(for: suggestion)
+            }
         } else {
             content
+        }
+    }
+
+    private func deleteButton(for suggestion: OmniboxSuggestion) -> some View {
+        Button(role: .destructive) {
+            withAnimation(.easeOut(duration: 0.2)) {
+                viewModel.delete(suggestion)
+            }
+        } label: {
+            Label("删除", systemImage: "trash")
         }
     }
 
@@ -253,31 +269,6 @@ struct OmniboxSuggestionListView: View {
         Rectangle()
             .fill(palette.separator)
             .frame(height: 0.5)
-    }
-
-    // MARK: - Height budget
-
-    /// The card's height, derived from what it will draw.
-    ///
-    /// A `List` fills whatever it is given, so "as tall as the content, up to a
-    /// ceiling" has to be computed rather than declared. The estimate is exact
-    /// for the common case because every row is pinned to `rowHeight` and every
-    /// header to `headerHeight`; it only drifts at accessibility text sizes,
-    /// where the list scrolls anyway.
-    private var listHeight: CGFloat {
-        var height: CGFloat = 0
-        for group in viewModel.groups {
-            height += headerHeight
-            if !viewModel.isCollapsed(group.section) {
-                height += CGFloat(group.count) * rowHeight
-            }
-        }
-        // Slack absorbs the parts of a `List` this side of the model — the
-        // separator hairlines and the scroll view's own content offsets. Too
-        // little slack and the last row is clipped by the card's bottom edge,
-        // which reads as a rendering bug even though the row is reachable by
-        // scrolling.
-        return min(height + 10, maxHeight)
     }
 }
 

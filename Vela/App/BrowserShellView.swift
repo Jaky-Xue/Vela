@@ -61,6 +61,16 @@ struct BrowserShellView: View {
 
     /// Whether the command bar has slid out of the way under the status bar.
     @State private var chromeHidden = false
+
+    /// Whether the bar is off screen right now.
+    ///
+    /// The home surface never hides it: the hide state is driven by the web
+    /// view's scroll offsets, and a state left over from a scrolled page used
+    /// to survive onto the home screen, where the search bar simply was not
+    /// there. A page-less surface is a place the user is looking for the bar.
+    private var chromeIsHidden: Bool {
+        chromeHidden && !(activeTab?.isHome ?? false)
+    }
     /// The previous scroll offset, used to derive a direction.
     ///
     /// Kept here rather than read off the tab: the coordinator writes the tab's
@@ -530,11 +540,11 @@ struct BrowserShellView: View {
         .padding(.bottom, BrowserChrome.barGap)
         // Sliding fully out — past the safe area — with a fade reads as the bar
         // dissolving into the page rather than parking behind the status bar.
-        .offset(y: chromeHidden ? -(BrowserChrome.topChromeHeight + safeTop + 12) : 0)
-        .opacity(chromeHidden ? 0 : 1)
-        .allowsHitTesting(!chromeHidden)
+        .offset(y: chromeIsHidden ? -(BrowserChrome.topChromeHeight + safeTop + 12) : 0)
+        .opacity(chromeIsHidden ? 0 : 1)
+        .allowsHitTesting(!chromeIsHidden)
         .animation(Self.chromeAnimation, value: chromeHidden)
-        .accessibilityHidden(chromeHidden)
+        .accessibilityHidden(chromeIsHidden)
     }
 
     /// One glyph button inside the chrome.

@@ -123,7 +123,10 @@ struct MenuPanelView: View {
         }
         .frame(maxWidth: .infinity)
         .background(palette.surface)
-        .presentationDetents([.medium, .large])
+        // A height detent that fits the grid: the named detents sized the
+        // sheet to a fraction of the screen and left lakes of empty material
+        // above and below the tiles. Fourteen actions make three rows.
+        .presentationDetents([.height(330), .large])
         .presentationDragIndicator(.hidden)
     }
 

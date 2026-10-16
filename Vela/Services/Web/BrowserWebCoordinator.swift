@@ -533,6 +533,14 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
 
+        // Element fullscreen is the Fullscreen API a page calls from script —
+        // `video.requestFullscreen()` on a custom player, which is what most
+        // video sites use rather than the stock controls' button. WebKit ships
+        // the API switched off in WKWebView, so without this the button does
+        // nothing at all, and the system player the user expects never
+        // appears. (Deployment target is 17, so no availability gate.)
+        configuration.preferences.isElementFullscreenEnabled = true
+
         // A description is what a `target="_blank"` popup inherits; without it
         // WebKit refuses to create the configuration at all.
         return configuration
