@@ -45,10 +45,19 @@ public protocol BrowserWebViewConfigurationProviding: AnyObject {
 @MainActor
 @Observable
 public final class TabManager {
-    /// IOS will
-    /// terminate a browser holding far more than this, and each live web view
-    /// costs a content process.
-    public static let maximumLiveWebViews = 6
+    /// How many web views the pool holds before the least recently used
+    /// background one is discarded.
+    ///
+    /// The cost of a discard is not just the reload: the tab's back/forward
+    /// list lives in its web view, so a discarded tab comes back at the top
+    /// of a fresh list with its history gone — which is what "back and
+    /// forward sometimes stop working" is made of on sessions that open a
+    /// tab per link. iOS will terminate a browser holding far more live web
+    /// views than this, and each costs real memory; the number sits high
+    /// enough that a normal session across tab-heavy sites keeps its
+    /// history, and low enough that a parked session does not accumulate
+    /// pages the system will tax.
+    public static let maximumLiveWebViews = 8
 
     /// also caps.
     public static let recentlyClosedLimit = 25

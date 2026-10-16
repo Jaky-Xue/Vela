@@ -1287,21 +1287,30 @@ extension BrowserWebCoordinator {
     /// acting — rather than reading a flag the toolbar also reads — keeps the
     /// two from disagreeing: the button's enabled state is a hint, and this is
     /// the authority.
+    ///
+    /// A load still in flight is stopped first. WebKit's own step can be
+    /// dropped while the navigation machinery is busy with a provisional
+    /// request — the exact condition a slow, ad-heavy page is in when the user
+    /// gives up on it and taps back — and a step that is silently swallowed
+    /// reads as a dead button. The page being left is one the user asked to
+    /// leave.
     @discardableResult
     public func goBack() -> Bool {
         guard let tab = tabManager?.activeTab,
               let webView = tabManager?.webView(for: tab.id),
               webView.canGoBack else { return false }
+        if webView.isLoading { webView.stopLoading() }
         webView.goBack()
         return true
     }
 
-    /// Goes forward in the active tab's history.
+    /// Goes forward in the active tab's history, under the same rule.
     @discardableResult
     public func goForward() -> Bool {
         guard let tab = tabManager?.activeTab,
               let webView = tabManager?.webView(for: tab.id),
               webView.canGoForward else { return false }
+        if webView.isLoading { webView.stopLoading() }
         webView.goForward()
         return true
     }

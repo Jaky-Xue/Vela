@@ -43,12 +43,13 @@ struct WebViewHost: UIViewRepresentable {
     /// The web view to display. May change between updates when a tab is
     /// discarded and rebuilt.
     let webView: WKWebView
-    /// The top content inset: the height of the chrome the page scrolls under.
+    /// The top content inset: the height of the status bar the page starts
+    /// below and scrolls under.
     ///
     /// Set on the scroll view rather than by shrinking the web view's frame,
-    /// because the page has to extend *under* the glass for the blur to have
-    /// something to refract — the same arrangement Safari uses. The inset stays
-    /// fixed while the chrome hides, so the page does not jump under the user's
+    /// because the page has to extend under it for the document to read as
+    /// one surface — the same arrangement Safari uses. The inset stays fixed
+    /// while the chrome hides, so the page does not jump under the user's
     /// finger; hiding the bar simply reveals more of the document.
     let topContentInset: CGFloat
     /// The bottom content inset: the command bar's height plus the safe area,

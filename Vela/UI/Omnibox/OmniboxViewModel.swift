@@ -477,20 +477,32 @@ public final class OmniboxViewModel {
         refreshNow()
     }
 
-    /// Re-runs the current query on a different engine.
+    /// Re-aims the session at a different engine.
+    ///
+    /// The switch is a choice that outlives the session: the engine becomes
+    /// the default, the same thing picking a search row from the list does.
+    /// It must not depend on a search row existing — with an empty field the
+    /// idle list has none, and a switcher that only works after the user has
+    /// typed is a switcher that fails at exactly the moment it is reached
+    /// for. With an empty field the switch alone is the action: the query the
+    /// user is about to type lands on the engine they just chose. With text
+    /// in the field, that text runs on the new engine at once.
     public func switchEngine(to record: SearchEngineRecord) {
-        guard let suggestion = visibleSuggestions.first(where: {
-            if case .search = $0.kind { return true }
-            return false
-        }) else { return }
+        if settings.preferences.searchEngine.activeEngine.id != record.id {
+            settings.setDefaultSearchEngine(id: record.id)
+        }
+        refreshEngines()
+
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
         select(
             OmniboxSuggestion(
                 id: "search:\(record.id)",
                 kind: .search(engineId: record.id),
-                title: suggestion.title,
+                title: query,
                 subtitle: "用 \(record.name) 搜索",
                 host: "",
-                completion: suggestion.title,
+                completion: query,
                 accessoryText: record.name
             )
         )

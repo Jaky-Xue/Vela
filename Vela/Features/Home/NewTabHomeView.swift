@@ -70,8 +70,22 @@ struct NewTabHomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrowserSpacing.loose) {
-                bookmarkBlock
-                if !recentlyClosed.isEmpty { recentlyClosedBlock }
+                if bookmarkNodes.isEmpty {
+                    // No bookmarks yet: the dashed add tile alone. A header
+                    // over an empty grid is furniture for a collection that
+                    // does not exist, and the recently-closed list is noise
+                    // on a surface the user is seeing for the first time —
+                    // both come back the moment the first bookmark does.
+                    LazyVGrid(
+                        columns: Self.tileColumns,
+                        spacing: 14
+                    ) {
+                        addBookmarkTile
+                    }
+                } else {
+                    bookmarkBlock
+                    if !recentlyClosed.isEmpty { recentlyClosedBlock }
+                }
             }
             .padding(.horizontal, BrowserSpacing.regular)
             .padding(.top, BrowserSpacing.regular)
@@ -130,6 +144,11 @@ struct NewTabHomeView: View {
         bookmarkNodes = all.filter { homeIds.contains($0.id) }
     }
 
+    /// The grid the bookmark tiles share — five flexible columns, here and in
+    /// the empty state's single-tile grid, so the dashed tile is the same size
+    /// either way.
+    static let tileColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
+
     private var bookmarkBlock: some View {
         CollapsibleSection(
             title: "收藏",
@@ -138,7 +157,7 @@ struct NewTabHomeView: View {
             isExpanded: $bookmarksExpanded
         ) {
             LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5),
+                columns: Self.tileColumns,
                 spacing: 14
             ) {
                 ForEach(bookmarkNodes) { node in

@@ -10,15 +10,18 @@
 //  pure functions of that, so a layering of intermediate objects would have
 //  nothing to arbitrate.
 //
-//  The chrome is one command bar at the top of the screen — back and forward,
-//  the omnibox, tabs and the menu — floating on Liquid Glass above the page.
-//  There is no bottom bar: every secondary action (bookmarks, history, find,
-//  reader, desktop site, share) lives in the menu, which is what keeps the bar
-//  down to five controls. The page runs full-bleed underneath the bar, the way
-//  Safari's does, so the glass has content to refract; the web view's top
-//  content inset holds the page's own start point below the chrome, and the
-//  whole bar slides away when the user scrolls down and returns on any upward
-//  movement.
+//  The chrome is one command bar at the bottom of the screen — back and
+//  forward, the omnibox, tabs and the menu — floating on Liquid Glass above
+//  the page. There is no other bar: every secondary action (bookmarks,
+//  history, find, reader, desktop site, share) lives in the menu, which is
+//  what keeps the bar down to five controls. The page runs full-bleed, the
+//  way Safari's does, so the glass has content to refract; the web view's
+//  top content inset holds the page's own start point below the status bar,
+//  the bottom inset keeps its tail clear of the bar, and the whole bar
+//  slides away when the user scrolls down and returns on any upward
+//  movement. The keyboard never moves it: a site's own input field raising
+//  the keyboard is no reason for the browser's controls to leave the edge
+//  they live on.
 //
 //  The omnibox session — the debounced suggestion list, the highlighted row,
 //  the disclosure state — lives in `OmniboxViewModel` rather than here, which
@@ -459,7 +462,11 @@ struct BrowserShellView: View {
                 } else if let webView = tabManager.webView(for: tab.id) {
                     WebViewHost(
                         webView: webView,
-                        topContentInset: 0,
+                        // The status bar's height, so the page's own first
+                        // line starts below it instead of running under the
+                        // clock — while still scrolling underneath, the way
+                        // Safari's does.
+                        topContentInset: safeTop,
                         bottomContentInset: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap,
                         onScroll: { offset in
                             handleScroll(offset: offset)
@@ -555,6 +562,15 @@ struct BrowserShellView: View {
         }
         .padding(.horizontal, BrowserChrome.sideInset)
         .padding(.bottom, BrowserChrome.barGap + safeBottom)
+        // The keyboard does not move the bar. SwiftUI's keyboard avoidance
+        // would lift a bottom-anchored bar to sit above the keyboard — which,
+        // with a site's own search field focused, parks the browser's controls
+        // in the middle of the screen over the page. The bar belongs to the
+        // edge it lives on; the keyboard covers it until it is dismissed, the
+        // way a keyboard covers the page's own content. The suggestion card
+        // needs no exemption here: it measures the keyboard itself and ends
+        // above it.
+        .ignoresSafeArea(.keyboard)
         // Sliding fully out — past the bottom edge — with a fade reads as the
         // bar dissolving into the page rather than parking behind the home
         // indicator. Mid-drag the bar follows the finger downward and fades
