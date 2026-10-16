@@ -99,65 +99,69 @@ final class AdBlockContentRuleCompilationTests: XCTestCase {
         )
     }
 
-    /// Which regular-expression constructs WebKit's content-extension validator
-    /// accepts, one at a time.
+    /// Every *shape* of pattern the compiler can emit, compiled through WebKit.
     ///
-    /// This exists because WebKit rejects a rule list without saying which rule
-    /// or which part of it, and a `url-filter` is not plain ICU regex: the
-    /// validator parses it with a restricted engine, so a pattern that
-    /// `NSRegularExpression` is perfectly happy with can be refused. The table it
-    /// prints is the answer.
-    func testWhichRegularExpressionConstructsWebKitAccepts() async {
-        let candidates = [
-            ".*",
-            "doubleclick\\.net",
-            "^https?://([^/]+\\.)?doubleclick\\.net",
-            "^https?://([^/]+\\.)?doubleclick\\.net/",
-            "^[a-z]+://([^/]+\\.)?doubleclick\\.net",
-            "^[a-z][a-z0-9+.-]*://([^/]+\\.)?doubleclick\\.net",
-            "^https?://([^/]+\\.)?doubleclick\\.net([^a-zA-Z0-9_.%-]|$)",
-            "^https?://([^/]+\\.)?doubleclick\\.net[^a-zA-Z0-9_.%-]",
-            "^[a-z][a-z0-9+.-]*://([^/]+\\.)?doubleclick\\.net[^a-zA-Z0-9_.%-]",
-            "[^a-zA-Z0-9_.%-]",
-            "([^a-zA-Z0-9_.%-]|$)",
-            "(abc|$)",
-            "[^a-zA-Z0-9_%-]",
-            "[^a-zA-Z0-9_.-]",
-            "^[a-z][a-z0-9+.-]*://",
-            "[a-z0-9+.-]",
-            "^[a-z][a-z0-9._-]*://",
-            "^https?://[^/]*\\.doubleclick\\.net",
-            "^https?://([^/]*\\.)?doubleclick\\.net"
+    /// This replaces a harder question — "which constructs does WebKit's
+    /// validator accept" — with the one that actually matters, because the answer
+    /// to the first is a moving target and the answer to the second is a property
+    /// of this code. It is the guard against reintroducing the construct that
+    /// broke the entire list: WebKit refuses a `$` anchor that is not the last
+    /// character, including one inside a group, and refuses the whole rule list
+    /// with an error that names no rule.
+    func testEveryPatternShapeTheCompilerEmitsIsAccepted() async {
+        let filters = [
+            "||example.com^",
+            "||example.com",
+            "||example.com/ads",
+            "|https://example.com/x",
+            "|https://example.com/x|",
+            "example.com/ads|",
+            "example.com/track",
+            "||example.com/a*b",
+            "||example.com^$script,third-party",
+            "||example.com^$domain=other.example",
+            "https://example.com/?price=$5"
         ]
 
-        var table: [String] = []
-        for candidate in candidates {
-            let outcome: String
+        var failures: [String] = []
+        for filter in filters {
+            // A filter the compiler declines is counted as unsupported rather
+            // than emitted, which is a legitimate outcome; a filter it declines
+            // by accident is reported here as the shape that went missing.
+            guard let pattern = AdBlockRuleCompiler.regexFilter(for: filter) else {
+                failures.append("\(filter) → the compiler emitted no pattern")
+                continue
+            }
             do {
                 _ = try await compile(
-                    [ContentBlockerRule(
-                        trigger: .init(urlFilter: candidate),
-                        action: .block
-                    )],
-                    label: "probe"
+                    [ContentBlockerRule(trigger: .init(urlFilter: pattern), action: .block)],
+                    label: "shape"
                 )
-                outcome = "OK"
             } catch {
-                outcome = "REFUSED"
+                let nsError = error as NSError
+                failures.append("\(filter) → \(pattern) [\(nsError.domain)/\(nsError.code)]")
             }
-            table.append("\(outcome)\t\(candidate)")
         }
 
-        print("=== WKContentRuleList url-filter support ===")
-        for line in table { print(line) }
-
-        // The one assertion: the pattern the exception rules use has to work,
-        // because a per-site exception that WebKit refuses would take the whole
-        // list down with it.
         XCTAssertTrue(
-            table.contains("OK\t.*"),
-            "WebKit refused even `.*`, which the error and exception rules rely on"
+            failures.isEmpty,
+            "WebKit refused emitted patterns: " + failures.joined(separator: "; ")
         )
+    }
+
+    /// The exception rules a site whitelist produces — the other thing the app
+    /// hands to WebKit, and the one whose pattern is not built by `regexFilter`.
+    func testTheExceptionRuleCompiles() async throws {
+        let rules = AdBlockRuleCompiler.compile(
+            filterList: "||ads.example^",
+            exceptedHosts: ["trusted.example"],
+            includeCosmetic: false
+        ).rules
+        _ = try await compile(rules, label: "exception")
+
+        guard let exception = rules.last else { return XCTFail("no exception rule") }
+        XCTAssertEqual(exception.action.type, "ignore-previous-rules")
+        XCTAssertEqual(exception.trigger.urlFilter, ".*")
     }
 
     /// The two rules the safety tests care most about, checked both ways: that

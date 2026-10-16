@@ -25,6 +25,22 @@
 //  `unsupportedRuleCount` reports how many were skipped so the settings screen
 //  can be honest about it rather than silently under-blocking.
 //
+//  One more constraint applies to everything this file *emits*, and it is not
+//  about filter syntax at all: `url-filter` is not plain ICU regex. WebKit
+//  validates it with the restricted engine its content-extension matcher uses,
+//  which refuses a `$` anchor that is not the last character — including one
+//  inside a group. And a refusal is not local: WebKit rejects the **entire rule
+//  list** with "Invalid or unsupported regular expression" and names neither the
+//  rule nor the construct, so one unrepresentable rule disables all blocking,
+//  silently, with nothing on screen to say so.
+//
+//  Every output of `regexFilter(for:)` is therefore checked twice before it is
+//  handed over: once with `NSRegularExpression`, and once for an unescaped `$`
+//  in an anchor position other than the end. A pattern that fails either check is
+//  dropped and counted as invalid, which costs the user one rule instead of all
+//  of them. `AdBlockContentRuleCompilationTests` compiles one rule of every shape
+//  this file can emit, so the constraint is tested rather than remembered.
+//
 
 import Foundation
 
@@ -442,20 +458,64 @@ public enum AdBlockRuleCompiler {
             }
         }
 
-        // A rule ending in a separator should still match a URL that ends right
-        // there, so the trailing separator becomes optional.
-        if body.hasSuffix("^") {
-            regex = String(regex.dropLast("[^a-zA-Z0-9_.%-]".count))
-            regex += "([^a-zA-Z0-9_.%-]|$)"
-        }
-
+        // A rule ending in a separator — `||example.com^` — is left as the
+        // separator class the loop emitted.
+        //
+        // ABP reads the trailing `^` as "a separator here, *or* the end of the
+        // URL", and this used to be spelled `([^…]|$)`. WebKit refuses that:
+        // its content-extension validator does not accept a `$` inside a group,
+        // and it refuses the *entire rule list* rather than the one rule, with
+        // the message "Invalid or unsupported regular expression" and no
+        // indication of which rule or which part. Every shipped rule ended in
+        // this construct, so every shipped rule was refused, and the list never
+        // compiled — which meant ad blocking did nothing at all, silently, for
+        // the life of the installation.
+        //
+        // What the end-of-URL alternative bought was the case of a request whose
+        // URL stops at the host with nothing after it. For `http(s)` that does
+        // not happen: a request URL always carries a `/` path, which the
+        // separator class matches.
         let combined = prefix + regex + suffix
         guard !combined.isEmpty, combined != "^" else { return nil }
-
-        // WebKit rejects a filter that does not compile, and one bad rule fails
-        // the entire list, so validate before returning.
-        guard (try? NSRegularExpression(pattern: combined)) != nil else { return nil }
+        guard isAcceptable(combined) else { return nil }
         return combined
+    }
+
+    /// True when WebKit's content-extension validator will accept a pattern.
+    ///
+    /// The two checks are the two ways a `url-filter` is refused, and both are
+    /// fatal to the whole list rather than to the rule:
+    ///
+    /// * It has to be a regular expression. `NSRegularExpression` is a stricter
+    ///   *parsing* test than WebKit's, so it catches a malformed pattern before
+    ///   WebKit does — and WebKit's error names no rule, so there would be
+    ///   nothing to go on.
+    /// * `$` may only be the last character. WebKit's matcher refuses an anchor
+    ///   in any other position, including inside a group, and the construct this
+    ///   compiler used to append to every domain rule — `([^…]|$)` — was exactly
+    ///   that. Since a refusal takes the whole list with it, an unrepresentable
+    ///   rule is dropped here and counted as invalid instead.
+    static func isAcceptable(_ combined: String) -> Bool {
+        guard (try? NSRegularExpression(pattern: combined)) != nil else { return false }
+        return !containsUnescapedDollar(String(combined.dropLast()))
+    }
+
+    /// True when a `$` appears that is not escaped, and so would be read as an
+    /// anchor rather than as a literal dollar sign in a URL.
+    ///
+    /// `\$` is what the character loop emits for a literal `$`, and a literal one
+    /// is fine anywhere.
+    private static func containsUnescapedDollar(_ value: String) -> Bool {
+        var escaped = false
+        for character in value {
+            if character == "\\" {
+                escaped.toggle()
+                continue
+            }
+            if character == "$", !escaped { return true }
+            escaped = false
+        }
+        return false
     }
 
     /// Builds the exception rules for the user's per-site whitelist.

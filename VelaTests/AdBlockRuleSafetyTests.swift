@@ -179,6 +179,75 @@ final class AdBlockRuleSafetyTests: XCTestCase {
         }
     }
 
+    // MARK: - The pattern shapes WebKit will accept
+
+    /// The `$` anchor is only valid as the last character.
+    ///
+    /// The compiler used to append `([^…]|$)` to every domain-anchored rule in
+    /// order to match a URL that ended at the host. WebKit's content-extension
+    /// validator refuses a `$` inside a group and refuses the *entire rule list*
+    /// when it meets one — with "Invalid or unsupported regular expression" and
+    /// no indication of which rule or which part — so the shipped list never
+    /// compiled and ad blocking did nothing at all. Measuring the candidates one
+    /// at a time through `WKContentRuleListStore` is what identified the
+    /// construct; this keeps it out.
+    func testTheDollarAnchorIsOnlyValidAtTheEnd() {
+        XCTAssertFalse(AdBlockRuleCompiler.isAcceptable("^https://example\\.com([^/]|$)"))
+        XCTAssertFalse(AdBlockRuleCompiler.isAcceptable("(abc|$)"))
+        XCTAssertTrue(AdBlockRuleCompiler.isAcceptable("^https://example\\.com/$"))
+        XCTAssertTrue(AdBlockRuleCompiler.isAcceptable("^https://example\\.com/"))
+        XCTAssertTrue(AdBlockRuleCompiler.isAcceptable(".*"))
+    }
+
+    func testAPatternThatIsNotARegularExpressionIsRefused() {
+        // WebKit would refuse the whole list over it, and would not say which
+        // rule was to blame.
+        XCTAssertFalse(AdBlockRuleCompiler.isAcceptable("["))
+        XCTAssertFalse(AdBlockRuleCompiler.isAcceptable("(unclosed"))
+    }
+
+    func testADomainAnchorDoesNotEmitAGroupedDollarAnchor() throws {
+        let pattern = try XCTUnwrap(AdBlockRuleCompiler.regexFilter(for: "||doubleclick.net^"))
+        XCTAssertFalse(pattern.contains("|$"), "pattern was \(pattern)")
+        XCTAssertTrue(pattern.contains("[^a-zA-Z0-9_.%-]"), "pattern was \(pattern)")
+        XCTAssertTrue(AdBlockRuleCompiler.isAcceptable(pattern))
+    }
+
+    /// What the domain-anchor pattern matches, including the one case the
+    /// end-of-URL alternative used to cover and no longer does.
+    func testADomainAnchorPatternMatchesHostsAndPaths() throws {
+        let pattern = try XCTUnwrap(AdBlockRuleCompiler.regexFilter(for: "||doubleclick.net^"))
+        let regex = try NSRegularExpression(pattern: pattern)
+        func matches(_ url: String) -> Bool {
+            regex.firstMatch(in: url, range: NSRange(url.startIndex..<url.endIndex, in: url)) != nil
+        }
+
+        XCTAssertTrue(matches("https://ad.doubleclick.net/pixel?id=1"))
+        XCTAssertTrue(matches("http://doubleclick.net/x"))
+        XCTAssertTrue(matches("https://doubleclick.net/"))
+
+        XCTAssertFalse(matches("https://example.com/"))
+        XCTAssertFalse(matches("https://example.com/?ref=doubleclick.net"))
+        // A lookalike host is not the host: the `^` separator requires something
+        // that is not a dot, a letter or a digit, and `.` is a dot.
+        XCTAssertFalse(matches("https://doubleclick.net.example.com/x"))
+
+        // The case given up: a URL that stops at the host with no path at all.
+        // An `http(s)` request URL always carries a `/`, so nothing real is
+        // missed — and if this ever did matter, `$` inside a group is what cannot
+        // be used to cover it.
+        XCTAssertFalse(matches("https://doubleclick.net"))
+    }
+
+    /// An end anchor at the very end of a pattern is still expressible, which is
+    /// what a `|`-terminated filter needs.
+    func testATrailingEndAnchorIsKeptAsATrailingDollar() throws {
+        let pattern = try XCTUnwrap(AdBlockRuleCompiler.regexFilter(for: "|https://example.com/x|"))
+        XCTAssertTrue(pattern.hasSuffix("$"), "pattern was \(pattern)")
+        XCTAssertTrue(pattern.hasPrefix("^"), "pattern was \(pattern)")
+        XCTAssertTrue(AdBlockRuleCompiler.isAcceptable(pattern))
+    }
+
     // MARK: - Rule-shape invariants
 
     func testEveryCompiledRuleIsValidJsonAndHasAnAction() throws {
