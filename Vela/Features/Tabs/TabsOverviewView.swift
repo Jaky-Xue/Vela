@@ -359,6 +359,8 @@ private struct NewTabCard: View {
 /// `LAContext` is what gates the private list, so the biometric prompt a user
 /// sees is the standard system one.
 private struct PrivateUnlockSheet: View {
+    @Environment(\.browserPalette) private var palette
+
     var onUnlock: () -> Void
     var onCancel: () -> Void
 
@@ -367,12 +369,15 @@ private struct PrivateUnlockSheet: View {
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "lock.shield")
-                .font(.system(size: 36))
-                .foregroundStyle(.tint)
+                .font(.system(size: 32))
+                .foregroundStyle(palette.accent)
+                .frame(width: 62, height: 62)
+                .background(palette.accent.opacity(0.12), in: Circle())
                 .padding(.top, 34)
 
             Text("验证身份")
                 .font(.headline)
+                .foregroundStyle(palette.primaryText)
 
             if let errorMessage {
                 Text(errorMessage)
@@ -397,7 +402,8 @@ private struct PrivateUnlockSheet: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 28)
         }
-        .presentationDetents([.height(300)])
+        .background(palette.surface)
+        .presentationDetents([.height(320)])
         .task { await authenticate() }
     }
 

@@ -830,6 +830,8 @@ struct FindBar: View {
 // MARK: - Permission prompt
 
 struct PermissionPromptView: View {
+    @Environment(\.browserPalette) private var palette
+
     var request: SitePermissionRequest
     var onDecision: (Bool, Bool) -> Void
 
@@ -838,22 +840,26 @@ struct PermissionPromptView: View {
     var body: some View {
         VStack(spacing: 18) {
             Image(systemName: iconName)
-                .font(.system(size: 34))
-                .foregroundStyle(.tint)
+                .font(.system(size: 30))
+                .foregroundStyle(palette.accent)
+                .frame(width: 62, height: 62)
+                .background(palette.accent.opacity(0.12), in: Circle())
                 .padding(.top, 28)
 
             VStack(spacing: 6) {
                 Text("允许「\(request.origin)」使用\(request.kind.displayName)？")
                     .font(.headline)
+                    .foregroundStyle(palette.primaryText)
                     .multilineTextAlignment(.center)
                 Text("该网站请求访问你的\(request.kind.displayName)。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondaryText)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 24)
 
             Toggle("以后对这个网站都这样", isOn: $remember)
+                .tint(palette.accent)
                 .padding(.horizontal, 24)
 
             Spacer()
@@ -876,7 +882,8 @@ struct PermissionPromptView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 28)
         }
-        .presentationDetents([.height(360)])
+        .background(palette.surface)
+        .presentationDetents([.height(380)])
         .presentationDragIndicator(.visible)
     }
 
