@@ -99,6 +99,39 @@ final class AdBlockContentRuleCompilationTests: XCTestCase {
         )
     }
 
+    /// Removing a rule list that was never compiled.
+    ///
+    /// `install` removes the previous list before compiling the new one, and the
+    /// first compile after a fresh install has nothing to remove. Whether WebKit
+    /// reports that as an error decides whether the removal has to be tolerant —
+    /// and if it does, an untolerated removal means the *first* compile always
+    /// throws, which is a rule list that is never installed rather than one that
+    /// is installed late. The answer is not documented anywhere useful, so it is
+    /// asked here.
+    func testRemovingARuleListThatDoesNotExist() async {
+        guard let store = WKContentRuleListStore.default() else {
+            return XCTFail("no default store")
+        }
+        let identifier = "org.vela.tests.absent.\(UUID().uuidString)"
+
+        let error: Error? = await withCheckedContinuation { continuation in
+            store.removeContentRuleList(forIdentifier: identifier) { error in
+                continuation.resume(returning: error)
+            }
+        }
+
+        print("=== removing an absent rule list → \(error.map { "\($0)" } ?? "no error") ===")
+
+        // What matters is not WebKit's answer but what happens next: the compile
+        // that follows a removal has to work either way. That is the property
+        // `install` depends on, and the reason it tolerates the removal failing.
+        do {
+            _ = try await compile([shippedRules()[0]], label: "after-absent-removal")
+        } catch {
+            XCTFail("a compile after removing an absent list failed: \(error)")
+        }
+    }
+
     /// Every *shape* of pattern the compiler can emit, compiled through WebKit.
     ///
     /// This replaces a harder question — "which constructs does WebKit's
