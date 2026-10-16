@@ -620,8 +620,13 @@ final class WebNavigationIntegrationTests: XCTestCase {
             return XCTFail("no web view")
         }
         // The default sets no override at all: WebKit assembles the identifier
-        // and Vela only supplies the tail.
-        XCTAssertNil(webView.customUserAgent)
+        // and Vela only supplies the tail. Read back leniently — assigning nil
+        // to `customUserAgent` reads back as the empty string, not as nil, which
+        // is a WebKit detail rather than a property of this code.
+        XCTAssertTrue(
+            (webView.customUserAgent ?? "").isEmpty,
+            "the default should set no override: \(webView.customUserAgent ?? "-")"
+        )
 
         let value = try? await webView.evaluateJavaScript("navigator.userAgent")
         let identifier = value as? String ?? ""
@@ -660,6 +665,36 @@ final class WebNavigationIntegrationTests: XCTestCase {
         let identifier = value as? String ?? ""
         XCTAssertTrue(identifier.contains("Macintosh"), identifier)
         XCTAssertFalse(identifier.contains("Mobile/"), identifier)
+    }
+
+    /// The desktop toggle round-trips: on, off, and back to a phone identifier.
+    ///
+    /// The "off" direction is the one worth testing, because it works by
+    /// assigning nil — and a cleared override that does not actually restore the
+    /// default would leave the user stuck claiming to be a Mac with no way back
+    /// except deleting the app's settings.
+    func testTurningDesktopModeOffRestoresThePhoneIdentifier() async {
+        harness.settings.update { $0.desktopSiteByDefault = true }
+        let tab = harness.open(url("/one"))
+        await waitForSettled(tab, expectingTitle: "Page One")
+
+        guard let webView = harness.tabManager.webView(for: tab.id) else {
+            return XCTFail("no web view")
+        }
+        var value = try? await webView.evaluateJavaScript("navigator.userAgent")
+        XCTAssertTrue((value as? String ?? "").contains("Macintosh"), value as? String ?? "")
+
+        // What the settings screen's toggle does.
+        harness.settings.update { $0.desktopSiteByDefault = false }
+        harness.tabManager.applyUserAgentToAllWebViews()
+        _ = harness.tabManager.reload(tab: tab)
+        await waitForSettled(tab, expectingTitle: "Page One")
+
+        value = try? await webView.evaluateJavaScript("navigator.userAgent")
+        let identifier = value as? String ?? ""
+        XCTAssertFalse(identifier.contains("Macintosh"), identifier)
+        XCTAssertTrue(identifier.contains("iPhone"), identifier)
+        XCTAssertTrue(identifier.contains("Safari/"), identifier)
     }
 
     // MARK: - Privacy
