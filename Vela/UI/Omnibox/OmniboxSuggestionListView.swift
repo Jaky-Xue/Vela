@@ -67,23 +67,26 @@ struct OmniboxSuggestionListView: View {
     private var suggestionList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                // A plain stack, deliberately not lazy: the suggestion set is a
+                // few dozen rows at most, and a lazy container cannot report a
+                // finite ideal height — which the self-sizing scroll view below
+                // depends on. The lazy version made the layout pass chase its
+                // own estimate and froze the app the moment the card opened.
+                VStack(spacing: 0) {
                     ForEach(viewModel.groups) { group in
-                        Section {
-                            if !viewModel.isCollapsed(group.section) {
-                                ForEach(group.suggestions) { suggestion in
-                                    row(suggestion)
-                                        .id(suggestion.id)
-                                        .background(rowBackground(for: suggestion))
+                        sectionHeader(group)
 
-                                    if !(group.id == viewModel.groups.last?.id
-                                            && suggestion.id == group.suggestions.last?.id) {
-                                        separator
-                                    }
+                        if !viewModel.isCollapsed(group.section) {
+                            ForEach(group.suggestions) { suggestion in
+                                row(suggestion)
+                                    .id(suggestion.id)
+                                    .background(rowBackground(for: suggestion))
+
+                                if !(group.id == viewModel.groups.last?.id
+                                        && suggestion.id == group.suggestions.last?.id) {
+                                    separator
                                 }
                             }
-                        } header: {
-                            sectionHeader(group)
                         }
                     }
                 }

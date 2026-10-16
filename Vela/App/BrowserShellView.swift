@@ -366,29 +366,29 @@ struct BrowserShellView: View {
             mainSurface
 
             if omnibox.isEditing {
-                Color.black.opacity(0.18)
-                    .transition(.opacity)
-                    .onTapGesture { omnibox.cancel() }
-
-                OmniboxSuggestionListView(
+                OmniboxSearchPageView(
                     viewModel: omnibox,
-                    maxHeight: omniboxCardHeight
+                    keyboardHeight: keyboardHeight,
+                    cardMaxHeight: omniboxCardHeight,
+                    topGap: searchPageTopGap
                 )
-                .padding(.horizontal, BrowserChrome.sideInset)
-                .padding(.bottom, safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap + 6)
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)),
-                        removal: .opacity
-                    )
-                )
+                .transition(.opacity)
             }
         }
         // The keyboard overlays the page — a browser never shrinks its document
-        // for a keyboard — and the suggestion card measures down to the
-        // keyboard's top edge itself.
+        // for a keyboard — and the search page measures down to the keyboard's
+        // top edge itself.
         .ignoresSafeArea(.keyboard)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// How far down the screen the search page puts its field: about a third
+    /// of the space the keyboard leaves, which is where the reference search
+    /// pages place it and where a thumb can still reach the cancel button.
+    private var searchPageTopGap: CGFloat {
+        let screenHeight = safeRectHeight + safeTop + safeBottom
+        let available = screenHeight - keyboardHeight
+        return min(max(56, available * 0.3), 320)
     }
 
     @ViewBuilder
@@ -541,9 +541,13 @@ struct BrowserShellView: View {
         // distance, so the gesture feels like moving the bar rather than
         // arming a trigger.
         .offset(y: chromeIsHidden ? BrowserChrome.barHeight + BrowserChrome.barGap + safeBottom + 12 : chromeDragOffset)
-        .opacity(chromeIsHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
-        .allowsHitTesting(!chromeIsHidden)
+        // The search page covers the screen completely, so the bar yields to it
+        // while the omnibox session is open — a bottom bar under a search page
+        // is chrome the user did not ask for.
+        .opacity(omnibox.isEditing ? 0 : chromeIsHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
+        .allowsHitTesting(!chromeIsHidden && !omnibox.isEditing)
         .animation(Self.chromeAnimation, value: chromeHidden)
+        .animation(Self.chromeAnimation, value: omnibox.isEditing)
         // Dragging the bar downward dismisses it, off the bottom edge the way
         // a sheet leaves. The minimum distance keeps a tap on the omnibox or a
         // button from reading as a drag, and the gesture stands down while the

@@ -122,6 +122,7 @@ struct OmniboxView: View {
                 onMoveHighlight: { viewModel.moveHighlight(by: $0) },
                 onEscape: { viewModel.cancel() },
                 onBeginEditing: { viewModel.beginEditing() },
+                grabsFocus: false,
                 palette: palette,
                 colorScheme: colorScheme
             )
@@ -260,6 +261,11 @@ struct OmniboxTextField: UIViewRepresentable {
     var onMoveHighlight: (Int) -> Void
     var onEscape: () -> Void
     var onBeginEditing: () -> Void
+    /// Whether this instance may take keyboard focus when the omnibox session
+    /// opens. The command bar's field passes `false` — the session now opens a
+    /// dedicated search page whose own field takes focus, and two fields
+    /// fighting for first responder is a race the keyboard loses.
+    var grabsFocus: Bool = true
 
     var palette: BrowserPalette
     var colorScheme: ColorScheme
@@ -321,7 +327,7 @@ struct OmniboxTextField: UIViewRepresentable {
         // caret where they tapped.
         if isEditing {
             field.isUserInteractionEnabled = true
-            if !field.isFirstResponder {
+            if grabsFocus, !field.isFirstResponder {
                 context.coordinator.selectAllOnNextFocus = true
                 field.becomeFirstResponder()
             }
