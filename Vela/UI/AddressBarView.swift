@@ -138,14 +138,27 @@ enum BrowserUrlResolver {
 
         // localhost and port, e.g. `localhost:8080` or `127.0.0.1:3000`.
         let hostPart = candidate.split(separator: "/").first.map(String.init) ?? candidate
+
+        // A bracketed IPv6 literal — `[::1]`, `[::1]:8080` — is handled before
+        // anything splits on a colon, because every colon inside the brackets is
+        // part of the address. Splitting blindly made `hostWithoutPort` the
+        // string `[`, which is neither localhost nor an IPv4 literal nor a
+        // bracketed address, so an IPv6 address fell through to the "no dot"
+        // rejection and became a search for the text the user typed.
+        if hostPart.hasPrefix("[") {
+            guard let closing = hostPart.firstIndex(of: "]") else { return nil }
+            let address = hostPart[hostPart.index(after: hostPart.startIndex)..<closing]
+            guard !address.isEmpty else { return nil }
+            let remainder = hostPart[hostPart.index(after: closing)...]
+            // What follows the bracket is either nothing or a port.
+            guard remainder.isEmpty || remainder.hasPrefix(":") else { return nil }
+            return httpUrl("http://\(candidate)")
+        }
+
         let hostWithoutPort = hostPart.split(separator: ":").first.map(String.init) ?? hostPart
 
         if hostWithoutPort == "localhost" { return httpUrl("http://\(candidate)") }
         if isIPv4(hostWithoutPort) { return httpUrl("http://\(candidate)") }
-        // A bracketed IPv6 literal.
-        if hostWithoutPort.hasPrefix("[") && hostWithoutPort.hasSuffix("]") {
-            return httpUrl("http://\(candidate)")
-        }
 
         guard hostWithoutPort.contains(".") else { return nil }
         // Reject a trailing dot or a leading dot, which are typos rather than

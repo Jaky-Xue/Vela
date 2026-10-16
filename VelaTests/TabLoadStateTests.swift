@@ -211,10 +211,14 @@ final class TabPageFetchTests: XCTestCase {
         XCTAssertFalse(tab(url: "https://example.com", loadState: .crashed).needsPageFetch)
     }
 
-    /// A stopped navigation is a page the user chose not to load, so it is not
-    /// retried the moment they switch away and back.
-    func testACancelledTabIsNotRefetchedAutomatically() {
-        XCTAssertFalse(tab(url: "https://example.com", loadState: .cancelled).needsPageFetch)
+    /// A stopped navigation is refetched when the tab is activated again.
+    ///
+    /// The alternative is worse: a stopped load leaves the tab with no committed
+    /// document, so refusing to refetch means a tab that shows a blank rectangle
+    /// for the rest of the session. The refetch happens only on an explicit
+    /// activation, so it cannot loop.
+    func testAStoppedTabIsRefetchedWhenItIsActivatedAgain() {
+        XCTAssertTrue(tab(url: "https://example.com", loadState: .cancelled).needsPageFetch)
     }
 
     func testTheHomeSurfaceAndAnEmptyUrlHaveNothingToFetch() {
@@ -275,7 +279,7 @@ final class NavigationLogRedactionTests: XCTestCase {
     }
 
     func testSomethingThatIsNotAUrlIsRecordedAsALength() {
-        XCTAssertEqual(NavigationLog.redact("not a url at all"), "<17 字符>")
+        XCTAssertEqual(NavigationLog.redact("not a url at all"), "<16 字符>")
         XCTAssertEqual(NavigationLog.redact(""), "")
     }
 

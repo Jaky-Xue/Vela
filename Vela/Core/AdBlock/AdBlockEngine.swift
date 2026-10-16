@@ -159,35 +159,46 @@ public final class AdBlockEngine {
     /// Compiles JSON into the WebKit store, replacing any previous list.
     private func install(json: String) async throws -> String {
         let identifier = Self.combinedIdentifier
-        // A list whose content has not changed still has to be replaced for the
-        // new compile to take effect, so the old entry is removed first rather
-        // than looked up.
-        try await store.removeContentRuleList(forIdentifier: identifier)
+
+        // Replacing a list means removing it first. A store that has never held
+        // this identifier — which is every fresh install — reports the removal of
+        // something that was not there as an error, and treating that as fatal
+        // meant the *first* compile never happened: ad blocking was compiled
+        // nowhere and no rule list was ever attached, silently and permanently,
+        // because the compile is retried at launch and fails the same way each
+        // time.
+        try? await store.removeContentRuleList(forIdentifier: identifier)
 
         return try await withCheckedThrowingContinuation { continuation in
             store.compileContentRuleList(
                 forIdentifier: identifier,
                 encodedContentRuleList: json
             ) { list, error in
-                if let error {
-                    // WebKit's error here is usually a rule it refused to parse.
-                    // It does not say which rule, so the message is passed
-                    // through verbatim rather than being dressed up.
-                    continuation.resume(
-                        throwing: AdBlockError.compilationFailed(error.localizedDescription)
-                    )
-                    return
-                }
-                guard let list else {
-                    continuation.resume(
-                        throwing: AdBlockError.compilationFailed("系统未返回规则列表。")
-                    )
-                    return
-                }
+                // The bookkeeping and the resumption happen together, on the
+                // main actor. Assigning `attachedList` from a detached `Task`
+                // instead would let `compile` return — and the next navigation
+                // build its configuration — before the list was stored, so the
+                // first page after a compile or a settings change would be loaded
+                // without any rules at all.
                 Task { @MainActor in
+                    if let error {
+                        // WebKit's error here is usually a rule it refused to
+                        // parse. It does not say which rule, so the message is
+                        // passed through verbatim rather than dressed up.
+                        continuation.resume(
+                            throwing: AdBlockError.compilationFailed(error.localizedDescription)
+                        )
+                        return
+                    }
+                    guard let list else {
+                        continuation.resume(
+                            throwing: AdBlockError.compilationFailed("系统未返回规则列表。")
+                        )
+                        return
+                    }
                     self.attachedList = list
+                    continuation.resume(returning: identifier)
                 }
-                continuation.resume(returning: identifier)
             }
         }
     }
@@ -211,7 +222,9 @@ public final class AdBlockEngine {
     }
 
     public func removeCompiledList() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        // A list that is not there is not a failure: the caller is asking for
+        // this store not to hold one, and it will not afterwards either way.
+        try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             store.removeContentRuleList(forIdentifier: Self.combinedIdentifier) { error in
                 if let error {
                     continuation.resume(throwing: error)

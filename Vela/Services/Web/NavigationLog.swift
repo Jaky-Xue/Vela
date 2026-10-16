@@ -110,7 +110,9 @@ public struct NavigationLogEntry: Identifiable, Sendable {
             phase.rawValue
         ]
         if let durationMs { parts.append("\(durationMs)ms") }
+        if !navigationType.isEmpty { parts.append(navigationType) }
         parts.append(url)
+        if let finalUrl, finalUrl != url { parts.append("→\(finalUrl)") }
         if !errorDomain.isEmpty {
             parts.append("\(errorDomain)/\(errorCode)")
         }

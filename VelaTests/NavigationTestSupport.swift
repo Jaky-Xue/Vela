@@ -334,14 +334,43 @@ final class BrowserHarness {
     }
 
     /// Compiles the shipped filter lists, which is what the app does at launch.
+    ///
+    /// The outcome is asserted rather than swallowed. A compile that fails
+    /// quietly is exactly the failure this suite exists to catch — a browser with
+    /// no rules is one thing, but a browser that *believes* it has rules and has
+    /// none is how a page ends up blocked by nothing and diagnosed by no one.
     func installShippedAdBlockRules(enabled: Bool = true) async {
-        _ = try? await adBlock.compile(
-            filterLists: AdBlockBuiltInRules.filterLists,
-            orderedSourceIds: AdBlockBuiltInRules.sources.map(\.id),
-            exceptedHosts: [],
-            includeCosmetic: true,
-            enabled: enabled
-        )
+        do {
+            let compiled = try await adBlock.compile(
+                filterLists: AdBlockBuiltInRules.filterLists,
+                orderedSourceIds: AdBlockBuiltInRules.sources.map(\.id),
+                exceptedHosts: [],
+                includeCosmetic: true,
+                enabled: enabled
+            )
+            if enabled {
+                XCTAssertGreaterThan(compiled.ruleCount, 0, "the shipped lists compiled to nothing")
+                XCTAssertFalse(compiled.cosmeticSelectors.isEmpty)
+                XCTAssertTrue(adBlock.isReady)
+                XCTAssertFalse(
+                    adBlock.attachedRuleLists().isEmpty,
+                    "the compiled list was not attached, so the next navigation would load without rules"
+                )
+            }
+        } catch {
+            XCTFail("compiling the shipped rules failed: \(error)")
+        }
+    }
+
+    /// The navigation log for one tab, as text.
+    ///
+    /// Used in assertion messages so a failure says which callbacks actually
+    /// arrived rather than only which state was expected.
+    func trace(for tab: BrowserTabState) -> String {
+        let lines = navigationLog.entries
+            .filter { $0.tabId == tab.id }
+            .map(\.displayLine)
+        return lines.isEmpty ? "（无导航记录）" : lines.joined(separator: " | ")
     }
 
     /// Opens a URL in a fresh tab, which is how every navigation test starts.
@@ -376,14 +405,28 @@ func waitUntil(
     return false
 }
 
-/// Waits for a tab's navigation to settle — finished, failed or crashed.
+/// Waits for a tab's navigation to settle — finished, failed or crashed — and,
+/// when a title is expected, for the title to arrive.
+///
+/// The title is a separate wait because it legitimately arrives a moment after
+/// `didFinish`: WebKit updates `WKWebView.title` from an observer that can lose
+/// the race against a small document, and the coordinator fills the gap by
+/// asking the document. Waiting for the settle alone would assert against a tab
+/// that is still about to be given its title.
 @MainActor
 @discardableResult
-func waitForSettled(_ tab: BrowserTabState, timeout: TimeInterval = 20) async -> Bool {
+func waitForSettled(
+    _ tab: BrowserTabState,
+    expectingTitle title: String? = nil,
+    timeout: TimeInterval = 20
+) async -> Bool {
     await waitUntil(
-        "tab to settle (state=\(tab.loadState.rawValue), loading=\(tab.isLoading))",
+        "tab to settle (state=\(tab.loadState.rawValue), loading=\(tab.isLoading))"
+            + (title.map { " and report the title \($0)" } ?? ""),
         timeout: timeout
     ) {
-        !tab.loadState.isInFlight && !tab.isLoading
+        guard !tab.loadState.isInFlight, !tab.isLoading else { return false }
+        guard let title else { return true }
+        return tab.title == title
     }
 }

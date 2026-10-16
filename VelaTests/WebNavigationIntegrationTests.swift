@@ -66,7 +66,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     func testAPlainPageLoadsAndReportsItsTitleAndUrl() async {
         let tab = harness.open(url("/one"))
-        await waitForSettled(tab)
+        await waitForSettled(tab, expectingTitle: "Page One")
 
         XCTAssertEqual(tab.loadState, .finished)
         XCTAssertFalse(tab.isLoading)
@@ -119,7 +119,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     func testARedirectEndsOnTheDestinationUrl() async {
         let tab = harness.open(url("/redirect"))
-        await waitForSettled(tab)
+        await waitForSettled(tab, expectingTitle: "Page Two")
 
         XCTAssertEqual(tab.loadState, .finished)
         XCTAssertEqual(tab.url, url("/two").absoluteString)
@@ -159,7 +159,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
         for expected in cases {
             let tab = harness.open(url(expected.path))
-            await waitForSettled(tab)
+            await waitForSettled(tab, expectingTitle: expected.title)
 
             XCTAssertEqual(tab.loadState, .finished, "\(expected.path) should commit and finish")
             XCTAssertNil(tab.lastFailure, "\(expected.path) should not produce a failure")
@@ -180,31 +180,43 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     // MARK: - Network failures
 
+    /// `https` rather than `http` on purpose: an `http` URL to a host that cannot
+    /// resolve is stopped by App Transport Security before DNS is ever consulted,
+    /// which would test the wrong failure. The certificate is never reached
+    /// either, because there is no host to connect to.
     func testAnUnresolvableHostFailsWithADnsReason() async {
-        let tab = harness.open(URL(string: "http://nonexistent-host.vela-invalid.test/")!)
+        let tab = harness.open(URL(string: "https://nonexistent-host.vela-invalid.test/")!)
         await waitForSettled(tab)
 
-        XCTAssertEqual(tab.loadState, .failed)
+        XCTAssertEqual(tab.loadState, .failed, "events: \(harness.trace(for: tab))")
         XCTAssertFalse(tab.isLoading)
-        XCTAssertEqual(tab.lastFailure?.kind, .dns)
+        XCTAssertEqual(
+            tab.lastFailure?.kind,
+            .dns,
+            "error was \(tab.lastFailure?.errorDomain ?? "-")/\(tab.lastFailure?.errorCode ?? 0)"
+        )
         XCTAssertEqual(tab.lastFailure?.title, "找不到该网站")
         XCTAssertTrue(tab.lastFailure?.isRetryable == true)
     }
 
     func testAConnectionRefusedFailsWithARefusedReason() async {
         // Port 1 on the loopback interface has nothing listening.
-        let tab = harness.open(URL(string: "http://127.0.0.1:1/")!)
+        let tab = harness.open(URL(string: "https://127.0.0.1:1/")!)
         await waitForSettled(tab)
 
-        XCTAssertEqual(tab.loadState, .failed)
+        XCTAssertEqual(tab.loadState, .failed, "events: \(harness.trace(for: tab))")
         XCTAssertFalse(tab.isLoading)
-        XCTAssertEqual(tab.lastFailure?.kind, .refused)
+        XCTAssertEqual(
+            tab.lastFailure?.kind,
+            .refused,
+            "error was \(tab.lastFailure?.errorDomain ?? "-")/\(tab.lastFailure?.errorCode ?? 0)"
+        )
         XCTAssertFalse(tab.lastFailure?.detail.isEmpty ?? true)
     }
 
     /// A failure must not leave the address bar spinning.
     func testAFailureClearsTheLoadingState() async {
-        let tab = harness.open(URL(string: "http://nonexistent-host.vela-invalid.test/")!)
+        let tab = harness.open(URL(string: "https://nonexistent-host.vela-invalid.test/")!)
         await waitForSettled(tab)
 
         XCTAssertFalse(tab.isLoading)
@@ -215,12 +227,12 @@ final class WebNavigationIntegrationTests: XCTestCase {
     /// A page that failed can be fetched again, and the failure does not survive
     /// the page that loads.
     func testAFailedTabLoadsAgainAndClearsTheFailure() async {
-        let tab = harness.open(URL(string: "http://nonexistent-host.vela-invalid.test/")!)
+        let tab = harness.open(URL(string: "https://nonexistent-host.vela-invalid.test/")!)
         await waitForSettled(tab)
         XCTAssertEqual(tab.loadState, .failed)
 
         harness.tabManager.load(url: url("/one"), in: tab)
-        await waitForSettled(tab)
+        await waitForSettled(tab, expectingTitle: "Page One")
 
         XCTAssertEqual(tab.loadState, .finished)
         XCTAssertNil(tab.lastFailure)
@@ -230,7 +242,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
     /// `reload` on a tab with no committed document is not a no-op — it is a
     /// fresh request, which is what the error surface's button needs.
     func testReloadAfterAFailureIssuesAFreshRequest() async {
-        let tab = harness.open(URL(string: "http://nonexistent-host.vela-invalid.test/")!)
+        let tab = harness.open(URL(string: "https://nonexistent-host.vela-invalid.test/")!)
         await waitForSettled(tab)
         let serialBefore = tab.navigationSerial
 
@@ -238,7 +250,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
         await waitForSettled(tab)
 
         XCTAssertGreaterThan(tab.navigationSerial, serialBefore)
-        XCTAssertEqual(tab.loadState, .failed)
+        XCTAssertEqual(tab.loadState, .failed, "events: \(harness.trace(for: tab))")
         XCTAssertEqual(tab.lastFailure?.kind, .dns)
     }
 
@@ -267,7 +279,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
         harness.tabManager.load(url: url("/one"), in: tab)
         XCTAssertEqual(tab.loadState, .requested)
 
-        await waitForSettled(tab)
+        await waitForSettled(tab, expectingTitle: "Page One")
 
         XCTAssertEqual(tab.loadState, .finished)
         XCTAssertEqual(tab.title, "Page One")
@@ -360,10 +372,10 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     func testTwoTabsKeepTheirOwnState() async {
         let first = harness.open(url("/one"))
-        await waitForSettled(first)
+        await waitForSettled(first, expectingTitle: "Page One")
 
         let second = harness.open(url("/two"))
-        await waitForSettled(second)
+        await waitForSettled(second, expectingTitle: "Page Two")
 
         XCTAssertEqual(first.title, "Page One")
         XCTAssertEqual(first.url, url("/one").absoluteString)
@@ -383,7 +395,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
         // The link path: a new tab that is not the one on screen.
         let background = harness.tabManager.openTab(url: url("/two"), activate: false)
-        await waitForSettled(background)
+        await waitForSettled(background, expectingTitle: "Page Two")
 
         XCTAssertEqual(background.loadState, .finished)
         XCTAssertEqual(background.title, "Page Two")
@@ -439,7 +451,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
         await harness.installShippedAdBlockRules()
 
         let tab = harness.open(url("/ads"))
-        await waitForSettled(tab)
+        await waitForSettled(tab, expectingTitle: "ads")
 
         XCTAssertEqual(tab.loadState, .finished)
         XCTAssertEqual(tab.title, "ads")
@@ -457,6 +469,9 @@ final class WebNavigationIntegrationTests: XCTestCase {
         }
         // The cosmetic style is injected at document start and applies
         // immediately, so no waiting on the counting script.
+        let stylePresent = try? await webView.evaluateJavaScript(
+            "!!document.getElementById('\(AdBlockEngine.cosmeticStyleIdentifier)')"
+        )
         let slotDisplay = try? await webView.evaluateJavaScript(
             "getComputedStyle(document.getElementById('slot')).display"
         )
@@ -465,6 +480,11 @@ final class WebNavigationIntegrationTests: XCTestCase {
         )
         let bodyLength = try? await webView.evaluateJavaScript("document.body.innerHTML.length")
 
+        XCTAssertEqual(
+            stylePresent as? Bool,
+            true,
+            "the cosmetic stylesheet was never injected, so nothing could be hidden"
+        )
         XCTAssertEqual(slotDisplay as? String, "none")
         XCTAssertNotEqual(contentDisplay as? String, "none")
         XCTAssertGreaterThan((bodyLength as? Int) ?? 0, 0)
@@ -492,7 +512,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     func testAPrivateTabLoadsToo() async {
         let tab = harness.tabManager.openTab(url: url("/one"), privacyMode: .private)
-        await waitForSettled(tab)
+        await waitForSettled(tab, expectingTitle: "Page One")
 
         XCTAssertEqual(tab.loadState, .finished)
         XCTAssertEqual(tab.title, "Page One")

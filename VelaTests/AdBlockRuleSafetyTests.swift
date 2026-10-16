@@ -150,22 +150,31 @@ final class AdBlockRuleSafetyTests: XCTestCase {
     // MARK: - Cosmetic rules
 
     /// A cosmetic rule hides elements by selector. One that names `body`, `html`
-    /// or a bare element would hide the page.
+    /// or a bare element hides the page.
+    ///
+    /// The check is that every selector carries a constraint — a class or an
+    /// attribute — rather than being a bare element name. `div[data-ad-slot]` is
+    /// constrained and safe; `div` would not be.
     func testNoShippedCosmeticRuleHidesTheWholePage() {
         let compiled = compileShipped()
         XCTAssertFalse(compiled.cosmeticSelectors.isEmpty)
 
-        let forbidden: Set<String> = ["*", "body", "html", "div", "a", "p", "span", "main", "article"]
+        let forbidden: Set<String> = ["*", "body", "html", "div", "a", "p", "span", "main", "article", "iframe"]
         for selector in compiled.cosmeticSelectors {
+            let lowered = selector.lowercased()
             XCTAssertFalse(
-                forbidden.contains(selector.lowercased()),
+                forbidden.contains(lowered),
                 "cosmetic rule \(selector) would hide the page itself"
             )
-            // Every shipped selector is a class or attribute selector, which is
-            // what keeps them from catching structural elements.
             XCTAssertTrue(
-                selector.hasPrefix(".") || selector.hasPrefix("["),
-                "cosmetic rule \(selector) is not scoped to a class or attribute"
+                lowered.contains(".") || lowered.contains("["),
+                "cosmetic rule \(selector) has no class or attribute constraint"
+            )
+            // A selector is interpolated into a stylesheet, so a brace in one
+            // would break out of its rule block.
+            XCTAssertFalse(
+                selector.contains("{") || selector.contains("}"),
+                "cosmetic rule \(selector) could escape its rule block"
             )
         }
     }

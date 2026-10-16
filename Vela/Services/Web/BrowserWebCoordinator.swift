@@ -907,15 +907,16 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                 tab.lastGoodTitle = webView.title ?? tab.title
             }
             if let title = webView.title, !title.isEmpty {
-                tab.title = title
-                if let url = webView.url {
-                    self.history.updateTitle(
-                        url: url,
-                        title: title,
-                        tabId: tab.id,
-                        boundary: tab.dataBoundary
-                    )
-                }
+                self.apply(title: title, to: tab, in: webView)
+            } else {
+                // `WKWebView.title` can still be empty when `didFinish` arrives.
+                // The property is updated by an observer that runs alongside the
+                // parser, and a small document over a fast link finishes inside
+                // that window — which leaves the tab strip, the history list and
+                // the address bar showing only the host of a page that has a
+                // perfectly good title. Asking the document is authoritative, so
+                // it is asked rather than the title being accepted as absent.
+                self.readTitleFromDocument(of: webView, tab: tab, navigation: navigation)
             }
             tab.canGoBack = webView.canGoBack
             tab.canGoForward = webView.canGoForward
@@ -927,6 +928,45 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                 finalUrl: webView.url?.absoluteString
             )
             self.tabManager?.persistSession()
+        }
+    }
+
+    /// Records a page title on the tab and in the history.
+    @MainActor
+    private func apply(title: String, to tab: BrowserTabState, in webView: WKWebView) {
+        tab.title = title
+        guard let url = webView.url else { return }
+        history.updateTitle(
+            url: url,
+            title: title,
+            tabId: tab.id,
+            boundary: tab.dataBoundary
+        )
+    }
+
+    /// Asks the document for its title, for the case where `WKWebView.title` had
+    /// not caught up by `didFinish`.
+    ///
+    /// The answer arrives after the fact, so it is applied only if the tab is
+    /// still showing the navigation that asked: a page whose title was empty
+    /// must not have it filled in by a page the user has already left.
+    @MainActor
+    private func readTitleFromDocument(
+        of webView: WKWebView,
+        tab: BrowserTabState,
+        navigation: WKNavigation?
+    ) {
+        Task { @MainActor in
+            guard !self.isStale(navigation, in: webView),
+                  // Nothing is overwritten: if a title arrived by another route
+                  // in the meantime, that one wins.
+                  tab.title.isEmpty,
+                  let value = try? await webView.evaluateJavaScript("document.title"),
+                  let title = value as? String,
+                  !title.isEmpty,
+                  self.tab(for: webView) === tab,
+                  tab.loadState == .finished else { return }
+            self.apply(title: title, to: tab, in: webView)
         }
     }
 
