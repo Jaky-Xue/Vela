@@ -18,20 +18,19 @@ import WebKit
 
 struct ReaderView: View {
     @Environment(\.browserPalette) private var palette
+    @Environment(\.colorScheme) private var systemScheme
     @Environment(\.dismiss) private var dismiss
 
     var article: ReaderArticle
     var onClose: () -> Void
 
     @State private var fontSize: Double = 18
-    @State private var isDark: Bool = false
-    @State private var showOriginal = false
+    @State private var appearance: ReaderAppearance = .system
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
-            ReaderWebView(html: styledHtml, isDark: isDark)
+            ReaderWebView(html: styledHtml)
         }
         .background(palette.surface)
     }
@@ -78,8 +77,17 @@ struct ReaderView: View {
                     Button("特大") { fontSize = 24 }
                 }
                 Section("外观") {
-                    Button("跟随系统") { isDark = false }
-                    Button("深色") { isDark = true }
+                    ForEach(ReaderAppearance.allCases) { option in
+                        Button {
+                            appearance = option
+                        } label: {
+                            if appearance == option {
+                                Label(option.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(option.displayName)
+                            }
+                        }
+                    }
                 }
                 Divider()
                 Button("分享", systemImage: "square.and.arrow.up") {
@@ -117,7 +125,7 @@ struct ReaderView: View {
     /// user's Dynamic Type setting and switches with the system appearance
     /// without Vela having to sample anything.
     private var styledHtml: String {
-        let scheme = isDark ? "dark" : "light"
+        let scheme = resolvedScheme == .dark ? "dark" : "light"
         return """
         <!doctype html>
         <html>
@@ -197,11 +205,51 @@ struct ReaderView: View {
         """
     }
 
+    /// The appearance the article is rendered in.
+    ///
+    /// `跟随系统` resolves against the environment rather than being a third
+    /// fixed mode, and it is the default. The menu used to offer "跟随系统" and
+    /// "深色" against a single `isDark` flag, so choosing "跟随系统" forced the
+    /// light stylesheet — the one option that names the system was the one
+    /// ignoring it.
+    private var resolvedScheme: ColorScheme {
+        appearance.colorScheme ?? systemScheme
+    }
+
     private func presentShareSheet(url: URL) {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let root = scene.keyWindow?.rootViewController else { return }
         let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         root.present(controller, animated: true)
+    }
+}
+
+/// The reading appearance.
+///
+/// The same three-way choice the app-wide setting offers, for the same reason:
+/// "follow the system" is a real mode, not a synonym for "light".
+private enum ReaderAppearance: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return "跟随系统"
+        case .light: return "浅色"
+        case .dark: return "深色"
+        }
+    }
+
+    /// `nil` is what makes `跟随系统` follow rather than decide.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
     }
 }
 
@@ -213,7 +261,6 @@ struct ReaderView: View {
 /// around it.
 private struct ReaderWebView: UIViewRepresentable {
     var html: String
-    var isDark: Bool
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
