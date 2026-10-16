@@ -298,6 +298,14 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     // MARK: - Links
 
+    /// Following an ordinary link navigates the tab it was clicked in.
+    ///
+    /// The click is synthesized from script, because a unit test has no finger.
+    /// WebKit's user-activation rules decide whether a script-dispatched click on
+    /// an anchor counts as a user following a link, and they have moved between
+    /// releases — so if this ever stops navigating, the answer is in the trace:
+    /// no `start` at all means WebKit declined to treat the synthetic click as a
+    /// navigation, while a `start` that does not finish means Vela dropped it.
     func testAFollowedLinkLoadsInTheSameTabAndUpdatesTheUrl() async {
         let tab = harness.open(url("/links"))
         await waitForSettled(tab, expectingTitle: "links")
@@ -308,10 +316,12 @@ final class WebNavigationIntegrationTests: XCTestCase {
         }
         _ = try? await webView.evaluateJavaScript("document.getElementById('same').click()")
 
-        let settled = await waitUntil("the link's page to load") {
+        let settled = await waitUntil(
+            "the link's page to load: \(harness.trace(for: tab))"
+        ) {
             tab.loadState == .finished && tab.title == "Page Two"
         }
-        XCTAssertTrue(settled)
+        XCTAssertTrue(settled, "events: \(harness.trace(for: tab))")
         XCTAssertEqual(tab.url, url("/two").absoluteString)
         XCTAssertTrue(tab.canGoBack, "the page behind the link should be reachable")
     }
