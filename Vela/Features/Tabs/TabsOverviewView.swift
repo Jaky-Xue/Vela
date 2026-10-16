@@ -284,7 +284,7 @@ private struct TabCard: View {
             .blur(radius: blurPreview ? 4 : 0)
         }
         // Room for the close button, which floats over the top-right corner.
-        .padding(.trailing, 22)
+        .padding(.trailing, 34)
     }
 
     private var footer: some View {
@@ -315,9 +315,15 @@ private struct TabCard: View {
                 .foregroundStyle(palette.secondaryText)
                 .frame(width: 20, height: 20)
                 .background(palette.controlFill, in: Circle())
+                // The glyph stays small so it does not compete with the title,
+                // but the target does not: a 20 pt disc is half the minimum a
+                // finger can reliably hit, and this is the control that destroys
+                // something.
+                .frame(width: 36, height: 36)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(8)
+        .padding(4)
         .accessibilityLabel("关闭标签页")
     }
 }
