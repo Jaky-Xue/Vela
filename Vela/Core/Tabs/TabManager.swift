@@ -389,16 +389,16 @@ public final class TabManager {
 
     /// Drops a tab's web view but keeps the tab, its URL and its title.
     ///
-    /// The
-    /// tab becomes `cold`; reactivating it loads the URL again. Scroll position
-    /// is kept in the record so the restore can approximate where the user was.
-    /// Releases a tab's web view, reporting whether there was one to release.
+    /// The tab becomes `cold`; reactivating it loads the URL again. The scroll
+    /// offset is written to the tab first, so the information survives the
+    /// discard — nothing reads it back yet, so a reactivated tab currently
+    /// returns to the top of the document.
     ///
-    /// The cap needs the answer. `activationOrder` records tabs in the order
-    /// they were *activated*, not the order they were given a web view, so a tab
-    /// in it can already be cold — and counting a no-op as one of the victims
-    /// means the cap stops after freeing nothing, leaving more web views alive
-    /// than it allows.
+    /// Returns whether there was a web view to release. The cap needs the
+    /// answer: `activationOrder` records tabs in the order they were *activated*,
+    /// not the order they were given a web view, so a tab in it can already be
+    /// cold — and counting a no-op as one of the victims means the cap stops
+    /// after freeing nothing, leaving more web views alive than it allows.
     @discardableResult
     public func discardWebView(
         for tabId: String,
