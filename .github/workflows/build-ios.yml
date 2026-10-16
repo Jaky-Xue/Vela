@@ -8,6 +8,12 @@ name: Build unsigned IPA
 # Apple ID when they install it.
 #
 # See BUILD_WITHOUT_MAC.md for the full walkthrough.
+#
+# Two jobs, deliberately independent. `test` is the only automated check on the
+# code's behaviour rather than its syntax, and it needs an iOS Simulator, which
+# is the part of a runner image most likely to move; it therefore does not gate
+# the IPA, and a simulator problem cannot cost you a build. Read the two results
+# separately.
 
 on:
   workflow_dispatch:
@@ -99,3 +105,60 @@ jobs:
             build/Logs
           if-no-files-found: ignore
           retention-days: 7
+
+  test:
+    name: Run the unit tests
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
+      - name: Run the tests
+        working-directory: .
+        run: |
+          set -euo pipefail
+
+          # The simulator is chosen from what the image actually has rather than
+          # named here. The device list changes with every Xcode release, so a
+          # hard-coded `name=iPhone 16` is a workflow that breaks the day the
+          # runner image moves on — and breaks as a build failure, which reads
+          # like a code problem.
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          for runtime in sorted(devices, reverse=True):
+              if "iOS" not in runtime:
+                  continue
+              for device in devices[runtime]:
+                  if device["name"].startswith("iPhone"):
+                      print(device["name"])
+                      raise SystemExit
+          raise SystemExit("no available iPhone simulator")
+          ')
+          echo "Testing on: $DEVICE"
+
+          xcodebuild test \
+            -project Vela.xcodeproj \
+            -scheme Vela \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -resultBundlePath TestResults.xcresult
+
+      - name: Summarise the failures
+        if: failure()
+        run: |
+          xcrun xcresulttool get test-results summary \
+            --path TestResults.xcresult || true
+
+      - name: Upload the test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults.xcresult
+          if-no-files-found: ignore
+          retention-days: 14

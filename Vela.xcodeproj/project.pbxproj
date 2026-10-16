@@ -6,8 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		AA0000000000000000000011 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA0000000000000000000005;
+			remoteInfo = Vela;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		AA0000000000000000000004 /* Vela.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Vela.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000012 /* VelaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VelaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +27,22 @@
 			path = Vela;
 			sourceTree = "<group>";
 		};
+		AA0000000000000000000013 /* VelaTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VelaTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		AA0000000000000000000007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000014 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				AA000000000000000000000F /* Vela */,
+				AA0000000000000000000013 /* VelaTests */,
 				AA0000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000004 /* Vela.app */,
+				AA0000000000000000000012 /* VelaTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +95,29 @@
 			productReference = AA0000000000000000000004 /* Vela.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AA0000000000000000000017 /* VelaTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA000000000000000000001A /* Build configuration list for PBXNativeTarget "VelaTests" */;
+			buildPhases = (
+				AA0000000000000000000015 /* Sources */,
+				AA0000000000000000000014 /* Frameworks */,
+				AA0000000000000000000016 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AA0000000000000000000018 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AA0000000000000000000013 /* VelaTests */,
+			);
+			name = VelaTests;
+			packageProductDependencies = (
+			);
+			productName = VelaTests;
+			productReference = AA0000000000000000000012 /* VelaTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +130,10 @@
 				TargetAttributes = {
 					AA0000000000000000000005 = {
 						CreatedOnToolsVersion = 16.0;
+					};
+					AA0000000000000000000017 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = AA0000000000000000000005;
 					};
 				};
 			};
@@ -101,12 +153,20 @@
 			projectRoot = "";
 			targets = (
 				AA0000000000000000000005 /* Vela */,
+				AA0000000000000000000017 /* VelaTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		AA0000000000000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000016 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -123,7 +183,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000000000000000000015 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AA0000000000000000000018 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA0000000000000000000005 /* Vela */;
+			targetProxy = AA0000000000000000000011 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		AA000000000000000000000B /* Debug */ = {
@@ -299,6 +374,48 @@
 			};
 			name = Release;
 		};
+		AA000000000000000000001B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 3.7.4;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lsqlite3",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.vela.browser.ios.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Vela.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Vela";
+			};
+			name = Debug;
+		};
+		AA000000000000000000001C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 3.7.4;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lsqlite3",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.vela.browser.ios.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Vela.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Vela";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -316,6 +433,15 @@
 			buildConfigurations = (
 				AA000000000000000000000D /* Debug */,
 				AA000000000000000000000E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA000000000000000000001A /* Build configuration list for PBXNativeTarget "VelaTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA000000000000000000001B /* Debug */,
+				AA000000000000000000001C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
