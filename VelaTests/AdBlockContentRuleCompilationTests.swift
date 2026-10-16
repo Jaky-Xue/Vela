@@ -30,7 +30,13 @@ final class AdBlockContentRuleCompilationTests: XCTestCase {
     private func compile(_ rules: [ContentBlockerRule], label: String) async throws -> WKContentRuleList {
         let json = try AdBlockRuleCompiler.encode(rules)
         let identifier = "org.vela.tests.compile.\(label)"
-        let store = WKContentRuleListStore.default()
+        // `default()` is failable in the Swift interface even though the app's
+        // default parameter takes it implicitly unwrapped; a nil store here means
+        // WebKit could not create one at all, which is worth saying rather than
+        // crashing on.
+        guard let store = WKContentRuleListStore.default() else {
+            throw AdBlockError.compilationFailed("WebKit returned no default rule list store")
+        }
         try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             store.removeContentRuleList(forIdentifier: identifier) { error in
                 if let error { continuation.resume(throwing: error) } else { continuation.resume() }

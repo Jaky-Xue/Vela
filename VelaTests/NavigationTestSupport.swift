@@ -333,7 +333,15 @@ final class BrowserHarness {
         // be tidier, but the point of these tests is to exercise what ships, and
         // a rule list WebKit refuses to compile into one store is not evidence
         // about the store that matters.
-        let adBlock = AdBlockEngine(store: .default())
+        //
+        // `WKContentRuleListStore.default()` is failable in the Swift interface,
+        // and the app's own default argument would trap on nil rather than
+        // reporting it; a test that crashes on that is a test that hides the
+        // reason.
+        guard let store = WKContentRuleListStore.default() else {
+            throw XCTSkip("WebKit returned no default content rule list store")
+        }
+        let adBlock = AdBlockEngine(store: store)
         self.adBlock = adBlock
 
         let navigationLog = NavigationLog()
