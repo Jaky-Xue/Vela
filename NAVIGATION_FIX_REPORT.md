@@ -113,6 +113,52 @@ WebKit 把它报告为 `WebKitErrorFrameLoadInterruptedByPolicyChange`（102）�
 | 内容进程崩溃后无条件 `reload()`，对没有文档的 web view 是空操作，标签页永久停在 `crashed` + 空白 | `webViewWebContentProcessDidTerminate` | 代码审查 |
 | 死了的协议方法 `recordVisit` 会伪造 tabId（`url.host ?? "unknown"`）；`historyTransitionProvider` 传了但从没被读过 | `TabManager` | `grep` 无调用点 |
 
+### 根因 8：浏览器自称 Safari 17 ——「显示浏览器版本太低」
+
+`TabManager` 里的 `BrowserUserAgent` 把 `Version/17.0` 和 `Mobile/15E148` 写死。设备上的
+iOS 比这新，于是**每一个网站都被告知这是 Safari 17**，会检查版本的网站直接回「浏览器版本太低」。
+引擎是新的，只有标签是旧的，而标签就是网站判断的全部依据。
+
+修的过程中测试又纠正了我的第一版做法：「不给自己设 UA」并不等于「发系统自己的串（也就是 Safari 的串）」。
+模拟器实测，裸的 `WKWebView` 发的是：
+
+```
+Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148
+```
+
+**没有 `Version/`，也没有 `Safari/`**——这两个 token 是 Safari 自己加的。会找它们的网站会把缺失
+当成「内置浏览器」，然后要求用户用 Safari 打开——同一个抱怨的另一半。所以标识串改成 Safari 形状、
+由**当前系统版本号**拼出；桌面版只改平台标识和 `Mobile/` 标记。
+
+证据：`testTheIdentifierPresentedIsSafariShapedAndCurrent`（断言页面看到 `Version/<真实主版本>.`、
+`Safari/`，且不含 `Version/17.0`）。
+
+### 根因 9：页面自己发的埋点被取消，导致切回标签页会重新加载
+
+一份真实的导航日志（Bing 搜索）：
+
+```
+#1 start provisional https://www.bing.com/search?…
+#1 redirect … → https://cn.bing.com/search?…
+#1 commit / #1 finish
+#2 start provisional https://cn.bing.com/fd/ls/GLinkPing.aspx?…
+#2 cancel cancelled  WebKitErrorDomain/102
+```
+
+搜索本身是对的（重定向被跟随，地址栏跟着走）。第二条是 Bing 自己发的点击统计埋点：`start` 说明
+**Vela 放行了它**（被 Vela 拒绝的导航走不到 `didStartProvisionalNavigation`），随后 WebKit 报告它被中断——
+没有当成失败，所以结果页没有被错误页盖住，这部分是正确的。
+
+但它把标签页的状态留在了 `cancelled`，而结果页还在屏幕上。`needsPageFetch` 认为 `cancelled` 的标签页
+需要重新取页面，于是**切走再切回来会重新加载搜索结果**，用户丢失阅读位置。
+
+修的时候发现「屏幕上有没有文档」这个判断一直是错的：`WKWebView.url` 报告的是**正在进行的导航**，
+不是已显示的文档。实测：`/slow` 的导航被停止后，`/one` 还在屏幕上，而 `webView.url` 读出来是 `/slow`。
+`tab.url` 也不行——`TabManager.load` 在发出请求时就乐观地写了它。
+
+所以标签页新增 `committedUrl`，**只由 `didCommit` 写**（那是唯一意味着「文档到了」的事件）。
+判定改为看它。两个方向都有测试：有文档 → 不重新取；只有被停掉的那一次导航 → 重新取。
+
 ### 未证实的假设
 
 * 真实 60 秒网络超时：分类逻辑有单元测试，端到端没有验证（有界测试里放不下 60 秒）。
@@ -153,7 +199,7 @@ WebKit 把它报告为 `WebKitErrorFrameLoadInterruptedByPolicyChange`（102）�
 | `Vela/Services/Settings/SettingsService.swift` | 诊断开关单独一份文档（不往 `BrowserPreferences` 里加键，那份文档是整体解码的，加一个键会让所有既有安装的设置归零） |
 | `Vela/Core/Models/SearchEngineCatalog.swift` | 搜索词编码去掉 `%`，避免 `100%` 被送去当成 `100`，也避免重复编码 |
 | 书签 / 历史 / 主页的导航入口 | 统一改用 `openTab` |
-| `README.md`、`BUILD_WITHOUT_MAC.md` | 改掉关于 ATS 的错误说法；排障段落指向"设置 ▸ 加载诊断" |
+| `README.md`、`BUILD_WITHOUT_MAC.md`、`PORTING.md` | 改掉关于 ATS 和 UA 的错误说法；排障段落指向"设置 ▸ 加载诊断" |
 
 ---
 
@@ -164,7 +210,7 @@ CI 运行 `38864804210`（最后一次改动）——两次作业全绿：
 | 项 | 结果 |
 | --- | --- |
 | 构建（Release，`-sdk iphoneos`，未签名 IPA） | **通过**（`xcodebuild build`，2 分 17 秒） |
-| 单元 + 集成测试（iOS 模拟器） | **通过：163 个测试，0 失败**（`Executed 163 tests, with 0 failures (0 unexpected)`） |
+| 单元 + 集成测试（iOS 模拟器） | **通过：171 个测试，0 失败**（`Executed 171 tests, with 0 failures (0 unexpected)`） |
 | 导航端到端（本地服务器 + 真实 WKWebView） | **通过**，见下表 |
 | 公网 HTTPS 冒烟 | **通过** |
 | 公网明文 HTTP 冒烟 | **通过**：`http://example.com/ → state=finished status=200` |
@@ -241,10 +287,11 @@ cosmetic 规则隐藏广告位而不动正文、关闭拦截后广告位可见�
 在**有实际测试证据**的范围内：网页现在能打开，而且是端到端证实的——
 本地 HTTP 服务器上的真实 `WKWebView` 导航、以及公网 `https://www.example.com/`、
 `https://www.wikipedia.org/`、`https://duckduckgo.com/`、`http://example.com/` 和一次真实的 Bing 搜索，
-全部落到 `finished` 并带正确标题；163 个测试 0 失败；Release 构建通过并产出未签名 IPA。
+全部落到 `finished` 并带正确标题；171 个测试 0 失败；Release 构建通过并产出未签名 IPA。
 
 在这之前，"打不开"至少有四个独立原因：明文 HTTP 被 ATS 整体拦截、视图层自己发起加载导致失败即
-无限重试、失败没有任何界面、以及一条让 WebKit 拒绝整张规则表的 url-filter。
+无限重试、失败没有任何界面、以及一条让 WebKit 拒绝整张规则表的 url-filter。「版本太低」是第五个：
+浏览器自称 Safari 17。
 
 没有解决的：真机行为、真实网络超时的端到端、真实进程崩溃的自动恢复。
 
