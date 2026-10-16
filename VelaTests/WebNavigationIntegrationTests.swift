@@ -456,7 +456,8 @@ final class WebNavigationIntegrationTests: XCTestCase {
     // MARK: - Ad blocking
 
     func testTheShippedRulesDoNotPreventAPageFromLoading() async {
-        await harness.installShippedAdBlockRules()
+        let installed = await harness.installShippedAdBlockRules()
+        XCTAssertTrue(installed, "the shipped rules did not install: \(harness.adBlockCompileError ?? "no error reported")")
 
         let tab = harness.open(url("/ads"))
         await waitForSettled(tab, expectingTitle: "ads")
@@ -467,7 +468,8 @@ final class WebNavigationIntegrationTests: XCTestCase {
     }
 
     func testTheCosmeticRulesHideTheAdSlotAndNotTheContent() async {
-        await harness.installShippedAdBlockRules()
+        let installed = await harness.installShippedAdBlockRules()
+        XCTAssertTrue(installed, "the shipped rules did not install: \(harness.adBlockCompileError ?? "no error reported")")
 
         let tab = harness.open(url("/ads"))
         await waitForSettled(tab)

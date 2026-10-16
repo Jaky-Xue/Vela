@@ -212,31 +212,18 @@ final class LocalHTTPServer {
 
     /// A loopback port that nothing is listening on.
     ///
-    /// Found by binding a listener and cancelling it rather than by naming a
-    /// number: the number is then genuinely refused rather than merely assumed to
-    /// be closed, and a fixed low number turns out to be a poor choice anyway —
-    /// connecting to a privileged port from the simulator does not fail the way
-    /// an ordinary refused connection does.
+    /// Taken from a server that is started and then stopped, so the port is
+    /// genuinely free: a number picked by hand is only probably closed, and a low
+    /// privileged port turns out not to be refused the way an ordinary closed
+    /// port is.
     static func closedLoopbackPort() async throws -> UInt16 {
-        let listener = try NWListener(using: .tcp, on: .any)
-        let port: UInt16 = try await withCheckedThrowingContinuation { continuation in
-            var resumed = false
-            listener.stateUpdateHandler = { state in
-                guard !resumed else { return }
-                switch state {
-                case .ready:
-                    resumed = true
-                    continuation.resume(returning: listener.port?.rawValue ?? 0)
-                case let .failed(error):
-                    resumed = true
-                    continuation.resume(throwing: error)
-                default:
-                    break
-                }
-            }
-            listener.start(queue: DispatchQueue(label: "org.vela.tests.closed-port"))
-        }
-        listener.cancel()
+        let server = try LocalHTTPServer(routes: [:])
+        _ = try await server.start()
+        let port = server.port
+        server.stop()
+        // Give the socket a moment to be released, so the connection is refused
+        // rather than accepted by a socket that is on its way out.
+        try? await Task.sleep(nanoseconds: 100_000_000)
         return port
     }
 }
@@ -371,11 +358,12 @@ final class BrowserHarness {
 
     /// Compiles the shipped filter lists, which is what the app does at launch.
     ///
-    /// The outcome is asserted rather than swallowed. A compile that fails
-    /// quietly is exactly the failure this suite exists to catch — a browser with
-    /// no rules is one thing, but a browser that *believes* it has rules and has
-    /// none is how a page ends up blocked by nothing and diagnosed by no one.
-    func installShippedAdBlockRules(enabled: Bool = true) async {
+    /// Returns whether WebKit accepted them. The answer is returned rather than
+    /// asserted so that only the tests *about* ad blocking fail when it does not:
+    /// a smoke test asking whether the network works should not be reported as a
+    /// failure because a rule list did not compile.
+    @discardableResult
+    func installShippedAdBlockRules(enabled: Bool = true) async -> Bool {
         do {
             let compiled = try await adBlock.compile(
                 filterLists: AdBlockBuiltInRules.filterLists,
@@ -384,18 +372,21 @@ final class BrowserHarness {
                 includeCosmetic: true,
                 enabled: enabled
             )
-            if enabled {
-                XCTAssertGreaterThan(compiled.ruleCount, 0, "the shipped lists compiled to nothing")
-                XCTAssertFalse(compiled.cosmeticSelectors.isEmpty)
-                XCTAssertTrue(adBlock.isReady)
-                XCTAssertFalse(
-                    adBlock.attachedRuleLists().isEmpty,
-                    "the compiled list was not attached, so the next navigation would load without rules"
-                )
+            guard enabled else {
+                return !adBlock.isReady && adBlock.attachedRuleLists().isEmpty
             }
+            return compiled.ruleCount > 0
+                && !compiled.cosmeticSelectors.isEmpty
+                && adBlock.isReady
+                && !adBlock.attachedRuleLists().isEmpty
         } catch {
-            XCTFail("compiling the shipped rules failed: \(error)")
+            return false
         }
+    }
+
+    /// Why the last ad-block install did not produce a usable rule list.
+    var adBlockCompileError: String? {
+        adBlock.lastError
     }
 
     /// The navigation log for one tab, as text.
