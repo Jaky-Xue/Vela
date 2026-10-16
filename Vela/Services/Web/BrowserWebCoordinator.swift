@@ -1009,6 +1009,14 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
     /// The answer arrives after the fact, so it is applied only if the tab is
     /// still showing the navigation that asked: a page whose title was empty
     /// must not have it filled in by a page the user has already left.
+    ///
+    /// The ask is repeated, on a short leash. The reply is delivered by WebKit's
+    /// content process, and when that process is frozen or torn down mid
+    /// round-trip the reply is simply dropped — the `await` never resumes and
+    /// one lost message would strand the tab on its host name forever. Each ask
+    /// therefore runs as its own task, so a hung one blocks only its own
+    /// attempt, and a later ask — a fresh message over a fresh connection —
+    /// is what usually lands.
     @MainActor
     private func readTitleFromDocument(
         of webView: WKWebView,
@@ -1016,16 +1024,28 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         navigation: WKNavigation?
     ) {
         Task { @MainActor in
-            guard !self.isStale(navigation, in: webView),
-                  // Nothing is overwritten: if a title arrived by another route
-                  // in the meantime, that one wins.
-                  tab.title.isEmpty,
-                  let value = try? await webView.evaluateJavaScript("document.title"),
-                  let title = value as? String,
-                  !title.isEmpty,
-                  self.tab(for: webView) === tab,
-                  tab.loadState == .finished else { return }
-            self.apply(title: title, to: tab, in: webView)
+            for attempt in 1...4 {
+                guard !self.isStale(navigation, in: webView),
+                      // Nothing is overwritten: if a title arrived by another
+                      // route in the meantime, that one wins.
+                      tab.title.isEmpty,
+                      self.tab(for: webView) === tab,
+                      tab.loadState == .finished else { return }
+
+                Task { @MainActor in
+                    guard let value = try? await webView.evaluateJavaScript("document.title"),
+                          let title = value as? String,
+                          !title.isEmpty,
+                          self.tab(for: webView) === tab,
+                          tab.title.isEmpty,
+                          tab.loadState == .finished else { return }
+                    self.apply(title: title, to: tab, in: webView)
+                }
+
+                if attempt < 4 {
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                }
+            }
         }
     }
 
