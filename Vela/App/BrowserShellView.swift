@@ -890,7 +890,8 @@ struct BrowserShellView: View {
         // it means where the user came from — and the home surface last of
         // all.
         if !env.webCoordinator.goBack() {
-            if let openerId = tab.openerTabId, !openerId.isEmpty,
+            let openerId = tab.openerTabId
+            if !openerId.isEmpty,
                tabManager.tabs.contains(where: { $0.id == openerId }) {
                 tabManager.activateTab(id: openerId)
                 return
