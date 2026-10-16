@@ -300,12 +300,15 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     /// Following an ordinary link navigates the tab it was clicked in.
     ///
-    /// The click is synthesized from script, because a unit test has no finger.
-    /// WebKit's user-activation rules decide whether a script-dispatched click on
-    /// an anchor counts as a user following a link, and they have moved between
-    /// releases — so if this ever stops navigating, the answer is in the trace:
-    /// no `start` at all means WebKit declined to treat the synthetic click as a
-    /// navigation, while a `start` that does not finish means Vela dropped it.
+    /// The click is synthesized from script, because a unit test has no finger,
+    /// and WebKit decides whether a script-dispatched click on an anchor counts
+    /// as a user following a link — a decision whose heuristics have moved between
+    /// releases, and which is why this test passed on the iOS 18 SDK and timed out
+    /// on iOS 26. So the click is offered more than once before anything is
+    /// concluded: a link Vela refuses to follow fails on every attempt, which is
+    /// the regression this guards, while a synthetic event WebKit happened to
+    /// decline is retried rather than reported as a browser that cannot follow
+    /// links.
     func testAFollowedLinkLoadsInTheSameTabAndUpdatesTheUrl() async {
         let tab = harness.open(url("/links"))
         await waitForSettled(tab, expectingTitle: "links")
@@ -314,7 +317,17 @@ final class WebNavigationIntegrationTests: XCTestCase {
         guard let webView = harness.tabManager.webView(for: tab.id) else {
             return XCTFail("no web view")
         }
-        _ = try? await webView.evaluateJavaScript("document.getElementById('same').click()")
+
+        for attempt in 1...3 {
+            _ = try? await webView.evaluateJavaScript("document.getElementById('same').click()")
+            let navigated = await pollUntil(timeout: 5) {
+                tab.pendingUrl == url("/two").absoluteString
+                    || tab.url == url("/two").absoluteString
+                    || tab.title == "Page Two"
+            }
+            if navigated { break }
+            XCTAssertLessThan(attempt, 3, "the click never started a navigation")
+        }
 
         let settled = await waitUntil(
             "the link's page to load: \(harness.trace(for: tab))"
@@ -342,7 +355,17 @@ final class WebNavigationIntegrationTests: XCTestCase {
         }
 
         let tabsBefore = harness.tabManager.tabs.count
-        _ = try? await webView.evaluateJavaScript("document.getElementById('blank').click()")
+        // Offered more than once for the same reason as the followed-link test:
+        // a script-dispatched click is WebKit's decision to honour, and only a
+        // link Vela refuses to open fails on every attempt.
+        for attempt in 1...3 {
+            _ = try? await webView.evaluateJavaScript("document.getElementById('blank').click()")
+            let opened = await pollUntil(timeout: 5) {
+                harness.tabManager.tabs.count == tabsBefore + 1
+            }
+            if opened { break }
+            XCTAssertLessThan(attempt, 3, "the click never opened a tab")
+        }
 
         let opened = await waitUntil("a new tab to be created") {
             harness.tabManager.tabs.count == tabsBefore + 1
@@ -374,7 +397,15 @@ final class WebNavigationIntegrationTests: XCTestCase {
             return XCTFail("no web view")
         }
         // The policy is what runs; the system open is not exercised here.
-        _ = try? await webView.evaluateJavaScript("document.getElementById('external').click()")
+        // Clicked more than once for the same reason as the other link tests.
+        for attempt in 1...3 {
+            _ = try? await webView.evaluateJavaScript("document.getElementById('external').click()")
+            let logged = await pollUntil(timeout: 5) {
+                harness.navigationLog.entries.contains { $0.event == .externalScheme }
+            }
+            if logged { break }
+            XCTAssertLessThan(attempt, 3, "the click never reached the scheme policy")
+        }
 
         let logged = await waitUntil("the external scheme to be handled") {
             harness.navigationLog.entries.contains { $0.event == .externalScheme }

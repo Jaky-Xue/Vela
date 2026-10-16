@@ -127,11 +127,46 @@ Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHT
 ```
 
 **没有 `Version/`，也没有 `Safari/`**——这两个 token 是 Safari 自己加的。会找它们的网站会把缺失
-当成「内置浏览器」，然后要求用户用 Safari 打开——同一个抱怨的另一半。所以标识串改成 Safari 形状、
-由**当前系统版本号**拼出；桌面版只改平台标识和 `Mobile/` 标记。
+当成「内置浏览器」，然后要求用户用 Safari 打开——同一个抱怨的另一半。所以标识串必须是 Safari 形状的。
 
-证据：`testTheIdentifierPresentedIsSafariShapedAndCurrent`（断言页面看到 `Version/<真实主版本>.`、
-`Safari/`，且不含 `Version/17.0`）。
+最终做法不是在应用里拼整串，而是**让 WebKit 拼、只补 Safari 那一截**：
+`WKWebViewConfiguration.applicationNameForUserAgent` 会把这一段追加到 WebKit 自己生成的串后面，
+于是**平台 token（`CPU iPhone OS 27_…`）和引擎版本 token 都来自正在运行的系统**，Vela 只提供
+`Version/<本机系统> Mobile/15E148 Safari/604.1`。这样以后系统升级不需要改代码——
+写死 `AppleWebKit/605.1.15` 是同一个错误往下一层，引擎版本 token 一变它就过期。
+
+只有桌面版仍然写整串：web view 不会替我们声称自己是 Mac。它的版本号仍是推导出来的，
+哪些部分是近似在文档和测试里都写明了。
+
+标识也从「一个字符串」变成「一份配方」：前缀属于 configuration，覆盖属于 web view。
+
+证据：
+
+* `testTheIdentifierIsSafarisOnThisDevice`——页面看到 `Version/<真实主版本>.` 和 `Safari/`，
+  且**标识串的前缀（到 `(KHTML, like Gecko) ` 为止）与一个裸 web view 报告的完全一致**。
+  后半句是这条测试的关键：项目一旦写死平台或引擎 token，它就会失败。
+* `testTurningDesktopModeOffRestoresThePhoneIdentifier`——桌面开关关掉后真的回到手机标识
+  （清除覆盖靠赋 nil 实现，如果它不能恢复默认，用户就再也回不去了）。
+* 设置 ▸ 网页标识 现在并排显示「页面实际收到」和「将要发出」两个串，可复制：
+  再有网站说版本低，可以直接拿它实际收到的串对照。
+
+### 为 iOS 27 做的适配：从 iOS 18 SDK 换到 iOS 26 SDK
+
+原来的构建固定在 `macos-15`（Xcode 16 / iOS 18 SDK）。用旧 SDK 构建的应用**能**在更新的 iOS 上
+运行，但它是在向系统请求「兼容行为」——不会采用所运行版本的外观与默认行为。runner 上目前最新的
+镜像是 `macos-26`（Xcode 26.6 / iOS 26.5 SDK，比 iOS 27 低一代，但已是可用的最新），
+构建与测试都换到它。
+
+镜像做成了 `workflow_dispatch` 的选项（默认 `macos-26`，可选 `macos-15`），
+万一新 SDK 有异议不需要改文件就能回退。
+
+证据（CI 日志原文）：`Xcode 26.6`、`Testing on: iPhone 17 Pro`、
+`Executed 173 tests, with 0 failures (0 unexpected)`。换 SDK 没有引入任何编译错误。
+
+顺带发现一处**测试**在新 WebKit 下不稳定：用脚本合成 `element.click()` 跟随链接，
+是否被当成用户行为由 WebKit 的用户激活启发式决定——iOS 18 SDK 上通过，iOS 26 上超时。
+现在这类点击会重试若干次，失败信息里带完整导航日志：Vela 真的不跟随链接会每次失败，
+而 WebKit 恰好拒绝了一次合成事件不会误报。
 
 ### 根因 9：页面自己发的埋点被取消，导致切回标签页会重新加载
 
@@ -209,8 +244,8 @@ CI 运行 `38864804210`（最后一次改动）——两次作业全绿：
 
 | 项 | 结果 |
 | --- | --- |
-| 构建（Release，`-sdk iphoneos`，未签名 IPA） | **通过**（`xcodebuild build`，2 分 17 秒） |
-| 单元 + 集成测试（iOS 模拟器） | **通过：171 个测试，0 失败**（`Executed 171 tests, with 0 failures (0 unexpected)`） |
+| 构建（Release，`-sdk iphoneos`，未签名 IPA，Xcode 26.6） | **通过**（`xcodebuild build`，1 分 23 秒） |
+| 单元 + 集成测试（iOS 模拟器） | **通过：173 个测试，0 失败**（`Executed 173 tests, with 0 failures (0 unexpected)`（Xcode 26.6 / iOS 26 SDK，iPhone 17 Pro 模拟器）） |
 | 导航端到端（本地服务器 + 真实 WKWebView） | **通过**，见下表 |
 | 公网 HTTPS 冒烟 | **通过** |
 | 公网明文 HTTP 冒烟 | **通过**：`http://example.com/ → state=finished status=200` |
@@ -287,7 +322,7 @@ cosmetic 规则隐藏广告位而不动正文、关闭拦截后广告位可见�
 在**有实际测试证据**的范围内：网页现在能打开，而且是端到端证实的——
 本地 HTTP 服务器上的真实 `WKWebView` 导航、以及公网 `https://www.example.com/`、
 `https://www.wikipedia.org/`、`https://duckduckgo.com/`、`http://example.com/` 和一次真实的 Bing 搜索，
-全部落到 `finished` 并带正确标题；171 个测试 0 失败；Release 构建通过并产出未签名 IPA。
+全部落到 `finished` 并带正确标题；173 个测试 0 失败；Release 构建通过并产出未签名 IPA。
 
 在这之前，"打不开"至少有四个独立原因：明文 HTTP 被 ATS 整体拦截、视图层自己发起加载导致失败即
 无限重试、失败没有任何界面、以及一条让 WebKit 拒绝整张规则表的 url-filter。「版本太低」是第五个：

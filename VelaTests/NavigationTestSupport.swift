@@ -409,6 +409,21 @@ final class BrowserHarness {
 
 // MARK: - Waiting
 
+/// Waits for a bounded time for a condition, without failing when it does not
+/// arrive.
+///
+/// For the questions that are being *asked* rather than asserted — a retry loop,
+/// or a wait whose timeout means "no" rather than "broken".
+@MainActor
+func pollUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if condition() { return true }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+    }
+    return condition()
+}
+
 /// Waits for a bounded time for a condition the main actor will make true.
 ///
 /// Polling rather than a fixed sleep: a sleep long enough to cover the slowest
@@ -423,13 +438,11 @@ func waitUntil(
     line: UInt = #line,
     _ condition: () -> Bool
 ) async -> Bool {
-    let deadline = Date().addingTimeInterval(timeout)
-    while Date() < deadline {
-        if condition() { return true }
-        try? await Task.sleep(nanoseconds: 20_000_000)
+    let arrived = await pollUntil(timeout: timeout, condition)
+    if !arrived {
+        XCTFail("timed out after \(timeout)s waiting for: \(description)", file: file, line: line)
     }
-    XCTFail("timed out after \(timeout)s waiting for: \(description)", file: file, line: line)
-    return false
+    return arrived
 }
 
 /// Waits for a tab's navigation to settle — finished, failed or crashed — and,
