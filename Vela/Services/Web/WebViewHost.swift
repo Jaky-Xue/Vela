@@ -43,6 +43,14 @@ struct WebViewHost: UIViewRepresentable {
     /// The web view to display. May change between updates when a tab is
     /// discarded and rebuilt.
     let webView: WKWebView
+    /// The top content inset: the height of the chrome the page scrolls under.
+    ///
+    /// Set on the scroll view rather than by shrinking the web view's frame,
+    /// because the page has to extend *under* the glass for the blur to have
+    /// something to refract — the same arrangement Safari uses. The inset stays
+    /// fixed while the chrome hides, so the page does not jump under the user's
+    /// finger; hiding the bar simply reveals more of the document.
+    let topContentInset: CGFloat
     /// Reports scroll offset changes so the toolbar can react without a message
     /// round-trip on every frame.
     let onScroll: ((Double) -> Void)?
@@ -66,6 +74,12 @@ struct WebViewHost: UIViewRepresentable {
             context.coordinator.observe(webView: webView, onScroll: onScroll, onProgress: onProgress)
         }
         container.attach(webView)
+
+        let scrollView = webView.scrollView
+        if scrollView.contentInset.top != topContentInset {
+            scrollView.contentInset.top = topContentInset
+            scrollView.verticalScrollIndicatorInsets.top = topContentInset
+        }
     }
 
     static func dismantleUIView(_ container: WebViewContainerView, coordinator: Coordinator) {
@@ -97,7 +111,12 @@ struct WebViewHost: UIViewRepresentable {
 
             if let onScroll {
                 offsetObservation = webView.scrollView.observe(\.contentOffset, options: [.new]) { scrollView, _ in
-                    let offset = Double(scrollView.contentOffset.y)
+                    // Normalised against the top inset, so the number the shell
+                    // sees is the distance from the document's own top rather
+                    // than the raw offset — which starts at minus the inset,
+                    // since the scroll view rests there when the page is at
+                    // its top.
+                    let offset = Double(scrollView.contentOffset.y + scrollView.contentInset.top)
                     // WebKit reports the offset on the main thread; the hop makes
                     // that explicit for the SwiftUI state write it triggers.
                     Task { @MainActor in
@@ -159,9 +178,19 @@ final class WebViewContainerView: UIView {
     }
 
     /// Removes the web view from the hierarchy without releasing it.
+    ///
+    /// The removal is guarded on the web view still being *this* container's
+    /// subview, because the ordering of SwiftUI teardown is not guaranteed: a
+    /// tab switch builds the new host — which attaches the same pooled web view,
+    /// moving it out of this one — before the old representable is dismantled.
+    /// Removing unconditionally there would detach the web view from the host
+    /// that just claimed it, and the tab would go blank until the next update
+    /// pass happened to re-attach it.
     func detachWebView() {
         guard let webView = attachedWebView else { return }
-        webView.removeFromSuperview()
         attachedWebView = nil
+        if webView.superview === self {
+            webView.removeFromSuperview()
+        }
     }
 }

@@ -44,7 +44,7 @@ struct NewTabHomeView: View {
     /// Loaded, but not shown until asked for.
     private static let shortcutFetchLimit = 16
 
-    private let columns = [GridItem(.adaptive(minimum: 72, maximum: 96), spacing: BrowserSpacing.regular)]
+    private let columns = [GridItem(.adaptive(minimum: 78, maximum: 104), spacing: BrowserSpacing.compact)]
 
     var body: some View {
         ScrollView {
@@ -55,7 +55,7 @@ struct NewTabHomeView: View {
                 footer
             }
             .padding(.horizontal, BrowserSpacing.regular + 4)
-            .padding(.top, BrowserSpacing.loose)
+            .padding(.top, BrowserSpacing.regular)
             .padding(.bottom, BrowserSpacing.loose)
         }
         .background(palette.surface)
@@ -148,8 +148,7 @@ struct NewTabHomeView: View {
             onNavigate(url)
         } label: {
             VStack(spacing: BrowserSpacing.tight) {
-                SiteIconView(host: entry.host, size: 52)
-                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                SiteIconView(host: entry.host, size: 42)
                 Text(entry.displayHost)
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(palette.secondaryText)
@@ -157,7 +156,26 @@ struct NewTabHomeView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, BrowserSpacing.compact)
-            .contentShape(Rectangle())
+            .padding(.horizontal, BrowserSpacing.tight)
+            .background(
+                RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                    .fill(palette.card.opacity(0.55))
+            )
+            .overlay {
+                // A top-edge catch of light, the same treatment the chrome
+                // uses, so the tiles belong to the same material family.
+                RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(0.35), .white.opacity(0.04)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.5
+                    )
+                    .allowsHitTesting(false)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
         }
         .buttonStyle(ShortcutTileButtonStyle())
         .contextMenu {

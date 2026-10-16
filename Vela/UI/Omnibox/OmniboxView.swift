@@ -57,8 +57,8 @@ struct OmniboxView: View {
 
             trailingAction
         }
-        .padding(.horizontal, BrowserSpacing.compact + 2)
-        .frame(height: BrowserMetrics.addressBarHeight)
+        .padding(.horizontal, BrowserSpacing.compact)
+        .frame(height: BrowserChrome.barHeight)
         .background {
             // The progress line is painted inside the panel rather than over it,
             // so its ends follow the capsule's corner instead of hanging past it.
@@ -71,11 +71,9 @@ struct OmniboxView: View {
                 )
             }
         }
-        // Floating rather than being a strip of the top bar: the omnibox is the
-        // control the whole chrome is arranged around, and giving it its own
-        // silhouette is what makes that read at a glance. The tint under the
-        // material is heavier here than on the toolbar because a URL has to stay
-        // legible over whatever the page behind it happens to be.
+        // The omnibox pill inside the command bar. The tint under the material
+        // is heavier here than on the flanking buttons because a URL has to
+        // stay legible over whatever the page behind it happens to be.
         .browserFloatingChrome(
             radius: BrowserRadius.omnibox,
             material: .regularMaterial,
@@ -136,7 +134,7 @@ struct OmniboxView: View {
                     .accessibilityHint("打开地址栏以输入网址或搜索")
             }
         }
-        .frame(height: BrowserMetrics.addressBarHeight - 12)
+        .frame(height: BrowserChrome.barHeight - 14)
     }
 
     // MARK: - Accessories
@@ -150,9 +148,9 @@ struct OmniboxView: View {
     /// the field between them reads as the middle of three parts.
     private var securityBadge: some View {
         Image(systemName: securitySymbol)
-            .font(.system(size: 11, weight: .bold))
+            .font(.system(size: 10, weight: .bold))
             .foregroundStyle(securityTint)
-            .frame(width: 26, height: 26)
+            .frame(width: 24, height: 24)
             .background(securityTint.opacity(0.14), in: Circle())
             .accessibilityHidden(true)
     }

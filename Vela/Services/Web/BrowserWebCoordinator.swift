@@ -260,6 +260,7 @@ public final class BrowserWebCoordinator: NSObject {
             // A script notification is surfaced through the app's own banner
             // rather than a page-level alert, so a script cannot block the page.
             if let text = payload["text"] as? String {
+                retirePendingDialog()
                 overlays.javascriptDialog = JavaScriptDialog(
                     kind: .alert,
                     message: text,
@@ -626,14 +627,27 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         //    which the failure path has to recognise as deliberate rather than
         //    as the current page failing — see
         //    `TabNavigationFailure.isCancellation`.
+        //
+        //    The tab itself is opened *after* the callback returns. Building a
+        //    web view synchronously inside WebKit's own policy callback is
+        //    reentrant — the callback is on the stack of the web view the new
+        //    one is being created beside — and on a tap of a `target="_blank"`
+        //    link, which is most links on the web, that reentrancy is the
+        //    difference between a new tab and a dead process.
         if navigationAction.targetFrame == nil {
-            tabManager?.openTab(
-                url: url,
-                privacyMode: tab.privacyMode,
-                openerTabId: tab.id,
-                openSource: .webTargetBlank,
-                activate: !settings.preferences.openNewTabsInBackground
-            )
+            let url = url
+            let sourceTabId = tab.id
+            let privacyMode = tab.privacyMode
+            let activate = !settings.preferences.openNewTabsInBackground
+            Task { @MainActor in
+                tabManager?.openTab(
+                    url: url,
+                    privacyMode: privacyMode,
+                    openerTabId: sourceTabId,
+                    openSource: .webTargetBlank,
+                    activate: activate
+                )
+            }
             log(
                 tab: tab,
                 event: .newTab,
@@ -1316,6 +1330,7 @@ extension BrowserWebCoordinator: WKUIDelegate {
         completionHandler: @escaping () -> Void
     ) {
         Task { @MainActor in
+            retirePendingDialog()
             self.overlays.javascriptDialog = JavaScriptDialog(
                 kind: .alert,
                 message: message,
@@ -1337,6 +1352,7 @@ extension BrowserWebCoordinator: WKUIDelegate {
         completionHandler: @escaping (Bool) -> Void
     ) {
         Task { @MainActor in
+            retirePendingDialog()
             self.overlays.javascriptDialog = JavaScriptDialog(
                 kind: .confirm,
                 message: message,
@@ -1356,6 +1372,7 @@ extension BrowserWebCoordinator: WKUIDelegate {
         completionHandler: @escaping (String?) -> Void
     ) {
         Task { @MainActor in
+            retirePendingDialog()
             self.overlays.javascriptDialog = JavaScriptDialog(
                 kind: .prompt,
                 message: prompt,
@@ -1365,6 +1382,19 @@ extension BrowserWebCoordinator: WKUIDelegate {
             )
             self.overlays.javascriptPromptCompletion = completionHandler
         }
+    }
+
+    /// Answers any dialog already showing before a new one takes its place.
+    ///
+    /// WebKit blocks the page on these completion handlers, and one that is
+    /// silently dropped never unblocks it. A page that raises a second dialog
+    /// while the first is still on screen — a script firing `alert()` in a
+    /// loop, say — would otherwise strand the first handler forever; resolving
+    /// it as a cancellation is the only outcome that keeps the page moving.
+    @MainActor
+    private func retirePendingDialog() {
+        guard overlays.javascriptDialog != nil else { return }
+        resolveJavaScriptDialog(confirmed: false, text: nil)
     }
 
     /// Media capture permission.
@@ -1475,6 +1505,18 @@ extension BrowserWebCoordinator {
             overlays.javascriptPromptCompletion = nil
         }
     }
+
+    /// Resolves the pending file upload.
+    ///
+    /// WebKit blocks the page until the completion handler runs, so a dismissal
+    /// by any route — the picker's cancel button, a swipe — still has to call
+    /// it, with `nil` for "user cancelled". Never calling it hangs the page on
+    /// a question nobody can answer.
+    public func resolveFileUpload(_ urls: [URL]?) {
+        guard let request = overlays.fileUpload else { return }
+        defer { overlays.fileUpload = nil }
+        request.completionHandler(urls)
+    }
 }
 
 // MARK: - Script message bridge
@@ -1494,8 +1536,20 @@ private final class MessageBridge: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let webView = message.webView else { return }
-        MainActor.assumeIsolated {
-            coordinator?.handle(message: message, from: webView)
+        // Script delivery is documented main-thread, and `assumeIsolated`
+        // exploits that for strict-concurrency correctness — but it traps the
+        // process the moment the assumption breaks. Routing the off-main case
+        // through a hop instead costs one Task on a path that never happens,
+        // and turns a would-be crash into a slightly late message.
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                coordinator?.handle(message: message, from: webView)
+            }
+        } else {
+            let webView = webView
+            Task { @MainActor in
+                coordinator?.handle(message: message, from: webView)
+            }
         }
     }
 }

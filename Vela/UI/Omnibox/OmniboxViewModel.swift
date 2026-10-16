@@ -444,12 +444,6 @@ public final class OmniboxViewModel {
         } else {
             collapsedSections.insert(section)
         }
-        // The toggle is recorded as explicit so the "first three with content"
-        // rule stops overriding it from the next keystroke onwards.
-        var toggled = explicitlyToggledSections
-        toggled.insert(section.rawValue)
-        explicitlyToggledSections = toggled
-
         persistCollapsedSections()
         rebuildVisibleSuggestions()
     }
@@ -538,53 +532,15 @@ public final class OmniboxViewModel {
 
         let privacyMode = tabManager.activeTab?.privacyMode ?? .regular
         groups = engine.groups(for: input, privacyMode: privacyMode)
-        applyDefaultCollapseState()
         rebuildVisibleSuggestions()
-    }
-
-    /// Collapses every section beyond the first three that have content.
-    ///
-    /// The rule the user asked for, and the one that keeps a busy profile's
-    /// omnibox from opening as a page of undifferentiated rows. A section the
-    /// user has explicitly toggled keeps their choice: the store wins over the
-    /// default, always, or the toggle would undo itself on the next keystroke.
-    private func applyDefaultCollapseState() {
-        var resolved = collapsedSections
-        let populated = groups.map(\.section)
-
-        // The direct-access row is never hidden: it is the row that shows the
-        // user what their input resolves to.
-        for section in collapsedSections where section.isPinnedOpen {
-            resolved.remove(section)
-        }
-
-        let defaultExpanded = Set(populated.prefix(3))
-        for section in populated where !explicitlyToggledSections.contains(section.rawValue) {
-            if defaultExpanded.contains(section) || section.isPinnedOpen {
-                resolved.remove(section)
-            } else {
-                resolved.insert(section)
-            }
-        }
-
-        // Published properties fire on every assignment, so the set is only
-        // written when it actually changed: this runs on each keystroke, and an
-        // unconditional write would redraw the card for nothing.
-        if collapsedSections != resolved {
-            collapsedSections = resolved
-        }
     }
 
     // MARK: - Collapse persistence
 
-    /// The sections the user has toggled by hand, as opposed to the ones the
-    /// "first three" rule decided. Stored as the set of explicitly-toggled
-    /// section ids; the value of each is read back from `collapsedSections`.
-    private var explicitlyToggledSections: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: Self.collapseKey + "-explicit") ?? []) }
-        set { UserDefaults.standard.set(Array(newValue), forKey: Self.collapseKey + "-explicit") }
-    }
-
+    /// The sections the user has folded away by hand. Nothing is collapsed by
+    /// default: every source the engine found rows for is shown, because a
+    /// suggestion the user cannot see is indistinguishable from one that does
+    /// not exist.
     private func persistCollapsedSections() {
         UserDefaults.standard.set(
             collapsedSections.map(\.rawValue).sorted(),

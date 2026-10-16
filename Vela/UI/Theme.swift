@@ -281,34 +281,23 @@ struct BrowserPalette: Equatable, Identifiable, Sendable {
 
 /// Layout metrics shared by the chrome.
 enum BrowserMetrics {
-    /// The bottom address panel, which is the primary chrome on a phone.
-    static let addressBarHeight: CGFloat = 46
-    static let toolbarHeight: CGFloat = 48
     /// The widest a centred dialog grows.
     static let dialogMaxWidth: CGFloat = 420
     /// The tab strip's cell size on a large screen.
     static let tabStripItemWidth: CGFloat = 200
     static let tabStripItemHeight: CGFloat = 34
-    /// How far the toolbar slides away when the page scrolls down.
-    ///
-    /// Generously past the panel's own height plus any bottom safe area rather
-    /// than measured exactly. The bar sits against the bottom edge, so
-    /// overshooting by a few points moves it further off-screen and changes
-    /// nothing, while undershooting leaves a strip of chrome material parked at
-    /// the bottom of the page — which is the failure the exact value is most
-    /// likely to produce, because the safe-area inset is not known here.
-    static let toolbarCollapseDistance: CGFloat = 200
 
     // Omnibox. These are the suggestion card's own metrics.
-    static let omniboxRowHeight: CGFloat = 52
+    static let omniboxRowHeight: CGFloat = 54
     static let omniboxHeaderHeight: CGFloat = 34
-    /// The tallest the suggestion card may grow before it scrolls internally.
-    /// Expressed as a fraction of the screen so a short list on a tall screen
-    /// does not open a card with a lake of empty material in it.
-    static let omniboxCardHeightFraction: CGFloat = 0.55
+    /// The tallest the suggestion card may grow before it scrolls internally,
+    /// expressed as a fraction of the space between the chrome and the keyboard
+    /// so a short list on a tall screen does not open a card with a lake of
+    /// empty material in it.
+    static let omniboxCardHeightFraction: CGFloat = 0.62
     /// A hard ceiling for the same card, so an iPad in landscape does not get a
     /// suggestion list taller than the page it is covering.
-    static let omniboxCardMaxHeight: CGFloat = 460
+    static let omniboxCardMaxHeight: CGFloat = 620
 
     /// The loading line drawn on the address bar's bottom edge.
     static let progressLineHeight: CGFloat = 2
@@ -346,14 +335,19 @@ enum BrowserSpacing {
 /// chrome and the screen edge, and they answer to the hardware's corner radius
 /// rather than to the spacing rhythm inside the panels.
 enum BrowserChrome {
-    /// How far the omnibox and the toolbar panel sit from the side edges.
+    /// How far the chrome sits from the side edges.
     static let sideInset: CGFloat = 12
-    /// How far the toolbar panel sits above the bottom safe area.
-    static let bottomInset: CGFloat = 8
-    /// How far the omnibox sits below the top safe area.
-    static let topInset: CGFloat = 6
-    /// The gap between the toolbar's glyphs and the panel's own edge.
-    static let panelPadding: CGFloat = 4
+    /// How far the command bar sits below the safe area.
+    static let topInset: CGFloat = 4
+    /// The gap between the command bar and the page below it.
+    static let barGap: CGFloat = 8
+    /// The command bar's own height.
+    static let barHeight: CGFloat = 44
+    /// The chrome's total height measured below the status bar, from the top of
+    /// the safe area to where the page begins. This is the number the web
+    /// view's top content inset is set to, and the number every surface that
+    /// sits under the chrome is padded by.
+    static let topChromeHeight: CGFloat = topInset + barHeight + barGap
 }
 
 /// Elevation. On iOS this is a shadow plus a hairline stroke; the stroke is
@@ -475,34 +469,60 @@ extension View {
 // MARK: - Floating chrome
 
 /// The treatment for a control that floats above the page rather than being a
-/// strip of the screen: the omnibox, the toolbar panel.
+/// strip of the screen: the omnibox, the top command bar, the find bar.
 ///
-/// Two things separate this from `browserCard`. The fill is a *tint under a
-/// material* selected for chrome rather than for content, so a panel over a
-/// photograph keeps its own tone instead of taking on the photograph's; and the
-/// stroke is drawn inside the shape, so the panel's silhouette stays crisp
-/// against a busy page without the border growing the view by a point.
+/// On iOS 26 the fill is the system's own Liquid Glass — `glassEffect` — which
+/// refracts the page scrolling underneath it the way the rest of the system
+/// does. Earlier SDKs cannot express that call at all, so the same modifier
+/// carries a hand-built fallback: a tint under a blur material. The luminous
+/// sheen is layered on top in both paths, because the light-play is what makes
+/// the chrome read as one material family whether or not the system supplies
+/// the refraction.
 struct BrowserFloatingChrome: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.browserPalette) private var palette
 
     var radius: CGFloat
     var material: Material
-    /// How strongly the palette's control fill sits under the material. A higher
-    /// value makes the panel more opaque and more clearly a surface of its own;
-    /// the omnibox wants more of it than the toolbar, because text has to be
-    /// legible on top of it.
+    /// How strongly the palette's control fill sits under the fallback material.
+    /// Unused on the iOS 26 path, where the system glass supplies its own body.
     var tintStrength: Double
     var elevation: BrowserElevation
+    /// Whether the glass responds to touch with the system's own highlight.
+    var interactive: Bool
 
-    @ViewBuilder
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(
+                    interactive ? Glass.regular.interactive() : Glass.regular,
+                    in: shape
+                )
+                .luminousSheen(shape: shape)
+                .shadow(
+                    color: elevation.shadowColor(for: colorScheme),
+                    radius: elevation.radius,
+                    y: elevation.y
+                )
+        } else {
+            legacySurface(content, shape: shape)
+        }
+        #else
+        legacySurface(content, shape: shape)
+        #endif
+    }
+
+    /// The pre-iOS-26 surface: tint under a blur, hairline stroke, shadow.
+    @ViewBuilder
+    private func legacySurface(_ content: Content, shape: RoundedRectangle) -> some View {
         content
             .background {
                 shape.fill(palette.controlFill.opacity(tintStrength))
                 shape.fill(material)
             }
+            .luminousSheen(shape: shape)
             .overlay(shape.strokeBorder(palette.cardStroke, lineWidth: 0.5))
             .clipShape(shape)
             .shadow(
@@ -519,31 +539,57 @@ extension View {
         radius: CGFloat = BrowserRadius.floating,
         material: Material = .regularMaterial,
         tintStrength: Double = 0.5,
-        elevation: BrowserElevation = .floating
+        elevation: BrowserElevation = .floating,
+        interactive: Bool = true
     ) -> some View {
         modifier(
             BrowserFloatingChrome(
                 radius: radius,
                 material: material,
                 tintStrength: tintStrength,
-                elevation: elevation
+                elevation: elevation,
+                interactive: interactive
             )
         )
     }
 
-    /// Paints the strip of chrome material the floating controls sit on.
+    /// A light-play pass over a glass surface — the 光感 layer.
     ///
-    /// The material reaches past the safe area on `edge` so the status bar and
-    /// the home indicator keep their contrast without the controls themselves
-    /// moving out of the layout — which is what lets the omnibox be inset from
-    /// the top while the blur behind it still starts at the very top of the
-    /// screen.
-    func browserChromeSubstrate(edge: Edge.Set) -> some View {
-        background {
-            Rectangle()
-                .fill(.bar)
-                .ignoresSafeArea(edges: edge)
+    /// A cool highlight sweeps down from the upper edge and a hairline rim
+    /// catches the light along the top. Drawn with `plusLighter`, so in dark
+    /// mode it reads as a glow and in light mode as a sheen; either way it is
+    /// the same overlay on every chrome surface, which is what makes the
+    /// omnibox, the command bar and the cards read as one material.
+    @ViewBuilder
+    func luminousSheen(shape: RoundedRectangle) -> some View {
+        overlay {
+            shape
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white.opacity(0.24), location: 0),
+                            .init(color: .white.opacity(0.05), location: 0.4),
+                            .init(color: .clear, location: 0.72)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .blendMode(.plusLighter)
         }
+        .overlay {
+            shape
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.42), .white.opacity(0.04)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+                .blendMode(.plusLighter)
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -649,10 +695,21 @@ struct SiteIconView: View {
 
     private var placeholder: some View {
         ZStack {
-            color
+            LinearGradient(
+                colors: [color.opacity(0.82), color],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
             Text(initial)
-                .font(.system(size: size * 0.5, weight: .semibold))
+                .font(.system(size: size * 0.46, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.22), radius: 1, y: 1)
+        }
+        .overlay {
+            // A rim that catches the light keeps the swatch from reading as a
+            // flat block of colour against a white card.
+            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+                .strokeBorder(.white.opacity(0.22), lineWidth: 0.5)
         }
     }
 
