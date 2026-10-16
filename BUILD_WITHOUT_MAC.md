@@ -29,9 +29,18 @@ GitHub Actions 的 macOS 机器        →   编译出未签名的 IPA
    ```
 
 2. 打开仓库的 **Actions** 标签页 → 左侧选 **Build unsigned IPA** → 右侧 **Run workflow**
-3. 等 5～10 分钟，构建完成后在这一次运行的页面底部下载 **Vela-unsigned-ipa** 这个 artifact，解压得到 `Vela-unsigned.ipa`
+3. 等 8～15 分钟，构建完成后在这一次运行的页面底部下载 **Vela-unsigned-ipa** 这个 artifact，解压得到 `Vela-unsigned.ipa`
 
-> **免费额度**：公开仓库的 macOS runner 完全免费。私有仓库用免费账户的 2000 分钟/月，但 macOS 按 **10 倍** 计费——也就是一次 6 分钟的构建吃掉 60 分钟额度，一个月大约能跑 33 次。够个人用，但别没事就点。
+   这一次运行会有**两个** job，结果是独立的，要分开看：
+
+   | Job | 做什么 | 失败了意味着 |
+   |---|---|---|
+   | **Build Vela** | 编译 Release 并打包 IPA | 代码编译不过，`build-logs` artifact 里有日志；没有 IPA |
+   | **Run the unit tests** | 在 iOS 模拟器上跑单元测试 | 代码编译通过但行为不对；**IPA 仍然有效**，可以正常下载安装 |
+
+   两者分开是有意的：单元测试是整个流程里唯一需要模拟器的一环，也是最容易因为 GitHub 换了 runner 镜像而挂掉的一环。把它设成独立的 job，模拟器出问题就不会连带让你拿不到 IPA。
+
+> **免费额度**：公开仓库的 macOS runner 完全免费。私有仓库用免费账户的 2000 分钟/月，但 macOS 按 **10 倍** 计费——也就是一次 6 分钟的构建吃掉 60 分钟额度，一个月大约能跑 33 次。够个人用，但别没事就点。加了单元测试那一环之后，一次运行大约 12 分钟。
 
 工作流里 `runs-on: macos-15` 是有意选的：工程用的是 Xcode 16 的文件系统同步组格式，更早的 Xcode 打不开。
 

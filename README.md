@@ -100,6 +100,17 @@ open Vela.xcodeproj
 
 **最低版本**：iOS 17.0。
 
+### 测试
+
+```bash
+xcodebuild test -project Vela.xcodeproj -scheme Vela \
+  -destination 'platform=iOS Simulator,name=iPhone 16'
+```
+
+单元测试在 `VelaTests/`，覆盖的是类型签名保证不了的那部分行为：web view 池（超过上限怎么丢、丢完之后标签页上的前进后退状态怎么清）、地址栏把输入判成网址还是搜索词、标签页对外呈现的身份、历史 URL 的归一化。没有界面测试——界面部分需要的是跑起来看，而不是断言。
+
+CI 上这是独立的第二个 job，不会挡住 IPA 的产出，原因见 `BUILD_WITHOUT_MAC.md`。
+
 ---
 
 ## 工程结构
@@ -121,6 +132,7 @@ Vela/
     Bookmarks/ History/ Downloads/ Settings/
   Features/     各功能界面
   UI/           主题、地址栏、工具栏
+VelaTests/      单元测试
 ```
 
 `AppEnvironment` 是组合根：所有服务在这里构造一次，再通过 SwiftUI 环境注入。状态用 Observation 框架的 `@Observable`，视图读取哪个属性就追踪哪个属性，跨层级有效。
