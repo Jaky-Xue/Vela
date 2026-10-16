@@ -280,10 +280,17 @@ public struct SearchEngineRecord: Codable, Equatable, Sendable, Identifiable {
     ///
     /// A custom engine whose template lacks the placeholder cannot express a
     /// query, so it is treated as unavailable rather than silently searched.
+    ///
+    /// `%` is removed from the allowed set along with the delimiters. It is the
+    /// one character in `urlQueryAllowed` that cannot be passed through: a query
+    /// containing `%20` means the four characters `%`, `2`, `0`, not a space, and
+    /// leaving it alone would both send the wrong term and produce a URL a
+    /// template's own `%` escapes collide with. Encoding it costs nothing and
+    /// makes the substitution idempotent.
     public func searchUrl(for query: String) -> URL? {
         guard searchUrlTemplate.contains("{searchTerms}") else { return nil }
         var allowed = CharacterSet.urlQueryAllowed
-        allowed.remove(charactersIn: "&+=?#")
+        allowed.remove(charactersIn: "&+=?#%")
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: allowed) else {
             return nil
         }

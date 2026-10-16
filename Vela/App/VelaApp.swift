@@ -113,12 +113,10 @@ struct VelaApp: App {
 
         // Opening from another app is a fresh intent, so it gets a new tab
         // rather than replacing what the user was reading.
-        let tab = environment.tabManager.createTab(
-            url: url.absoluteString,
+        environment.tabManager.openTab(
+            url: url,
             privacyMode: .regular,
             openSource: .externalShare
         )
-        environment.tabManager.activateTab(id: tab.id)
-        environment.tabManager.load(url: url, in: tab)
     }
 }

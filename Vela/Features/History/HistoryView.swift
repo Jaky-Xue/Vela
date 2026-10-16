@@ -249,13 +249,12 @@ struct HistoryView: View {
 
     private func openInNewTab(_ entry: HistoryUrl) {
         guard let url = URL(string: entry.url) else { return }
-        let tab = env.tabManager.createTab(
-            url: url.absoluteString,
+        env.tabManager.openTab(
+            url: url,
             privacyMode: .regular,
             openSource: .history,
             activate: false
         )
-        env.tabManager.load(url: url, in: tab)
     }
 
     private func removeDay(containing entry: HistoryUrl) {

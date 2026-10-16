@@ -9,9 +9,18 @@
 //  host, the session store and the tab list all key off, and because the web
 //  engine mutates it as a page loads.
 //
-//  The runtime-state machine is deliberately small. A `WKWebView` is an ordinary
-//  object and WebKit manages content processes itself, so a tab either has a
-//  live web view or it does not, and `cold` means exactly that.
+//  Two state questions are asked about a tab and they are genuinely separate, so
+//  they are two fields rather than one overloaded enum:
+//
+//    * `runtimeState` — does the tab have a live `WKWebView`, and is it the one
+//      on screen? A `WKWebView` is an ordinary object and WebKit manages content
+//      processes itself, so `cold` means exactly "no web view".
+//    * `loadState` — where is the navigation that web view is running?
+//
+//  Collapsing them would lose one of the answers: a background tab that has
+//  finished loading is `background` *and* `finished`, and a single enum cannot
+//  say both. Failures and crashes belong to `loadState`, because they are
+//  outcomes of a navigation rather than properties of the view.
 //
 //  The persisted record holds only what cannot be re-derived from the web view.
 //  Writing progress and back/forward availability to disk is what makes a
@@ -28,14 +37,230 @@ public enum TabRuntimeState: String, Codable, Sendable, CaseIterable {
     case background
     /// Never loaded, or its web view was discarded under memory pressure.
     case cold
-    /// The web content process died.
-    case crashed
-    /// The tab failed to load and is showing an error surface.
-    case failed
 
     /// True when the tab has a live web view worth showing a snapshot for.
     public var isLive: Bool {
         self == .active || self == .background
+    }
+}
+
+/// Where a tab's navigation has got to.
+///
+/// The phases are the ones WebKit actually reports, plus the two the app
+/// generates itself: `requested` is the window between handing WebKit a
+/// `URLRequest` and its first callback, and `cancelled` is a navigation the app
+/// deliberately stopped — which is not a failure and must not be dressed up as
+/// one.
+public enum TabLoadState: String, Codable, Sendable, CaseIterable {
+    /// Nothing has been asked for. Also the state a discarded tab returns to.
+    case idle
+    /// A request has been handed to WebKit; no callback has arrived yet.
+    case requested
+    /// `didStartProvisionalNavigation` — the connection is being established.
+    case provisional
+    /// `didCommit` — the main document has started arriving.
+    case committed
+    /// `didFinish` — the main document is complete.
+    case finished
+    /// The navigation was stopped, by the user or by the app.
+    case cancelled
+    /// The navigation failed. The tab shows the error surface.
+    case failed
+    /// The web content process died.
+    case crashed
+
+    /// True while a navigation is in flight. A failure may only downgrade one of
+    /// these states; it can never blank a state that is already settled, which is
+    /// what stops a superseded navigation from clearing the state of the one that
+    /// replaced it.
+    public var isInFlight: Bool {
+        self == .requested || self == .provisional || self == .committed
+    }
+
+    /// True when the tab has an error to show the user.
+    public var isFailure: Bool {
+        self == .failed || self == .crashed
+    }
+
+    /// True once a document has been committed, which is what makes
+    /// "back to the page that worked" a meaningful offer.
+    public var hasCommittedDocument: Bool {
+        self == .committed || self == .finished
+    }
+}
+
+/// Why a navigation failed, in the shape the error surface needs.
+///
+/// Built once, at the point the failure is observed, rather than re-derived by
+/// the view: the view then renders a value and does not have to know about
+/// `NSError` domains, and the same value is what goes into the diagnostics log.
+public struct TabNavigationFailure: Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable, CaseIterable {
+        /// The failure is not a navigation failure at all — see
+        /// `TabLoadState.cancelled`.
+        case cancelled
+        case offline
+        case dns
+        case timeout
+        case refused
+        case connectionLost
+        case tls
+        case httpStatus
+        case crashed
+        case invalidUrl
+        case other
+    }
+
+    public var kind: Kind
+    /// The headline the error surface shows.
+    public var title: String
+    /// One more sentence: what the user can do, or what specifically went wrong.
+    public var detail: String
+    /// The URL the navigation was for. Kept verbatim so "copy address" works.
+    public var url: String
+    /// The `NSError` that produced this, kept for the diagnostics log.
+    public var errorDomain: String
+    public var errorCode: Int
+
+    /// True for outcomes that are a re-run of the same request rather than a
+    /// dead end, which is what decides the error surface's primary button.
+    public var isRetryable: Bool {
+        switch kind {
+        case .cancelled, .crashed, .invalidUrl:
+            return false
+        default:
+            return true
+        }
+    }
+}
+
+extension TabNavigationFailure {
+    /// WebKit's code for "the app declined this navigation".
+    ///
+    /// It arrives as `WebKitErrorFrameLoadInterruptedByPolicyChange` when the
+    /// delegate answers `decisionHandler(.cancel)` — which Vela does for every
+    /// `target="_blank"` link, every `window.open` and every external scheme. It
+    /// is not in `NSURLErrorDomain`, so a check for `NSURLErrorCancelled` alone
+    /// misses it, and missing it is what makes opening a link in a new tab look
+    /// like the current page failing to load.
+    public static let policyCancellationCode = 102
+    public static let webKitErrorDomain = "WebKitErrorDomain"
+    /// `WKError.webContentProcessTerminated`. Spelled out rather than referenced
+    /// so this file stays free of a WebKit import; the number is part of
+    /// WebKit's published error surface and has not moved.
+    public static let webContentProcessTerminatedCode = 4
+
+    /// True when an error means "this navigation was stopped on purpose".
+    public static func isCancellation(_ error: NSError) -> Bool {
+        if error.domain == NSURLErrorDomain, error.code == NSURLErrorCancelled {
+            return true
+        }
+        return error.domain == webKitErrorDomain && error.code == policyCancellationCode
+    }
+
+    /// Classifies a WebKit error for the error surface.
+    ///
+    /// Returns nil for a cancellation: a cancelled navigation has no failure to
+    /// describe, and giving it one is what puts an error page over a page the
+    /// user is reading.
+    public static func make(from error: NSError, url: String) -> TabNavigationFailure? {
+        guard !isCancellation(error) else { return nil }
+
+        let kind: Kind
+        switch (error.domain, error.code) {
+        case (NSURLErrorDomain, NSURLErrorNotConnectedToInternet):
+            kind = .offline
+        case (NSURLErrorDomain, NSURLErrorCannotFindHost),
+             (NSURLErrorDomain, NSURLErrorDNSLookupFailed):
+            kind = .dns
+        case (NSURLErrorDomain, NSURLErrorTimedOut):
+            kind = .timeout
+        case (NSURLErrorDomain, NSURLErrorCannotConnectToHost):
+            kind = .refused
+        case (NSURLErrorDomain, NSURLErrorNetworkConnectionLost):
+            kind = .connectionLost
+        case (NSURLErrorDomain, NSURLErrorSecureConnectionFailed),
+             (NSURLErrorDomain, NSURLErrorServerCertificateUntrusted),
+             (NSURLErrorDomain, NSURLErrorServerCertificateHasBadDate),
+             (NSURLErrorDomain, NSURLErrorServerCertificateNotYetValid),
+             (NSURLErrorDomain, NSURLErrorServerCertificateHasUnknownRoot),
+             (NSURLErrorDomain, NSURLErrorClientCertificateRejected),
+             (NSURLErrorDomain, NSURLErrorClientCertificateRequired):
+            kind = .tls
+        case (NSURLErrorDomain, NSURLErrorUnsupportedURL),
+             (NSURLErrorDomain, NSURLErrorBadURL):
+            kind = .invalidUrl
+        default:
+            kind = .other
+        }
+
+        return TabNavigationFailure(
+            kind: kind,
+            title: Self.title(for: kind),
+            detail: Self.detail(for: kind, error: error),
+            url: url,
+            errorDomain: error.domain,
+            errorCode: error.code
+        )
+    }
+
+    /// The failure a dead web content process produces.
+    ///
+    /// Separate from `make(from:url:)` because WebKit reports a crash through
+    /// `webViewWebContentProcessDidTerminate` and hands over no error at all —
+    /// and because a crash is a different thing to tell the user about than a
+    /// request that did not arrive.
+    public static func crashed(url: String) -> TabNavigationFailure {
+        TabNavigationFailure(
+            kind: .crashed,
+            title: "页面已停止响应",
+            detail: "网页渲染进程意外退出。重新载入通常可以恢复。",
+            url: url,
+            errorDomain: webKitErrorDomain,
+            errorCode: webContentProcessTerminatedCode
+        )
+    }
+
+    private static func title(for kind: Kind) -> String {
+        switch kind {
+        case .cancelled: return "已取消加载"
+        case .offline: return "没有网络连接"
+        case .dns: return "找不到该网站"
+        case .timeout: return "连接超时"
+        case .refused: return "无法连接到服务器"
+        case .connectionLost: return "网络连接已断开"
+        case .tls: return "安全连接失败"
+        case .httpStatus: return "服务器返回错误"
+        case .crashed: return "页面已停止响应"
+        case .invalidUrl: return "网址无法打开"
+        case .other: return "无法载入页面"
+        }
+    }
+
+    /// The second line. Prefers something the user can act on over WebKit's own
+    /// wording, which names an internal error and no remedy.
+    private static func detail(for kind: Kind, error: NSError) -> String {
+        switch kind {
+        case .offline:
+            return "请检查 Wi-Fi 或蜂窝网络，然后重试。"
+        case .dns:
+            return "请检查网址是否拼写正确，或稍后再试。"
+        case .timeout:
+            return "服务器没有在限定时间内响应。"
+        case .refused:
+            return "服务器拒绝了连接，可能暂时不可用。"
+        case .connectionLost:
+            return "网络连接中断，请确认网络稳定后重试。"
+        case .tls:
+            return "该网站的证书存在问题，Vela 不会跳过证书校验。"
+        case .invalidUrl:
+            return "这个地址不是一个可以打开的网页地址。"
+        case .other:
+            let description = error.localizedDescription
+            return description.isEmpty ? "发生未知错误。" : description
+        case .cancelled, .httpStatus, .crashed:
+            return ""
+        }
     }
 }
 
@@ -91,7 +316,31 @@ public final class BrowserTabState: Identifiable {
     /// A navigation that has been requested but has not committed yet.
     public var pendingUrl: String
     public var runtimeState: TabRuntimeState
-    public var lastError: String
+    /// Where the current navigation has got to. The error surface keys off this.
+    public var loadState: TabLoadState
+    /// The identifier of the most recent navigation, assigned by the web
+    /// coordinator as each one starts.
+    ///
+    /// WebKit does not hand out a correlation id, and a URL is not one — two
+    /// navigations to the same URL are still two navigations, and a redirect
+    /// makes the URL the navigation started with differ from the one it ends on.
+    /// This is the id the diagnostics log records, so a page's failure can be
+    /// traced back to the navigation that produced it. Staleness is decided
+    /// separately, from the `WKNavigation` object identity.
+    public var navigationSerial: Int
+    /// Why the last navigation failed, when one did.
+    ///
+    /// A value rather than a string: the error surface needs the kind to choose
+    /// its copy and its buttons, and the diagnostics log needs the raw
+    /// `NSError` domain and code.
+    public var lastFailure: TabNavigationFailure?
+    /// The HTTP status of the main document, once the response has been seen.
+    ///
+    /// Non-2xx is recorded rather than treated as a failure. WebKit commits and
+    /// renders a server's own 404 page, which is a *successful* navigation to a
+    /// page that says "not found" — conflating the two is what makes a browser
+    /// show a network-error page over a working page.
+    public var serverStatus: Int
     public var lastRestoreReason: TabRestoreReason
     public var lastDiscardReason: TabDiscardReason
     public var lastCrashReason: TabCrashReason
@@ -133,7 +382,10 @@ public final class BrowserTabState: Identifiable {
         lastActiveAt: Date = Date(),
         pendingUrl: String = "",
         runtimeState: TabRuntimeState = .cold,
-        lastError: String = "",
+        loadState: TabLoadState = .idle,
+        navigationSerial: Int = 0,
+        lastFailure: TabNavigationFailure? = nil,
+        serverStatus: Int = 0,
         lastRestoreReason: TabRestoreReason = .none,
         lastDiscardReason: TabDiscardReason = .none,
         lastCrashReason: TabCrashReason = .none,
@@ -162,7 +414,10 @@ public final class BrowserTabState: Identifiable {
         self.lastActiveAt = lastActiveAt
         self.pendingUrl = pendingUrl
         self.runtimeState = runtimeState
-        self.lastError = lastError
+        self.loadState = loadState
+        self.navigationSerial = navigationSerial
+        self.lastFailure = lastFailure
+        self.serverStatus = serverStatus
         self.lastRestoreReason = lastRestoreReason
         self.lastDiscardReason = lastDiscardReason
         self.lastCrashReason = lastCrashReason
@@ -236,8 +491,23 @@ public final class BrowserTabState: Identifiable {
         scrollOffsetY = record.scrollOffsetY
         lastRestoreReason = restoreReason
         runtimeState = record.isHome ? .active : .cold
-        lastError = ""
+        loadState = .idle
+        lastFailure = nil
+        serverStatus = 0
         pendingUrl = ""
+    }
+
+    /// True when a fresh web view for this tab still needs its URL fetched.
+    ///
+    /// This is the question the whole "who starts the load" split used to answer
+    /// by inference, from `webView.url == nil` in the view layer. It is asked
+    /// here instead, on the tab, where the answer is knowable: a tab that has a
+    /// URL, no committed document, nothing in flight, and no failure waiting for
+    /// the user to acknowledge one.
+    public var needsPageFetch: Bool {
+        guard !isHome, !url.isEmpty else { return false }
+        guard !loadState.isInFlight, !loadState.isFailure else { return false }
+        return !loadState.hasCommittedDocument
     }
 }
 

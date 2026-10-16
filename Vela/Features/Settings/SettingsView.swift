@@ -136,6 +136,17 @@ struct SettingsView: View {
                         detail: env.settings.preferences.desktopSiteByDefault ? "桌面版" : "手机版"
                     )
                 }
+
+                NavigationLink {
+                    NavigationDiagnosticsView()
+                } label: {
+                    settingsRow(
+                        icon: "waveform.path.ecg",
+                        tint: .teal,
+                        title: "加载诊断",
+                        detail: "\(env.navigationLog.entries.count) 条记录"
+                    )
+                }
             }
 
             Section {
@@ -672,8 +683,8 @@ struct UserAgentSettingsView: View {
     /// navigate again — which is exactly how it behaved before.
     private func apply(reload: Bool) {
         env.tabManager.applyUserAgentToAllWebViews()
-        guard reload else { return }
-        env.tabManager.webView(for: env.tabManager.activeTabId)?.reload()
+        guard reload, let tab = env.tabManager.activeTab else { return }
+        _ = env.tabManager.reload(tab: tab)
     }
 }
 

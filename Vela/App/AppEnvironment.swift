@@ -35,6 +35,12 @@ public final class AppEnvironment {
     /// showing a dialog depends on the dialog's state alone.
     public let overlays: WebPageOverlays
     public let webCoordinator: BrowserWebCoordinator
+    /// The structured record of recent navigations.
+    ///
+    /// Owned here rather than by the coordinator because the settings screen
+    /// reads it and the coordinator writes it, and neither should have to reach
+    /// through the other to get at it. It holds nothing on disk.
+    public let navigationLog: NavigationLog
 
     /// Set when the database could not be opened. The shell shows a read-only
     /// error surface rather than crashing, because a browser that cannot start
@@ -87,6 +93,9 @@ public final class AppEnvironment {
         let overlays = WebPageOverlays()
         self.overlays = overlays
 
+        let navigationLog = NavigationLog(settings: settings.navigationDiagnostics)
+        self.navigationLog = navigationLog
+
         let coordinator = BrowserWebCoordinator(
             overlays: overlays,
             settings: settings,
@@ -96,20 +105,27 @@ public final class AppEnvironment {
             bookmarks: bookmarks,
             userScripts: userScripts,
             searchHistory: searchHistory,
-            sessionRepository: sessionRepository
+            sessionRepository: sessionRepository,
+            navigationLog: navigationLog
         )
         self.webCoordinator = coordinator
 
         self.tabManager = TabManager(
             configurationProvider: coordinator,
-            sessionRepository: sessionRepository,
-            historyTransitionProvider: { tab in
-                tab.openSource == .restore ? .restore : (tab.isHome ? .generated : .link)
-            }
+            sessionRepository: sessionRepository
         )
 
         coordinator.attach(tabManager: tabManager)
         boot()
+    }
+
+    /// Pushes the diagnostics switches into the log.
+    ///
+    /// The log holds its own copy of the settings so a record does not have to
+    /// consult the settings service on every navigation event; this is the one
+    /// place that keeps the copy in step.
+    public func applyNavigationDiagnosticsSettings() {
+        navigationLog.settings = settings.navigationDiagnostics
     }
 
     /// Performs the startup work every service needs.

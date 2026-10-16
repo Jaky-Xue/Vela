@@ -258,13 +258,12 @@ struct BookmarksView: View {
             if !node.isFolder {
                 Button("在新标签页打开", systemImage: "plus.square.on.square") {
                     guard let urlString = node.url, let url = URL(string: urlString) else { return }
-                    let tab = env.tabManager.createTab(
-                        url: url.absoluteString,
+                    env.tabManager.openTab(
+                        url: url,
                         privacyMode: .regular,
                         openSource: .bookmark,
                         activate: false
                     )
-                    env.tabManager.load(url: url, in: tab)
                 }
                 Button("拷贝网址", systemImage: "doc.on.doc") {
                     UIPasteboard.general.string = node.url

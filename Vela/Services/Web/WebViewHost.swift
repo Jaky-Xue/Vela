@@ -5,7 +5,28 @@
 //  Hosts a tab's pooled `WKWebView` inside SwiftUI.
 //
 //  The web surface belongs to the tab, not to the view tree, so the
-//  representable here is an attachment point rather than an owner.
+//  representable here is an attachment point rather than an owner — and an
+//  attachment point is *all* it is. It does not start loads.
+//
+//  That is a correction, not a simplification. This view used to load the tab's
+//  URL itself whenever the hosted web view had no committed URL, on the theory
+//  that a tab could arrive on screen with a URL and no page. Two things were
+//  wrong with it:
+//
+//    * `webView.url == nil` stays true after a *failed* provisional navigation,
+//      so the guard re-armed every time a load failed. A failure sets
+//      `tab.isLoading` back to false, the shell observes that, the body
+//      re-evaluates, and the view issued the request again — an unbounded retry
+//      loop that also cleared `lastError` on each attempt, which is why a site
+//      that could not be reached showed a permanently blank page rather than an
+//      error.
+//    * On success it raced `TabManager.load(url:in:)`, which had already issued
+//      the same request, because `isLoading` is not reliably true at the instant
+//      the request is handed over.
+//
+//  Starting the load belongs to the tab's lifecycle, where it happens whether or
+//  not the tab is on screen. `TabManager` starts it and `activateTab` re-starts
+//  it for a cold tab; see `BrowserTabState.needsPageFetch`.
 //
 //  Why a container view rather than returning the `WKWebView` directly from
 //  `makeUIView`: SwiftUI calls `makeUIView` once per representable identity, but
@@ -22,11 +43,6 @@ struct WebViewHost: UIViewRepresentable {
     /// The web view to display. May change between updates when a tab is
     /// discarded and rebuilt.
     let webView: WKWebView
-    /// The URL to load when the web view has no page yet.
-    let initialUrl: String?
-    /// True when the tab is showing the native home surface, in which case the
-    /// web view is detached entirely.
-    let isHome: Bool
     /// Reports scroll offset changes so the toolbar can react without a message
     /// round-trip on every frame.
     let onScroll: ((Double) -> Void)?
@@ -49,34 +65,7 @@ struct WebViewHost: UIViewRepresentable {
         if context.coordinator.observedWebView !== webView {
             context.coordinator.observe(webView: webView, onScroll: onScroll, onProgress: onProgress)
         }
-
-        if isHome {
-            container.detachWebView()
-            return
-        }
-
         container.attach(webView)
-
-        // Load only when the page has never been loaded. Checking `url == nil`
-        // rather than comparing against `initialUrl` is deliberate: a redirect
-        // or an in-page history change makes the web view's URL differ from the
-        // one the tab holds, and reloading on that difference would fight the
-        // page.
-        //
-        // `isLoading` is the other half. `TabManager.load(url:in:)` starts the
-        // request itself and SwiftUI re-evaluates this body on the same turn,
-        // before the web view has a URL — so without this guard every
-        // navigation would issue its request twice.
-        if webView.url == nil, !webView.isLoading {
-            if let initialUrl, !initialUrl.isEmpty, let url = URL(string: initialUrl) {
-                webView.load(URLRequest(url: url))
-            } else {
-                // A tab created empty but not flagged as home still needs
-                // something to show, otherwise the surface is a blank white
-                // rectangle.
-                webView.loadHTMLString(Self.blankPageHtml, baseURL: nil)
-            }
-        }
     }
 
     static func dismantleUIView(_ container: WebViewContainerView, coordinator: Coordinator) {
@@ -143,26 +132,6 @@ struct WebViewHost: UIViewRepresentable {
             progressObservation?.invalidate()
         }
     }
-
-    /// Shown for a tab that has no URL and is not on the home surface. Kept
-    /// minimal and themed by the injected colour so it does not flash white in
-    /// dark mode.
-    private static let blankPageHtml = """
-    <!doctype html>
-    <html>
-    <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-      <style>
-        html, body {
-          margin: 0;
-          height: 100%;
-          background: -apple-system-systemBackground;
-        }
-      </style>
-    </head>
-    <body></body>
-    </html>
-    """
 }
 
 /// A view that hosts exactly zero or one pooled web view as a subview.

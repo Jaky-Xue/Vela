@@ -24,19 +24,8 @@ import WebKit
 /// the settings service — which is exactly what makes it testable here.
 @MainActor
 private final class StubConfigurationProvider: BrowserWebViewConfigurationProviding {
-    private(set) var recordedVisits: [URL] = []
-
     func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration {
         WKWebViewConfiguration()
-    }
-
-    func recordVisit(
-        url: URL,
-        title: String,
-        boundary: BrowserDataBoundary,
-        transition: HistoryTransition
-    ) {
-        recordedVisits.append(url)
     }
 
     func userAgent(for tab: BrowserTabState) -> String { "VelaTests/1.0" }
@@ -65,7 +54,7 @@ final class TabManagerTests: XCTestCase {
 
     func testCreateTabWithAUrlDoesNotMarkItAsHome() {
         let manager = makeManager()
-        let tab = manager.createTab(url: "https://example.com")
+        let tab = manager.openTab(url: URL(string: "https://example.com")!)
 
         XCTAssertFalse(tab.isHome)
         XCTAssertEqual(tab.url, "https://example.com")
@@ -74,7 +63,7 @@ final class TabManagerTests: XCTestCase {
     func testCreateTabInTheBackgroundLeavesTheActiveTabAlone() {
         let manager = makeManager()
         let first = manager.createTab()
-        let second = manager.createTab(url: "https://example.com", activate: false)
+        let second = manager.openTab(url: URL(string: "https://example.com")!, activate: false)
 
         XCTAssertEqual(manager.activeTabId, first.id)
         XCTAssertNotEqual(manager.activeTabId, second.id)
@@ -103,7 +92,7 @@ final class TabManagerTests: XCTestCase {
         // appears never runs its update.
         let manager = makeManager()
         let foreground = manager.createTab()
-        let background = manager.createTab(url: "https://example.com", activate: false)
+        let background = manager.openTab(url: URL(string: "https://example.com")!, activate: false)
 
         manager.load(url: URL(string: "https://example.com/article")!, in: background)
 
@@ -115,7 +104,7 @@ final class TabManagerTests: XCTestCase {
 
     func testDiscardingAWebViewClearsBackAndForward() {
         let manager = makeManager()
-        let tab = manager.createTab(url: "https://example.com")
+        let tab = manager.openTab(url: URL(string: "https://example.com")!)
         _ = manager.ensureWebView(for: tab)
         tab.canGoBack = true
         tab.canGoForward = true
@@ -137,7 +126,7 @@ final class TabManagerTests: XCTestCase {
 
     func testDiscardingRecordsTheReasonAndKeepsTheUrl() {
         let manager = makeManager()
-        let tab = manager.createTab(url: "https://example.com")
+        let tab = manager.openTab(url: URL(string: "https://example.com")!)
         _ = manager.ensureWebView(for: tab)
 
         manager.discardWebView(for: tab.id, reason: .idleTimeout)
@@ -151,7 +140,7 @@ final class TabManagerTests: XCTestCase {
         let manager = makeManager()
         var tabs: [BrowserTabState] = []
         for index in 0..<(TabManager.maximumLiveWebViews + 2) {
-            tabs.append(manager.createTab(url: "https://site\(index).example"))
+            tabs.append(manager.openTab(url: URL(string: "https://site\(index).example")!))
         }
 
         XCTAssertEqual(manager.liveWebViewCount, TabManager.maximumLiveWebViews)
@@ -173,7 +162,7 @@ final class TabManagerTests: XCTestCase {
         manager.activateTab(id: home.id)
 
         for index in 0..<(TabManager.maximumLiveWebViews + 2) {
-            manager.createTab(url: "https://site\(index).example")
+            manager.openTab(url: URL(string: "https://site\(index).example")!)
         }
 
         XCTAssertEqual(manager.liveWebViewCount, TabManager.maximumLiveWebViews)
@@ -181,13 +170,13 @@ final class TabManagerTests: XCTestCase {
 
     func testPinnedTabOutlivesAnUnpinnedOneUnderPressure() {
         let manager = makeManager()
-        let pinned = manager.createTab(url: "https://pinned.example", activate: false)
+        let pinned = manager.openTab(url: URL(string: "https://pinned.example")!, activate: false)
         manager.setPinned(true, id: pinned.id)
         _ = manager.ensureWebView(for: pinned)
         manager.activateTab(id: pinned.id)
 
         for index in 0..<(TabManager.maximumLiveWebViews + 1) {
-            manager.createTab(url: "https://filler\(index).example")
+            manager.openTab(url: URL(string: "https://filler\(index).example")!)
         }
 
         XCTAssertNotNil(manager.webView(for: pinned.id))
@@ -208,7 +197,7 @@ final class TabManagerTests: XCTestCase {
     func testClosingATabRecordsItAsRecentlyClosed() {
         let manager = makeManager()
         manager.createTab()
-        let page = manager.createTab(url: "https://example.com/article")
+        let page = manager.openTab(url: URL(string: "https://example.com/article")!)
         manager.closeTab(id: page.id)
 
         XCTAssertEqual(manager.recentlyClosed.count, 1)
@@ -217,7 +206,7 @@ final class TabManagerTests: XCTestCase {
 
     func testClosingAHomeTabIsNotRecorded() {
         let manager = makeManager()
-        let page = manager.createTab(url: "https://example.com")
+        let page = manager.openTab(url: URL(string: "https://example.com")!)
         let home = manager.createTab()
         manager.closeTab(id: home.id)
 
@@ -228,7 +217,7 @@ final class TabManagerTests: XCTestCase {
     func testReopeningTheLastClosedTabRestoresItsUrl() {
         let manager = makeManager()
         manager.createTab()
-        let page = manager.createTab(url: "https://example.com/article")
+        let page = manager.openTab(url: URL(string: "https://example.com/article")!)
         manager.closeTab(id: page.id)
 
         let reopened = manager.reopenLastClosedTab(privacyMode: .regular)
@@ -244,7 +233,7 @@ final class TabManagerTests: XCTestCase {
 
     func testReopeningIsScopedToThePrivacyMode() {
         let manager = makeManager()
-        let page = manager.createTab(url: "https://example.com")
+        let page = manager.openTab(url: URL(string: "https://example.com")!)
         manager.closeTab(id: page.id)
 
         // A private session must not be able to reopen a regular tab.
@@ -348,8 +337,8 @@ final class TabManagerTests: XCTestCase {
 
     func testSessionRoundTripsTheTabsAndTheActiveOne() {
         let manager = makeManager()
-        manager.createTab(url: "https://one.example")
-        let second = manager.createTab(url: "https://two.example")
+        manager.openTab(url: URL(string: "https://one.example")!)
+        let second = manager.openTab(url: URL(string: "https://two.example")!)
         manager.activateTab(id: second.id)
 
         let snapshot = BrowserSessionSnapshot(
@@ -391,7 +380,7 @@ final class BrowserTabStateTests: XCTestCase {
 
     func testRestoringARecordResetsTheRuntimeState() {
         let tab = BrowserTabState(url: "https://example.com", isHome: false)
-        tab.lastError = "boom"
+        tab.lastFailure = .make(from: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut), url: "https://example.com")
         tab.pendingUrl = "https://pending.example"
 
         let record = TabRecord(
@@ -412,7 +401,7 @@ final class BrowserTabStateTests: XCTestCase {
         tab.apply(record, restoreReason: .sessionRestore)
 
         XCTAssertEqual(tab.title, "Example")
-        XCTAssertEqual(tab.lastError, "")
+        XCTAssertNil(tab.lastFailure)
         XCTAssertEqual(tab.pendingUrl, "")
         XCTAssertEqual(tab.runtimeState, .cold)
         XCTAssertEqual(tab.lastRestoreReason, .sessionRestore)

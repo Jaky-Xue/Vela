@@ -24,7 +24,6 @@ import Observation
 @MainActor
 public protocol BrowserWebViewConfigurationProviding: AnyObject {
     func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration
-    func recordVisit(url: URL, title: String, boundary: BrowserDataBoundary, transition: HistoryTransition)
     /// The `User-Agent` a tab's web view should present.
     ///
     /// Part of this protocol rather than read off the settings service directly
@@ -61,16 +60,17 @@ public final class TabManager {
 
     private let configurationProvider: BrowserWebViewConfigurationProviding
     private let sessionRepository: TabSessionRepository?
-    private let historyTransitionProvider: (BrowserTabState) -> HistoryTransition
 
+    /// The transition a navigation is recorded under is decided by the
+    /// navigation delegate, which is the only place that sees WebKit's
+    /// navigation type. Nothing is threaded in here for it: the closure this
+    /// used to take was passed by the environment and never read.
     public init(
         configurationProvider: BrowserWebViewConfigurationProviding,
-        sessionRepository: TabSessionRepository? = nil,
-        historyTransitionProvider: @escaping (BrowserTabState) -> HistoryTransition = { _ in .link }
+        sessionRepository: TabSessionRepository? = nil
     ) {
         self.configurationProvider = configurationProvider
         self.sessionRepository = sessionRepository
-        self.historyTransitionProvider = historyTransitionProvider
     }
 
     // MARK: - Queries
@@ -101,21 +101,24 @@ public final class TabManager {
 
     /// Creates a tab and makes it active.
     ///
-    /// A new tab starts
-    /// on the home surface (`isHome == true`) rather than loading a blank
-    /// document, which is what lets the native new-tab page render without a web
-    /// view existing at all.
+    /// A new tab starts on the home surface (`isHome == true`) rather than
+    /// loading a blank document, which is what lets the native new-tab page
+    /// render without a web view existing at all.
+    ///
+    /// There is deliberately no `url:` parameter. A tab that is meant to show a
+    /// page goes through `openTab(url:...)`, which is the one place that pairs
+    /// "the tab exists" with "the request is issued" — the pairing that used to
+    /// be reconstructed by the view layer and got it wrong for every tab that
+    /// was not on screen.
     @discardableResult
     public func createTab(
-        url: String = "",
         privacyMode: BrowserSessionPrivacyMode = .regular,
         openerTabId: String = "",
         openSource: BrowserTabOpenSource = .user,
         activate: Bool = true
     ) -> BrowserTabState {
         let tab = BrowserTabState(
-            url: url,
-            isHome: url.isEmpty,
+            isHome: true,
             runtimeState: .cold,
             privacyMode: privacyMode,
             dataScope: privacyMode == .private ? .sessionEphemeral : .profilePersistent,
@@ -135,6 +138,34 @@ public final class TabManager {
             activateTab(id: tab.id)
         }
         persistSession()
+        return tab
+    }
+
+    /// Creates a tab and points it at a URL, in one step.
+    ///
+    /// The single entry point for "open this in a new tab", from a bookmark, a
+    /// history row, a home-screen shortcut, a `target="_blank"` link, an inbound
+    /// URL from another app or a reopened record. It exists so no caller has to
+    /// remember to follow `createTab` with a load: a tab opened in the background
+    /// whose load was left to the view layer was never fetched at all.
+    @discardableResult
+    public func openTab(
+        url: URL,
+        privacyMode: BrowserSessionPrivacyMode = .regular,
+        openerTabId: String = "",
+        openSource: BrowserTabOpenSource = .user,
+        activate: Bool = true
+    ) -> BrowserTabState {
+        let tab = createTab(
+            privacyMode: privacyMode,
+            openerTabId: openerTabId,
+            openSource: openSource,
+            activate: false
+        )
+        load(url: url, in: tab)
+        if activate {
+            activateTab(id: tab.id)
+        }
         return tab
     }
 
@@ -179,6 +210,17 @@ public final class TabManager {
     // MARK: - Activation
 
     /// Makes a tab active and materialises its web view.
+    ///
+    /// A tab that has a URL but no document — one restored from a saved session,
+    /// or whose web view was discarded under memory pressure, or which was opened
+    /// in the background before this call — has its page fetched here. That is
+    /// what makes activation the point at which a cold tab comes back to life,
+    /// and it is why `WebViewHost` no longer starts loads: the fetch belongs to
+    /// the tab's lifecycle, not to a view that may never appear.
+    ///
+    /// The fetch is skipped while a navigation is in flight and while a failure
+    /// is on screen — the error surface offers its own retry, and re-fetching
+    /// behind it would replace a page the user can read with a spinner.
     public func activateTab(id: String) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         activeTabId = id
@@ -189,6 +231,18 @@ public final class TabManager {
         // opened, so the ephemeral store's lifetime tracks real use.
         if !tab.isHome {
             _ = ensureWebView(for: tab)
+            if tab.needsPageFetch {
+                if let url = URL(string: tab.url) {
+                    load(url: url, in: tab)
+                } else {
+                    // A tab claiming to show a page whose URL will not parse has
+                    // nothing to fetch. Falling back to the home surface is the
+                    // only honest thing left, and it keeps a permanently blank
+                    // web view off the screen.
+                    tab.isHome = true
+                    tab.loadState = .idle
+                }
+            }
         }
         touchActivationOrder(id)
         enforceLiveWebViewCap()
@@ -285,17 +339,19 @@ public final class TabManager {
         }
         let record = recentlyClosed.remove(at: index)
         try? sessionRepository?.removeRecentlyClosed(id: record.id)
-        let tab = createTab(
-            url: record.url,
+        guard let url = URL(string: record.url) else {
+            // A recorded URL that no longer parses cannot be fetched; the tab is
+            // still worth reopening, on the home surface, rather than silently
+            // dropping the user's action.
+            return createTab(privacyMode: record.privacyMode, openSource: .restore)
+        }
+        // Reopening is a request to see the page again, so it is fetched now
+        // rather than when its web view happens to be built.
+        return openTab(
+            url: url,
             privacyMode: record.privacyMode,
             openSource: .restore
         )
-        // Reopening is a request to see the page again, so it is fetched now
-        // rather than when its web view happens to be built.
-        if let url = URL(string: record.url) {
-            load(url: url, in: tab)
-        }
-        return tab
     }
 
     // MARK: - Ordering
@@ -354,21 +410,64 @@ public final class TabManager {
     /// Points a tab at a URL and starts the load, creating its web view if it
     /// does not have one.
     ///
-    /// The single path for "this tab should now be showing this page". Every
-    /// call site that used to pair `createTab(url:)` with `ensureWebView` was
-    /// relying on `WebViewHost` to notice that the tab had a URL and no page and
-    /// start the load itself — which worked for a tab that was on screen and
-    /// silently did nothing for one opened in the background, because a view
-    /// that never appears never runs its update. Loading here means the tab is
-    /// fetched when it is opened, whether or not it is the one being looked at.
+    /// The single path for "this tab should now be showing this page". Loading
+    /// here rather than in the view layer means the tab is fetched when it is
+    /// opened, whether or not it is the one being looked at — a view that never
+    /// appears never runs its update, which is how a tab opened in the
+    /// background used to be left with no request at all.
+    ///
+    /// A navigation already in flight is superseded by this one, and the tab's
+    /// state says so immediately: `requested` is written before WebKit is handed
+    /// the request, so a late callback from the navigation this replaced is
+    /// recognisable as stale rather than being mistaken for the new one's.
     @discardableResult
     public func load(url: URL, in tab: BrowserTabState) -> WKWebView {
         tab.isHome = false
         tab.url = url.absoluteString
         tab.pendingUrl = url.absoluteString
+        tab.lastFailure = nil
+        tab.serverStatus = 0
+        tab.loadState = .requested
+        tab.isLoading = true
+        tab.estimatedProgress = 0
         let webView = ensureWebView(for: tab)
         webView.load(URLRequest(url: url))
         return webView
+    }
+
+    /// Reloads a tab's current document.
+    ///
+    /// Routed through here rather than calling `reload()` on the web view from
+    /// the shell so that the state write and the request stay in one place: a
+    /// reload is a new navigation, and a tab left showing `finished` while a
+    /// fresh request was in flight is exactly the desync the state machine
+    /// exists to prevent.
+    @discardableResult
+    public func reload(tab: BrowserTabState) -> Bool {
+        guard !tab.isHome, let webView = webViews[tab.id] else { return false }
+        if webView.url == nil, let url = URL(string: tab.url) {
+            // Nothing committed to reload — a page that failed, or a web view
+            // that was just rebuilt. This is a fresh request, not a re-display.
+            load(url: url, in: tab)
+            return true
+        }
+        tab.loadState = .requested
+        tab.isLoading = true
+        tab.lastFailure = nil
+        tab.serverStatus = 0
+        webView.reload()
+        return true
+    }
+
+    /// Stops the active load, moving the tab to `cancelled` rather than leaving
+    /// it looking like it is still fetching.
+    public func stopLoading(tab: BrowserTabState) {
+        webViews[tab.id]?.stopLoading()
+        if tab.loadState.isInFlight {
+            tab.loadState = .cancelled
+        }
+        tab.isLoading = false
+        tab.pendingUrl = ""
     }
 
     /// Re-applies the `User-Agent` to every live web view.
@@ -416,6 +515,14 @@ public final class TabManager {
         tab.canGoForward = false
         tab.isLoading = false
         tab.estimatedProgress = 0
+        // The navigation went with the web view. Returning the tab to `idle`
+        // rather than leaving the outcome on it is what lets reactivation fetch
+        // the URL again — and what stops a failure that happened ten minutes ago
+        // from being shown over a page that has not been requested yet.
+        tab.loadState = .idle
+        tab.lastFailure = nil
+        tab.serverStatus = 0
+        tab.pendingUrl = ""
         // Stop loading before release so a transfer in flight cannot deliver a
         // callback to a web view the manager no longer owns.
         webView.stopLoading()

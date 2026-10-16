@@ -46,6 +46,12 @@ struct BrowserShellView: View {
     @State private var isReaderActive = false
     @State private var readerArticle: ReaderArticle?
 
+    /// Set when an omnibox submission was refused, so the shell can say why
+    /// instead of closing the field as if nothing had happened.
+    @State private var addressNotice: String?
+    /// The input that was refused, kept so the alert can offer to search for it.
+    @State private var rejectedInput = ""
+
     /// How far the toolbar has slid out of the way. Positive means hidden.
     @State private var toolbarOffset: CGFloat = 0
     /// The previous scroll offset, used to derive a direction.
@@ -152,6 +158,23 @@ struct BrowserShellView: View {
             menuContent
         }
         .alert(
+            "无法打开该地址",
+            isPresented: Binding(
+                get: { addressNotice != nil },
+                set: { if !$0 { addressNotice = nil } }
+            ),
+            presenting: addressNotice
+        ) { _ in
+            Button("搜索「\(rejectedInput)」") {
+                let input = rejectedInput
+                addressNotice = nil
+                searchRefusedInput(input)
+            }
+            Button("好", role: .cancel) { addressNotice = nil }
+        } message: { notice in
+            Text(notice)
+        }
+        .alert(
             env.overlays.javascriptDialog?.message ?? "",
             isPresented: Binding(
                 get: { env.overlays.javascriptDialog != nil },
@@ -221,11 +244,24 @@ struct BrowserShellView: View {
                         onOpenBookmarks: { showBookmarks = true }
                     )
                     .id("home-\(tab.id)")
+                } else if let failure = tab.lastFailure, tab.loadState.isFailure {
+                    // A failed navigation shows the error surface *instead of*
+                    // the web view, but the web view is kept: it is what the
+                    // retry re-uses, and it holds whatever the process still has.
+                    WebPageErrorView(
+                        failure: failure,
+                        canGoBack: tabManager.webView(for: tab.id)?.canGoBack ?? false,
+                        onReload: { retry(tab) },
+                        onGoBack: {
+                            env.webCoordinator.goBack()
+                        },
+                        onCopyAddress: {},
+                        onHome: { goHome(tab) }
+                    )
+                    .id("error-\(tab.id)-\(tab.navigationSerial)")
                 } else if let webView = tabManager.webView(for: tab.id) {
                     WebViewHost(
                         webView: webView,
-                        initialUrl: tab.url,
-                        isHome: false,
                         onScroll: { offset in
                             handleScroll(offset: offset)
                         },
@@ -235,10 +271,9 @@ struct BrowserShellView: View {
                     )
                     .id("web-\(tab.id)")
                 } else {
-                    // A cold tab whose web view was discarded under memory
-                    // pressure. Materialising happens in `onAppear` rather than
-                    // here: creating a web view during view evaluation would
-                    // mutate published state mid-update.
+                    // A cold tab with no web view at all. Materialising happens
+                    // in `onAppear` rather than here: creating a web view during
+                    // view evaluation would mutate published state mid-update.
                     Color.clear
                         .onAppear {
                             tabManager.activateTab(id: tab.id)
@@ -279,7 +314,10 @@ struct BrowserShellView: View {
             progress: activeTab?.estimatedProgress ?? 0,
             placeholder: omniboxPlaceholder,
             onReload: reloadActiveTab,
-            onStop: { tabManager.webView(for: tabManager.activeTabId)?.stopLoading() }
+            onStop: {
+                guard let tab = activeTab else { return }
+                tabManager.stopLoading(tab: tab)
+            }
         )
         .padding(.horizontal, BrowserChrome.sideInset)
         .padding(.top, BrowserChrome.topInset)
@@ -333,6 +371,15 @@ struct BrowserShellView: View {
     /// The find bar and the toolbar, pinned to the bottom.
     private var bottomBar: some View {
         VStack(spacing: BrowserSpacing.tight) {
+            // An HTTP error status is reported here, over the page the server
+            // sent, rather than replacing it.
+            if let tab = activeTab, tab.serverStatus >= 400, !tab.isHome {
+                ServerStatusNotice(status: tab.serverStatus) {
+                    tab.serverStatus = 0
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             if showFindBar {
                 FindBar(
                     query: $findQuery,
@@ -587,11 +634,11 @@ struct BrowserShellView: View {
         Button("在页面中查找", systemImage: "magnifyingglass") { showFindBar = true }
         Button("读取模式", systemImage: "doc.plaintext") { activateReaderMode() }
         Button("隐藏页面元素", systemImage: "eye.slash") {
-            guard let tab = activeTab, let webView = tabManager.webView(for: tab.id) else { return }
+            guard let tab = activeTab, tabManager.webView(for: tab.id) != nil else { return }
             env.webCoordinator.armElementPicker()
             // The picker script has to be in the page, and a configuration only
             // applies to the next navigation, so the page is reloaded.
-            webView.reload()
+            _ = tabManager.reload(tab: tab)
         }
         Button("设置", systemImage: "gearshape") { showSettings = true }
 
@@ -624,7 +671,7 @@ struct BrowserShellView: View {
             $0.customUserAgent = ""
         }
         tabManager.applyUserAgentToAllWebViews()
-        tabManager.webView(for: tab.id)?.reload()
+        _ = tabManager.reload(tab: tab)
     }
 
     private func toggleAdBlock() {
@@ -634,7 +681,8 @@ struct BrowserShellView: View {
             await env.refreshAdBlockRules()
             // Content rules only apply to a new document, so the page is
             // reloaded to make the change visible.
-            tabManager.webView(for: tabManager.activeTabId)?.reload()
+            guard let tab = tabManager.activeTab else { return }
+            _ = tabManager.reload(tab: tab)
         }
     }
 
@@ -663,8 +711,18 @@ struct BrowserShellView: View {
 
     private func reloadActiveTab() {
         guard let tab = activeTab else { return }
-        if tab.isHome { return }
-        tabManager.webView(for: tab.id)?.reload()
+        _ = tabManager.reload(tab: tab)
+    }
+
+    /// Runs the failed navigation again.
+    ///
+    /// Deliberately not `reloadActiveTab`: a tab showing the error surface may
+    /// have no committed document at all, in which case `reload()` is a no-op on
+    /// its web view and the button would appear to do nothing. `TabManager.reload`
+    /// decides between re-requesting and re-displaying; this only has to say
+    /// which tab.
+    private func retry(_ tab: BrowserTabState) {
+        _ = tabManager.reload(tab: tab)
     }
 
     // MARK: - Navigation
@@ -672,20 +730,61 @@ struct BrowserShellView: View {
     private func submitAddressBar(_ input: String) {
         guard let tab = activeTab else { return }
         let engine = env.settings.preferences.searchEngine.activeEngine
-        guard let url = BrowserUrlResolver.resolveNavigation(input: input, searchEngine: engine) else {
-            omnibox.endEditing()
-            return
-        }
 
-        // A search records the query; a direct URL does not.
-        if BrowserUrlResolver.isSearchQuery(input) {
+        switch BrowserUrlResolver.resolve(input: input, searchEngine: engine) {
+        case let .navigate(url):
+            omnibox.endEditing()
+            navigate(to: url, in: tab)
+
+        case let .handOff(url):
+            // A scheme that belongs to another app. Handing it to the system
+            // without touching the tab is what keeps the page the user is on
+            // where it was — the same reason the web engine does not navigate to
+            // one either.
+            omnibox.endEditing()
+            UIApplication.shared.open(url)
+
+        case let .search(url):
             try? env.searchHistory.record(
                 query: input,
                 searchEngineId: engine.id,
                 boundary: tab.dataBoundary
             )
+            omnibox.endEditing()
+            navigate(to: url, in: tab)
+
+        case let .rejected(reason):
+            // An input the browser will not act on is reported. Silently closing
+            // the omnibox — which is what used to happen for every one of these —
+            // makes a refused scheme look like a browser that lost the keystroke.
+            omnibox.endEditing()
+            addressNotice = Self.message(for: reason, input: input)
+            rejectedInput = input
         }
-        omnibox.endEditing()
+    }
+
+    private static func message(for reason: AddressBarRejection, input: String) -> String {
+        switch reason {
+        case .empty:
+            return "请输入网址或搜索内容。"
+        case let .unsupportedScheme(scheme):
+            return "Vela 无法打开 \(scheme): 开头的地址。"
+        case .noUsableSearchEngine:
+            return "当前搜索引擎没有配置搜索地址模板，无法搜索。"
+        }
+    }
+
+    /// Searches for an input that was refused, which is what the refusal alert
+    /// offers as the way forward.
+    private func searchRefusedInput(_ input: String) {
+        guard let tab = activeTab else { return }
+        let engine = env.settings.preferences.searchEngine.activeEngine
+        guard let url = engine.searchUrl(for: input) else { return }
+        try? env.searchHistory.record(
+            query: input,
+            searchEngineId: engine.id,
+            boundary: tab.dataBoundary
+        )
         navigate(to: url, in: tab)
     }
 

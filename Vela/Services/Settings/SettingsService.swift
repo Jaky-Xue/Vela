@@ -26,6 +26,7 @@ public final class SettingsService {
         static let userScripts = "org.vela.browser.userscripts"
         static let manualElementHide = "org.vela.browser.manual-element-hide"
         static let appearanceMode = "org.vela.browser.appearance-mode"
+        static let navigationDiagnostics = "org.vela.browser.navigation-diagnostics"
     }
 
     public private(set) var preferences: BrowserPreferences {
@@ -52,6 +53,15 @@ public final class SettingsService {
         didSet { persist(manualElementHide, key: Key.manualElementHide) }
     }
 
+    /// Whether the navigation log records anything.
+    ///
+    /// A document of its own rather than a field inside `BrowserPreferences`, for
+    /// the reason given above: the preferences document decodes as a whole, so a
+    /// new key in it would reset every existing install's settings.
+    public private(set) var navigationDiagnostics: NavigationDiagnosticsSettings {
+        didSet { persist(navigationDiagnostics, key: Key.navigationDiagnostics) }
+    }
+
     private let defaults: UserDefaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -64,6 +74,11 @@ public final class SettingsService {
             ?? .default
         self.manualElementHide = Self.load(ManualElementHideSettings.self, key: Key.manualElementHide, from: defaults)
             ?? .default
+        self.navigationDiagnostics = Self.load(
+            NavigationDiagnosticsSettings.self,
+            key: Key.navigationDiagnostics,
+            from: defaults
+        ) ?? .default
         // An unknown or absent value follows the system, which is the only
         // default that cannot surprise someone who never opens the setting.
         self.appearanceMode = defaults.string(forKey: Key.appearanceMode)
@@ -112,6 +127,12 @@ public final class SettingsService {
         var copy = manualElementHide
         mutate(&copy)
         manualElementHide = copy
+    }
+
+    public func updateNavigationDiagnostics(_ mutate: (inout NavigationDiagnosticsSettings) -> Void) {
+        var copy = navigationDiagnostics
+        mutate(&copy)
+        navigationDiagnostics = copy
     }
 
     // MARK: - Appearance

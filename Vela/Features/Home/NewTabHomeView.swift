@@ -163,13 +163,12 @@ struct NewTabHomeView: View {
         .contextMenu {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {
                 guard let url = URL(string: entry.url) else { return }
-                let tab = env.tabManager.createTab(
-                    url: url.absoluteString,
+                env.tabManager.openTab(
+                    url: url,
                     privacyMode: .regular,
                     openSource: .shortcut,
                     activate: false
                 )
-                env.tabManager.load(url: url, in: tab)
             }
             Button("从常用网站中移除", systemImage: "xmark.circle", role: .destructive) {
                 env.history.remove(entry)
@@ -190,13 +189,12 @@ struct NewTabHomeView: View {
             VStack(spacing: 0) {
                 ForEach(Array(recentlyClosed.prefix(5).enumerated()), id: \.element.id) { index, record in
                     Button {
-                        let tab = env.tabManager.createTab(
-                            url: record.url,
-                            privacyMode: record.privacyMode,
-                            openSource: .restore
-                        )
                         if let url = URL(string: record.url) {
-                            env.tabManager.load(url: url, in: tab)
+                            env.tabManager.openTab(
+                                url: url,
+                                privacyMode: record.privacyMode,
+                                openSource: .restore
+                            )
                         }
                         env.tabManager.removeRecentlyClosedRecord(id: record.id)
                         reload()
