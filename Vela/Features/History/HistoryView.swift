@@ -166,7 +166,10 @@ struct HistoryView: View {
     @ViewBuilder
     private func row(_ entry: HistoryUrl) -> some View {
         Button {
-            selectedEntry = entry
+            // A history entry is a place the user has been, and the tap that
+            // opens it goes back there — the visit's details are a long-press
+            // away, not the primary answer.
+            openEntry(entry)
         } label: {
             HStack(spacing: 12) {
                 SiteIconView(host: entry.host, size: 28)
@@ -222,6 +225,9 @@ struct HistoryView: View {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {
                 openInNewTab(entry)
             }
+            Button("查看访问详情", systemImage: "info.circle") {
+                selectedEntry = entry
+            }
             Button("拷贝网址", systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = entry.url
             }
@@ -242,6 +248,14 @@ struct HistoryView: View {
     // MARK: - Actions
 
     private func open(_ entry: HistoryUrl) {
+        guard let url = URL(string: entry.url), let tab = env.tabManager.activeTab else { return }
+        env.tabManager.load(url: url, in: tab)
+        dismiss()
+    }
+
+    /// Opens the entry in the tab the user is reading, and closes the history
+    /// sheet — the tap's whole point is to be there.
+    private func openEntry(_ entry: HistoryUrl) {
         guard let url = URL(string: entry.url), let tab = env.tabManager.activeTab else { return }
         env.tabManager.load(url: url, in: tab)
         dismiss()

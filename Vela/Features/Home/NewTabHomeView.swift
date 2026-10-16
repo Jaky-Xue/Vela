@@ -18,6 +18,42 @@
 import SwiftUI
 import UIKit
 
+/// Which bookmarks the home grid shows.
+///
+/// The home is a curation, not an index: a bookmark reaches it either through
+/// the add sheet's "同时添加到主页" switch or through the home's own add tile,
+/// and it leaves through the tile's long-press menu. The ids live in the
+/// defaults store; the first launch after this store existed seeds it with
+/// every bookmark there is, so the grid the user already had does not vanish
+/// underneath them.
+enum HomeBookmarkStore {
+    static let idsKey = "org.vela.browser.home-bookmark-ids"
+    static let seededKey = "org.vela.browser.home-bookmarks-seeded"
+
+    static func homeIds(among allIds: [String]) -> Set<String> {
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: seededKey) {
+            let seed = Set(allIds)
+            defaults.set(Array(seed), forKey: idsKey)
+            defaults.set(true, forKey: seededKey)
+            return seed
+        }
+        return Set(defaults.stringArray(forKey: idsKey) ?? [])
+    }
+
+    static func add(_ id: String) {
+        var ids = Set(UserDefaults.standard.stringArray(forKey: idsKey) ?? [])
+        ids.insert(id)
+        UserDefaults.standard.set(Array(ids), forKey: idsKey)
+    }
+
+    static func remove(_ id: String) {
+        var ids = Set(UserDefaults.standard.stringArray(forKey: idsKey) ?? [])
+        ids.remove(id)
+        UserDefaults.standard.set(Array(ids), forKey: idsKey)
+    }
+}
+
 struct NewTabHomeView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
@@ -55,7 +91,12 @@ struct NewTabHomeView: View {
         }
         .sheet(isPresented: $showAddBookmark) {
             AddBookmarkSheet { url, title in
-                env.bookmarks.addBookmark(url: url, title: title, parentNodeId: nil)
+                let node = env.bookmarks.addBookmark(url: url, title: title, parentNodeId: nil)
+                // Added from the home tile, so it belongs on the home surface —
+                // whether the store created it or the bookmark already existed.
+                if let id = node?.id ?? env.bookmarks.bookmark(for: url)?.id {
+                    HomeBookmarkStore.add(id)
+                }
                 loadBookmarks()
             }
         }
@@ -64,17 +105,18 @@ struct NewTabHomeView: View {
     // MARK: - Bookmarks
 
     /// Flattens both bookmark roots into the grid's inventory, depth-first and
-    /// in saved order. Folders are walked through, not shown: the home grid is
+    /// in saved order, then keeps only the ones the user has put on the home
+    /// surface. Folders are walked through, not shown: the home grid is
     /// destinations only.
     private func loadBookmarks() {
-        var result: [BookmarkNode] = []
+        var all: [BookmarkNode] = []
 
         func walk(_ items: [BookmarkTreeItem]) {
             for item in items {
                 if item.node.isFolder {
                     walk(item.children)
                 } else if item.node.url != nil {
-                    result.append(item.node)
+                    all.append(item.node)
                 }
             }
         }
@@ -84,7 +126,8 @@ struct NewTabHomeView: View {
             walk(env.bookmarks.children(of: rootId))
         }
 
-        bookmarkNodes = result
+        let homeIds = HomeBookmarkStore.homeIds(among: all.map(\.id))
+        bookmarkNodes = all.filter { homeIds.contains($0.id) }
     }
 
     private var bookmarkBlock: some View {
@@ -144,6 +187,10 @@ struct NewTabHomeView: View {
                     openSource: .shortcut,
                     activate: false
                 )
+            }
+            Button("从主页移除", systemImage: "minus.square", role: .destructive) {
+                HomeBookmarkStore.remove(node.id)
+                loadBookmarks()
             }
             Button("删除书签", systemImage: "trash", role: .destructive) {
                 env.bookmarks.removeNode(id: node.id)

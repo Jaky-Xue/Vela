@@ -46,6 +46,7 @@ struct BrowserShellView: View {
     @State private var showDownloads = false
     @State private var showSettings = false
     @State private var showMenu = false
+    @State private var showAddBookmarkChoice = false
     @State private var showShareSheet = false
     @State private var showFindBar = false
     @State private var findQuery = ""
@@ -239,6 +240,13 @@ struct BrowserShellView: View {
                 adBlockEnabled: env.settings.adBlockSettings.preferences.enabled,
                 pageTitle: menuPanelTitle,
                 onPerform: handleMenuAction
+            )
+            .environment(env)
+        }
+        .sheet(isPresented: $showAddBookmarkChoice) {
+            AddBookmarkChoiceSheet(
+                url: activeTab?.url ?? "",
+                title: activeTab?.title ?? ""
             )
             .environment(env)
         }
@@ -669,26 +677,28 @@ struct BrowserShellView: View {
         }
     }
 
-    /// The tab switcher button, with the count drawn inside the glyph.
+    /// The tab switcher button: a page outline carrying the count inside it —
+    /// the number is what the user reads, so it is the drawing's subject, not
+    /// a footnote under a glyph.
     private var tabsButton: some View {
         Button {
             showTabsOverview = true
         } label: {
             ZStack {
-                Image(systemName: "square.on.square")
-                    .font(.system(size: 15, weight: .semibold))
-                if !tabManager.tabs.isEmpty {
-                    Text("\(min(tabManager.tabs.count, 99))")
-                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .offset(y: 0.5)
-                }
+                RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                    .strokeBorder(palette.primaryText, lineWidth: 1.6)
+                    .frame(width: 21, height: 21)
+
+                Text("\(min(tabManager.tabs.count, 99))")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(palette.primaryText)
+                    .offset(y: 0.5)
             }
             .frame(width: 34, height: 34)
             .contentShape(Rectangle())
         }
         .buttonStyle(ChromeButtonStyle())
-        .foregroundStyle(palette.primaryText)
         .accessibilityLabel("标签页，\(tabManager.tabs.count) 个")
     }
 
@@ -875,8 +885,16 @@ struct BrowserShellView: View {
         // the flags are a mirror of its list, and acting on the mirror
         // instead of on the list is what would let a stale `true` issue a
         // `goBack()` that does nothing. When there is genuinely nothing
-        // behind the page, the fallback is the home surface.
+        // behind the page, the fallback is the tab that opened this one — a
+        // link opened into a new tab has an empty back list, and "back" from
+        // it means where the user came from — and the home surface last of
+        // all.
         if !env.webCoordinator.goBack() {
+            if let openerId = tab.openerTabId, !openerId.isEmpty,
+               tabManager.tabs.contains(where: { $0.id == openerId }) {
+                tabManager.activateTab(id: openerId)
+                return
+            }
             goHome(tab)
         }
     }
@@ -959,7 +977,7 @@ struct BrowserShellView: View {
 
         switch action {
         case .addBookmark:
-            env.bookmarks.addBookmark(url: tab.url, title: tab.title, parentNodeId: nil)
+            showAddBookmarkChoice = true
         case .share:
             showShareSheet = true
         case .findInPage:
