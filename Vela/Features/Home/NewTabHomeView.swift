@@ -2,8 +2,7 @@
 //  NewTabHomeView.swift
 //  Vela
 //
-//  The native new-tab surface: search, most-visited shortcuts and recently
-//  closed, in that order.
+//  The native new-tab surface: most-visited shortcuts and recently closed.
 //
 //  The surface is native rather than a web document because there is no
 //  custom-homepage runtime to load one into.
@@ -27,7 +26,6 @@ struct NewTabHomeView: View {
     @Environment(\.browserPalette) private var palette
 
     var onNavigate: (URL) -> Void
-    var onOpenBookmarks: () -> Void
 
     @State private var shortcuts: [HistoryUrl] = []
     @State private var recentlyClosed: [RecentlyClosedTabRecord] = []
@@ -49,10 +47,9 @@ struct NewTabHomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrowserSpacing.loose) {
-                hero
                 if !shortcuts.isEmpty { shortcutBlock }
                 if !recentlyClosed.isEmpty { recentlyClosedBlock }
-                footer
+                if shortcuts.isEmpty && recentlyClosed.isEmpty { emptyHint }
             }
             .padding(.horizontal, BrowserSpacing.regular + 4)
             .padding(.top, BrowserSpacing.regular)
@@ -63,41 +60,23 @@ struct NewTabHomeView: View {
         .onAppear(perform: reload)
     }
 
-    // MARK: - Hero
+    // MARK: - Empty state
 
-    /// The greeting.
+    /// What a home with no history shows.
     ///
-    /// A new-tab surface that opens straight onto a grid of icons gives the eye
-    /// nowhere to land first. The greeting is that landing point, and it is also
-    /// the only place the surface speaks: everything below it is content the
-    /// user brought with them.
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: BrowserSpacing.hairline + 2) {
-            Text(greeting)
-                .font(.system(size: 30, weight: .bold, design: .rounded))
-                .foregroundStyle(palette.primaryText)
-            Text(subtitle)
+    /// With the greeting gone, a fresh install would otherwise present a bare
+    /// black rectangle, which reads as a broken page rather than an empty one.
+    private var emptyHint: some View {
+        VStack(spacing: BrowserSpacing.compact) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(palette.secondaryText.opacity(0.7))
+            Text("开始浏览后，常用网站会出现在这里。")
                 .font(.subheadline)
                 .foregroundStyle(palette.secondaryText)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, BrowserSpacing.hairline)
-    }
-
-    private var greeting: String {
-        switch Calendar.current.component(.hour, from: Date()) {
-        case 5..<11: return "早上好"
-        case 11..<13: return "中午好"
-        case 13..<18: return "下午好"
-        case 18..<23: return "晚上好"
-        default: return "夜深了"
-        }
-    }
-
-    private var subtitle: String {
-        let engine = env.settings.preferences.searchEngine.activeEngine.name
-        let today = Date().formatted(.dateTime.month(.wide).day().weekday(.wide))
-        return "\(today) · 用 \(engine) 搜索或输入网址"
+        .frame(maxWidth: .infinity)
+        .padding(.top, 96)
     }
 
     // MARK: - Shortcuts
@@ -256,45 +235,6 @@ struct NewTabHomeView: View {
                 tint: palette.card.opacity(0.4)
             )
         }
-    }
-
-    // MARK: - Footer
-
-    /// The two destinations the home surface offers besides a URL.
-    ///
-    /// Pills rather than bare labels, so they read as controls and not as the
-    /// page's own text — and so they do not disappear into the surface the way
-    /// a grey word on a grey background does.
-    private var footer: some View {
-        HStack(spacing: BrowserSpacing.compact) {
-            footerPill(title: "书签", systemImage: "book", action: onOpenBookmarks)
-
-            footerPill(title: "无痕标签页", systemImage: "eyeglasses") {
-                env.tabManager.createTab(privacyMode: .private, openSource: .user)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.top, BrowserSpacing.tight)
-    }
-
-    private func footerPill(
-        title: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(palette.secondaryText)
-                .padding(.horizontal, BrowserSpacing.compact + 4)
-                .padding(.vertical, BrowserSpacing.tight + 2)
-                .background(palette.controlFill.opacity(0.7), in: Capsule())
-                .overlay {
-                    Capsule().strokeBorder(palette.cardStroke, lineWidth: 0.5)
-                }
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Data

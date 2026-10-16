@@ -361,8 +361,9 @@ struct BrowserShellView: View {
             )
             .id("reader")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea(edges: .top)
             .safeAreaInset(edge: .top) {
+                // The header starts below the chrome, stacked on the device's
+                // own safe area — the same arrangement the home surface uses.
                 Color.clear.frame(height: BrowserChrome.topChromeHeight)
             }
         } else if let tab = activeTab {
@@ -371,15 +372,15 @@ struct BrowserShellView: View {
             Group {
                 if tab.isHome {
                     NewTabHomeView(
-                        onNavigate: { url in navigate(to: url, in: tab) },
-                        onOpenBookmarks: { showBookmarks = true }
+                        onNavigate: { url in navigate(to: url, in: tab) }
                     )
                     .id("home-\(tab.id)")
-                    .ignoresSafeArea(edges: .top)
                     .safeAreaInset(edge: .top) {
-                        // The home surface runs under the chrome like the web
-                        // view does; the spacer sets where its content starts,
-                        // and the page still scrolls beneath the glass.
+                        // The home surface's content starts below the chrome.
+                        // The spacer stacks on the device's own safe area — the
+                        // view does not opt out of it — so the first row lands
+                        // a safe-area's height plus the chrome below the top of
+                        // the screen, where the glass cannot cover it.
                         Color.clear.frame(height: BrowserChrome.topChromeHeight)
                     }
                 } else if let failure = tab.lastFailure, tab.loadState.isFailure {
@@ -397,7 +398,6 @@ struct BrowserShellView: View {
                         onHome: { goHome(tab) }
                     )
                     .id("error-\(tab.id)-\(tab.navigationSerial)")
-                    .ignoresSafeArea(edges: .top)
                     .safeAreaInset(edge: .top) {
                         Color.clear.frame(height: BrowserChrome.topChromeHeight)
                     }

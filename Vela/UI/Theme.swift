@@ -560,6 +560,12 @@ extension View {
     /// mode it reads as a glow and in light mode as a sheen; either way it is
     /// the same overlay on every chrome surface, which is what makes the
     /// omnibox, the command bar and the cards read as one material.
+    ///
+    /// The hit-testing opt-out is attached to each overlay's *content*, not to
+    /// the chain. `allowsHitTesting(false)` covers the whole view it modifies —
+    /// descendants included — so placing it on the chain would have silenced
+    /// every button the sheen is painted over: the whole command bar went dead
+    /// to taps exactly that way once.
     @ViewBuilder
     func luminousSheen(shape: RoundedRectangle) -> some View {
         overlay {
@@ -576,6 +582,7 @@ extension View {
                     )
                 )
                 .blendMode(.plusLighter)
+                .allowsHitTesting(false)
         }
         .overlay {
             shape
@@ -588,8 +595,8 @@ extension View {
                     lineWidth: 1
                 )
                 .blendMode(.plusLighter)
+                .allowsHitTesting(false)
         }
-        .allowsHitTesting(false)
     }
 }
 
