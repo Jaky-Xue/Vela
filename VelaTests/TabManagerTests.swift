@@ -28,7 +28,9 @@ private final class StubConfigurationProvider: BrowserWebViewConfigurationProvid
         WKWebViewConfiguration()
     }
 
-    func userAgent(for tab: BrowserTabState) -> String { "VelaTests/1.0" }
+    func webIdentity(for tab: BrowserTabState) -> BrowserWebIdentity {
+        BrowserWebIdentity(applicationNameForUserAgent: "VelaTests/1.0")
+    }
 
     var navigationDelegate: WKNavigationDelegate? { nil }
     var uiDelegate: WKUIDelegate? { nil }

@@ -634,6 +634,20 @@ struct GeneralSettingsView: View {
 struct UserAgentSettingsView: View {
     @Environment(AppEnvironment.self) private var env
 
+    /// The identifier a page actually received, read back from the page.
+    ///
+    /// The reason this screen exists at all: a site that says the browser is too
+    /// old is making a claim about a string, and the only way to check the claim
+    /// is to look at the string that was sent. This is that string — taken from a
+    /// live page, so the platform and engine tokens are the real ones rather than
+    /// Vela's reconstruction.
+    @State private var identifierReportedByPage: String?
+
+    /// Changes whenever the identifier changes, so the read-back repeats.
+    private var identityKey: String {
+        "\(env.settings.preferences.desktopSiteByDefault)|\(env.settings.preferences.customUserAgent)"
+    }
+
     var body: some View {
         List {
             Section {
@@ -646,6 +660,33 @@ struct UserAgentSettingsView: View {
                 ))
             } footer: {
                 Text("关闭后网站会看到 iPhone 的标识，多数网站会给出移动版页面。")
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: BrowserSpacing.compact) {
+                    identifierRow(
+                        title: "页面实际收到",
+                        value: identifierReportedByPage,
+                        note: identifierReportedByPage == nil
+                            ? "打开任意网页后，这里会显示这个设备真实发出的标识。"
+                            : nil
+                    )
+                    Divider()
+                    identifierRow(
+                        title: "将要发出",
+                        value: BrowserUserAgent.mobileIdentifier,
+                        note: nil
+                    )
+                }
+                Button {
+                    UIPasteboard.general.string = identifierReportedByPage ?? BrowserUserAgent.mobileIdentifier
+                } label: {
+                    Label("复制标识", systemImage: "doc.on.doc")
+                }
+            } header: {
+                Text("当前网页标识")
+            } footer: {
+                Text("标识由系统提供的平台与引擎部分，加上 Vela 补上的 Safari 部分拼成，版本号取自本机系统，因此系统升级后不需要更新应用。「页面实际收到」是从正在显示的页面里读回来的，如果某个网站说浏览器版本太低，先把这个串复制出来对照一下。")
             }
 
             Section {
@@ -673,6 +714,45 @@ struct UserAgentSettingsView: View {
         }
         .navigationTitle("网页标识")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: identityKey) {
+            await readIdentifierFromPage()
+        }
+    }
+
+    /// One labelled identifier, in the monospaced type a string like this needs.
+    private func identifierRow(title: String, value: String?, note: String?) -> some View {
+        VStack(alignment: .leading, spacing: BrowserSpacing.hairline) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let value {
+                Text(value)
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+            if let note {
+                Text(note)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Reads the identifier back from the page the user is looking at.
+    ///
+    /// `navigator.userAgent` rather than `webView.customUserAgent`: the point is
+    /// what the page received, and the custom value is only the part Vela sets —
+    /// the platform and engine tokens are WebKit's and appear only here.
+    private func readIdentifierFromPage() async {
+        guard let tab = env.tabManager.activeTab,
+              !tab.isHome,
+              let webView = env.tabManager.webView(for: tab.id) else {
+            identifierReportedByPage = nil
+            return
+        }
+        let value = try? await webView.evaluateJavaScript("navigator.userAgent")
+        let text = value as? String
+        identifierReportedByPage = (text?.isEmpty == false) ? text : nil
     }
 
     /// Pushes the identifier onto every open tab, and reloads the active one when

@@ -24,12 +24,16 @@ import Observation
 @MainActor
 public protocol BrowserWebViewConfigurationProviding: AnyObject {
     func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration
-    /// The `User-Agent` a tab's web view should present.
+    /// How a tab should identify itself to sites.
     ///
     /// Part of this protocol rather than read off the settings service directly
     /// so `TabManager` keeps owning web views without owning preferences, and so
     /// there is one place that decides what a tab looks like to a site.
-    func userAgent(for tab: BrowserTabState) -> String
+    ///
+    /// The prefix of the identifier is set on the configuration because WebKit
+    /// appends it to its own, and the override is set on the web view; that split
+    /// is why this returns a recipe rather than one string.
+    func webIdentity(for tab: BrowserTabState) -> BrowserWebIdentity
     /// The delegates a tab's web view reports to.
     ///
     /// WebKit holds both weakly, so whatever this returns has to be owned
@@ -411,7 +415,7 @@ public final class TabManager {
         let configuration = configurationProvider.makeConfiguration(for: tab)
         let webView = WKWebView(frame: .zero, configuration: configuration)
 
-        webView.customUserAgent = configurationProvider.userAgent(for: tab)
+        webView.customUserAgent = configurationProvider.webIdentity(for: tab).customUserAgent
 
         // Without these the web view reports nothing: no `didFinish`, so back
         // and forward never become available; no title, URL or progress; no
@@ -503,9 +507,9 @@ public final class TabManager {
     public func applyUserAgentToAllWebViews() {
         for tab in tabs {
             guard let webView = webViews[tab.id] else { continue }
-            let userAgent = configurationProvider.userAgent(for: tab)
-            guard webView.customUserAgent != userAgent else { continue }
-            webView.customUserAgent = userAgent
+            let identity = configurationProvider.webIdentity(for: tab)
+            guard webView.customUserAgent != identity.customUserAgent else { continue }
+            webView.customUserAgent = identity.customUserAgent
         }
     }
 
@@ -697,56 +701,124 @@ public final class TabManager {
     }
 }
 
+/// How a tab identifies itself to sites.
+///
+/// Expressed as a recipe rather than a finished string, because the whole prefix
+/// of the identifier belongs to WebKit and only its tail belongs to Vela. That
+/// split is the point: it is what makes the identifier adapt to a new iOS without
+/// a code change, which the previous implementation did not.
+public struct BrowserWebIdentity: Equatable, Sendable {
+    /// Appended to the identifier WebKit builds for itself.
+    ///
+    /// WebKit's own template is
+    /// `Mozilla/5.0 (<platform>) AppleWebKit/<version> (KHTML, like Gecko) <this>`,
+    /// so supplying the tail is enough to present a complete Safari identifier
+    /// while the platform token and the WebKit version token come from the
+    /// system that is actually running.
+    public var applicationNameForUserAgent: String
+
+    /// A complete identifier to present instead of WebKit's, or nil to let
+    /// WebKit build the rest.
+    ///
+    /// Set when the tab has to claim something WebKit will not claim on its own:
+    /// a desktop platform, or a string the user typed.
+    public var customUserAgent: String?
+
+    public init(applicationNameForUserAgent: String, customUserAgent: String? = nil) {
+        self.applicationNameForUserAgent = applicationNameForUserAgent
+        self.customUserAgent = customUserAgent
+    }
+}
+
 /// The User-Agent values presented to pages.
 ///
-/// The identifier is built from the running system's version numbers, which is
-/// the correction that matters: the previous implementation hardcoded
-/// `Version/17.0` and `Mobile/15E148`, so on a device running a later iOS every
-/// site was told the browser was Safari 17 — years old — and the ones that check
-/// answered 「浏览器版本太低」. The engine was current; only the label was stale,
-/// and the label is the entire basis of the site's judgement.
+/// The identifier presented is Safari's, built from the running system's version
+/// numbers, and the previous implementation got this wrong in two separate ways
+/// that both produced the same complaint from sites — 「浏览器版本太低」:
 ///
-/// The *shape* of the string is not incidental either. A bare `WKWebView` does
-/// not present Safari's identifier: measured in the simulator, it sends
+/// * It hardcoded `Version/17.0`, so on any later iOS every site was told the
+///   browser was Safari 17. The engine was current; only the label was stale, and
+///   the label is the entire basis of the site's judgement.
+/// * It wrote the whole string, including `AppleWebKit/605.1.15`. That token is
+///   WebKit's, and writing it down is the same mistake one layer down — it would
+///   go stale the day the engine's version token moves.
 ///
-///     Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15
-///     (KHTML, like Gecko) Mobile/15E148
+/// So only the tail is written here, and it is handed to WebKit through
+/// `applicationNameForUserAgent`, which appends it to the identifier WebKit
+/// builds for itself. On iOS 27 the platform token says `CPU iPhone OS 27_…` and
+/// the WebKit token is whatever iOS 27 ships, without Vela knowing either.
 ///
-/// — no `Version/`, no `Safari/`, because those two tokens are ones Safari adds
-/// for itself. Handing that to a site is how a browser gets told to open the page
-/// in Safari instead, so the identifier below adds them, with the same version
-/// number the system reports. Everything else is byte-identical to what WebKit
-/// would have sent.
+/// Two tokens in the tail are fixed rather than derived, and both are
+/// observations of what the system itself sends rather than version guesses:
+/// `Mobile/15E148` appears verbatim in the identifier a bare `WKWebView` reports
+/// on this platform (measured), and `Safari/604.1` is the token iOS Safari
+/// appends. Neither is compared against a version by sites; `Version/` is, and
+/// that one is derived.
 ///
-/// Desktop mode is a deliberate approximation on top of that: the only way to get
-/// a desktop layout out of a site that branches on the platform token is to claim
-/// a desktop platform, so the platform token and the `Mobile/` marker are the
-/// lie the user asked for. The version tokens stay real.
+/// A bare `WKWebView` sends neither `Version/` nor `Safari/` — they are tokens
+/// Safari adds for itself — and a site that looks for them treats their absence
+/// as an embedded browser and tells the user to go and open Safari. That is why
+/// the tail cannot simply be omitted.
 public enum BrowserUserAgent {
-    /// The identifier a tab should present.
-    public static func resolved(custom: String, prefersDesktop: Bool) -> String {
+    /// The tail WebKit should append to its own identifier.
+    public static var safariTail: String {
+        "Version/\(operatingSystemVersion) Mobile/15E148 Safari/604.1"
+    }
+
+    /// How a tab should identify itself, given the user's settings.
+    public static func identity(custom: String, prefersDesktop: Bool) -> BrowserWebIdentity {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
         // Someone who typed a string asked for that exact value. Letting the
         // desktop toggle override it is what made the field look broken.
-        if !trimmed.isEmpty { return trimmed }
-        return prefersDesktop ? desktopIdentifier : mobileIdentifier
+        if !trimmed.isEmpty {
+            return BrowserWebIdentity(applicationNameForUserAgent: safariTail, customUserAgent: trimmed)
+        }
+        if prefersDesktop {
+            return BrowserWebIdentity(
+                applicationNameForUserAgent: safariTail,
+                customUserAgent: desktopIdentifier
+            )
+        }
+        // The default: no custom identifier at all, so WebKit appends the tail to
+        // its own prefix and the result is what Safari would have sent on this
+        // device.
+        return BrowserWebIdentity(applicationNameForUserAgent: safariTail)
     }
 
-    /// A desktop identifier, for the "请求桌面网站" toggle.
+    /// A complete desktop identifier, for the "请求桌面网站" toggle.
+    ///
+    /// The whole string is written out here, unlike the mobile case, because a web
+    /// view cannot be told to claim a different platform — the platform token is
+    /// the one part of the identifier WebKit will not rewrite for us. So this one
+    /// does contain written-down tokens: the Mac platform token (which is the lie
+    /// the user asked for) and `AppleWebKit/605.1.15`, which is an approximation.
+    ///
+    /// That approximation is acceptable and the default path does not share it:
+    /// sites compare the `Version/` token against a minimum, and that one is
+    /// derived from the running system. If WebKit's own version token ever moves,
+    /// desktop mode would be presenting the old one while the default path — the
+    /// mobile identifier, assembled by WebKit from its own prefix — stays correct
+    /// without a change here.
     public static var desktopIdentifier: String {
         desktopForm(of: mobileIdentifier)
     }
 
-    /// The identifier a phone-sized tab presents.
+    /// The identifier a phone-sized tab presents, reconstructed.
     ///
-    /// Built from the running system's version numbers rather than from a fixed
-    /// string, so it cannot claim to be older than the device it runs on.
+    /// WebKit assembles the real one from its own prefix plus `safariTail`; this
+    /// is that string written out. It is used as the base for the desktop form
+    /// above, and the settings screen compares it against the identifier a real
+    /// page reports so the two can be seen to agree.
     public static var mobileIdentifier: String {
+        "Mozilla/5.0 (iPhone; CPU iPhone OS "
+            + "\(operatingSystemVersion.replacingOccurrences(of: ".", with: "_")) like Mac OS X) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) \(safariTail)"
+    }
+
+    /// `26.1`, as the system reports it.
+    static var operatingSystemVersion: String {
         let version = ProcessInfo.processInfo.operatingSystemVersion
-        let os = "\(version.majorVersion)_\(version.minorVersion)"
-        return "Mozilla/5.0 (iPhone; CPU iPhone OS \(os) like Mac OS X) "
-            + "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-            + "Version/\(version.majorVersion).\(version.minorVersion) Mobile/15E148 Safari/604.1"
+        return "\(version.majorVersion).\(version.minorVersion)"
     }
 
     /// Rewrites a mobile Safari identifier into a desktop one.

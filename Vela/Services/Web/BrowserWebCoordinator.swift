@@ -521,6 +521,13 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             preferences.isElementFullscreenEnabled = true
         }
 
+        // The tail of the identifier, appended to the one WebKit builds for
+        // itself. Set here rather than as a whole `customUserAgent` so the
+        // platform token and the WebKit version token come from the system that
+        // is actually running — which is what keeps the identifier correct on a
+        // new iOS without a change to this project.
+        configuration.applicationNameForUserAgent = webIdentity(for: tab).applicationNameForUserAgent
+
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
@@ -530,13 +537,13 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         return configuration
     }
 
-    /// The identifier this tab presents to sites.
+    /// How this tab identifies itself to sites.
     ///
     /// Read through the protocol rather than from the settings service at the
     /// web-view site, so there is exactly one place that answers "what does a tab
     /// look like to a site" and the per-tab and global paths cannot disagree.
-    public func userAgent(for tab: BrowserTabState) -> String {
-        BrowserUserAgent.resolved(
+    public func webIdentity(for tab: BrowserTabState) -> BrowserWebIdentity {
+        BrowserUserAgent.identity(
             custom: settings.preferences.customUserAgent,
             prefersDesktop: settings.preferences.desktopSiteByDefault
         )

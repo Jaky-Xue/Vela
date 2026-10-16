@@ -594,26 +594,34 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     // MARK: - The identifier presented to sites
 
-    /// The identifier presented is Safari-shaped and reports the running system.
+    /// The identifier presented is Safari's on this device, and its prefix is
+    /// WebKit's own.
     ///
-    /// Two properties, both of which were wrong before:
+    /// Three properties, each of which was wrong before:
     ///
     /// * The version is the device's, not a number written down when the string
     ///   was authored. The app hardcoded `Version/17.0`, so on a later iOS every
     ///   site was told the browser was Safari 17 and the ones that check answered
     ///   「浏览器版本太低」.
-    /// * The identifier carries `Version/` and `Safari/`. A bare `WKWebView` does
-    ///   not send them — they are tokens Safari adds for itself — and a site that
-    ///   looks for them treats their absence as an embedded browser, which is the
-    ///   other way a site tells the user to go and open Safari.
-    func testTheIdentifierPresentedIsSafariShapedAndCurrent() async {
+    /// * The identifier carries `Version/` and `Safari/`. A bare `WKWebView` sends
+    ///   neither — they are tokens Safari adds for itself — and a site that looks
+    ///   for them treats their absence as an embedded browser, which is the other
+    ///   way a site tells the user to go and open Safari.
+    /// * Its *prefix* is byte-identical to what WebKit builds unaided: the
+    ///   platform token and the engine's version token are the running system's,
+    ///   not this project's. That is what makes the identifier survive an OS
+    ///   release — the check against a throwaway web view is the whole point, and
+    ///   it is what a hardcoded `AppleWebKit/605.1.15` would fail.
+    func testTheIdentifierIsSafarisOnThisDevice() async {
         let tab = harness.open(url("/one"))
         await waitForSettled(tab, expectingTitle: "Page One")
 
         guard let webView = harness.tabManager.webView(for: tab.id) else {
             return XCTFail("no web view")
         }
-        XCTAssertEqual(webView.customUserAgent, BrowserUserAgent.mobileIdentifier)
+        // The default sets no override at all: WebKit assembles the identifier
+        // and Vela only supplies the tail.
+        XCTAssertNil(webView.customUserAgent)
 
         let value = try? await webView.evaluateJavaScript("navigator.userAgent")
         let identifier = value as? String ?? ""
@@ -622,6 +630,19 @@ final class WebNavigationIntegrationTests: XCTestCase {
         XCTAssertTrue(identifier.contains("Safari/"), identifier)
         XCTAssertTrue(identifier.contains("Version/\(major)."), identifier)
         XCTAssertFalse(identifier.contains("Version/17.0"), identifier)
+
+        // What WebKit sends when nothing is appended...
+        let reference = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        let referenceValue = try? await reference.evaluateJavaScript("navigator.userAgent")
+        let referenceIdentifier = referenceValue as? String ?? ""
+        guard let marker = referenceIdentifier.range(of: "(KHTML, like Gecko) ") else {
+            return XCTFail("unexpected reference identifier: \(referenceIdentifier)")
+        }
+        // ...must be the prefix of what a tab sends. Everything up to and
+        // including the marker is WebKit's, so if this project ever writes down a
+        // platform or engine token, this is where it shows.
+        let webKitPrefix = String(referenceIdentifier[referenceIdentifier.startIndex..<marker.upperBound])
+        XCTAssertTrue(identifier.hasPrefix(webKitPrefix), identifier)
     }
 
     func testDesktopModePresentsADesktopIdentifierToThePage() async {

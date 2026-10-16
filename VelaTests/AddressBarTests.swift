@@ -319,64 +319,77 @@ final class BrowserUrlResolverTests: XCTestCase {
 /// 「浏览器版本太低」. And the string has to be Safari-shaped: a bare `WKWebView`
 /// sends neither `Version/` nor `Safari/`, and a site that looks for them treats
 /// their absence as an embedded browser.
+///
+/// The third property is the one that makes the first survive an OS release: the
+/// default identity sets *no* custom identifier, so WebKit builds the whole string
+/// from its own platform and engine tokens and Vela only appends the Safari tail.
+/// Nothing here has to be revised for iOS 27.
 @MainActor
 final class BrowserUserAgentTests: XCTestCase {
-    func testTheDefaultIdentifierIsTheSafariShapedOne() {
-        // Not "no identifier": a bare `WKWebView` presents one without
-        // `Version/` or `Safari/`, because those tokens are ones Safari adds for
-        // itself, and a site that looks for them treats their absence as an
-        // embedded browser. The identifier has to carry them.
-        let identifier = BrowserUserAgent.resolved(custom: "", prefersDesktop: false)
-        XCTAssertTrue(identifier.contains("Version/"), identifier)
-        XCTAssertTrue(identifier.contains("Safari/"), identifier)
-        XCTAssertTrue(identifier.contains("Mobile/"), identifier)
-        XCTAssertEqual(identifier, BrowserUserAgent.mobileIdentifier)
+    /// What Vela adds, and the only part of the identifier it writes at all.
+    func testTheTailIsTheSafariPartAndReportsTheRunningSystem() {
+        let tail = BrowserUserAgent.safariTail
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        XCTAssertTrue(tail.hasPrefix("Version/\(version.majorVersion).\(version.minorVersion)"), tail)
+        XCTAssertTrue(tail.contains("Mobile/"), tail)
+        XCTAssertTrue(tail.contains("Safari/"), tail)
+        XCTAssertFalse(tail.contains("Version/17.0"))
     }
 
-    func testACustomIdentifierWinsOverTheToggle() {
+    /// The default leaves the whole prefix to WebKit.
+    ///
+    /// This is the property that adapts to a new OS by itself: Vela does not name
+    /// the platform, and it does not name the engine's version token either —
+    /// writing that down is the same mistake as writing down `Version/17.0`, one
+    /// layer down.
+    func testTheDefaultIdentityWritesNoCustomIdentifier() {
+        let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false)
+        XCTAssertNil(identity.customUserAgent)
+        XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.safariTail)
+    }
+
+    func testACustomIdentifierBecomesTheOverride() {
+        let identity = BrowserUserAgent.identity(custom: "MyAgent/9", prefersDesktop: true)
+        // A custom string wins outright, desktop toggle included: someone who
+        // typed one asked for that exact value.
+        XCTAssertEqual(identity.customUserAgent, "MyAgent/9")
+        // The tail is still set, which is harmless because the override replaces
+        // the whole identifier — and it is what makes the desktop toggle a
+        // one-property change.
+        XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.safariTail)
+    }
+
+    func testTheCustomIdentifierIsTrimmed() {
         XCTAssertEqual(
-            BrowserUserAgent.resolved(custom: "MyAgent/9", prefersDesktop: true),
+            BrowserUserAgent.identity(custom: "  MyAgent/9  ", prefersDesktop: false).customUserAgent,
             "MyAgent/9"
         )
     }
 
     func testAWhitespaceOnlyCustomIdentifierIsNotACustomIdentifier() {
-        XCTAssertEqual(
-            BrowserUserAgent.resolved(custom: "   \n ", prefersDesktop: false),
-            BrowserUserAgent.mobileIdentifier
+        XCTAssertNil(
+            BrowserUserAgent.identity(custom: "   \n ", prefersDesktop: false).customUserAgent
         )
     }
 
-    func testTheCustomIdentifierIsTrimmed() {
-        XCTAssertEqual(
-            BrowserUserAgent.resolved(custom: "  MyAgent/9  ", prefersDesktop: false),
-            "MyAgent/9"
-        )
-    }
-
-    /// The version tokens describe the running engine rather than a number
-    /// written down when the string was authored.
-    func testTheFallbackIdentifierReportsTheRunningSystem() {
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        let expected = "Version/\(version.majorVersion).\(version.minorVersion)"
-        XCTAssertTrue(
-            BrowserUserAgent.mobileIdentifier.contains(expected),
-            BrowserUserAgent.mobileIdentifier
-        )
-        XCTAssertFalse(BrowserUserAgent.mobileIdentifier.contains("Version/17.0"))
-    }
-
-    func testDesktopModeClaimsAMacPlatformAndDropsTheMobileMarker() {
-        let desktop = BrowserUserAgent.resolved(custom: "", prefersDesktop: true)
-        XCTAssertTrue(desktop.contains("Macintosh"))
-        XCTAssertTrue(desktop.contains("Mozilla/5.0"))
+    func testDesktopModeOverridesWithAMacIdentifier() {
+        let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: true)
+        guard let desktop = identity.customUserAgent else {
+            return XCTFail("desktop mode has to write a whole identifier: a web view will not claim a Mac for us")
+        }
+        XCTAssertTrue(desktop.contains("Macintosh"), desktop)
+        XCTAssertTrue(desktop.contains("Mozilla/5.0"), desktop)
         // ` Mobile/` is the token that makes a string read as mobile, and macOS
         // Safari does not send it.
-        XCTAssertFalse(desktop.contains("Mobile/"))
-        // The version tokens are the running engine's, not a number written down
-        // when the string was authored.
+        XCTAssertFalse(desktop.contains("Mobile/"), desktop)
         let version = ProcessInfo.processInfo.operatingSystemVersion
         XCTAssertTrue(desktop.contains("Version/\(version.majorVersion)."), desktop)
+    }
+
+    /// The reconstruction used as the desktop base and shown in settings.
+    func testTheReconstructedMobileIdentifierEndsWithTheTail() {
+        XCTAssertTrue(BrowserUserAgent.mobileIdentifier.hasSuffix(BrowserUserAgent.safariTail))
+        XCTAssertTrue(BrowserUserAgent.mobileIdentifier.hasPrefix("Mozilla/5.0 (iPhone;"))
     }
 
     func testTheDesktopFormKeepsTheEngineTokens() {

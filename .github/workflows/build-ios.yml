@@ -26,14 +26,29 @@ on:
         options:
           - Release
           - Debug
+      runner:
+        description: "Runner image. macos-26 ships Xcode 26 and the iOS 26 SDK; macos-15 ships Xcode 16 and the iOS 18 SDK."
+        required: true
+        default: macos-26
+        type: choice
+        options:
+          - macos-26
+          - macos-15
 
 jobs:
   build:
     name: Build Vela
-    # macos-15 ships Xcode 16, which is the minimum for this project: the
-    # Xcode project uses the file-system-synchronized group format
-    # (objectVersion 77) that Xcode 16 introduced.
-    runs-on: macos-15
+    # Xcode 16 is the floor: the project uses the file-system-synchronized group
+    # format (objectVersion 77) that Xcode 16 introduced.
+    #
+    # The image is chosen for the *SDK* it carries, because that is what decides
+    # how the app behaves on a current device. An app built against an older SDK
+    # runs on newer iOS, but it asks the system for compatibility behaviour: it
+    # does not adopt the appearance and defaults of the release it is running on.
+    # macos-26 carries Xcode 26 and the iOS 26 SDK, which is the newest the
+    # runners publish — so it is the closest the build can get to a device
+    # running the current release.
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
 
     steps:
@@ -108,7 +123,9 @@ jobs:
 
   test:
     name: Run the unit tests
-    runs-on: macos-15
+    # The same image as the build, for the same SDK reason — and because a test
+    # that passes against one SDK says nothing about the other.
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
 
     steps:
