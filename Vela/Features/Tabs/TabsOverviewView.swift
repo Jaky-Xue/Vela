@@ -39,13 +39,12 @@ struct TabsOverviewView: View {
             Group {
                 if showPrivateTabs && isLocked && !isPrivateUnlocked {
                     lockedState
-                } else if visibleTabs.isEmpty {
-                    EmptyState(
-                        systemImage: "square.on.square",
-                        title: "没有标签页",
-                        message: showPrivateTabs ? "打开一个无痕标签页开始浏览。" : "打开一个标签页开始浏览。"
-                    )
                 } else {
+                    // The grid renders with no tabs at all: the add card is
+                    // the only thing in it, which is the honest picture of an
+                    // empty strip — and the state 全部关闭 leaves behind. An
+                    // empty-state message here would only restate what the
+                    // dashed card already says.
                     grid
                 }
             }

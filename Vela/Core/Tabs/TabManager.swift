@@ -304,8 +304,13 @@ public final class TabManager {
 
     /// Closes a tab, recording it in the recently-closed list.
     ///
-    /// Closing the last tab does not leave an empty strip: a fresh home tab is
-    /// created, which is the behaviour `BrowserHomeTerminalBackPlan` describes.
+    /// Closing the last tab leaves the strip empty — `activeTabId` becomes an
+    /// empty string and the shell shows its no-tabs surface. The manager used
+    /// to fabricate a fresh home tab here, and the fabricated tab was a card
+    /// the user could see in the overview: a "新标签页" that nobody had asked
+    /// for, sitting beside the add tile that means the same thing. The shell
+    /// and the overview both have real surfaces for an empty strip; nothing
+    /// needs to be invented.
     public func closeTab(id: String) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let closing = tabs[index]
@@ -328,12 +333,7 @@ public final class TabManager {
 
         if activeTabId == id {
             if tabs.isEmpty {
-                let replacement = BrowserTabState(
-                    privacyMode: closing.privacyMode,
-                    dataScope: closing.dataScope
-                )
-                tabs.append(replacement)
-                activeTabId = replacement.id
+                activeTabId = ""
             } else {
                 // Prefer the tab that was opened by the one being closed, else
                 // the neighbour.
@@ -353,15 +353,14 @@ public final class TabManager {
             destroyWebView(for: id)
         }
         tabs.removeAll { $0.privacyMode == privacyMode }
-        if tabs.isEmpty {
-            let replacement = BrowserTabState(
-                privacyMode: privacyMode,
-                dataScope: privacyMode == .private ? .sessionEphemeral : .profilePersistent
-            )
-            tabs.append(replacement)
-            activeTabId = replacement.id
-        } else if !tabs.contains(where: { $0.id == activeTabId }) {
-            activateTab(id: tabs[0].id)
+        if tabs.contains(where: { $0.id == activeTabId }) {
+            // The active tab survived the sweep.
+        } else if let first = tabs.first {
+            activateTab(id: first.id)
+        } else {
+            // Everything closed: an empty strip, which the shell and the tab
+            // overview both show honestly. No tab is fabricated to fill it.
+            activeTabId = ""
         }
         persistSession()
     }

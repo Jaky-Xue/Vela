@@ -186,14 +186,15 @@ final class TabManagerTests: XCTestCase {
 
     // MARK: - Closing
 
-    func testClosingTheOnlyTabLeavesAFreshHomeTab() {
+    func testClosingTheOnlyTabLeavesAnEmptyStrip() {
         let manager = makeManager()
         let tab = manager.createTab()
         manager.closeTab(id: tab.id)
 
-        XCTAssertEqual(manager.tabs.count, 1)
-        XCTAssertTrue(manager.tabs[0].isHome)
-        XCTAssertNotEqual(manager.tabs[0].id, tab.id)
+        // No tab is fabricated to fill the strip: an empty strip is a state
+        // the shell and the overview both show honestly.
+        XCTAssertTrue(manager.tabs.isEmpty)
+        XCTAssertEqual(manager.activeTabId, "")
     }
 
     func testClosingATabRecordsItAsRecentlyClosed() {

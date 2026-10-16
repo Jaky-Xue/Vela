@@ -153,6 +153,18 @@ struct BrowserShellView: View {
         .background { safeAreaReader }
         .overlay(alignment: .bottom) { commandBar }
         .overlay(alignment: .bottom) { floatingTools }
+        // The keyboard never rearranges the shell. Keyboard avoidance applied
+        // to the bar itself does not hold: the bottom-aligned overlay resolves
+        // its position against the container's safe area, which still contains
+        // the keyboard, so a site's own search field lifted the bar to sit
+        // above the keyboard — the browser's controls parked mid-screen over
+        // the page. Ignoring the keyboard here, at the root the inset enters
+        // through, takes it out of the equation for the whole subtree: the bar
+        // stays on its edge and is simply covered while the keyboard is up.
+        // The two surfaces that do track the keyboard measure it themselves —
+        // the search page ends at its top edge, and the find bar lifts above
+        // it by the same measurement.
+        .ignoresSafeArea(.keyboard)
         .animation(Self.chromeAnimation, value: omnibox.isEditing)
         .onAppear {
             wireOmnibox()
@@ -562,15 +574,6 @@ struct BrowserShellView: View {
         }
         .padding(.horizontal, BrowserChrome.sideInset)
         .padding(.bottom, BrowserChrome.barGap + safeBottom)
-        // The keyboard does not move the bar. SwiftUI's keyboard avoidance
-        // would lift a bottom-anchored bar to sit above the keyboard — which,
-        // with a site's own search field focused, parks the browser's controls
-        // in the middle of the screen over the page. The bar belongs to the
-        // edge it lives on; the keyboard covers it until it is dismissed, the
-        // way a keyboard covers the page's own content. The suggestion card
-        // needs no exemption here: it measures the keyboard itself and ends
-        // above it.
-        .ignoresSafeArea(.keyboard)
         // Sliding fully out — past the bottom edge — with a fade reads as the
         // bar dissolving into the page rather than parking behind the home
         // indicator. Mid-drag the bar follows the finger downward and fades
@@ -750,7 +753,17 @@ struct BrowserShellView: View {
             }
         }
         .padding(.horizontal, BrowserChrome.sideInset)
-        .padding(.bottom, safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap + 6)
+        // The shell ignores the keyboard at its root, so the bar it floats
+        // above no longer rises — and the find bar lifts by the keyboard's own
+        // measured height instead. The lift tracks the find bar rather than
+        // the keyboard: a keyboard raised by the page's own fields moves
+        // nothing the user is not reading, while one raised by the find field
+        // carries the find bar with it.
+        .padding(
+            .bottom,
+            safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap + 6
+                + (showFindBar ? keyboardHeight : 0)
+        )
         .animation(Self.chromeAnimation, value: showFindBar)
     }
 
@@ -1096,8 +1109,17 @@ struct BrowserShellView: View {
 
     // MARK: - Navigation
 
+    /// The tab an omnibox submission lands in.
+    ///
+    /// An empty tab strip is a state the user can reach — closing everything
+    /// leaves none — and a query typed into an address bar with no tabs must
+    /// not evaporate. The submission opens the tab it needs.
+    private var submissionTab: BrowserTabState {
+        activeTab ?? tabManager.createTab(openSource: .user)
+    }
+
     private func submitAddressBar(_ input: String) {
-        guard let tab = activeTab else { return }
+        let tab = submissionTab
         let engine = env.settings.preferences.searchEngine.activeEngine
 
         switch BrowserUrlResolver.resolve(input: input, searchEngine: engine) {
@@ -1146,7 +1168,7 @@ struct BrowserShellView: View {
     /// Searches for an input that was refused, which is what the refusal alert
     /// offers as the way forward.
     private func searchRefusedInput(_ input: String) {
-        guard let tab = activeTab else { return }
+        let tab = submissionTab
         let engine = env.settings.preferences.searchEngine.activeEngine
         guard let url = engine.searchUrl(for: input) else { return }
         try? env.searchHistory.record(
@@ -1199,7 +1221,7 @@ struct BrowserShellView: View {
                 boundary: activeTab?.dataBoundary ?? .persistent
             )
             omnibox.endEditing()
-            if let tab = activeTab { navigate(to: url, in: tab) }
+            navigate(to: url, in: submissionTab)
 
         case .pastQuery:
             // A past query is re-run, not loaded: the row's completion is the
@@ -1215,7 +1237,7 @@ struct BrowserShellView: View {
                 boundary: activeTab?.dataBoundary ?? .persistent
             )
             omnibox.endEditing()
-            if let tab = activeTab { navigate(to: url, in: tab) }
+            navigate(to: url, in: submissionTab)
 
         default:
             guard let url = URL(string: suggestion.completion) else {
@@ -1223,7 +1245,7 @@ struct BrowserShellView: View {
                 return
             }
             omnibox.endEditing()
-            if let tab = activeTab { navigate(to: url, in: tab) }
+            navigate(to: url, in: submissionTab)
         }
     }
 }
