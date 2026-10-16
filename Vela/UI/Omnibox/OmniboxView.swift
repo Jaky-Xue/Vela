@@ -60,8 +60,11 @@ struct OmniboxView: View {
         .padding(.horizontal, BrowserSpacing.compact)
         .frame(height: BrowserChrome.barHeight)
         .background {
-            // The progress line is painted inside the panel rather than over it,
-            // so its ends follow the capsule's corner instead of hanging past it.
+            // The progress line is painted inside the panel and clipped to the
+            // panel's own shape, so its ends follow the capsule's bottom curve
+            // instead of crossing it as a straight chord — the mismatch
+            // between a straight line and a rounded pill is what read as the
+            // bar being torn from the field it belongs to.
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 AddressProgressLine(
@@ -70,6 +73,7 @@ struct OmniboxView: View {
                     tint: palette.accent
                 )
             }
+            .clipShape(RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous))
         }
         // The omnibox pill inside the command bar. The tint under the material
         // is heavier here than on the flanking buttons because a URL has to
@@ -225,8 +229,13 @@ struct AddressProgressLine: View {
         }
         .frame(height: BrowserMetrics.progressLineHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .opacity(isLoading || progress > 0 ? 1 : 0)
+        // Visible while a load is under way, and gone the moment it finishes.
+        // `estimatedProgress` rests at 1 after `didFinish`, so a visibility rule
+        // of "anything above zero" kept the line drawn across a finished page
+        // forever.
+        .opacity(isLoading || (progress > 0 && progress < 1) ? 1 : 0)
         .animation(.easeOut(duration: 0.25), value: isLoading)
+        .animation(.easeOut(duration: 0.3), value: progress >= 1 && !isLoading)
         .onChange(of: isIndeterminate) { _, value in
             sweeping = value
         }

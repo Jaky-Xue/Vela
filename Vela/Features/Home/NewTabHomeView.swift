@@ -2,56 +2,21 @@
 //  NewTabHomeView.swift
 //  Vela
 //
-//  The native new-tab surface: most-visited shortcuts and recently closed.
+//  The native new-tab surface: the user's bookmarks, and recently closed tabs.
 //
 //  The surface is native rather than a web document because there is no
 //  custom-homepage runtime to load one into.
 //
-//  Shortcuts come from two sources. The user can pin a site themselves — the
-//  "添加" tile, or "固定为快捷方式" on a tile's long-press menu — and those are
-//  kept verbatim, because a pinned shortcut is a decision, not a statistic.
-//  Everything else is derived from history rather than stored separately:
-//  keeping them apart from bookmarks is deliberate — a shortcut is a place you
-//  went, not a place you saved — and deriving them costs one indexed query
-//  instead of an entire second store. Pinned entries win their host, so a site
-//  never appears twice.
-//
-//  Every block below the search box is collapsible, and the shortcut grid folds
-//  after eight. Rendering everything in full works until a profile has imported
-//  history, at which point the home page becomes a wall of icons above a wall of
-//  rows. The fold state is remembered per surface.
+//  The grid shows the bookmark store — every saved URL, flattened from both
+//  roots — because the home page and the bookmark list are the same inventory
+//  seen from two places: what the user saved is what the user wants one tap
+//  away, and keeping a third copy of that answer ("most visited") only
+//  guaranteed the three lists disagreed. Saving on this surface adds to the
+//  store, deleting removes from it, and both are visible everywhere else.
 //
 
 import SwiftUI
 import UIKit
-
-/// A shortcut the user pinned themselves.
-struct HomeShortcut: Codable, Identifiable, Equatable {
-    var id: String
-    var title: String
-    var urlString: String
-
-    var url: URL? { URL(string: urlString) }
-    var host: String { URL(string: urlString)?.host ?? "" }
-}
-
-/// Where the user's pinned shortcuts live.
-///
-/// `UserDefaults` rather than the database: the list is a handful of entries the
-/// user authored one at a time, it has no queries asked of it beyond "all of
-/// them", and a store with no query is a store with no table worth writing.
-private enum HomeShortcutStore {
-    static let key = "org.vela.browser.home-custom-shortcuts"
-
-    static func load() -> [HomeShortcut] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
-        return (try? JSONDecoder().decode([HomeShortcut].self, from: data)) ?? []
-    }
-
-    static func save(_ shortcuts: [HomeShortcut]) {
-        UserDefaults.standard.set(try? JSONEncoder().encode(shortcuts), forKey: key)
-    }
-}
 
 struct NewTabHomeView: View {
     @Environment(AppEnvironment.self) private var env
@@ -59,32 +24,20 @@ struct NewTabHomeView: View {
 
     var onNavigate: (URL) -> Void
 
-    @State private var shortcuts: [HistoryUrl] = []
+    @State private var bookmarkNodes: [BookmarkNode] = []
     @State private var recentlyClosed: [RecentlyClosedTabRecord] = []
-    @State private var customShortcuts: [HomeShortcut] = []
-    @State private var showAddShortcut = false
-    /// How many tiles the grid shows before folding. The rest are behind the
-    /// "更多" row.
-    @State private var showAllShortcuts = false
+    @State private var showAddBookmark = false
 
-    @AppStorage("org.vela.browser.home-shortcuts-expanded") private var shortcutsExpanded = true
+    @AppStorage("org.vela.browser.home-bookmarks-expanded") private var bookmarksExpanded = true
     @AppStorage("org.vela.browser.home-recently-closed-expanded") private var recentlyClosedExpanded = false
-
-    /// Eight fits two rows of four at the default text size, which is the most
-    /// that reads as a set rather than as a list.
-    private static let shortcutCollapseThreshold = 8
-    /// Loaded, but not shown until asked for.
-    private static let shortcutFetchLimit = 16
-
-    private let columns = [GridItem(.adaptive(minimum: 78, maximum: 104), spacing: BrowserSpacing.compact)]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrowserSpacing.loose) {
-                shortcutBlock
+                bookmarkBlock
                 if !recentlyClosed.isEmpty { recentlyClosedBlock }
             }
-            .padding(.horizontal, BrowserSpacing.regular + 4)
+            .padding(.horizontal, BrowserSpacing.regular)
             .padding(.top, BrowserSpacing.regular)
             // The extra run of bottom padding is what lets the last block sit
             // clear of the home indicator even though the surface itself runs
@@ -98,222 +51,133 @@ struct NewTabHomeView: View {
         .background(palette.surface)
         .scrollDismissesKeyboard(.immediately)
         .onAppear {
-            customShortcuts = HomeShortcutStore.load()
-            reload()
+            loadBookmarks()
         }
-        .sheet(isPresented: $showAddShortcut) {
-            AddShortcutSheet { shortcut in
-                customShortcuts.append(shortcut)
-                HomeShortcutStore.save(customShortcuts)
+        .sheet(isPresented: $showAddBookmark) {
+            AddBookmarkSheet { url, title in
+                env.bookmarks.addBookmark(url: url, title: title, parentNodeId: nil)
+                loadBookmarks()
             }
         }
     }
 
-    // MARK: - Tiles
+    // MARK: - Bookmarks
 
-    /// One grid cell, from either source.
-    private enum HomeTile: Identifiable {
-        case custom(HomeShortcut)
-        case visited(HistoryUrl)
+    /// Flattens both bookmark roots into the grid's inventory, depth-first and
+    /// in saved order. Folders are walked through, not shown: the home grid is
+    /// destinations only.
+    private func loadBookmarks() {
+        var result: [BookmarkNode] = []
 
-        var id: String {
-            switch self {
-            case .custom(let shortcut): return "custom-\(shortcut.id)"
-            case .visited(let entry): return "visited-\(entry.url)"
+        func walk(_ items: [BookmarkTreeItem]) {
+            for item in items {
+                if item.node.isFolder {
+                    walk(item.children)
+                } else if item.node.url != nil {
+                    result.append(item.node)
+                }
             }
         }
-    }
 
-    /// The grid's content: pinned shortcuts first, then history, one tile per
-    /// host — a pinned entry claims its host, so a site never appears twice.
-    private var tiles: [HomeTile] {
-        var result: [HomeTile] = customShortcuts.map { .custom($0) }
-        let pinnedHosts = Set(customShortcuts.map(\.host))
-        for entry in shortcuts where !pinnedHosts.contains(entry.host) {
-            result.append(.visited(entry))
+        for role in [BookmarkRootRole.toolbar, .other] {
+            guard let rootId = env.bookmarks.rootNodeId(for: role) else { continue }
+            walk(env.bookmarks.children(of: rootId))
         }
-        return result
+
+        bookmarkNodes = result
     }
 
-    private var visibleTiles: [HomeTile] {
-        showAllShortcuts ? tiles : Array(tiles.prefix(Self.shortcutCollapseThreshold))
-    }
-
-    private var shortcutBlock: some View {
+    private var bookmarkBlock: some View {
         CollapsibleSection(
-            title: "常用网站",
-            systemImage: "square.grid.2x2",
-            count: tiles.count,
-            isExpanded: $shortcutsExpanded
+            title: "收藏",
+            systemImage: nil,
+            count: nil,
+            isExpanded: $bookmarksExpanded
         ) {
-            VStack(alignment: .leading, spacing: BrowserSpacing.compact) {
-                LazyVGrid(columns: columns, spacing: BrowserSpacing.regular + 2) {
-                    ForEach(visibleTiles) { tile in
-                        tileCell(tile)
-                    }
-                    addTile
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 5),
+                spacing: 14
+            ) {
+                ForEach(bookmarkNodes) { node in
+                    bookmarkCell(node)
                 }
-
-                if tiles.count > Self.shortcutCollapseThreshold {
-                    Button {
-                        withAnimation(.snappy(duration: 0.25)) {
-                            showAllShortcuts.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(showAllShortcuts ? "收起" : "更多")
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 10, weight: .bold))
-                                .rotationEffect(.degrees(showAllShortcuts ? -90 : 90))
-                        }
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(palette.accent)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+                addBookmarkTile
             }
         }
     }
 
-    @ViewBuilder
-    private func tileCell(_ tile: HomeTile) -> some View {
-        switch tile {
-        case .custom(let shortcut):
-            Button {
-                if let url = shortcut.url {
-                    onNavigate(url)
-                }
-            } label: {
-                tileVisual(
-                    icon: SiteIconView(host: shortcut.host, size: 42),
-                    label: shortcut.title
-                )
-            }
-            .buttonStyle(ShortcutTileButtonStyle())
-            .contextMenu {
-                Button("在新标签页打开", systemImage: "plus.square.on.square") {
-                    guard let url = shortcut.url else { return }
-                    env.tabManager.openTab(
-                        url: url,
-                        privacyMode: .regular,
-                        openSource: .shortcut,
-                        activate: false
-                    )
-                }
-                Button("移除快捷方式", systemImage: "xmark.circle", role: .destructive) {
-                    customShortcuts.removeAll { $0.id == shortcut.id }
-                    HomeShortcutStore.save(customShortcuts)
-                }
-            }
-
-        case .visited(let entry):
-            Button {
-                guard let url = URL(string: entry.url) else { return }
-                onNavigate(url)
-            } label: {
-                tileVisual(
-                    icon: SiteIconView(host: entry.host, size: 42),
-                    label: entry.displayHost
-                )
-            }
-            .buttonStyle(ShortcutTileButtonStyle())
-            .contextMenu {
-                Button("在新标签页打开", systemImage: "plus.square.on.square") {
-                    guard let url = URL(string: entry.url) else { return }
-                    env.tabManager.openTab(
-                        url: url,
-                        privacyMode: .regular,
-                        openSource: .shortcut,
-                        activate: false
-                    )
-                }
-                Button("固定为快捷方式", systemImage: "pin") {
-                    let shortcut = HomeShortcut(
-                        id: UUID().uuidString,
-                        title: entry.displayHost,
-                        urlString: entry.url
-                    )
-                    customShortcuts.append(shortcut)
-                    HomeShortcutStore.save(customShortcuts)
-                }
-                Button("从常用网站中移除", systemImage: "xmark.circle", role: .destructive) {
-                    env.history.remove(entry)
-                    reload()
-                }
-            }
-        }
-    }
-
-    /// The visual both tile kinds share, so a pinned site and a visited one
-    /// read as the same object in the same grid.
-    private func tileVisual(icon: some View, label: String) -> some View {
-        VStack(spacing: BrowserSpacing.tight) {
-            icon
-            Text(label)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(palette.secondaryText)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, BrowserSpacing.compact)
-        .padding(.horizontal, BrowserSpacing.tight)
-        .background(
-            RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                .fill(palette.card.opacity(0.55))
-        )
-        .overlay {
-            // A top-edge catch of light, the same treatment the chrome
-            // uses, so the tiles belong to the same material family.
-            RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [.white.opacity(0.35), .white.opacity(0.04)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 0.5
-                )
-                .allowsHitTesting(false)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
-    }
-
-    /// The tile that adds a pinned shortcut.
-    ///
-    /// A dashed outline rather than a filled card: it is the one cell that is
-    /// an invitation rather than a destination, and the outline says so
-    /// without a word of explanation.
-    private var addTile: some View {
+    /// A bookmark tile: the site's icon on a rounded square, and nothing else —
+    /// the icon is the label, the way a home screen reads.
+    private func bookmarkCell(_ node: BookmarkNode) -> some View {
         Button {
-            showAddShortcut = true
+            guard let urlString = node.url, let url = URL(string: urlString) else { return }
+            onNavigate(url)
         } label: {
-            VStack(spacing: BrowserSpacing.tight) {
-                Image(systemName: "plus")
-                    .font(.system(size: 19, weight: .medium))
-                Text("添加")
-                    .font(.caption2.weight(.medium))
-            }
-            .foregroundStyle(palette.secondaryText)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, BrowserSpacing.compact)
-            .padding(.horizontal, BrowserSpacing.tight)
-            .frame(minHeight: 84)
-            .background(
-                RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                    .fill(palette.card.opacity(0.2))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                    .strokeBorder(
-                        palette.secondaryText.opacity(0.35),
-                        style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-                    )
-            }
-            .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+            SiteIconView(host: node.displayHost, size: 40)
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .background(
+                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                        .fill(palette.card.opacity(0.6))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.14), .white.opacity(0.03)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
+                        .allowsHitTesting(false)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
         }
-        .buttonStyle(ShortcutTileButtonStyle())
-        .accessibilityLabel("添加快捷方式")
+        .buttonStyle(HomeTileButtonStyle())
+        .contextMenu {
+            Button("在新标签页打开", systemImage: "plus.square.on.square") {
+                guard let urlString = node.url, let url = URL(string: urlString) else { return }
+                env.tabManager.openTab(
+                    url: url,
+                    privacyMode: .regular,
+                    openSource: .shortcut,
+                    activate: false
+                )
+            }
+            Button("删除书签", systemImage: "trash", role: .destructive) {
+                env.bookmarks.removeNode(id: node.id)
+                loadBookmarks()
+            }
+        }
+        .accessibilityLabel(node.title.isEmpty ? node.displayHost : node.title)
+    }
+
+    /// The tile that saves a new bookmark.
+    private var addBookmarkTile: some View {
+        Button {
+            showAddBookmark = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(palette.secondaryText)
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .background(
+                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                        .fill(palette.card.opacity(0.2))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                        .strokeBorder(
+                            palette.secondaryText.opacity(0.35),
+                            style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                        )
+                }
+                .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+        }
+        .buttonStyle(HomeTileButtonStyle())
+        .accessibilityLabel("添加书签")
     }
 
     // MARK: - Recently closed
@@ -336,7 +200,7 @@ struct NewTabHomeView: View {
                             )
                         }
                         env.tabManager.removeRecentlyClosedRecord(id: record.id)
-                        reload()
+                        reloadRecentlyClosed()
                     } label: {
                         HStack(spacing: BrowserSpacing.compact) {
                             SiteIconView(host: URL(string: record.url)?.host ?? "", size: 24)
@@ -379,25 +243,7 @@ struct NewTabHomeView: View {
         }
     }
 
-    // MARK: - Data
-
-    /// Rebuilds the history-derived shortcut list.
-    ///
-    /// Shortcuts are the most-visited *hosts* rather than the most-visited URLs,
-    /// so a site that spreads its content over many paths still appears once.
-    /// Ranking is by visit count first: a daily destination should outrank a
-    /// page that happened to be reloaded twenty times in one session.
-    private func reload() {
-        var seenHosts = Set<String>()
-        var picked: [HistoryUrl] = []
-
-        for entry in env.history.allVisited().sorted(by: { $0.visitCount > $1.visitCount }) {
-            guard !entry.host.isEmpty, seenHosts.insert(entry.host).inserted else { continue }
-            picked.append(entry)
-            if picked.count >= Self.shortcutFetchLimit { break }
-        }
-
-        shortcuts = picked
+    private func reloadRecentlyClosed() {
         recentlyClosed = env.tabManager.recentlyClosed.filter { $0.privacyMode == .regular }
     }
 }
@@ -406,14 +252,13 @@ struct NewTabHomeView: View {
 
 /// The form behind the "添加" tile.
 ///
-/// Two fields, because a pinned shortcut is a name and an address. The name is
-/// optional — an untitled shortcut takes its host, which is what the
-/// history-derived tiles show anyway.
-private struct AddShortcutSheet: View {
+/// Two fields, because a bookmark is a name and an address. The name is
+/// optional — an untitled bookmark takes its host, which is what the tiles
+/// show anyway.
+private struct AddBookmarkSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.browserPalette) private var palette
 
-    var onAdd: (HomeShortcut) -> Void
+    var onAdd: (String, String) -> Void
 
     @State private var urlText = ""
     @State private var title = ""
@@ -442,7 +287,7 @@ private struct AddShortcutSheet: View {
                         .foregroundStyle(.red)
                 }
             }
-            .navigationTitle("添加快捷方式")
+            .navigationTitle("添加书签")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -474,24 +319,16 @@ private struct AddShortcutSheet: View {
     private func commit() {
         guard let url = resolvedUrl else { return }
         let name = title.trimmingCharacters(in: .whitespaces)
-        onAdd(HomeShortcut(
-            id: UUID().uuidString,
-            title: name.isEmpty ? (url.host ?? url.absoluteString) : name,
-            urlString: url.absoluteString
-        ))
+        onAdd(url.absoluteString, name.isEmpty ? (url.host ?? url.absoluteString) : name)
         dismiss()
     }
 }
 
-/// The press feedback for a shortcut tile.
-///
-/// The tile has no panel of its own — the icon and the label float on the
-/// surface — so without this a tap on a shortcut is completely silent until the
-/// page it opens appears.
-private struct ShortcutTileButtonStyle: ButtonStyle {
+/// The press feedback for a home tile.
+private struct HomeTileButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
             .opacity(configuration.isPressed ? 0.7 : 1)
             .animation(.spring(response: 0.24, dampingFraction: 0.72), value: configuration.isPressed)
     }

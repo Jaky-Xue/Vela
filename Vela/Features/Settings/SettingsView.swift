@@ -631,6 +631,62 @@ struct GeneralSettingsView: View {
 
 // MARK: - User agent
 
+/// A user-agent preset the identifier screen offers.
+///
+/// `userAgent` is the literal string a page will receive; `nil` means the
+/// default, which WebKit assembles from its own platform tokens and is the one
+/// preset that never goes stale.
+struct BrowserUserAgentPreset: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let userAgent: String?
+    let isDesktop: Bool
+
+    static let all: [BrowserUserAgentPreset] = [
+        BrowserUserAgentPreset(id: "default", title: "Vela 默认", userAgent: nil, isDesktop: false),
+        BrowserUserAgentPreset(
+            id: "safari-iphone", title: "Safari iPhone",
+            userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+            isDesktop: false
+        ),
+        BrowserUserAgentPreset(
+            id: "chrome-android", title: "Chrome Android",
+            userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+            isDesktop: false
+        ),
+        BrowserUserAgentPreset(
+            id: "arkweb", title: "ArkWeb 原始标识",
+            userAgent: "Mozilla/5.0 (Phone; OpenHarmony 5.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 ArkWeb/5.0.0.0 Mobile",
+            isDesktop: false
+        ),
+        BrowserUserAgentPreset(
+            id: "huawei", title: "华为浏览器",
+            userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36 HuaweiBrowser/15.0.5.300",
+            isDesktop: false
+        ),
+        BrowserUserAgentPreset(
+            id: "chrome-windows", title: "Chrome Windows",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+            isDesktop: true
+        ),
+        BrowserUserAgentPreset(
+            id: "edge-windows", title: "Microsoft Edge Windows",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
+            isDesktop: true
+        ),
+        BrowserUserAgentPreset(
+            id: "safari-macos", title: "Safari macOS",
+            userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+            isDesktop: true
+        ),
+        BrowserUserAgentPreset(
+            id: "firefox-windows", title: "Firefox Windows",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+            isDesktop: true
+        )
+    ]
+}
+
 struct UserAgentSettingsView: View {
     @Environment(AppEnvironment.self) private var env
 
@@ -648,45 +704,38 @@ struct UserAgentSettingsView: View {
         "\(env.settings.preferences.desktopSiteByDefault)|\(env.settings.preferences.customUserAgent)"
     }
 
+    /// The preset currently in force: the match for the stored custom string,
+    /// or the default when none is stored. A stored string that matches no
+    /// preset was typed by hand and is reported as such.
+    private var selectedPreset: BrowserUserAgentPreset? {
+        let stored = env.settings.preferences.customUserAgent
+        guard !stored.isEmpty else { return BrowserUserAgentPreset.all[0] }
+        return BrowserUserAgentPreset.all.first { $0.userAgent == stored }
+    }
+
     var body: some View {
         List {
             Section {
-                Toggle("默认请求桌面版网站", isOn: Binding(
-                    get: { env.settings.preferences.desktopSiteByDefault },
-                    set: { value in
-                        env.settings.update { $0.desktopSiteByDefault = value }
-                        apply(reload: true)
-                    }
-                ))
+                HStack {
+                    Text("默认网页标识")
+                    Spacer(minLength: 8)
+                    Text(selectedPreset?.title ?? "自定义")
+                        .foregroundStyle(.secondary)
+                }
             } footer: {
-                Text("关闭后网站会看到 iPhone 的标识，多数网站会给出移动版页面。")
+                Text("选择一个标识后，此后打开的页面都会以它的身份出现。重新载入当前页面即可看到效果。")
             }
 
-            Section {
-                VStack(alignment: .leading, spacing: BrowserSpacing.compact) {
-                    identifierRow(
-                        title: "页面实际收到",
-                        value: identifierReportedByPage,
-                        note: identifierReportedByPage == nil
-                            ? "打开任意网页后，这里会显示这个设备真实发出的标识。"
-                            : nil
-                    )
-                    Divider()
-                    identifierRow(
-                        title: "将要发出",
-                        value: BrowserUserAgent.mobileIdentifier,
-                        note: nil
-                    )
+            Section("移动端网页") {
+                ForEach(BrowserUserAgentPreset.all.filter { !$0.isDesktop }) { preset in
+                    presetRow(preset)
                 }
-                Button {
-                    UIPasteboard.general.string = identifierReportedByPage ?? BrowserUserAgent.mobileIdentifier
-                } label: {
-                    Label("复制标识", systemImage: "doc.on.doc")
+            }
+
+            Section("桌面端网页") {
+                ForEach(BrowserUserAgentPreset.all.filter { $0.isDesktop }) { preset in
+                    presetRow(preset)
                 }
-            } header: {
-                Text("当前网页标识")
-            } footer: {
-                Text("标识由系统提供的平台与引擎部分，加上 Vela 补上的 Safari 部分拼成，版本号取自本机系统，因此系统升级后不需要更新应用。「页面实际收到」是从正在显示的页面里读回来的，如果某个网站说浏览器版本太低，先把这个串复制出来对照一下。")
             }
 
             Section {
@@ -709,7 +758,36 @@ struct UserAgentSettingsView: View {
             } header: {
                 Text("自定义标识")
             } footer: {
-                Text("填写后覆盖上面的开关，此后打开的页面都用这个标识。重新载入当前页面即可看到效果。")
+                Text("填写后覆盖上面选择的预设。")
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: BrowserSpacing.compact) {
+                    identifierRow(
+                        title: "页面实际收到",
+                        value: identifierReportedByPage,
+                        note: identifierReportedByPage == nil
+                            ? "打开任意网页后，这里会显示这个设备真实发出的标识。"
+                            : nil
+                    )
+                    Divider()
+                    identifierRow(
+                        title: "将要发出",
+                        value: env.settings.preferences.customUserAgent.isEmpty
+                            ? BrowserUserAgent.mobileIdentifier
+                            : env.settings.preferences.customUserAgent,
+                        note: nil
+                    )
+                }
+                Button {
+                    UIPasteboard.general.string = identifierReportedByPage ?? BrowserUserAgent.mobileIdentifier
+                } label: {
+                    Label("复制标识", systemImage: "doc.on.doc")
+                }
+            } header: {
+                Text("当前网页标识")
+            } footer: {
+                Text("「页面实际收到」是从正在显示的页面里读回来的。如果某个网站说浏览器版本太低，先把这个串复制出来对照一下。")
             }
         }
         .navigationTitle("网页标识")
@@ -717,6 +795,26 @@ struct UserAgentSettingsView: View {
         .task(id: identityKey) {
             await readIdentifierFromPage()
         }
+    }
+
+    /// One preset row with the reference screen's radio affordance: an empty
+    /// ring for the choices not taken, a filled check for the one in force.
+    private func presetRow(_ preset: BrowserUserAgentPreset) -> some View {
+        let isSelected = selectedPreset?.id == preset.id
+        return Button {
+            env.settings.update { $0.customUserAgent = preset.userAgent ?? "" }
+            apply(reload: true)
+        } label: {
+            HStack {
+                Text(preset.title)
+                Spacer(minLength: 8)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .light))
+                    .foregroundStyle(isSelected ? Color.blue : Color.secondary.opacity(0.55))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// One labelled identifier, in the monospaced type a string like this needs.

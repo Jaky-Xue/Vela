@@ -76,6 +76,14 @@ struct WebViewHost: UIViewRepresentable {
         container.attach(webView)
 
         let scrollView = webView.scrollView
+        // The page runs to the bottom edge of the screen — a reserved strip
+        // above the home indicator reads as something sitting on the page. The
+        // top inset is managed explicitly below (the chrome the page scrolls
+        // under), and `.never` stops WebKit from adding its own bottom inset,
+        // which is what kept every page from reaching the edge.
+        if scrollView.contentInsetAdjustmentBehavior != .never {
+            scrollView.contentInsetAdjustmentBehavior = .never
+        }
         if scrollView.contentInset.top != topContentInset {
             scrollView.contentInset.top = topContentInset
             scrollView.verticalScrollIndicatorInsets.top = topContentInset

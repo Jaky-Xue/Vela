@@ -202,8 +202,14 @@ struct BrowserShellView: View {
                 ShareSheet(items: [url])
             }
         }
-        .confirmationDialog("菜单", isPresented: $showMenu, titleVisibility: .hidden) {
-            menuContent
+        .sheet(isPresented: $showMenu) {
+            MenuPanelView(
+                canActOnPage: canActOnPage,
+                isPrivateMode: activeTab?.privacyMode == .private,
+                adBlockEnabled: env.settings.adBlockSettings.preferences.enabled,
+                onPerform: handleMenuAction
+            )
+            .environment(env)
         }
         .alert(
             "无法打开该地址",
@@ -374,6 +380,7 @@ struct BrowserShellView: View {
             )
             .id("reader")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea(edges: .bottom)
             .safeAreaInset(edge: .top) {
                 // The header starts below the chrome, stacked on the device's
                 // own safe area — the same arrangement the home surface uses.
@@ -411,6 +418,7 @@ struct BrowserShellView: View {
                         onHome: { goHome(tab) }
                     )
                     .id("error-\(tab.id)-\(tab.navigationSerial)")
+                    .ignoresSafeArea(edges: .bottom)
                     .safeAreaInset(edge: .top) {
                         Color.clear.frame(height: BrowserChrome.topChromeHeight)
                     }
@@ -808,61 +816,63 @@ struct BrowserShellView: View {
         syncAddressText()
     }
 
-    @ViewBuilder
-    private var menuContent: some View {
-        if let tab = activeTab, !tab.isHome {
-            Button("添加到书签", systemImage: "bookmark") {
-                env.bookmarks.addBookmark(url: tab.url, title: tab.title, parentNodeId: nil)
+    /// Whether the menu's page-bound actions have something to act on.
+    private var canActOnPage: Bool {
+        guard let tab = activeTab, !tab.isHome else { return false }
+        return tabManager.webView(for: tab.id) != nil
+    }
+
+    /// Runs one tile from the menu panel.
+    private func handleMenuAction(_ action: VelaMenuAction) {
+        showMenu = false
+        guard let tab = activeTab else {
+            switch action {
+            case .bookmarks: showBookmarks = true
+            case .history: showHistory = true
+            case .downloads: showDownloads = true
+            case .settings: showSettings = true
+            case .privateTab: tabManager.createTab(privacyMode: .private, openSource: .user)
+            case .leavePrivate: break
+            default: break
             }
-            Button("分享", systemImage: "square.and.arrow.up") { showShareSheet = true }
+            return
         }
 
-        Button("在页面中查找", systemImage: "magnifyingglass") { showFindBar = true }
-        Button("阅读模式", systemImage: "doc.plaintext") { activateReaderMode() }
-        Button("隐藏页面元素", systemImage: "eye.slash") {
-            guard let tab = activeTab, tabManager.webView(for: tab.id) != nil else { return }
+        switch action {
+        case .addBookmark:
+            env.bookmarks.addBookmark(url: tab.url, title: tab.title, parentNodeId: nil)
+        case .share:
+            showShareSheet = true
+        case .findInPage:
+            showFindBar = true
+        case .reader:
+            activateReaderMode()
+        case .hideElements:
+            guard tabManager.webView(for: tab.id) != nil else { return }
             env.webCoordinator.armElementPicker()
             // The picker script has to be in the page, and a configuration only
             // applies to the next navigation, so the page is reloaded.
             _ = tabManager.reload(tab: tab)
-        }
-
-        if let tab = activeTab, !tab.isHome {
-            Button("请求桌面网站", systemImage: "desktopcomputer") {
-                toggleDesktopSite(for: tab)
-            }
-        }
-
-        Divider()
-
-        if let tab = activeTab {
-            Button("主页", systemImage: "house") { goHome(tab) }
-        }
-        Button("书签", systemImage: "book") { showBookmarks = true }
-        Button("历史记录", systemImage: "clock.arrow.circlepath") { showHistory = true }
-        Button("下载", systemImage: "arrow.down.circle") { showDownloads = true }
-        Button(
-            env.settings.adBlockSettings.preferences.enabled ? "关闭广告过滤" : "开启广告过滤",
-            systemImage: "shield.lefthalf.filled"
-        ) {
+        case .desktopSite:
+            toggleDesktopSite(for: tab)
+        case .home:
+            goHome(tab)
+        case .bookmarks:
+            showBookmarks = true
+        case .history:
+            showHistory = true
+        case .downloads:
+            showDownloads = true
+        case .privateTab:
+            tabManager.createTab(privacyMode: .private, openSource: .user)
+        case .leavePrivate:
+            Task { await env.endPrivateSession() }
+        case .adBlock:
             toggleAdBlock()
-        }
-
-        Divider()
-
-        if let tab = activeTab {
-            Button("重新载入", systemImage: "arrow.clockwise") { reloadActiveTab() }
-        }
-        Button("新建无痕标签页", systemImage: "eyeglasses") {
-            env.tabManager.createTab(privacyMode: .private, openSource: .user)
-        }
-        Button("设置", systemImage: "gearshape") { showSettings = true }
-
-        if tabManager.activeTab?.privacyMode == .private {
-            Divider()
-            Button("离开无痕模式", systemImage: "eyeglasses", role: .destructive) {
-                Task { await env.endPrivateSession() }
-            }
+        case .reload:
+            reloadActiveTab()
+        case .settings:
+            showSettings = true
         }
     }
 
