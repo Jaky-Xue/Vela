@@ -180,10 +180,11 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
     // MARK: - Network failures
 
-    /// `https` rather than `http` on purpose: an `http` URL to a host that cannot
-    /// resolve is stopped by App Transport Security before DNS is ever consulted,
-    /// which would test the wrong failure. The certificate is never reached
-    /// either, because there is no host to connect to.
+    /// The scheme is `https` so that what fails is DNS and nothing else. It used
+    /// to matter more than that: an `http` URL to a host that cannot resolve was
+    /// stopped by App Transport Security before DNS was consulted, which is why
+    /// the web-content exemption is now asserted directly in
+    /// `PublicWebSmokeTests.testACleartextHttpPageOpens`.
     func testAnUnresolvableHostFailsWithADnsReason() async {
         let tab = harness.open(URL(string: "https://nonexistent-host.vela-invalid.test/")!)
         await waitForSettled(tab)

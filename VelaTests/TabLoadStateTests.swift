@@ -76,6 +76,19 @@ final class TabNavigationFailureTests: XCTestCase {
         XCTAssertEqual(failure(domain: NSURLErrorDomain, code: NSURLErrorUnsupportedURL)?.isRetryable, false)
     }
 
+    /// A refusal by the platform's transport policy is not the site's fault and
+    /// must not be reported in the platform's own words, which name a policy the
+    /// user has never heard of.
+    func testATransportSecurityRefusalIsExplainedRatherThanQuoted() {
+        let reported = failure(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorAppTransportSecurityRequiresSecureConnection
+        )
+        XCTAssertEqual(reported?.kind, .insecureConnection)
+        XCTAssertNotEqual(reported?.title, "无法载入页面")
+        XCTAssertTrue(reported?.detail.contains("HTTPS") ?? false, "detail was \(reported?.detail ?? "-")")
+    }
+
     func testAnUnknownErrorStillProducesSomethingWorthShowing() {
         let reported = failure(domain: "SomeOtherDomain", code: 42)
         XCTAssertEqual(reported?.kind, .other)

@@ -43,6 +43,26 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 
+	<!-- Cleartext HTTP inside web content.
+
+	     Without this, App Transport Security blocks every http:// navigation a
+	     web view makes, so a browser that accepted the address in the address
+	     bar then failed to open it — with an untranslated system message and no
+	     path forward. Safari loads those pages and marks them "Not Secure",
+	     which is the behaviour a browser owes its user.
+
+	     This is deliberately the web-content key rather than
+	     NSAllowsArbitraryLoads: it applies to WKWebView content only, while the
+	     app's own networking — downloads, filter-list subscriptions, search
+	     engine probes — stays under full ATS enforcement. Nothing here relaxes
+	     TLS: certificate validation is untouched, and Vela never trusts a
+	     certificate it would otherwise reject. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
+
 	<!-- External application navigation, mirroring Aira's ExternalNavigationLaunchService.
 	     Without these entries canOpenURL always returns false and the prompt never appears. -->
 	<key>LSApplicationQueriesSchemes</key>

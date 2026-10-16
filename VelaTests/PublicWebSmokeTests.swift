@@ -112,4 +112,32 @@ final class PublicWebSmokeTests: XCTestCase {
         XCTAssertEqual(tab.lastFailure?.kind, .dns)
         XCTAssertFalse(tab.isLoading)
     }
+
+    /// A cleartext page opens.
+    ///
+    /// This is the test for the web-content App Transport Security exemption.
+    /// Without it the navigation fails with
+    /// `NSURLErrorAppTransportSecurityRequiresSecureConnection` before a packet
+    /// is sent — so a browser that accepted the address in the address bar then
+    /// refused to open it, which is one of the ways "the browser cannot open
+    /// pages" presented itself. `example.com` serves both schemes.
+    func testACleartextHttpPageOpens() async {
+        guard let url = URL(string: "http://example.com/") else { return XCTFail("bad test URL") }
+        let tab = harness.open(url)
+
+        _ = await waitUntil("the cleartext page to settle", timeout: 30) {
+            !tab.loadState.isInFlight && !tab.isLoading
+        }
+
+        print("=== cleartext smoke test: http://example.com/ → state=\(tab.loadState.rawValue) " +
+              "status=\(tab.serverStatus) error=\(tab.lastFailure?.title ?? "none")")
+
+        XCTAssertEqual(
+            tab.loadState,
+            .finished,
+            "App Transport Security blocked web content: \(harness.trace(for: tab))"
+        )
+        XCTAssertNil(tab.lastFailure)
+        XCTAssertEqual(tab.serverStatus, 200)
+    }
 }

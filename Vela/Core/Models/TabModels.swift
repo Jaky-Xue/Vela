@@ -115,6 +115,8 @@ public struct TabNavigationFailure: Equatable, Sendable {
         /// user with a blank rectangle — the exact symptom that is
         /// indistinguishable from the browser being broken.
         case emptyResponse
+        /// The platform refused a cleartext request before it was sent.
+        case insecureConnection
         case crashed
         case invalidUrl
         case other
@@ -186,6 +188,12 @@ extension TabNavigationFailure {
             kind = .timeout
         case (NSURLErrorDomain, NSURLErrorCannotConnectToHost):
             kind = .refused
+        case (NSURLErrorDomain, NSURLErrorAppTransportSecurityRequiresSecureConnection):
+            // The platform, not the site, refused this. It happens when the web
+            // content exemption is not in force, and the system's own message for
+            // it is an untranslated sentence about a policy the user has never
+            // heard of.
+            kind = .insecureConnection
         case (NSURLErrorDomain, NSURLErrorNetworkConnectionLost):
             kind = .connectionLost
         case (NSURLErrorDomain, NSURLErrorSecureConnectionFailed),
@@ -256,6 +264,7 @@ extension TabNavigationFailure {
         case .tls: return "安全连接失败"
         case .httpStatus: return "服务器返回错误"
         case .emptyResponse: return "服务器没有返回内容"
+        case .insecureConnection: return "系统阻止了不安全的连接"
         case .crashed: return "页面已停止响应"
         case .invalidUrl: return "网址无法打开"
         case .other: return "无法载入页面"
@@ -280,6 +289,8 @@ extension TabNavigationFailure {
             return "该网站的证书存在问题，Vela 不会跳过证书校验。"
         case .emptyResponse:
             return "连接没有建立，或者服务器在应答前就关闭了连接。"
+        case .insecureConnection:
+            return "该站点只提供不加密的 HTTP 连接，而当前系统策略不允许。请尝试 HTTPS 地址。"
         case .invalidUrl:
             return "这个地址不是一个可以打开的网页地址。"
         case .other:
