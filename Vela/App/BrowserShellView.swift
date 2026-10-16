@@ -629,7 +629,7 @@ struct BrowserShellView: View {
             if items.isEmpty {
                 Text("没有更早的页面")
             } else {
-                ForEach(Array(items.enumerated()), id: \.element.uniqueID) { _, item in
+                ForEach(items, id: \.uniqueID) { item in
                     Button {
                         _ = webView.go(to: item)
                     } label: {
@@ -653,7 +653,7 @@ struct BrowserShellView: View {
             if items.isEmpty {
                 Text("没有更晚的页面")
             } else {
-                ForEach(Array(items.enumerated()), id: \.element.uniqueID) { _, item in
+                ForEach(items, id: \.uniqueID) { item in
                     Button {
                         _ = webView.go(to: item)
                     } label: {
