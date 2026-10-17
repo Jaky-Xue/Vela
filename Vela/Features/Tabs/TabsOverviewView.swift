@@ -27,6 +27,7 @@ import WebKit
 
 struct TabsOverviewView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
 
     @State private var showPrivateTabs = false
@@ -165,6 +166,16 @@ struct TabsOverviewView: View {
         .padding(.horizontal, BrowserSpacing.regular + 4)
         .padding(.top, BrowserSpacing.compact)
         .padding(.bottom, BrowserSpacing.tight)
+    }
+
+    /// The round translucent button the header's actions live in — the shape
+    /// Safari's overview buttons use against the blurred page behind them.
+    private func headerCircle(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(palette.primaryText)
+            .frame(width: 36, height: 36)
+            .background(.ultraThinMaterial, in: Circle())
     }
 
     /// The actions the old bottom bar carried, parked where Safari parks its
