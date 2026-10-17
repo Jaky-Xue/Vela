@@ -725,7 +725,7 @@ struct BrowserShellView: View {
                     .strokeBorder(palette.primaryText, lineWidth: 1.6)
                     .frame(width: 21, height: 21)
 
-                Text("\(min(tabManager.tabs.count, 99))")
+                Text("\(min(tabManager.displayedTabCount, 99))")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(palette.primaryText)
@@ -735,7 +735,7 @@ struct BrowserShellView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(ChromeButtonStyle())
-        .accessibilityLabel("标签页，\(tabManager.tabs.count) 个")
+        .accessibilityLabel("标签页，\(tabManager.displayedTabCount) 个")
     }
 
     /// The find bar and the server-status notice, pinned under the chrome.

@@ -100,6 +100,17 @@ public final class TabManager {
         tabs.filter { $0.privacyMode == .private }
     }
 
+    /// The number of tabs the surfaces present.
+    ///
+    /// Home tabs are the strip's filler, not its content — the overview does
+    /// not list one while real tabs exist — so the count a badge shows is the
+    /// count of real tabs, or one when only a home tab remains, which is the
+    /// one card the overview does show.
+    public var displayedTabCount: Int {
+        let realTabs = tabs.filter { !$0.isHome }
+        return realTabs.isEmpty ? (tabs.isEmpty ? 0 : 1) : realTabs.count
+    }
+
     public func tab(id: String) -> BrowserTabState? {
         tabs.first { $0.id == id }
     }
@@ -118,17 +129,46 @@ public final class TabManager {
     /// loading a blank document, which is what lets the native new-tab page
     /// render without a web view existing at all.
     ///
-    /// There is deliberately no `url:` parameter. A tab that is meant to show a
-    /// page goes through `openTab(url:...)`, which is the one place that pairs
-    /// "the tab exists" with "the request is issued" — the pairing that used to
-    /// be reconstructed by the view layer and got it wrong for every tab that
-    /// was not on screen.
+    /// The home tab is the strip's filler and there is one per privacy mode: a
+    /// "new tab" while one exists means go to it, not stack another. A tab
+    /// that is meant to show a page goes through `openTab(url:...)`, which is
+    /// the one place that pairs "the tab exists" with "the request is issued"
+    /// — the pairing that used to be reconstructed by the view layer and got
+    /// it wrong for every tab that was not on screen — and which always
+    /// builds a fresh tab, because loading into the filler would turn it into
+    /// a page and leave the strip without one.
     @discardableResult
     public func createTab(
         privacyMode: BrowserSessionPrivacyMode = .regular,
         openerTabId: String = "",
         openSource: BrowserTabOpenSource = .user,
         activate: Bool = true
+    ) -> BrowserTabState {
+        if let existing = tabs.first(where: { $0.isHome && $0.privacyMode == privacyMode }) {
+            if activate {
+                activateTab(id: existing.id)
+            }
+            return existing
+        }
+
+        let tab = appendHomeTab(
+            privacyMode: privacyMode,
+            openerTabId: openerTabId,
+            openSource: openSource
+        )
+
+        if activate {
+            activateTab(id: tab.id)
+        }
+        persistSession()
+        return tab
+    }
+
+    /// Appends a fresh home tab, honouring the pinned block's leading edge.
+    private func appendHomeTab(
+        privacyMode: BrowserSessionPrivacyMode,
+        openerTabId: String = "",
+        openSource: BrowserTabOpenSource = .user
     ) -> BrowserTabState {
         let tab = BrowserTabState(
             isHome: true,
@@ -146,12 +186,15 @@ public final class TabManager {
         } else {
             tabs.append(tab)
         }
-
-        if activate {
-            activateTab(id: tab.id)
-        }
-        persistSession()
         return tab
+    }
+
+    /// The mode's single home tab: the one that exists, or a fresh one.
+    private func availableHomeTab(privacyMode: BrowserSessionPrivacyMode) -> BrowserTabState {
+        if let existing = tabs.first(where: { $0.isHome && $0.privacyMode == privacyMode }) {
+            return existing
+        }
+        return appendHomeTab(privacyMode: privacyMode)
     }
 
     /// Creates a tab and points it at a URL, in one step.
@@ -169,11 +212,12 @@ public final class TabManager {
         openSource: BrowserTabOpenSource = .user,
         activate: Bool = true
     ) -> BrowserTabState {
-        let tab = createTab(
+        // Always a fresh tab, never the reused home one: loading into the
+        // filler would turn it into a page and leave the mode without one.
+        let tab = appendHomeTab(
             privacyMode: privacyMode,
             openerTabId: openerTabId,
-            openSource: openSource,
-            activate: false
+            openSource: openSource
         )
         load(url: url, in: tab)
         if activate {
@@ -305,16 +349,16 @@ public final class TabManager {
 
     /// Closes a tab, recording it in the recently-closed list.
     ///
-    /// Closing the last tab leaves the strip empty — `activeTabId` becomes an
-    /// empty string and the shell shows its no-tabs surface. The manager used
-    /// to fabricate a fresh home tab here, and the fabricated tab was a card
-    /// the user could see in the overview: a "新标签页" that nobody had asked
-    /// for, sitting beside the add tile that means the same thing. The shell
-    /// and the overview both have real surfaces for an empty strip; nothing
-    /// needs to be invented.
+    /// What the strip is left with follows the home tab's one rule: it is the
+    /// filler, present exactly when no real tab is. Closing a tab while real
+    /// ones remain lands on a neighbour as before; closing the mode's last
+    /// real tab — or the home tab when it is already the only one — leaves
+    /// exactly one home tab, activated, which is the surface an emptied strip
+    /// shows.
     public func closeTab(id: String) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let closing = tabs[index]
+        let mode = closing.privacyMode
 
         if !closing.isHome {
             let record = RecentlyClosedTabRecord(
@@ -332,10 +376,8 @@ public final class TabManager {
         destroyWebView(for: id)
         tabs.remove(at: index)
 
-        if activeTabId == id {
-            if tabs.isEmpty {
-                activeTabId = ""
-            } else {
+        if tabs.contains(where: { $0.privacyMode == mode && !$0.isHome }) {
+            if activeTabId == id {
                 // Prefer the tab that was opened by the one being closed, else
                 // the neighbour.
                 let parentId = closing.openerTabId
@@ -344,23 +386,40 @@ public final class TabManager {
                     : tabs[min(index, tabs.count - 1)].id
                 activateTab(id: nextId)
             }
+        } else {
+            activateTab(id: availableHomeTab(privacyMode: mode).id)
         }
         persistSession()
     }
 
-    public func closeAllTabs(privacyMode: BrowserSessionPrivacyMode) {
+    /// Closes every tab of one privacy mode.
+    ///
+    /// The sweep leaves the mode's one home tab standing — created here when
+    /// the sweep took everything, because a strip with no tab at all is not a
+    /// state this browser shows. `endPrivateSession` is the one caller that
+    /// declines the filler: ending private mode means no private tab remains,
+    /// not even a pristine one.
+    public func closeAllTabs(
+        privacyMode: BrowserSessionPrivacyMode,
+        fillingWithHomeTab: Bool = true
+    ) {
         let doomed = tabs.filter { $0.privacyMode == privacyMode }.map(\.id)
         for id in doomed {
             destroyWebView(for: id)
         }
         tabs.removeAll { $0.privacyMode == privacyMode }
+
+        if fillingWithHomeTab {
+            _ = availableHomeTab(privacyMode: privacyMode)
+        }
+
         if tabs.contains(where: { $0.id == activeTabId }) {
             // The active tab survived the sweep.
+        } else if let home = tabs.first(where: { $0.isHome && $0.privacyMode == privacyMode }) {
+            activateTab(id: home.id)
         } else if let first = tabs.first {
             activateTab(id: first.id)
         } else {
-            // Everything closed: an empty strip, which the shell and the tab
-            // overview both show honestly. No tab is fabricated to fill it.
             activeTabId = ""
         }
         persistSession()
@@ -711,7 +770,7 @@ public final class TabManager {
     /// Clears private tabs and their records at the end of a private session.
     ///
     public func endPrivateSession() {
-        closeAllTabs(privacyMode: .private)
+        closeAllTabs(privacyMode: .private, fillingWithHomeTab: false)
         recentlyClosed.removeAll { $0.privacyMode == .private }
         try? sessionRepository?.clearRecentlyClosed(privacyMode: .private)
         persistSession()

@@ -56,10 +56,17 @@ struct TabsOverviewView: View {
     /// The tabs of the mode on screen, narrowed by the search field when it
     /// has text. The pinned rail and the grid are two views of this one list,
     /// so a search reaches into both.
+    ///
+    /// The home tab is the strip's filler, not one of its cards: while real
+    /// tabs exist it does not appear here, and the grid shows pages only.
+    /// What remains once the real tabs are gone is exactly the filler — the
+    /// one card a closing action leaves behind.
     private var visibleTabs: [BrowserTabState] {
         let tabs = showPrivateTabs ? tabManager.privateTabs : tabManager.regularTabs
-        guard !searchQuery.isEmpty else { return tabs }
-        return tabs.filter {
+        let realTabs = tabs.filter { !$0.isHome }
+        let listed = realTabs.isEmpty ? tabs : realTabs
+        guard !searchQuery.isEmpty else { return listed }
+        return listed.filter {
             $0.displayTitle.localizedCaseInsensitiveContains(searchQuery)
                 || $0.displayHost.localizedCaseInsensitiveContains(searchQuery)
         }

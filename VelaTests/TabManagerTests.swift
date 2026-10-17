@@ -54,12 +54,26 @@ final class TabManagerTests: XCTestCase {
         XCTAssertEqual(manager.tabs.count, 1)
     }
 
-    func testCreateTabWithAUrlDoesNotMarkItAsHome() {
+    func testCreateTabReusesTheSingleHomeTab() {
         let manager = makeManager()
-        let tab = manager.openTab(url: URL(string: "https://example.com")!)
+        let first = manager.createTab()
+        let second = manager.createTab()
 
-        XCTAssertFalse(tab.isHome)
-        XCTAssertEqual(tab.url, "https://example.com")
+        // The home tab is the strip's filler: one per mode, however many
+        // times "new tab" is asked for.
+        XCTAssertEqual(manager.tabs.count, 1)
+        XCTAssertEqual(second.id, first.id)
+    }
+
+    func testOpeningAUrlAlwaysBuildsAFreshTab() {
+        let manager = makeManager()
+        _ = manager.createTab()
+        let page = manager.openTab(url: URL(string: "https://example.com")!)
+
+        // Loading into the filler would turn it into a page and leave the
+        // strip without one, so a URL always gets its own tab.
+        XCTAssertEqual(manager.tabs.count, 2)
+        XCTAssertFalse(page.isHome)
     }
 
     func testCreateTabInTheBackgroundLeavesTheActiveTabAlone() {
@@ -186,15 +200,39 @@ final class TabManagerTests: XCTestCase {
 
     // MARK: - Closing
 
-    func testClosingTheOnlyTabLeavesAnEmptyStrip() {
+    func testClosingTheLastTabLeavesExactlyOneHomeTab() {
         let manager = makeManager()
         let tab = manager.createTab()
         manager.closeTab(id: tab.id)
 
-        // No tab is fabricated to fill the strip: an empty strip is a state
-        // the shell and the overview both show honestly.
-        XCTAssertTrue(manager.tabs.isEmpty)
-        XCTAssertEqual(manager.activeTabId, "")
+        // An emptied strip is not a state the browser shows: exactly one home
+        // tab fills it, and that tab is the surface the user lands on.
+        XCTAssertEqual(manager.tabs.count, 1)
+        XCTAssertTrue(manager.tabs[0].isHome)
+        XCTAssertEqual(manager.activeTabId, manager.tabs[0].id)
+    }
+
+    func testClosingTheLastRealTabActivatesTheHomeTab() {
+        let manager = makeManager()
+        let home = manager.createTab()
+        let page = manager.openTab(url: URL(string: "https://example.com")!)
+        manager.closeTab(id: page.id)
+
+        XCTAssertEqual(manager.tabs.map(\.id), [home.id])
+        XCTAssertEqual(manager.activeTabId, home.id)
+    }
+
+    func testCloseAllTabsLeavesOneHomeTab() {
+        let manager = makeManager()
+        _ = manager.createTab()
+        _ = manager.openTab(url: URL(string: "https://one.example")!)
+        _ = manager.openTab(url: URL(string: "https://two.example")!)
+
+        manager.closeAllTabs(privacyMode: .regular)
+
+        XCTAssertEqual(manager.tabs.count, 1)
+        XCTAssertTrue(manager.tabs[0].isHome)
+        XCTAssertEqual(manager.activeTabId, manager.tabs[0].id)
     }
 
     func testClosingATabRecordsItAsRecentlyClosed() {
@@ -261,8 +299,8 @@ final class TabManagerTests: XCTestCase {
     func testPinningMovesATabToTheLeadingEdge() {
         let manager = makeManager()
         let first = manager.createTab()
-        let second = manager.createTab()
-        let third = manager.createTab()
+        let second = manager.openTab(url: URL(string: "https://one.example")!)
+        let third = manager.openTab(url: URL(string: "https://two.example")!)
 
         manager.setPinned(true, id: third.id)
 
@@ -278,8 +316,8 @@ final class TabManagerTests: XCTestCase {
     func testPinnedTabsKeepTheirRelativeOrder() {
         let manager = makeManager()
         let first = manager.createTab()
-        let second = manager.createTab()
-        let third = manager.createTab()
+        let second = manager.openTab(url: URL(string: "https://one.example")!)
+        let third = manager.openTab(url: URL(string: "https://two.example")!)
 
         manager.setPinned(true, id: third.id)
         manager.setPinned(true, id: second.id)
@@ -290,8 +328,8 @@ final class TabManagerTests: XCTestCase {
     func testSwitchTabWrapsInBothDirections() {
         let manager = makeManager()
         let first = manager.createTab()
-        manager.createTab()
-        let last = manager.createTab()
+        _ = manager.openTab(url: URL(string: "https://one.example")!)
+        let last = manager.openTab(url: URL(string: "https://two.example")!)
         XCTAssertEqual(manager.activeTabId, last.id)
 
         manager.switchTab(by: 1)
@@ -304,8 +342,8 @@ final class TabManagerTests: XCTestCase {
     func testMoveReordersTheStrip() {
         let manager = makeManager()
         let first = manager.createTab()
-        let second = manager.createTab()
-        let third = manager.createTab()
+        let second = manager.openTab(url: URL(string: "https://one.example")!)
+        let third = manager.openTab(url: URL(string: "https://two.example")!)
 
         manager.move(fromIndex: 0, toIndex: 1)
 
