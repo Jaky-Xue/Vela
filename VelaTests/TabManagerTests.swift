@@ -370,7 +370,7 @@ final class TabManagerTests: XCTestCase {
 
 @MainActor
 final class BrowserTabStateTests: XCTestCase {
-    func testDisplayTitleFallsBackToTheHostThenToNewTab() {
+    func testDisplayTitleFallsBackToTheHostThenToTheStartPage() {
         let tab = BrowserTabState(url: "https://www.example.com/a/b", isHome: false)
         XCTAssertEqual(tab.displayTitle, "www.example.com")
 
@@ -378,7 +378,7 @@ final class BrowserTabStateTests: XCTestCase {
         XCTAssertEqual(tab.displayTitle, "An article")
 
         let home = BrowserTabState()
-        XCTAssertEqual(home.displayTitle, "新标签页")
+        XCTAssertEqual(home.displayTitle, "主页")
     }
 
     func testDisplayHostDropsTheWwwPrefix() {
