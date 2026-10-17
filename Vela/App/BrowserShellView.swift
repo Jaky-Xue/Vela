@@ -37,6 +37,7 @@ import UniformTypeIdentifiers
 struct BrowserShellView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
 
     /// The omnibox session. Created here rather than inside the view body
     /// because it is long-lived: it survives every tab switch, and rebuilding it
@@ -122,6 +123,14 @@ struct BrowserShellView: View {
     @State private var safeBottom: CGFloat = 0
     @State private var safeRectHeight: CGFloat = 0
 
+    /// Whether the surface the chrome floats over reads light — a bright
+    /// wallpaper, a pale page — and the bar should therefore draw black ink.
+    /// Decided by `updateChromeForeground` from the strip behind the bar; the
+    /// initial value matches the shipped palette's dark chrome until the first
+    /// measurement lands.
+    @State private var chromeForegroundIsLight = false
+    @State private var chromeSampleTask: Task<Void, Never>?
+
     /// The one animation the chrome uses.
     ///
     /// A spring rather than an ease: the bar leaves and returns along a path
@@ -156,8 +165,8 @@ struct BrowserShellView: View {
                 handleEdgeSwipeBack()
             }
         }
-        .overlay(alignment: .bottom) { commandBar }
-        .overlay(alignment: .bottom) { floatingTools }
+        .overlay(alignment: .bottom) { commandBarInGlassContainer }
+        .overlay(alignment: .bottom) { floatingToolsInGlassContainer }
         // The keyboard never rearranges the shell. Keyboard avoidance applied
         // to the bar itself does not hold: the bottom-aligned overlay resolves
         // its position against the container's safe area, which still contains
@@ -174,6 +183,7 @@ struct BrowserShellView: View {
         .onAppear {
             wireOmnibox()
             syncAddressText()
+            updateChromeForeground()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.keyboardWillChangeFrameNotification)) { note in
             let end = (note.userInfo?[UIApplication.keyboardFrameEndUserInfoKey] as? NSValue)?
@@ -221,6 +231,19 @@ struct BrowserShellView: View {
             chromeHidden = false
             scrollAccumulation = 0
             syncAddressText()
+            updateChromeForeground()
+        }
+        .onChange(of: activeTab?.loadState) { _, _ in
+            updateChromeForeground()
+        }
+        .onChange(of: env.settings.preferences.homeBackgroundStamp) { _, _ in
+            updateChromeForeground()
+        }
+        .onChange(of: env.settings.preferences.themePaletteId) { _, _ in
+            updateChromeForeground()
+        }
+        .onChange(of: colorScheme) { _, _ in
+            updateChromeForeground()
         }
         // A full-screen cover, not a sheet: Safari's overview takes the whole
         // screen, and a floating panel would put the page's edges back where
@@ -545,6 +568,43 @@ struct BrowserShellView: View {
     ///
     /// The bar sits at the bottom of the screen, above the home indicator,
     /// where a thumb reaches it and where the system's own toolbars live.
+    // MARK: - Chrome ink
+
+    /// The ink the bottom chrome draws in: white over a dark backdrop, black
+    /// over a light one. The palette decides the chrome's fill, but only the
+    /// backdrop behind the glass can decide whether its ink is legible, so the
+    /// foreground follows the backdrop and not the palette.
+    private var barForeground: Color {
+        chromeForegroundIsLight ? .black : .white
+    }
+
+    /// The bar's glass shapes riding one coordinated layer.
+    ///
+    /// `glassEffect` without a container gives every shape its own system
+    /// layer, and a rotation can leave a layer parked at its pre-rotation
+    /// frame — the ghost second bottom bar a portrait rotation used to show.
+    /// The container samples the page once for the whole bar and moves it as
+    /// one piece, which is both the fix and the reason the API exists.
+    @ViewBuilder private var commandBarInGlassContainer: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: BrowserChrome.barGap) {
+                commandBar
+            }
+        } else {
+            commandBar
+        }
+    }
+
+    @ViewBuilder private var floatingToolsInGlassContainer: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: BrowserChrome.barGap) {
+                floatingTools
+            }
+        } else {
+            floatingTools
+        }
+    }
+
     private var commandBar: some View {
         HStack(spacing: 8) {
             HStack(spacing: 2) {
@@ -575,7 +635,8 @@ struct BrowserShellView: View {
                 onStop: {
                     guard let tab = activeTab else { return }
                     tabManager.stopLoading(tab: tab)
-                }
+                },
+                foregroundOverride: barForeground
             )
             .frame(maxWidth: .infinity)
 
@@ -656,12 +717,103 @@ struct BrowserShellView: View {
         }
         .buttonStyle(ChromeButtonStyle())
         .foregroundStyle(
-            isEnabled ? palette.primaryText : palette.secondaryText.opacity(0.35)
+            isEnabled ? barForeground : barForeground.opacity(0.35)
         )
         .disabled(!isEnabled)
         .accessibilityLabel(
             symbol == "chevron.left" ? "后退" : symbol == "chevron.right" ? "前进" : "菜单"
         )
+    }
+
+    // MARK: - Chrome backdrop sampling
+
+    /// Re-decides the ink the chrome draws in, from what sits behind the bar.
+    ///
+    /// Three possible backs: the home surface's own picture, the palette
+    /// surface, or the live page. The first two are measured from what they
+    /// are — the picture's bottom strip, the surface token in the current
+    /// scheme. The page is measured from a small print of its own bottom
+    /// strip, taken a beat after the load state settles so the sample reads
+    /// this document and not the one before it.
+    private func updateChromeForeground() {
+        guard let tab = activeTab else { return }
+        chromeSampleTask?.cancel()
+
+        if tab.isHome {
+            if let stamp = env.settings.preferences.homeBackgroundStamp {
+                let scheme = colorScheme
+                let surface = palette.surface
+                chromeSampleTask = Task {
+                    let image = await Task.detached(priority: .utility) {
+                        HomeBackgroundStore.load(stamp: stamp)
+                    }.value
+                    guard !Task.isCancelled else { return }
+                    if let image, let backdropIsLight = ChromeBackdrop.bottomStripIsLight(image) {
+                        chromeForegroundIsLight = backdropIsLight
+                    } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
+                        chromeForegroundIsLight = backdropIsLight
+                    }
+                }
+            } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
+                chromeForegroundIsLight = backdropIsLight
+            }
+            return
+        }
+
+        if isReaderActive,
+           let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
+            // The reader redraws the article on the palette surface; there is
+            // no page behind the bar to sample.
+            chromeForegroundIsLight = backdropIsLight
+            return
+        }
+
+        if tab.loadState.isFailure,
+           let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
+            // The error surface is the shell's own, drawn on the palette
+            // surface — there is no page to sample.
+            chromeForegroundIsLight = backdropIsLight
+            return
+        }
+
+        guard let webView = tabManager.webView(for: tab.id) else { return }
+        let tabId = tab.id
+        let scheme = colorScheme
+        let surface = palette.surface
+        chromeSampleTask = Task {
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled, tabManager.activeTabId == tabId else { return }
+
+            if let image = await takeBottomStripSnapshot(webView: webView),
+               let backdropIsLight = ChromeBackdrop.bottomStripIsLight(image) {
+                chromeForegroundIsLight = backdropIsLight
+                return
+            }
+            if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
+                chromeForegroundIsLight = backdropIsLight
+            }
+        }
+    }
+
+    /// A small print of the web view's bottom strip — the region the command
+    /// bar covers. The web view runs edge to edge, so this is the backdrop the
+    /// ink has to live on.
+    private func takeBottomStripSnapshot(webView: WKWebView) async -> UIImage? {
+        let stripHeight = min(140, webView.bounds.height)
+        guard stripHeight > 0, webView.bounds.width > 0 else { return nil }
+        let config = WKSnapshotConfiguration()
+        config.rect = CGRect(
+            x: 0,
+            y: webView.bounds.height - stripHeight,
+            width: webView.bounds.width,
+            height: stripHeight
+        )
+        config.snapshotWidth = 32
+        return await withCheckedContinuation { continuation in
+            webView.takeSnapshot(with: config) { image, _ in
+                continuation.resume(returning: image)
+            }
+        }
     }
 
     /// The pages behind the current one, newest first, for the back button's
@@ -722,13 +874,13 @@ struct BrowserShellView: View {
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 6.5, style: .continuous)
-                    .strokeBorder(palette.primaryText, lineWidth: 1.6)
+                    .strokeBorder(barForeground, lineWidth: 1.6)
                     .frame(width: 21, height: 21)
 
                 Text("\(min(tabManager.displayedTabCount, 99))")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(palette.primaryText)
+                    .foregroundStyle(barForeground)
                     .offset(y: 0.5)
             }
             .frame(width: 34, height: 34)

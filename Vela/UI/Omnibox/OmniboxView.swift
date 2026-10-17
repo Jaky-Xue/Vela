@@ -32,6 +32,11 @@ struct OmniboxView: View {
     var placeholder: String
     var onReload: () -> Void
     var onStop: () -> Void
+    /// The ink the field draws in, when the caller knows better than the
+    /// palette — the shell picks black or white by what sits behind the glass.
+    /// `nil` keeps the palette's own colours, which is what every surface that
+    /// owns its backdrop wants.
+    var foregroundOverride: Color? = nil
 
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
@@ -48,7 +53,7 @@ struct OmniboxView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 16))
-                        .foregroundStyle(palette.secondaryText)
+                        .foregroundStyle(foregroundOverride ?? palette.secondaryText)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("清除")
@@ -124,7 +129,8 @@ struct OmniboxView: View {
                 onBeginEditing: { viewModel.beginEditing() },
                 grabsFocus: false,
                 palette: palette,
-                colorScheme: colorScheme
+                colorScheme: colorScheme,
+                foregroundOverride: foregroundOverride
             )
 
             // Opening the session through a programmatic focus is what lets the
@@ -169,8 +175,8 @@ struct OmniboxView: View {
     }
 
     private var securityTint: Color {
-        guard !viewModel.currentPageUrl.isEmpty else { return palette.secondaryText }
-        return isSecure ? .green : palette.secondaryText
+        guard !viewModel.currentPageUrl.isEmpty else { return foregroundOverride ?? palette.secondaryText }
+        return isSecure ? .green : foregroundOverride ?? palette.secondaryText
     }
 
     @ViewBuilder
@@ -179,7 +185,7 @@ struct OmniboxView: View {
             Button(action: isLoading ? onStop : onReload) {
                 Image(systemName: isLoading ? "xmark" : "arrow.clockwise")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(palette.secondaryText)
+                    .foregroundStyle(foregroundOverride ?? palette.secondaryText)
                     // The glyph is small but the target is not: a 22 pt square
                     // is half of what a finger lands on reliably, and a miss
                     // here reads as the button doing nothing.
@@ -273,6 +279,9 @@ struct OmniboxTextField: UIViewRepresentable {
 
     var palette: BrowserPalette
     var colorScheme: ColorScheme
+    /// The field's ink when the caller knows the backdrop; `nil` keeps the
+    /// palette's own.
+    var foregroundOverride: Color? = nil
 
     func makeUIView(context: Context) -> OmniboxUITextField {
         let field = OmniboxUITextField()
@@ -315,12 +324,17 @@ struct OmniboxTextField: UIViewRepresentable {
         }
 
         let tokens = palette.tokens(for: colorScheme)
-        field.textColor = UIColor(tokens.primaryText)
+        field.textColor = UIColor(foregroundOverride ?? Color(tokens.primaryText))
         field.tintColor = UIColor(tokens.accent)
         field.attributedPlaceholder = NSAttributedString(
             string: placeholder,
             attributes: [
-                .foregroundColor: UIColor(tokens.secondaryText),
+                // The override is a full-strength ink, so the placeholder
+                // carries its own muting; the palette's secondary token is
+                // already muted and goes in as it is.
+                .foregroundColor: foregroundOverride.map {
+                    UIColor($0).withAlphaComponent(0.6)
+                } ?? UIColor(tokens.secondaryText),
                 .font: UIFont.preferredFont(forTextStyle: .body)
             ]
         )
