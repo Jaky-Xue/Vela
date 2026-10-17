@@ -275,7 +275,7 @@ private struct TabCard: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                     .foregroundStyle(palette.primaryText)
-                Text(tab.isHome ? "新标签页" : tab.displayHost)
+                Text(tab.isHome ? "主页" : tab.displayHost)
                     .font(.system(size: 11))
                     .lineLimit(1)
                     .foregroundStyle(palette.secondaryText)

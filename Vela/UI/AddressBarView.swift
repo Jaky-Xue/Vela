@@ -58,6 +58,22 @@ enum AddressBarResolution: Equatable {
 /// * A bare localhost or an IP address is a URL.
 /// * Anything else is a search query.
 enum BrowserUrlResolver {
+    /// The address a stored bookmark or history entry opens, repaired when it
+    /// does not parse as stored.
+    ///
+    /// A `URL(string:)` refusal is silent at every point after it: the row
+    /// simply does nothing when tapped, which reads as the list being broken
+    /// rather than as one malformed address. Trimming whitespace and assuming
+    /// `https` for a scheme-less host turns the rows that used to be dead
+    /// into rows that open.
+    static func storedUrl(_ raw: String?) -> URL? {
+        guard var text = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return nil
+        }
+        if !text.contains("://") { text = "https://" + text }
+        return URL(string: text)
+    }
+
     /// Schemes the address bar navigates to.
     ///
     /// Deliberately only these two. `file:` reaches nothing a browser on iOS can

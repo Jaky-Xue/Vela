@@ -243,10 +243,23 @@ public enum WebPageScripts {
       if (window.__velaInlineVideoControlsInstalled === true) { return; }
       window.__velaInlineVideoControlsInstalled = true;
 
+      function isManagedPlayerSite(host) {
+        // Sites whose player owns its tap layer end to end and behaves badly
+        // when a stranger arms the system controls underneath it. YouTube is
+        // the one that matters: its watch page binds its own handlers, and a
+        // hijacked tap desynchronises its player state machine.
+        return /(^|\\.)youtube\\.com$/.test(host) ||
+               /(^|\\.)youtube-nocookie\\.com$/.test(host) ||
+               /(^|\\.)youtubekids\\.com$/.test(host) ||
+               host === 'youtu.be';
+      }
+
       document.addEventListener('click', function (event) {
         var node = event.target;
         if (!node || node.nodeType !== 1 || node.tagName !== 'VIDEO') { return; }
         if (window.__velaElementPickerInstalled === true) { return; }
+        var host = String(window.location && window.location.hostname || '').toLowerCase();
+        if (isManagedPlayerSite(host)) { return; }
         if (!node.hasAttribute('controls')) { node.setAttribute('controls', ''); }
         event.stopImmediatePropagation();
       }, true);

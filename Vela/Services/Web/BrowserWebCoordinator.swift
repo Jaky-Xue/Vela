@@ -537,7 +537,12 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
 
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
-        configuration.mediaTypesRequiringUserActionForPlayback = []
+        // Audible playback starts from a gesture; silent media may autoplay.
+        // This is Safari's own policy, and it is what YouTube's player is
+        // built against — a webview that permits everything lets the player
+        // initialise paths Safari never runs, which is one of the shapes its
+        // generic "出了点问题" error takes.
+        configuration.mediaTypesRequiringUserActionForPlayback = .audio
 
         // A description is what a `target="_blank"` popup inherits; without it
         // WebKit refuses to create the configuration at all.

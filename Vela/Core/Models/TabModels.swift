@@ -506,9 +506,9 @@ public final class BrowserTabState: Identifiable {
     public var displayTitle: String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
-        if isHome { return "新标签页" }
+        if isHome { return "主页" }
         if !url.isEmpty, let host = URL(string: url)?.host { return host }
-        return "新标签页"
+        return "主页"
     }
 
     public var displayHost: String {

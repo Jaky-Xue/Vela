@@ -61,6 +61,7 @@ struct NewTabHomeView: View {
     var onNavigate: (URL) -> Void
 
     @State private var bookmarkNodes: [BookmarkNode] = []
+    @State private var frequentSites: [HistoryUrl] = []
     @State private var recentlyClosed: [RecentlyClosedTabRecord] = []
     @State private var showAddBookmark = false
     /// The custom background, reloaded whenever the settings document's stamp
@@ -69,6 +70,7 @@ struct NewTabHomeView: View {
     @State private var backgroundImage: UIImage?
 
     @AppStorage("org.vela.browser.home-bookmarks-expanded") private var bookmarksExpanded = true
+    @AppStorage("org.vela.browser.home-frequent-expanded") private var frequentExpanded = true
     @AppStorage("org.vela.browser.home-recently-closed-expanded") private var recentlyClosedExpanded = false
 
     var body: some View {
@@ -77,9 +79,7 @@ struct NewTabHomeView: View {
                 if bookmarkNodes.isEmpty {
                     // No bookmarks yet: the dashed add tile alone. A header
                     // over an empty grid is furniture for a collection that
-                    // does not exist, and the recently-closed list is noise
-                    // on a surface the user is seeing for the first time —
-                    // both come back the moment the first bookmark does.
+                    // does not exist.
                     LazyVGrid(
                         columns: Self.tileColumns,
                         spacing: 14
@@ -88,8 +88,9 @@ struct NewTabHomeView: View {
                     }
                 } else {
                     bookmarkBlock
-                    if !recentlyClosed.isEmpty { recentlyClosedBlock }
                 }
+                if !frequentSites.isEmpty { frequentBlock }
+                if !recentlyClosed.isEmpty { recentlyClosedBlock }
             }
             .padding(.horizontal, BrowserSpacing.regular)
             .padding(.top, BrowserSpacing.regular)
@@ -109,6 +110,7 @@ struct NewTabHomeView: View {
         }
         .onAppear {
             loadBookmarks()
+            loadFrequentSites()
         }
         .sheet(isPresented: $showAddBookmark) {
             AddBookmarkSheet { url, title in
@@ -179,14 +181,14 @@ struct NewTabHomeView: View {
         bookmarkNodes = all.filter { homeIds.contains($0.id) }
     }
 
-    /// The grid the bookmark tiles share — five flexible columns, here and in
-    /// the empty state's single-tile grid, so the dashed tile is the same size
-    /// either way.
-    static let tileColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
+    /// The grid the tiles share — four flexible columns, the count Safari's
+    /// start page uses for favorites in portrait, here and in the empty
+    /// state's single-tile grid.
+    static let tileColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
 
     private var bookmarkBlock: some View {
         CollapsibleSection(
-            title: "收藏",
+            title: "个人收藏",
             systemImage: nil,
             count: nil,
             isExpanded: $bookmarksExpanded
@@ -203,38 +205,47 @@ struct NewTabHomeView: View {
         }
     }
 
-    /// A bookmark tile: the site's icon on a rounded square, and nothing else —
-    /// the icon is the label, the way a home screen reads.
+    /// A bookmark tile: the site's icon on a rounded square with the site's
+    /// own name beneath it — the shape Safari's favorites use, which is what
+    /// this start page is modelled on.
     private func bookmarkCell(_ node: BookmarkNode) -> some View {
         Button {
-            guard let urlString = node.url, let url = URL(string: urlString) else { return }
+            guard let url = BrowserUrlResolver.storedUrl(node.url) else { return }
             onNavigate(url)
         } label: {
-            SiteIconView(host: node.displayHost, size: 40)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
-                .background(
-                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                        .fill(palette.card.opacity(0.6))
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [.white.opacity(0.14), .white.opacity(0.03)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 0.5
-                        )
-                        .allowsHitTesting(false)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+            VStack(spacing: 6) {
+                SiteIconView(host: node.displayHost, size: 40)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
+                    .background(
+                        RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                            .fill(palette.card.opacity(0.6))
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.14), .white.opacity(0.03)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.5
+                            )
+                            .allowsHitTesting(false)
+                    }
+
+                Text(node.title.isEmpty ? node.displayHost : node.title)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .foregroundStyle(palette.primaryText)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(HomeTileButtonStyle())
         .contextMenu {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {
-                guard let urlString = node.url, let url = URL(string: urlString) else { return }
+                guard let url = BrowserUrlResolver.storedUrl(node.url) else { return }
                 env.tabManager.openTab(
                     url: url,
                     privacyMode: .regular,
@@ -254,28 +265,125 @@ struct NewTabHomeView: View {
         .accessibilityLabel(node.title.isEmpty ? node.displayHost : node.title)
     }
 
-    /// The tile that saves a new bookmark.
+    // MARK: - Frequently visited
+
+    /// The hosts the user actually revisits, ranked by visit count — the
+    /// start page's answer to Safari's 经常访问. One tile per host: the
+    /// highest-count entry stands for it, so a site reached through five
+    /// different pages shows once.
+    private func loadFrequentSites() {
+        let ranked = env.history.allVisited()
+            .filter { !$0.hidden }
+            .sorted { ($0.visitCount, $0.lastVisitAt) > ($1.visitCount, $1.lastVisitAt) }
+
+        var seenHosts = Set<String>()
+        var top: [HistoryUrl] = []
+        for entry in ranked {
+            guard let host = URL(string: entry.url)?.host else { continue }
+            let normalized = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+            guard !normalized.isEmpty, seenHosts.insert(normalized).inserted else { continue }
+            top.append(entry)
+            if top.count >= 8 { break }
+        }
+        frequentSites = top
+    }
+
+    private var frequentBlock: some View {
+        CollapsibleSection(
+            title: "经常访问",
+            systemImage: nil,
+            count: nil,
+            isExpanded: $frequentExpanded
+        ) {
+            LazyVGrid(
+                columns: Self.tileColumns,
+                spacing: 14
+            ) {
+                ForEach(frequentSites) { entry in
+                    frequentCell(entry)
+                }
+            }
+        }
+    }
+
+    private func frequentCell(_ entry: HistoryUrl) -> some View {
+        Button {
+            guard let url = URL(string: entry.url) else { return }
+            onNavigate(url)
+        } label: {
+            VStack(spacing: 6) {
+                SiteIconView(host: entry.host, size: 40)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
+                    .background(
+                        RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                            .fill(palette.card.opacity(0.6))
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.14), .white.opacity(0.03)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.5
+                            )
+                            .allowsHitTesting(false)
+                    }
+
+                Text(entry.title.isEmpty ? entry.host : entry.title)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .foregroundStyle(palette.primaryText)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(HomeTileButtonStyle())
+        .contextMenu {
+            Button("在新标签页打开", systemImage: "plus.square.on.square") {
+                guard let url = URL(string: entry.url) else { return }
+                env.tabManager.openTab(
+                    url: url,
+                    privacyMode: .regular,
+                    openSource: .history,
+                    activate: false
+                )
+            }
+        }
+        .accessibilityLabel(entry.title.isEmpty ? entry.host : entry.title)
+    }
+
+    /// The tile that saves a new bookmark, in the same labelled shape as the
+    /// tiles beside it, dashed where they are solid.
     private var addBookmarkTile: some View {
         Button {
             showAddBookmark = true
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(palette.secondaryText)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
-                .background(
-                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                        .fill(palette.card.opacity(0.2))
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                        .strokeBorder(
-                            palette.secondaryText.opacity(0.35),
-                            style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-                        )
-                }
-                .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+            VStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(palette.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
+                    .background(
+                        RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                            .fill(palette.card.opacity(0.2))
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                            .strokeBorder(
+                                palette.secondaryText.opacity(0.35),
+                                style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                            )
+                    }
+
+                Text("添加")
+                    .font(.caption)
+                    .foregroundStyle(palette.secondaryText)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(HomeTileButtonStyle())
         .accessibilityLabel("添加书签")

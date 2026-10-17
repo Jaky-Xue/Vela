@@ -677,42 +677,32 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
         BrowserUserAgentPreset(id: "default", title: "Vela 默认", userAgent: nil, isDesktop: false),
         BrowserUserAgentPreset(
             id: "safari-iphone", title: "Safari iPhone",
-            userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+            userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",
             isDesktop: false
         ),
         BrowserUserAgentPreset(
             id: "chrome-android", title: "Chrome Android",
-            userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
-            isDesktop: false
-        ),
-        BrowserUserAgentPreset(
-            id: "arkweb", title: "ArkWeb 原始标识",
-            userAgent: "Mozilla/5.0 (Phone; OpenHarmony 5.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 ArkWeb/5.0.0.0 Mobile",
-            isDesktop: false
-        ),
-        BrowserUserAgentPreset(
-            id: "huawei", title: "华为浏览器",
-            userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36 HuaweiBrowser/15.0.5.300",
+            userAgent: "Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36",
             isDesktop: false
         ),
         BrowserUserAgentPreset(
             id: "chrome-windows", title: "Chrome Windows",
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
             isDesktop: true
         ),
         BrowserUserAgentPreset(
             id: "edge-windows", title: "Microsoft Edge Windows",
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0",
             isDesktop: true
         ),
         BrowserUserAgentPreset(
             id: "safari-macos", title: "Safari macOS",
-            userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+            userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
             isDesktop: true
         ),
         BrowserUserAgentPreset(
             id: "firefox-windows", title: "Firefox Windows",
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:146.0) Gecko/20100101 Firefox/146.0",
             isDesktop: true
         )
     ]
@@ -720,20 +710,7 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
 
 struct UserAgentSettingsView: View {
     @Environment(AppEnvironment.self) private var env
-
-    /// The identifier a page actually received, read back from the page.
-    ///
-    /// The reason this screen exists at all: a site that says the browser is too
-    /// old is making a claim about a string, and the only way to check the claim
-    /// is to look at the string that was sent. This is that string — taken from a
-    /// live page, so the platform and engine tokens are the real ones rather than
-    /// Vela's reconstruction.
-    @State private var identifierReportedByPage: String?
-
-    /// Changes whenever the identifier changes, so the read-back repeats.
-    private var identityKey: String {
-        "\(env.settings.preferences.desktopSiteByDefault)|\(env.settings.preferences.customUserAgent)"
-    }
+    @Environment(\.browserPalette) private var palette
 
     /// The preset currently in force: the match for the stored custom string,
     /// or the default when none is stored. A stored string that matches no
@@ -822,37 +799,22 @@ struct UserAgentSettingsView: View {
             }
 
             Section {
-                VStack(alignment: .leading, spacing: BrowserSpacing.compact) {
-                    identifierRow(
-                        title: "页面实际收到",
-                        value: identifierReportedByPage,
-                        note: identifierReportedByPage == nil
-                            ? "打开网页后显示实际发出的标识。"
-                            : nil
-                    )
-                    Divider()
-                    identifierRow(
-                        title: "将要发出",
-                        value: effectiveOutgoingIdentifier,
-                        note: nil
-                    )
-                }
+                Text(effectiveOutgoingIdentifier)
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+                    .foregroundStyle(palette.primaryText)
+
                 Button {
-                    UIPasteboard.general.string = identifierReportedByPage ?? effectiveOutgoingIdentifier
+                    UIPasteboard.general.string = effectiveOutgoingIdentifier
                 } label: {
                     Label("复制标识", systemImage: "doc.on.doc")
                 }
             } header: {
-                Text("当前网页标识")
-            } footer: {
-                Text("「页面实际收到」从当前页面读回，网站报版本太低时对照它。")
+                Text("当前标识")
             }
         }
         .navigationTitle("网页标识")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: identityKey) {
-            await readIdentifierFromPage()
-        }
     }
 
     /// One preset row with the reference screen's radio affordance: an empty
@@ -873,42 +835,6 @@ struct UserAgentSettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    /// One labelled identifier, in the monospaced type a string like this needs.
-    private func identifierRow(title: String, value: String?, note: String?) -> some View {
-        VStack(alignment: .leading, spacing: BrowserSpacing.hairline) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if let value {
-                Text(value)
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-            }
-            if let note {
-                Text(note)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    /// Reads the identifier back from the page the user is looking at.
-    ///
-    /// `navigator.userAgent` rather than `webView.customUserAgent`: the point is
-    /// what the page received, and the custom value is only the part Vela sets —
-    /// the platform and engine tokens are WebKit's and appear only here.
-    private func readIdentifierFromPage() async {
-        guard let tab = env.tabManager.activeTab,
-              !tab.isHome,
-              let webView = env.tabManager.webView(for: tab.id) else {
-            identifierReportedByPage = nil
-            return
-        }
-        let value = try? await webView.evaluateJavaScript("navigator.userAgent")
-        let text = value as? String
-        identifierReportedByPage = (text?.isEmpty == false) ? text : nil
     }
 
     /// Pushes the identifier onto every open tab, and reloads the active one when

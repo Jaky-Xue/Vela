@@ -616,8 +616,8 @@ struct BrowserShellView: View {
                     if canDragChromeAway, !chromeIsHidden {
                         if value.translation.height > 56 {
                             setChromeHidden(true)
-                        } else if value.translation.height < -64, let tab = activeTab {
-                            goHome(tab)
+                        } else if value.translation.height < -64 {
+                            openHomeTab()
                         }
                     }
                     withAnimation(Self.chromeAnimation) {
@@ -966,6 +966,21 @@ struct BrowserShellView: View {
         }
     }
 
+    /// Opens the start page as its own tab.
+    ///
+    /// The counterpart to dragging the bar upward and the menu's 主页 tile:
+    /// going to the start page is a *destination*, not a mode the current tab
+    /// is switched into. Overwriting the tab in place is what it used to do —
+    /// the page the user was reading stayed alive underneath but the tab
+    /// became a start page, its address bar empty and its identity swapped —
+    /// and returning to browsing from there loaded the next page into that
+    /// same tab. Now the reading tab keeps its place in the strip, and the
+    /// start page opens beside it under the name 主页.
+    private func openHomeTab() {
+        guard activeTab?.isHome != true else { return }
+        tabManager.createTab(openSource: .user)
+    }
+
     /// Returns a tab to the native home surface.
     ///
     /// The page is stopped before it is left: a home surface over a document
@@ -1064,7 +1079,7 @@ struct BrowserShellView: View {
         case .desktopSite:
             toggleDesktopSite(for: tab)
         case .home:
-            goHome(tab)
+            openHomeTab()
         case .bookmarks:
             showBookmarks = true
         case .history:
