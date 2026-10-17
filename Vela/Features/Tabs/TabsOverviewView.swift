@@ -293,44 +293,69 @@ struct TabsOverviewView: View {
     /// Mode and count in one capsule, as Safari's private indicator is. It is
     /// a menu: tapping it is how the mode switches, with the current mode
     /// check-marked in the list.
+    /// Mode and count in one segmented capsule, Safari's private indicator
+    /// turned into the switch itself: both modes sit visible with their own
+    /// counts, and tapping the other side is the switch — no menu in between.
     private var modePill: some View {
-        Menu {
-            Button {
-                withAnimation(.snappy(duration: 0.25)) { showPrivateTabs = false }
-            } label: {
-                if showPrivateTabs {
-                    Label("普通标签页", systemImage: "checkmark")
-                } else {
-                    Text("普通标签页")
-                }
+        HStack(spacing: 4) {
+            modeSegment(
+                title: "普通",
+                count: tabManager.displayedTabCount(privacyMode: .regular),
+                isActive: !showPrivateTabs
+            ) {
+                switchMode(to: false)
             }
+            modeSegment(
+                title: "无痕",
+                count: tabManager.displayedTabCount(privacyMode: .private),
+                isActive: showPrivateTabs
+            ) {
+                switchMode(to: true)
+            }
+        }
+        .padding(3)
+        .background(.ultraThinMaterial, in: Capsule())
+    }
 
-            Button {
-                withAnimation(.snappy(duration: 0.25)) { showPrivateTabs = true }
-            } label: {
-                if showPrivateTabs {
-                    Text("无痕标签页")
-                } else {
-                    Label("无痕标签页", systemImage: "checkmark")
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                if showPrivateTabs {
-                    Text("无痕浏览")
-                        .fontWeight(.semibold)
-                    Capsule()
-                        .fill(palette.primaryText.opacity(0.3))
-                        .frame(width: 1, height: 12)
-                }
-                Text("\(visibleTabs.count) 个标签页")
+    private func modeSegment(
+        title: String,
+        count: Int,
+        isActive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Text(title)
+                Text("\(count)")
                     .monospacedDigit()
+                    .opacity(0.6)
             }
             .font(.footnote)
-            .foregroundStyle(palette.primaryText)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(.ultraThinMaterial, in: Capsule())
+            .fontWeight(isActive ? .semibold : .regular)
+            .foregroundStyle(isActive ? palette.primaryText : palette.secondaryText)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 7)
+            .background {
+                if isActive {
+                    // The active side is the brighter capsule, the way
+                    // Safari's own indicator reads.
+                    Capsule().fill(palette.primaryText.opacity(0.15))
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title)标签页，\(count) 个")
+    }
+
+    private func switchMode(to isPrivate: Bool) {
+        guard isPrivate != showPrivateTabs else { return }
+        withAnimation(.snappy(duration: 0.25)) {
+            showPrivateTabs = isPrivate
+            // The search was over one mode's tabs; the other mode starts
+            // unfiltered and with the field closed.
+            searchQuery = ""
+            isSearching = false
         }
     }
 

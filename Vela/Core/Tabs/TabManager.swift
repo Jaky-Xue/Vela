@@ -111,6 +111,14 @@ public final class TabManager {
         return realTabs.isEmpty ? (tabs.isEmpty ? 0 : 1) : realTabs.count
     }
 
+    /// The same count, for one privacy mode — what the overview's mode
+    /// segment for that mode shows.
+    public func displayedTabCount(privacyMode: BrowserSessionPrivacyMode) -> Int {
+        let modeTabs = privacyMode == .private ? privateTabs : regularTabs
+        let realTabs = modeTabs.filter { !$0.isHome }
+        return realTabs.isEmpty ? (modeTabs.isEmpty ? 0 : 1) : realTabs.count
+    }
+
     public func tab(id: String) -> BrowserTabState? {
         tabs.first { $0.id == id }
     }

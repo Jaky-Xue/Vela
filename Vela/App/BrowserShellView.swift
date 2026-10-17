@@ -157,7 +157,7 @@ struct BrowserShellView: View {
                 handleEdgeSwipeBack()
             }
         }
-        .overlay(alignment: .bottom) { commandBarInGlassContainer }
+        .overlay(alignment: .bottom) { commandBar }
         .overlay(alignment: .bottom) { floatingToolsInGlassContainer }
         // The keyboard never rearranges the shell. Keyboard avoidance applied
         // to the bar itself does not hold: the bottom-aligned overlay resolves
@@ -587,21 +587,88 @@ struct BrowserShellView: View {
         chromeForegroundIsLight ? .black : .white
     }
 
-    /// The bar's glass shapes riding one coordinated layer.
+    /// How far the bar travels when it hides: its own height, the gap under
+    /// it, and the safe-area inset — the inset counted twice, because the
+    /// bottom-aligned overlay already sits inside the safe area and the bar
+    /// pads itself by the inset again. An offset short of the full distance
+    /// is what left a sliver of the bar on screen after a hide.
+    private var hiddenChromeOffset: CGFloat {
+        BrowserChrome.barHeight + BrowserChrome.barGap + 2 * safeBottom + 16
+    }
+
+    /// The bar's glass shapes riding one coordinated layer, with the movement
+    /// applied to the layer as a whole.
     ///
     /// `glassEffect` without a container gives every shape its own system
     /// layer, and a rotation can leave a layer parked at its pre-rotation
     /// frame — the ghost second bottom bar a portrait rotation used to show.
     /// The container samples the page once for the whole bar and moves it as
-    /// one piece, which is both the fix and the reason the API exists.
-    @ViewBuilder private var commandBarInGlassContainer: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: BrowserChrome.barGap) {
-                commandBar
+    /// one piece. The offset and the fade live OUTSIDE the container for the
+    /// same reason: a transform on a shape inside the container is advice the
+    /// system layer may take loosely, while a transform on the container
+    /// itself is the layer's own geometry — which is what makes a hide take
+    /// the glass with it instead of leaving it behind.
+    @ViewBuilder private var commandBar: some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                GlassEffectContainer(spacing: BrowserChrome.barGap) {
+                    commandBarContent
+                }
+            } else {
+                commandBarContent
             }
-        } else {
-            commandBar
         }
+        .padding(.horizontal, BrowserChrome.sideInset)
+        .padding(.bottom, BrowserChrome.barGap + safeBottom)
+        // Sliding fully out — past the bottom edge — with a fade reads as the
+        // bar dissolving into the page rather than parking behind the home
+        // indicator. Mid-drag the bar follows the finger downward and fades
+        // with distance; dragged upward it lifts a little, promising the home
+        // surface on release.
+        .offset(y: chromeHidden
+            ? hiddenChromeOffset
+            : (chromeDragOffset > 0 ? chromeDragOffset : chromeLiftOffset))
+        // The search page covers the screen completely, so the bar yields to it
+        // while the omnibox session is open — a bottom bar under a search page
+        // is chrome the user did not ask for.
+        .opacity(omnibox.isEditing ? 0 : chromeHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
+        .allowsHitTesting(!chromeHidden && !omnibox.isEditing)
+        .animation(Self.chromeAnimation, value: chromeHidden)
+        .animation(Self.chromeAnimation, value: omnibox.isEditing)
+        // Dragging the bar downward dismisses it, off the bottom edge the way
+        // a sheet leaves; dragging it upward returns to the home surface, the
+        // same promise the home button makes. The minimum distance keeps a tap
+        // on the omnibox or a button from reading as a drag, and the gesture
+        // stands down while the omnibox session is open, where a downward drag
+        // means dismissing the keyboard.
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .onChanged { value in
+                    guard canDragChromeAway, !chromeHidden else { return }
+                    if value.translation.height > 0 {
+                        chromeDragOffset = value.translation.height
+                        chromeLiftOffset = 0
+                    } else {
+                        chromeLiftOffset = max(-36, value.translation.height * 0.35)
+                        chromeDragOffset = 0
+                    }
+                }
+                .onEnded { value in
+                    if canDragChromeAway, !chromeHidden {
+                        if value.translation.height > 56 {
+                            setChromeHidden(true)
+                        } else if value.translation.height < -64 {
+                            openHomeTab()
+                        }
+                    }
+                    withAnimation(Self.chromeAnimation) {
+                        chromeDragOffset = 0
+                        chromeLiftOffset = 0
+                    }
+                },
+            isEnabled: !omnibox.isEditing
+        )
+        .accessibilityHidden(chromeHidden)
     }
 
     @ViewBuilder private var floatingToolsInGlassContainer: some View {
@@ -614,7 +681,7 @@ struct BrowserShellView: View {
         }
     }
 
-    private var commandBar: some View {
+    private var commandBarContent: some View {
         HStack(spacing: 8) {
             HStack(spacing: 2) {
                 chromeButton(symbol: "chevron.left", isEnabled: canGoBack) {
@@ -659,57 +726,6 @@ struct BrowserShellView: View {
             .frame(height: BrowserChrome.barHeight)
             .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
         }
-        .padding(.horizontal, BrowserChrome.sideInset)
-        .padding(.bottom, BrowserChrome.barGap + safeBottom)
-        // Sliding fully out — past the bottom edge — with a fade reads as the
-        // bar dissolving into the page rather than parking behind the home
-        // indicator. Mid-drag the bar follows the finger downward and fades
-        // with distance; dragged upward it lifts a little, promising the home
-        // surface on release.
-        .offset(y: chromeHidden
-            ? BrowserChrome.barHeight + BrowserChrome.barGap + safeBottom + 12
-            : (chromeDragOffset > 0 ? chromeDragOffset : chromeLiftOffset))
-        // The search page covers the screen completely, so the bar yields to it
-        // while the omnibox session is open — a bottom bar under a search page
-        // is chrome the user did not ask for.
-        .opacity(omnibox.isEditing ? 0 : chromeHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
-        .allowsHitTesting(!chromeHidden && !omnibox.isEditing)
-        .animation(Self.chromeAnimation, value: chromeHidden)
-        .animation(Self.chromeAnimation, value: omnibox.isEditing)
-        // Dragging the bar downward dismisses it, off the bottom edge the way
-        // a sheet leaves; dragging it upward returns to the home surface, the
-        // same promise the home button makes. The minimum distance keeps a tap
-        // on the omnibox or a button from reading as a drag, and the gesture
-        // stands down while the omnibox session is open, where a downward drag
-        // means dismissing the keyboard.
-        .gesture(
-            DragGesture(minimumDistance: 12)
-                .onChanged { value in
-                    guard canDragChromeAway, !chromeHidden else { return }
-                    if value.translation.height > 0 {
-                        chromeDragOffset = value.translation.height
-                        chromeLiftOffset = 0
-                    } else {
-                        chromeLiftOffset = max(-36, value.translation.height * 0.35)
-                        chromeDragOffset = 0
-                    }
-                }
-                .onEnded { value in
-                    if canDragChromeAway, !chromeHidden {
-                        if value.translation.height > 56 {
-                            setChromeHidden(true)
-                        } else if value.translation.height < -64 {
-                            openHomeTab()
-                        }
-                    }
-                    withAnimation(Self.chromeAnimation) {
-                        chromeDragOffset = 0
-                        chromeLiftOffset = 0
-                    }
-                },
-            isEnabled: !omnibox.isEditing
-        )
-        .accessibilityHidden(chromeHidden)
     }
 
     /// One glyph button inside the chrome.
