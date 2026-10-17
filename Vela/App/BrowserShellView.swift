@@ -78,24 +78,16 @@ struct BrowserShellView: View {
     /// finger as the promise of what releasing will do.
     @State private var chromeLiftOffset: CGFloat = 0
 
-    /// Whether the bar is off screen right now.
+    /// Whether the drag-to-hide gesture may act.
     ///
-    /// The home surface never hides it: the hide state is driven by the web
-    /// view's scroll offsets, and a state left over from a scrolled page used
-    /// to survive onto the home screen, where the search bar simply was not
-    /// there. A page-less surface is a place the user is looking for the bar.
-    private var chromeIsHidden: Bool {
-        chromeHidden && !(activeTab?.isHome ?? false)
-    }
-
-    /// Whether the current surface allows the drag-to-hide gesture at all.
-    ///
-    /// The home surface pins the bar visible, so it also refuses to let the
-    /// user drag it away — the two rules are the same rule seen from the
-    /// gesture's side.
+    /// The one state that refuses it is the open omnibox session, where a
+    /// downward drag means dismissing the keyboard. Every surface — the home
+    /// one included — hides the bar the same way: the bar is the page's
+    /// controls, and a page the user is pushing out of the way takes its
+    /// controls with it.
     private var canDragChromeAway: Bool {
-        guard !omnibox.isEditing, let tab = activeTab else { return false }
-        return !tab.isHome
+        guard !omnibox.isEditing else { return false }
+        return activeTab != nil
     }
     /// The previous scroll offset, used to derive a direction.
     ///
@@ -492,7 +484,8 @@ struct BrowserShellView: View {
             Group {
                 if tab.isHome {
                     NewTabHomeView(
-                        onNavigate: { url in navigate(to: url, in: tab) }
+                        onNavigate: { url in navigate(to: url, in: tab) },
+                        onScroll: { offset in handleScroll(offset: offset) }
                     )
                     .id("home-\(tab.id)")
                     .safeAreaInset(edge: .bottom) {
@@ -673,14 +666,14 @@ struct BrowserShellView: View {
         // indicator. Mid-drag the bar follows the finger downward and fades
         // with distance; dragged upward it lifts a little, promising the home
         // surface on release.
-        .offset(y: chromeIsHidden
+        .offset(y: chromeHidden
             ? BrowserChrome.barHeight + BrowserChrome.barGap + safeBottom + 12
             : (chromeDragOffset > 0 ? chromeDragOffset : chromeLiftOffset))
         // The search page covers the screen completely, so the bar yields to it
         // while the omnibox session is open — a bottom bar under a search page
         // is chrome the user did not ask for.
-        .opacity(omnibox.isEditing ? 0 : chromeIsHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
-        .allowsHitTesting(!chromeIsHidden && !omnibox.isEditing)
+        .opacity(omnibox.isEditing ? 0 : chromeHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
+        .allowsHitTesting(!chromeHidden && !omnibox.isEditing)
         .animation(Self.chromeAnimation, value: chromeHidden)
         .animation(Self.chromeAnimation, value: omnibox.isEditing)
         // Dragging the bar downward dismisses it, off the bottom edge the way
@@ -692,7 +685,7 @@ struct BrowserShellView: View {
         .gesture(
             DragGesture(minimumDistance: 12)
                 .onChanged { value in
-                    guard canDragChromeAway, !chromeIsHidden else { return }
+                    guard canDragChromeAway, !chromeHidden else { return }
                     if value.translation.height > 0 {
                         chromeDragOffset = value.translation.height
                         chromeLiftOffset = 0
@@ -702,7 +695,7 @@ struct BrowserShellView: View {
                     }
                 }
                 .onEnded { value in
-                    if canDragChromeAway, !chromeIsHidden {
+                    if canDragChromeAway, !chromeHidden {
                         if value.translation.height > 56 {
                             setChromeHidden(true)
                         } else if value.translation.height < -64 {
@@ -716,7 +709,7 @@ struct BrowserShellView: View {
                 },
             isEnabled: !omnibox.isEditing
         )
-        .accessibilityHidden(chromeIsHidden)
+        .accessibilityHidden(chromeHidden)
     }
 
     /// One glyph button inside the chrome.

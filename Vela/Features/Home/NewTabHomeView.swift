@@ -59,6 +59,10 @@ struct NewTabHomeView: View {
     @Environment(\.browserPalette) private var palette
 
     var onNavigate: (URL) -> Void
+    /// The surface's scroll offset, normalized to the document top, reported
+    /// the same way the web view reports its — the command bar's hide-on-scroll
+    /// reads one kind of page and not two.
+    var onScroll: ((Double) -> Void)? = nil
 
     @State private var bookmarkNodes: [BookmarkNode] = []
     @State private var recentlyClosed: [RecentlyClosedTabRecord] = []
@@ -102,6 +106,7 @@ struct NewTabHomeView: View {
         // background above the home indicator reads as something sitting on
         // top of the page, which is exactly what the user called occlusion.
         .ignoresSafeArea(edges: .bottom)
+        .homeScrollReporting(onScroll: onScroll)
         .background { homeBackground }
         .scrollDismissesKeyboard(.immediately)
         .task(id: env.settings.preferences.homeBackgroundStamp) {
@@ -432,5 +437,36 @@ private struct HomeTileButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.92 : 1)
             .opacity(configuration.isPressed ? 0.7 : 1)
             .animation(.spring(response: 0.24, dampingFraction: 0.72), value: configuration.isPressed)
+    }
+}
+
+/// Scroll reporting for the home surface.
+///
+/// `onScrollGeometryChange` is the system's own tap into a SwiftUI scroll
+/// view's offsets, and it arrived with iOS 18 — below that, the home surface
+/// simply has no scroll story to tell the command bar, whose drag-to-hide
+/// still covers it.
+@ViewBuilder
+private extension View {
+    /// Scroll reporting for the home surface.
+    ///
+    /// `onScrollGeometryChange` is the system's own tap into a SwiftUI scroll
+    /// view's offsets, and it arrived with iOS 18 — below that, the home
+    /// surface has no scroll story to tell the command bar, whose
+    /// drag-to-hide still covers it.
+    @ViewBuilder
+    func homeScrollReporting(onScroll: ((Double) -> Void)?) -> some View {
+        if #available(iOS 18.0, *) {
+            self.onScrollGeometryChange(for: CGFloat.self) { geometry in
+                // Normalized to the document top, the same number the web
+                // view's scroll observer reports, so the bar's accumulate-
+                // and-compare logic reads one kind of page.
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, offset in
+                onScroll?(offset)
+            }
+        } else {
+            self
+        }
     }
 }
