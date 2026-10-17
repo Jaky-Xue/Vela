@@ -94,6 +94,12 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
+                    HomeSettingsView()
+                } label: {
+                    settingsRow(icon: "house", tint: .indigo, title: "主页")
+                }
+
+                NavigationLink {
                     DownloadSettingsView()
                 } label: {
                     settingsRow(

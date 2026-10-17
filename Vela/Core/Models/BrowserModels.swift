@@ -399,6 +399,14 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var userScriptsEnabled: Bool
     public var homepageUrl: String
     public var themePaletteId: String
+    /// The custom home background, as the timestamp of the saved image file.
+    ///
+    /// Optional rather than defaulted because the preferences document decodes
+    /// as a whole: a required key absent from an existing install's document
+    /// would fail the decode and reset every setting with it. `nil` — and an
+    /// absent key, which decodes to the same — means the palette surface.
+    /// The image itself lives on disk (`HomeBackgroundStore`), not in here.
+    public var homeBackgroundStamp: Double?
 
     public init(
         searchEngine: SearchEngineSettings = .default,
@@ -420,7 +428,8 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         readerModeAvailable: Bool = true,
         userScriptsEnabled: Bool = true,
         homepageUrl: String = "about:home",
-        themePaletteId: String = "default"
+        themePaletteId: String = "default",
+        homeBackgroundStamp: Double? = nil
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -442,6 +451,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.userScriptsEnabled = userScriptsEnabled
         self.homepageUrl = homepageUrl
         self.themePaletteId = themePaletteId
+        self.homeBackgroundStamp = homeBackgroundStamp
     }
 
     public static let `default` = BrowserPreferences()

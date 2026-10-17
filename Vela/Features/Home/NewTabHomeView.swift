@@ -63,6 +63,10 @@ struct NewTabHomeView: View {
     @State private var bookmarkNodes: [BookmarkNode] = []
     @State private var recentlyClosed: [RecentlyClosedTabRecord] = []
     @State private var showAddBookmark = false
+    /// The custom background, reloaded whenever the settings document's stamp
+    /// moves — which happens the moment a picture is saved or cleared behind
+    /// the settings sheet, so the change is live without leaving the screen.
+    @State private var backgroundImage: UIImage?
 
     @AppStorage("org.vela.browser.home-bookmarks-expanded") private var bookmarksExpanded = true
     @AppStorage("org.vela.browser.home-recently-closed-expanded") private var recentlyClosedExpanded = false
@@ -98,8 +102,11 @@ struct NewTabHomeView: View {
         // background above the home indicator reads as something sitting on
         // top of the page, which is exactly what the user called occlusion.
         .ignoresSafeArea(edges: .bottom)
-        .background(palette.surface)
+        .background { homeBackground }
         .scrollDismissesKeyboard(.immediately)
+        .task(id: env.settings.preferences.homeBackgroundStamp) {
+            reloadBackgroundImage()
+        }
         .onAppear {
             loadBookmarks()
         }
@@ -114,6 +121,42 @@ struct NewTabHomeView: View {
                 loadBookmarks()
             }
         }
+    }
+
+    // MARK: - Background
+
+    /// The custom background picture, or the plain palette surface when none
+    /// is set.
+    ///
+    /// The photo sits under a veil of the surface colour rather than under a
+    /// blur or a heavy scrim: the tiles and the recently-closed card carry
+    /// their own fills, the command bar is glass, and a veil is what keeps all
+    /// of them readable while the picture still reads as a picture. The stamp
+    /// is the reload key — `save` and `clear` both move it, which is what
+    /// makes a change made in settings appear here immediately.
+    @ViewBuilder
+    private var homeBackground: some View {
+        if let backgroundImage {
+            Image(uiImage: backgroundImage)
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
+                .overlay {
+                    palette.surface.opacity(0.62)
+                        .ignoresSafeArea()
+                }
+        } else {
+            palette.surface
+                .ignoresSafeArea()
+        }
+    }
+
+    private func reloadBackgroundImage() {
+        guard let stamp = env.settings.preferences.homeBackgroundStamp else {
+            backgroundImage = nil
+            return
+        }
+        backgroundImage = HomeBackgroundStore.load(stamp: stamp)
     }
 
     // MARK: - Bookmarks
