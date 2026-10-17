@@ -752,3 +752,37 @@ final class WebNavigationIntegrationTests: XCTestCase {
         XCTAssertEqual(tab.title, "Page One")
     }
 }
+
+/// The host list that decides which navigations are rewritten onto the web
+/// version. Pure, so it is tested without a server: the matcher is the whole
+/// of the decision the policy callback makes before it re-issues a load.
+final class AppLinkHostTests: XCTestCase {
+    func testTheNamedSitesMatch() {
+        for host in ["www.douyin.com", "v.douyin.com", "douyin.com",
+                     "www.bilibili.com", "m.bilibili.com", "b23.tv",
+                     "weibo.com", "weibo.cn", "t.cn",
+                     "www.xiaohongshu.com", "xhslink.com",
+                     "www.taobao.com", "item.jd.com", "3.cn"] {
+            XCTAssertTrue(BrowserWebCoordinator.isRegisteredAppLinkHost(host), host)
+        }
+    }
+
+    func testSubdomainsMatchTheirDomainAndUnrelatedHostsDoNot() {
+        // A suffix match must land on a dot: "notdouyin.com" is its own domain,
+        // and "evildouyin.com" is nobody's subdomain.
+        XCTAssertTrue(BrowserWebCoordinator.isRegisteredAppLinkHost("a.b.douyin.com"))
+        XCTAssertFalse(BrowserWebCoordinator.isRegisteredAppLinkHost("notdouyin.com"))
+        XCTAssertFalse(BrowserWebCoordinator.isRegisteredAppLinkHost("evildouyin.com"))
+    }
+
+    func testTheMatchIsCaseInsensitive() {
+        XCTAssertTrue(BrowserWebCoordinator.isRegisteredAppLinkHost("WWW.DOUYIN.COM"))
+    }
+
+    func testLocalhostAndAddressesAreNeverAppLinks() {
+        XCTAssertFalse(BrowserWebCoordinator.isRegisteredAppLinkHost("localhost"))
+        XCTAssertFalse(BrowserWebCoordinator.isRegisteredAppLinkHost("127.0.0.1"))
+        XCTAssertFalse(BrowserWebCoordinator.isRegisteredAppLinkHost(""))
+        XCTAssertFalse(BrowserWebCoordinator.isRegisteredAppLinkHost(nil))
+    }
+}

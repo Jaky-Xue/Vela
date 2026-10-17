@@ -77,6 +77,15 @@ public final class BrowserWebCoordinator: NSObject {
     private var traces: [ObjectIdentifier: NavigationTrace] = [:]
     private var nextNavigationSerial = 1
 
+    /// The URLs this coordinator is re-issuing to strip their app-link
+    /// permission.
+    ///
+    /// A navigation the web view starts itself carries no app-link permission;
+    /// the set is how the re-issued load is recognised on its way back through
+    /// the policy callback and allowed as the plain web navigation it is,
+    /// rather than being rewritten again — which would loop forever.
+    private var pendingAppLinkReloads: Set<String> = []
+
     public init(
         overlays: WebPageOverlays,
         settings: SettingsService,
@@ -343,6 +352,85 @@ public final class BrowserWebCoordinator: NSObject {
             return settings.externalNavigationPolicy(for: host)
         }
         return .block
+    }
+
+    // MARK: - Universal links
+
+    /// Hosts whose page URLs double as another app's universal links.
+    ///
+    /// These are the sites where tapping any link makes WebKit hand the
+    /// navigation to an installed app instead of loading the web page: the
+    /// domains register their own page URLs in the system's app-site
+    /// association, and WebKit follows a user-tapped link to them straight
+    /// into the app — 抖音, 哔哩哔哩, 微博 and the rest of the majors whose
+    /// web version the user is asking to stay on. The custom-scheme deep
+    /// links such pages also fire are already blocked by
+    /// `resolvedExternalPolicy`; this list closes the universal-link road,
+    /// which has no policy prompt of its own to decline.
+    ///
+    /// Matching is domain-or-subdomain: `douyin.com` covers `www.douyin.com`
+    /// and `v.douyin.com`. A host not on the list keeps WebKit's own
+    /// behaviour, which is the correct one for sites nobody has complained
+    /// about — the association check needs a server round trip the app
+    /// cannot make for the whole web, so a curated list is what "the sites
+    /// where this happens" can honestly mean.
+    static let registeredAppLinkDomains: [String] = [
+        // 抖音 / 头条 / 西瓜
+        "douyin.com", "iesdouyin.com", "snssdk.com", "toutiao.com", "ixigua.com",
+        // 哔哩哔哩（b23.tv 是它的短链域）
+        "bilibili.com", "b23.tv",
+        // 微博 / 知乎 / 小红书
+        "weibo.com", "weibo.cn", "t.cn", "zhihu.com", "xiaohongshu.com", "xhslink.com",
+        // 淘宝 / 京东 / 拼多多
+        "taobao.com", "tmall.com", "tb.cn", "jd.com", "3.cn",
+        "pinduoduo.com", "yangkeduo.com",
+        // 快手 / 美团 / 大众点评 / 网易
+        "kuaishou.com", "chenzhongtech.com", "meituan.com", "dianping.com", "163.com",
+    ]
+
+    /// True when the host is, or belongs to, a registered app-link domain.
+    ///
+    /// Pure on a string, so it carries no isolation: the policy callback runs
+    /// on the main actor and the tests run off it, and neither should have to
+    /// care about the other.
+    nonisolated static func isRegisteredAppLinkHost(_ host: String?) -> Bool {
+        guard let host, !host.isEmpty else { return false }
+        let lowered = host.lowercased()
+        return registeredAppLinkDomains.contains { domain in
+            lowered == domain || lowered.hasSuffix(".\(domain)")
+        }
+    }
+
+    /// Rewrites a navigation so it lands on the web page instead of in an app.
+    ///
+    /// WebKit opens an app for a user-tapped universal link only when the
+    /// navigation it was allowed to make may open app links — a load the web
+    /// view starts itself carries no such permission. So the tap's navigation
+    /// is cancelled before WebKit consults the association and the same URL is
+    /// requested again through `load`, which arrives as the plain web page.
+    /// The cancellation happens before any request goes out, so the rewrite
+    /// costs no second fetch.
+    private func rewriteAppLink(_ url: URL, in webView: WKWebView, tab: BrowserTabState, type: String) {
+        if pendingAppLinkReloads.count > 16 {
+            // The re-issued load normally removes its own entry within one
+            // policy round. A web view torn down between the two leaves the
+            // string behind, and this is what stops them accumulating.
+            pendingAppLinkReloads.removeAll()
+        }
+        pendingAppLinkReloads.insert(url.absoluteString)
+        log(
+            tab: tab,
+            event: .appLink,
+            url: url.absoluteString,
+            type: type,
+            outcome: .cancelled
+        )
+        let request = URLRequest(url: url)
+        // Off the policy callback's own turn: the decision to cancel has to be
+        // delivered before a new load starts on the same web view.
+        Task { @MainActor in
+            webView.load(request)
+        }
     }
 
     /// Opens an external URL, optionally remembering the decision.
@@ -696,7 +784,30 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             return .allow
         }
 
-        // 4. A user-typed or link navigation updates the pending URL so the
+        // 4. A tapped universal link on a registered app-link domain is
+        //    rewritten onto the web page instead of into the installed app —
+        //    抖音, 哔哩哔哩 and the rest register their page URLs, and WebKit
+        //    follows a user tap on them straight out of the browser. A load
+        //    the web view starts itself carries no app-link permission, which
+        //    is why the cancel-and-reissue lands as the web version.
+        //
+        //    The re-issued load comes back through here as `.other` with its
+        //    URL in `pendingAppLinkReloads`; the removal below is what lets
+        //    exactly one rewrite per navigation through. `.other` also covers
+        //    loads Vela and page scripts start — an address-bar entry to one
+        //    of these hosts takes the same one-round rewrite, and no request
+        //    is sent twice by it. Form posts keep their bodies and
+        //    back-forward and reload re-display what is already loaded, so
+        //    neither is rewritten.
+        if navigationAction.navigationType == .linkActivated
+            || navigationAction.navigationType == .other,
+           Self.isRegisteredAppLinkHost(url.host),
+           pendingAppLinkReloads.remove(url.absoluteString) == nil {
+            rewriteAppLink(url, in: webView, tab: tab, type: typeName)
+            return .cancel
+        }
+
+        // 5. A user-typed or link navigation updates the pending URL so the
         //    address bar shows it immediately, before the page commits. iOS
         //    reports an address-bar load as `.other` — there is no `.typed` case
         //    on `WKNavigationType`, unlike macOS.
@@ -705,7 +816,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             tab.pendingUrl = url.absoluteString
         }
 
-        // 5. Going back, going forward and reloading are re-displays of a page
+        // 6. Going back, going forward and reloading are re-displays of a page
         //    already in the history, not new visits. Recording them would
         //    inflate every visit count — which is what the new-tab shortcut grid
         //    ranks by — and fill the history list with the same URL over and
@@ -855,6 +966,22 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         Task { @MainActor in
             guard let tab = self.tab(for: webView) else { return }
             let destination = webView.url?.absoluteString ?? tab.pendingUrl
+
+            // A redirect chain can end on a universal link even when the
+            // navigation it began as carried no app-link permission: the
+            // association check runs on the URL each hop lands on. Stopping
+            // and re-issuing the destination — the same rewrite the tap path
+            // makes — strips the handoff from the hop that would have taken
+            // it, and the re-issued load passes policy through
+            // `pendingAppLinkReloads` exactly once.
+            if let url = webView.url,
+               Self.isRegisteredAppLinkHost(url.host) {
+                if self.pendingAppLinkReloads.remove(url.absoluteString) == nil {
+                    self.rewriteAppLink(url, in: webView, tab: tab, type: "redirect")
+                    return
+                }
+            }
+
             // The address bar follows the redirect as soon as it happens rather
             // than waiting for the document to commit, so a chain that stalls
             // does not leave the user looking at the address they typed while

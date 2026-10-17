@@ -53,6 +53,9 @@ public enum NavigationEvent: String, Codable, Sendable, CaseIterable {
     case newTab
     /// A non-`http(s)` scheme was handed to the system, or blocked.
     case externalScheme
+    /// A universal link was cancelled and re-issued as a plain web load, so
+    /// an installed app could not take the navigation.
+    case appLink
 }
 
 /// Whether the entry describes something that worked, something that did not, or

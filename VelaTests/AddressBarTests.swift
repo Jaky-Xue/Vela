@@ -518,3 +518,46 @@ final class HistoryUrlNormalizerTests: XCTestCase {
         XCTAssertFalse(HistoryTransition.reload.countsAsIntent)
     }
 }
+
+/// The one-line description printed under each preset row on the identifier
+/// screen. It is derived from the identifier string itself so it cannot drift
+/// from the string it describes; these pin the derivations.
+final class PresetSummaryTests: XCTestCase {
+    func testTheDefaultPresetSaysItIsGeneratedLive() {
+        XCTAssertEqual(
+            BrowserUserAgentPreset.all[0].claimedSummary,
+            "由系统的 WebKit 现场生成，随 iOS 保持最新"
+        )
+    }
+
+    func testEveryPresetProducesASummary() {
+        for preset in BrowserUserAgentPreset.all {
+            XCTAssertFalse(preset.claimedSummary.isEmpty, preset.id)
+        }
+    }
+
+    func testTheIPhonePresetNamesTheDeviceTheSystemAndTheEngine() {
+        let preset = BrowserUserAgentPreset.all.first { $0.id == "safari-iphone" }
+        guard let preset else { return XCTFail("the iPhone preset is gone") }
+        XCTAssertEqual(preset.claimedSummary, "iPhone · iOS 26.0 · Safari 26")
+    }
+
+    func testTheAndroidPresetNamesThePhoneAndTheEngine() {
+        let preset = BrowserUserAgentPreset.all.first { $0.id == "chrome-android" }
+        guard let preset else { return XCTFail("the Android preset is gone") }
+        XCTAssertEqual(preset.claimedSummary, "Pixel 10 · Android 16 · Chrome 146")
+    }
+
+    func testAnEdgePresetIsNotMistakenForChrome() {
+        let preset = BrowserUserAgentPreset.all.first { $0.id == "edge-windows" }
+        guard let preset else { return XCTFail("the Edge preset is gone") }
+        XCTAssertTrue(preset.claimedSummary.hasPrefix("Windows 10.0 · Edge 146"), preset.claimedSummary)
+        XCTAssertFalse(preset.claimedSummary.contains("Chrome"), preset.claimedSummary)
+    }
+
+    func testTheMacPresetReadsAsMacOS() {
+        let preset = BrowserUserAgentPreset.all.first { $0.id == "safari-macos" }
+        guard let preset else { return XCTFail("the macOS preset is gone") }
+        XCTAssertEqual(preset.claimedSummary, "macOS 10.15.7 · Safari 26")
+    }
+}

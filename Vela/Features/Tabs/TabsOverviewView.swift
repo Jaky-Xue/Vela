@@ -492,10 +492,28 @@ struct TabsOverviewView: View {
             .padding(.top, BrowserSpacing.regular - 6)
             .padding(.bottom, BrowserSpacing.loose)
         }
+        // Rotation re-keys the scroll view. A lazy grid that survives a
+        // rotation keeps the cell geometry it laid out for the old shape: the
+        // rows it has already materialised stay where the old width put them,
+        // and the more cards there are, the more of them are left parked past
+        // the screen's edge when it lands. A new identity forces a fresh
+        // layout pass at the new shape instead of a repair of the old one.
+        //
+        // The key is the aspect bucket measured at the screen level — not a
+        // reader inside this hierarchy, whose intermediate sizes are what a
+        // repair pass would be fed — so it moves only when the shape the
+        // cards are actually drawn at does.
+        .id(gridIdentity)
         // A grid shorter than the screen has nothing to scroll, and this pins
         // it to its top: no bounce, no offset, nothing for a rotation to leave
         // parked above the header.
         .scrollBounceBehavior(.basedOnSize)
+    }
+
+    /// What the scroll view's identity is keyed on: the width class and the
+    /// hundredth-of-an-aspect bucket the cards are drawn at.
+    private var gridIdentity: String {
+        "\(horizontalSizeClass == .regular ? "regular" : "compact")-\(aspectBucket)"
     }
 
     private var emptyState: some View {
