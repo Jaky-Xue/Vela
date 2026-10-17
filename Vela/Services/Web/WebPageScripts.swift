@@ -121,6 +121,15 @@ public enum WebPageScripts {
     /// the page's own overlay after leaving fullscreen. Subtitles a page
     /// renders purely as DOM elements with no track behind them have no
     /// representation the native player can draw, and are out of reach here.
+    ///
+    /// The takeover has to cover every road into the native player, not just
+    /// the Fullscreen API: the fullscreen button on many players calls the
+    /// video's own `webkitEnterFullscreen()` directly, and some enter through
+    /// `webkitSetPresentationMode('fullscreen')`. All three are hooked, and
+    /// tracks a player adds only once playback is under way are picked up by
+    /// an `addtrack` listener that keeps them shown while the video is in the
+    /// native player — a page typically sets its preferred mode right after
+    /// adding the track, so the assertion is repeated once that has settled.
     public static let fullscreenBridge = """
     (function () {
       if (window.__velaFullscreenBridgeInstalled === true) { return; }
@@ -133,6 +142,16 @@ public enum WebPageScripts {
         return null;
       }
 
+      function forceShowing(tracks) {
+        for (var i = 0; i < tracks.length; i++) {
+          var kind = tracks[i].kind;
+          if (kind !== 'subtitles' && kind !== 'captions') { continue; }
+          if (tracks[i].mode !== 'showing') {
+            try { tracks[i].mode = 'showing'; } catch (error) {}
+          }
+        }
+      }
+
       function exposeSubtitlesToNativePlayer(video) {
         var tracks = video.textTracks;
         if (!tracks) { return; }
@@ -140,6 +159,19 @@ public enum WebPageScripts {
           var saved = [];
           for (var i = 0; i < tracks.length; i++) { saved.push(tracks[i].mode); }
           video.__velaSavedTrackModes = saved;
+          try {
+            tracks.addEventListener('addtrack', function (event) {
+              var track = event.track;
+              if (!track || (track.kind !== 'subtitles' && track.kind !== 'captions')) { return; }
+              if (video.webkitPresentationMode !== 'fullscreen') { return; }
+              try { track.mode = 'showing'; } catch (error) {}
+              setTimeout(function () {
+                if (video.webkitPresentationMode === 'fullscreen') {
+                  try { track.mode = 'showing'; } catch (error) {}
+                }
+              }, 300);
+            });
+          } catch (error) {}
           video.addEventListener('webkitpresentationmodechanged', function () {
             if (video.webkitPresentationMode !== 'inline') { return; }
             var modes = video.__velaSavedTrackModes;
@@ -150,13 +182,7 @@ public enum WebPageScripts {
             }
           });
         }
-        for (var k = 0; k < tracks.length; k++) {
-          var kind = tracks[k].kind;
-          if (kind !== 'subtitles' && kind !== 'captions') { continue; }
-          if (tracks[k].mode !== 'showing') {
-            try { tracks[k].mode = 'showing'; } catch (error) {}
-          }
-        }
+        forceShowing(tracks);
       }
 
       function patch(proto, name) {
@@ -176,6 +202,54 @@ public enum WebPageScripts {
 
       patch(Element.prototype, 'requestFullscreen');
       patch(Element.prototype, 'webkitRequestFullscreen');
+
+      var videoProto = window.HTMLVideoElement && HTMLVideoElement.prototype;
+      if (videoProto && typeof videoProto.webkitEnterFullscreen === 'function') {
+        var nativeEnterFullscreen = videoProto.webkitEnterFullscreen;
+        videoProto.webkitEnterFullscreen = function () {
+          exposeSubtitlesToNativePlayer(this);
+          return nativeEnterFullscreen.apply(this, arguments);
+        };
+      }
+      if (videoProto && typeof videoProto.webkitSetPresentationMode === 'function') {
+        var nativeSetPresentationMode = videoProto.webkitSetPresentationMode;
+        videoProto.webkitSetPresentationMode = function (mode) {
+          if (mode === 'fullscreen') { exposeSubtitlesToNativePlayer(this); }
+          return nativeSetPresentationMode.apply(this, arguments);
+        };
+      }
+    })();
+    """
+
+    // MARK: - Inline video controls
+
+    /// Tap-to-controls for a video in the page.
+    ///
+    /// A player that pauses on tap is the wrong shape for a phone browser:
+    /// the tap the user means as "where am I in this film" stops the film.
+    /// What a tap should produce is the system's inline controls — the
+    /// progress bar, the time, the play/pause button and the fullscreen
+    /// button — with pausing left to the pause button itself. So a
+    /// capture-phase listener runs before any page handler, arms the system
+    /// controls when the player ships none, and keeps the tap from reaching
+    /// the page's pause path. Taps on a player's own visible buttons are
+    /// untouched — they land on the button element, not the video — and so
+    /// is a page playing through an overlay of its own chrome; only a tap on
+    /// the bare video element is taken over. The element picker stands down
+    /// for the same reason it injects late: it needs the page's click stream
+    /// alive to choose what to hide.
+    public static let inlineVideoControlsScript = """
+    (function () {
+      if (window.__velaInlineVideoControlsInstalled === true) { return; }
+      window.__velaInlineVideoControlsInstalled = true;
+
+      document.addEventListener('click', function (event) {
+        var node = event.target;
+        if (!node || node.nodeType !== 1 || node.tagName !== 'VIDEO') { return; }
+        if (window.__velaElementPickerInstalled === true) { return; }
+        if (!node.hasAttribute('controls')) { node.setAttribute('controls', ''); }
+        event.stopImmediatePropagation();
+      }, true);
     })();
     """
 

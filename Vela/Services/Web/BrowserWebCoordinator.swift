@@ -416,6 +416,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         let startScripts: [String] = [
             WebPageScripts.historyApiBridge,
             WebPageScripts.fullscreenBridge,
+            WebPageScripts.inlineVideoControlsScript,
             WebPageScripts.colorSchemeScript(prefersDark: tab.privacyMode == .private)
         ]
 
