@@ -117,7 +117,7 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: PHPickerViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+        Coordinator(parent: self)
     }
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
