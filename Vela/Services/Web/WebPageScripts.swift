@@ -221,6 +221,142 @@ public enum WebPageScripts {
     })();
     """
 
+    // MARK: - Identifier consistency
+
+    /// Makes a hand-picked identifier hold together as a whole.
+    ///
+    /// A preset only rewrites the `User-Agent` header; everything else a page
+    /// can ask stays WebKit's own — `navigator.vendor` reports Apple,
+    /// `navigator.userAgentData` is absent, `window.chrome` is missing. A
+    /// site's risk control reads exactly those, and a UA claiming Chrome
+    /// beside a vendor saying Apple is the textbook mismatch such a check
+    /// exists to catch — the shape of YouTube's 「出了点问题」 screens. So
+    /// when a tab presents a hand-picked identifier, this script aligns the
+    /// rest of the surface with the claim:
+    ///
+    /// * A Chromium claim (`Chrome/`, `Edg/`) gains the `userAgentData`
+    ///   object real Chromium exposes — brands, platform, mobility, and a
+    ///   `getHighEntropyValues` answer — plus Google's vendor and
+    ///   `window.chrome`.
+    /// * A Chrome-on-iOS claim (`CriOS/`) gains only the vendor: real Chrome
+    ///   on iOS runs on WebKit and has no `userAgentData`, so adding one
+    ///   would be its own mismatch.
+    /// * A Firefox claim gains Firefox's empty vendor and nothing else —
+    ///   Firefox has no `userAgentData` either.
+    /// * Vela's default and the Safari presets send no script at all:
+    ///   WebKit already is Safari, and its surface is consistent by
+    ///   construction.
+    ///
+    /// Returns nil when there is nothing to align.
+    public static func identityConsistencyScript(userAgent: String) -> String? {
+        let lowered = userAgent.lowercased()
+        let claimsChromiumData = lowered.contains("chrome/") || lowered.contains("edg/")
+        let claimsCriOS = lowered.contains("crios/")
+        let claimsFirefox = lowered.contains("firefox/")
+        guard claimsChromiumData || claimsCriOS || claimsFirefox else { return nil }
+
+        func majorToken(after marker: String) -> String? {
+            guard let range = lowered.range(of: marker) else { return nil }
+            let digits = lowered[range.upperBound...].prefix { $0.isNumber }
+            return digits.isEmpty ? nil : String(digits)
+        }
+        let chromiumMajor = majorToken(after: "chrome/") ?? majorToken(after: "edg/") ?? "120"
+        let isEdge = lowered.contains("edg/")
+
+        let vendor: String = (claimsChromiumData || claimsCriOS) ? "Google Inc." : ""
+
+        let platform: String
+        if lowered.contains("android") { platform = "Android" }
+        else if lowered.contains("macintosh") { platform = "macOS" }
+        else if lowered.contains("windows") { platform = "Windows" }
+        else { platform = "Chrome OS" }
+        let mobile = lowered.contains("android")
+
+        let platformVersion: String
+        switch platform {
+        case "Android": platformVersion = "\(majorToken(after: "android ") ?? "14").0.0"
+        case "macOS": platformVersion = "13.5.0"
+        default: platformVersion = "10.0.0"
+        }
+
+        let grease = ["brand": "Not_A Brand", "version": "24"]
+        let brands: [[String: String]] = isEdge
+            ? [["brand": "Microsoft Edge", "version": majorToken(after: "edg/") ?? chromiumMajor],
+               ["brand": "Chromium", "version": chromiumMajor],
+               grease]
+            : [["brand": "Google Chrome", "version": chromiumMajor],
+               ["brand": "Chromium", "version": chromiumMajor],
+               grease]
+        let brandsJSON = (try? JSONSerialization.data(withJSONObject: brands))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
+        let vendorBlock = """
+          try {
+            Object.defineProperty(Navigator.prototype, 'vendor', {
+              get: function () { return \(Self.jsonString(vendor)); },
+              configurable: true
+            });
+          } catch (error) {}
+        """
+
+        let userAgentDataBlock = claimsChromiumData ? """
+          try {
+            if (!navigator.userAgentData) {
+              var brands = \(brandsJSON);
+              var data = {
+                brands: brands,
+                mobile: \(mobile),
+                platform: '\(platform)'
+              };
+              data.getHighEntropyValues = function (hints) {
+                return Promise.resolve({
+                  brands: brands,
+                  mobile: \(mobile),
+                  platform: '\(platform)',
+                  platformVersion: '\(platformVersion)',
+                  architecture: 'x86',
+                  bitness: '64',
+                  model: '',
+                  uaFullVersion: '\(chromiumMajor).0.0.0',
+                  fullVersionList: brands
+                });
+              };
+              data.toJSON = function () {
+                return { brands: brands, mobile: \(mobile), platform: '\(platform)' };
+              };
+              Object.defineProperty(Navigator.prototype, 'userAgentData', {
+                get: function () { return data; },
+                configurable: true
+              });
+            }
+          } catch (error) {}
+        """ : ""
+
+        let windowChromeBlock = claimsChromiumData ? """
+          try { if (!window.chrome) { window.chrome = { runtime: {} }; } } catch (error) {}
+        """ : ""
+
+        return """
+        (function () {
+          if (window.__velaIdentityConsistency === true) { return; }
+          window.__velaIdentityConsistency = true;
+        \(vendorBlock)
+        \(userAgentDataBlock)
+        \(windowChromeBlock)
+        })();
+        """
+    }
+
+    /// A JSON string literal for embedding a Swift string in injected
+    /// JavaScript.
+    private static func jsonString(_ value: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [value]),
+              let array = String(data: data, encoding: .utf8), array.count >= 2 else {
+            return "\"\""
+        }
+        return String(array.dropFirst().dropLast())
+    }
+
     // MARK: - Inline video controls
 
     /// Tap-to-controls for a video in the page.

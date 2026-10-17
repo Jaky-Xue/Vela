@@ -16,6 +16,7 @@
 import SwiftUI
 import UIKit
 import LocalAuthentication
+import WebKit
 
 struct TabsOverviewView: View {
     @Environment(AppEnvironment.self) private var env
@@ -201,14 +202,10 @@ struct TabsOverviewView: View {
     }
 }
 
-/// One tab card.
-///
-/// The card is a tappable surface with a real button inside it, rather than a
-/// `Button` wrapping another `Button`. Nested buttons are resolved by whichever
-/// gesture SwiftUI decides wins, which in practice made the close control also
-/// select the tab it was closing — and closed a different tab than the one the
-/// user aimed at, because selection re-orders the grid under the finger.
+/// One tab card: the page's own screenshot above its title — the shape
+/// Safari's tab overview uses, which is what this one is modelled on.
 private struct TabCard: View {
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
     var tab: BrowserTabState
@@ -218,116 +215,110 @@ private struct TabCard: View {
     var onClose: () -> Void
     var onPin: () -> Void
 
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                Spacer(minLength: 0)
-                footer
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 124)
-            .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
-            .onTapGesture(perform: onSelect)
+    /// The page's picture, taken once per card appearance from the live web
+    /// view. A cold tab has no web view to ask and keeps its placeholder
+    /// until it has been opened once; the sheet's lifetime bounds the cache.
+    @State private var snapshot: UIImage?
 
-            closeButton
-        }
-        .browserCard(
-            material: .thinMaterial,
-            radius: BrowserRadius.card,
-            elevation: .card,
-            tint: cardTint
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                .strokeBorder(
-                    isActive ? palette.accent : palette.cardStroke,
-                    lineWidth: isActive ? 2 : 0.5
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                thumbnail
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(0.72, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(
+                                isActive ? palette.accent : palette.cardStroke,
+                                lineWidth: isActive ? 2 : 0.5
+                            )
+                            .allowsHitTesting(false)
+                    }
+
+                closeButton
+            }
+            .blur(radius: blurPreview ? 5 : 0)
+
+            HStack(spacing: 5) {
+                SiteIconView(
+                    host: tab.displayHost,
+                    size: 14,
+                    faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl
                 )
-                .allowsHitTesting(false)
+                Text(tab.displayTitle)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .foregroundStyle(palette.primaryText)
+                Spacer(minLength: 0)
+            }
+            .blur(radius: blurPreview ? 3 : 0)
         }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
         .contextMenu {
             Button(tab.pinned ? "取消固定" : "固定标签页", systemImage: tab.pinned ? "pin.slash" : "pin", action: onPin)
             Button("关闭标签页", systemImage: "xmark", role: .destructive, action: onClose)
         }
-    }
-
-    /// The active tab is tinted as well as ringed. On a grid of a dozen cards a
-    /// ring alone is easy to lose; the fill is what makes the current tab read
-    /// as the current tab at a glance.
-    private var cardTint: Color {
-        isActive ? palette.accent.opacity(0.14) : palette.card.opacity(0.35)
-    }
-
-    private var header: some View {
-        HStack(alignment: .top, spacing: BrowserSpacing.tight + 2) {
-            SiteIconView(
-                host: tab.displayHost,
-                size: 26,
-                faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl
-            )
-            .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(tab.displayTitle)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .foregroundStyle(palette.primaryText)
-                Text(tab.isHome ? "主页" : tab.displayHost)
-                    .font(.system(size: 11))
-                    .lineLimit(1)
-                    .foregroundStyle(palette.secondaryText)
-            }
-            .blur(radius: blurPreview ? 4 : 0)
+        .task(id: tab.id) {
+            guard snapshot == nil, !tab.isHome else { return }
+            snapshot = await takeSnapshot()
         }
-        // Room for the close button, which floats over the top-right corner.
-        .padding(.trailing, 34)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(tab.displayTitle)
+        .accessibilityAddTraits(.isButton)
     }
 
-    private var footer: some View {
-        HStack(spacing: BrowserSpacing.tight) {
-            if tab.isLoading {
-                ProgressRing(progress: tab.estimatedProgress)
-                    .frame(width: 12, height: 12)
+    /// The card's picture: the page itself where one exists, and a quiet
+    /// placeholder where none does yet — the start page's house on the home
+    /// surface, the site's icon on a tab that has never been opened here.
+    @ViewBuilder
+    private var thumbnail: some View {
+        if let snapshot {
+            Image(uiImage: snapshot)
+                .resizable()
+                .scaledToFill()
+        } else {
+            ZStack {
+                palette.surface
+                if tab.isHome {
+                    Image(systemName: "house")
+                        .font(.system(size: 24))
+                        .foregroundStyle(palette.secondaryText.opacity(0.45))
+                } else {
+                    SiteIconView(host: tab.displayHost, size: 32)
+                }
             }
-            if tab.pinned {
-                Image(systemName: "pin.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(palette.accent)
-            }
-            if tab.audible {
-                Image(systemName: tab.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(palette.secondaryText)
-            }
-            Spacer(minLength: 0)
         }
-        .frame(height: 14)
+    }
+
+    /// The live page's own picture.
+    private func takeSnapshot() async -> UIImage? {
+        guard let webView = env.tabManager.webView(for: tab.id) else { return nil }
+        return await withCheckedContinuation { continuation in
+            webView.takeSnapshot(with: nil) { image, _ in
+                continuation.resume(returning: image)
+            }
+        }
     }
 
     private var closeButton: some View {
         Button(action: onClose) {
             Image(systemName: "xmark")
                 .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(palette.secondaryText)
+                .foregroundStyle(palette.primaryText)
                 .frame(width: 20, height: 20)
-                .background(palette.controlFill, in: Circle())
-                // The glyph stays small so it does not compete with the title,
-                // but the target does not: a 20 pt disc is half the minimum a
-                // finger can reliably hit, and this is the control that destroys
-                // something.
-                .frame(width: 36, height: 36)
+                .background(.thinMaterial, in: Circle())
+                .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(4)
         .accessibilityLabel("关闭标签页")
     }
 }
 
-/// The card that opens a new tab.
+/// The card that opens a new tab, in the same thumbnail shape as the cards
+/// beside it, dashed where they are solid.
 private struct NewTabCard: View {
     @Environment(\.browserPalette) private var palette
 
@@ -335,25 +326,29 @@ private struct NewTabCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: BrowserSpacing.tight) {
-                Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .light))
+            VStack(spacing: 6) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(palette.controlFill.opacity(0.4))
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .light))
+                        .foregroundStyle(palette.secondaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(0.72, contentMode: .fit)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(
+                            palette.secondaryText.opacity(0.35),
+                            style: StrokeStyle(lineWidth: 1, dash: [5, 4])
+                        )
+                }
+
                 Text("新建标签页")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.caption2)
+                    .foregroundStyle(palette.secondaryText)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 124)
-            .foregroundStyle(palette.secondaryText)
-            .background(palette.controlFill.opacity(0.5), in: RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
-            // A dashed border rather than a stroke: this card is not a tab, and
-            // it should not read as one with an empty title.
-            .overlay {
-                RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                    .strokeBorder(
-                        palette.secondaryText.opacity(0.35),
-                        style: StrokeStyle(lineWidth: 1, dash: [5, 4])
-                    )
-            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

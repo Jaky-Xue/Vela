@@ -426,6 +426,19 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
+        // A hand-picked identifier makes a claim the rest of the page surface
+        // has to agree with — vendor, userAgentData, window.chrome. The
+        // default path sends no script: WebKit's own identity is consistent
+        // by construction. Main frame only, because the checks a site's risk
+        // control runs happen on the page itself, and per-frame injection
+        // would multiply the cost for no page that reads it in a subframe.
+        if let customAgent = configurationProvider.webIdentity(for: tab).customUserAgent,
+           let consistency = WebPageScripts.identityConsistencyScript(userAgent: customAgent) {
+            controller.addUserScript(
+                WKUserScript(source: consistency, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+            )
+        }
+
         controller.addUserScript(
             WKUserScript(
                 source: WebPageScripts.pageMetricsReporter,
