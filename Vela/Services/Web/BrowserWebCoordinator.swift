@@ -432,7 +432,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // by construction. Main frame only, because the checks a site's risk
         // control runs happen on the page itself, and per-frame injection
         // would multiply the cost for no page that reads it in a subframe.
-        if let customAgent = configurationProvider.webIdentity(for: tab).customUserAgent,
+        if let customAgent = webIdentity(for: tab).customUserAgent,
            let consistency = WebPageScripts.identityConsistencyScript(userAgent: customAgent) {
             controller.addUserScript(
                 WKUserScript(source: consistency, injectionTime: .atDocumentStart, forMainFrameOnly: true)
