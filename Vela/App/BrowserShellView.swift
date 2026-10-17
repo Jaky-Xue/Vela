@@ -153,7 +153,7 @@ struct BrowserShellView: View {
 
     private var activeTab: BrowserTabState? { tabManager.activeTab }
 
-    var body: some View {
+    private var shellRoot: some View {
         ZStack {
             palette.surface.ignoresSafeArea()
 
@@ -245,6 +245,22 @@ struct BrowserShellView: View {
         .onChange(of: colorScheme) { _, _ in
             updateChromeForeground()
         }
+    }
+
+    var body: some View {
+        presentations()
+    }
+
+    /// Every presentation the shell raises, held in one function off the root
+    /// chain.
+    ///
+    /// The root chain grew large enough that adding to it pushed the type
+    /// checker past its budget — the failure surfaced at the file importer at
+    /// the chain's far end, but the weight was the whole chain. Splitting the
+    /// presentations off hands the checker two moderate expressions instead
+    /// of one enormous one.
+    private func presentations() -> some View {
+        shellRoot
         // A full-screen cover, not a sheet: Safari's overview takes the whole
         // screen, and a floating panel would put the page's edges back where
         // the blurred scrim is meant to replace them.
