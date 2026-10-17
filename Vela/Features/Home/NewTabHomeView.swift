@@ -446,7 +446,6 @@ private struct HomeTileButtonStyle: ButtonStyle {
 /// view's offsets, and it arrived with iOS 18 — below that, the home surface
 /// simply has no scroll story to tell the command bar, whose drag-to-hide
 /// still covers it.
-@ViewBuilder
 private extension View {
     /// Scroll reporting for the home surface.
     ///
