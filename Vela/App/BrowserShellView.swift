@@ -222,7 +222,10 @@ struct BrowserShellView: View {
             scrollAccumulation = 0
             syncAddressText()
         }
-        .sheet(isPresented: $showTabsOverview) {
+        // A full-screen cover, not a sheet: Safari's overview takes the whole
+        // screen, and a floating panel would put the page's edges back where
+        // the blurred scrim is meant to replace them.
+        .fullScreenCover(isPresented: $showTabsOverview) {
             TabsOverviewView()
                 .environment(env)
         }
