@@ -126,14 +126,10 @@ struct NewTabHomeView: View {
     // MARK: - Background
 
     /// The custom background picture, or the plain palette surface when none
-    /// is set.
-    ///
-    /// The photo sits under a veil of the surface colour rather than under a
-    /// blur or a heavy scrim: the tiles and the recently-closed card carry
-    /// their own fills, the command bar is glass, and a veil is what keeps all
-    /// of them readable while the picture still reads as a picture. The stamp
-    /// is the reload key — `save` and `clear` both move it, which is what
-    /// makes a change made in settings appear here immediately.
+    /// is set. The photo is drawn as it is — no veil over it; the tiles and
+    /// the recently-closed card carry their own fills, and the command bar is
+    /// glass. The stamp is the reload key — `save` and `clear` both move it,
+    /// which is what makes a change made in settings appear here immediately.
     @ViewBuilder
     private var homeBackground: some View {
         if let backgroundImage {
@@ -141,10 +137,6 @@ struct NewTabHomeView: View {
                 .resizable()
                 .scaledToFill()
                 .ignoresSafeArea()
-                .overlay {
-                    palette.surface.opacity(0.62)
-                        .ignoresSafeArea()
-                }
         } else {
             palette.surface
                 .ignoresSafeArea()
