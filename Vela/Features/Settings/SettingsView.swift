@@ -222,7 +222,7 @@ struct SearchEngineSettingsView: View {
             } header: {
                 Text("在地址栏中可切换的引擎")
             } footer: {
-                Text("关闭的引擎不会出现在地址栏的引擎切换列表里，但仍可设为默认。")
+                Text("关闭的引擎不出现在地址栏的切换列表里。")
             }
 
             Section {
@@ -279,7 +279,7 @@ struct SearchEngineSettingsView: View {
             } header: {
                 Text("搜索建议")
             } footer: {
-                Text("「显示搜索建议」是这一组的总开关：关闭后地址栏不再显示任何建议，直接回车执行搜索。")
+                Text("关闭后地址栏不再显示任何建议。")
             }
         }
         .navigationTitle("搜索引擎")
@@ -334,7 +334,7 @@ private struct CustomSearchEngineForm: View {
                 } header: {
                     Text("网址模板")
                 } footer: {
-                    Text("必须包含 {searchTerms}，它会替换成搜索词。")
+                    Text("用 {searchTerms} 表示搜索词。")
                 }
                 Section("主页（可选）") {
                     TextField("https://example.com", text: $homepage)
@@ -400,7 +400,7 @@ struct AppearanceSettingsView: View {
             } header: {
                 Text("外观模式")
             } footer: {
-                Text("「跟随系统」会随系统的浅色/深色设置实时切换；选择浅色或深色则固定该外观，不随系统变化。")
+                Text("「跟随系统」随系统设置实时切换。")
             }
 
             Section {
@@ -432,8 +432,6 @@ struct AppearanceSettingsView: View {
                 }
             } header: {
                 Text("配色")
-            } footer: {
-                Text("每套配色都带有浅色与深色两组颜色，切换外观时会自动使用对应的一组。")
             }
 
             Section {
@@ -454,61 +452,121 @@ struct AppearanceSettingsView: View {
     }
 }
 
-/// A miniature of the chrome, rendered in the *other* appearance.
+/// Both appearances, side by side, drawn as the command bar actually looks.
 ///
-/// The point is side-by-side comparison: the strip always shows the mode the
-/// user is not currently in, so a change to the picker above is visible
-/// immediately without leaving the screen.
+/// The point is comparison without leaving the screen — and without the
+/// ambiguity the previous preview carried: it rendered only the mode the user
+/// was *not* in, so picking 深色 swapped the picture to a light one at the
+/// moment the app itself went dark, and its layout was a top address bar the
+/// real chrome no longer has. So this strip always shows both modes with the
+/// same three-group bottom bar the browser draws — history buttons, the
+/// omnibox field, the view controls — and marks the one currently in effect,
+/// which is the one the user can compare against by looking up.
 private struct AppearancePreviewStrip: View {
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
 
-    private var previewScheme: ColorScheme {
-        colorScheme == .dark ? .light : .dark
-    }
-
-    private var previewTokens: BrowserColorTokens {
-        palette.tokens(for: previewScheme)
+    /// The mode the app is actually rendering in: the user's choice, or the
+    /// system's when the choice is 跟随系统.
+    private var effectiveScheme: ColorScheme {
+        switch env.settings.appearanceMode {
+        case .light: return .light
+        case .dark: return .dark
+        case .system: return colorScheme
+        }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.green)
-                Text("vela.example.com")
-                    .font(.footnote)
-                    .foregroundStyle(previewTokens.primaryText)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 38)
-            .background(previewTokens.controlFill, in: RoundedRectangle(cornerRadius: BrowserRadius.field, style: .continuous))
+        HStack(spacing: 10) {
+            AppearancePreviewCard(
+                tokens: palette.tokens(for: .light),
+                title: "浅色",
+                isInEffect: effectiveScheme == .light
+            )
+            AppearancePreviewCard(
+                tokens: palette.tokens(for: .dark),
+                title: "深色",
+                isInEffect: effectiveScheme == .dark
+            )
+        }
+    }
+}
 
-            HStack(spacing: 0) {
-                ForEach(["chevron.left", "chevron.right", "square.on.square", "book", "ellipsis"], id: \.self) { symbol in
-                    Image(systemName: symbol)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(previewTokens.primaryText)
-                        .frame(maxWidth: .infinity)
+/// One mode's miniature: the chrome's three groups over the page surface, at
+/// the proportions of the real bar.
+private struct AppearancePreviewCard: View {
+    let tokens: BrowserColorTokens
+    let title: String
+    let isInEffect: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                previewGroup {
+                    Image(systemName: "chevron.left")
+                    Image(systemName: "chevron.right")
+                }
+
+                HStack(spacing: 4) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.green)
+                    Text("vela.example.com")
+                        .font(.system(size: 9))
+                        .foregroundStyle(tokens.secondaryText)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 7)
+                .frame(height: 22)
+                .frame(maxWidth: .infinity)
+                .background(tokens.controlFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                previewGroup {
+                    Image(systemName: "square.on.square")
+                    Image(systemName: "ellipsis")
                 }
             }
-            .frame(height: 34)
-            .background(previewTokens.chrome, in: RoundedRectangle(cornerRadius: BrowserRadius.chip, style: .continuous))
+            .padding(6)
+            .background(tokens.chrome, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            Text(previewScheme == .dark ? "深色预览" : "浅色预览")
-                .font(.caption2)
-                .foregroundStyle(previewTokens.secondaryText)
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(tokens.primaryText)
+                if isInEffect {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(tokens.accent)
+                }
+            }
         }
-        .padding(10)
-        .background(previewTokens.surface, in: RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tokens.surface, in: RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                .strokeBorder(previewTokens.cardStroke, lineWidth: 0.5)
+                .strokeBorder(
+                    isInEffect ? tokens.accent : tokens.cardStroke,
+                    lineWidth: isInEffect ? 1.5 : 0.5
+                )
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("配色预览")
+        .accessibilityLabel(isInEffect ? "\(title)预览，当前生效" : "\(title)预览")
+    }
+
+    /// One flanking group of glyphs, as the bar's chevron pair and view pair
+    /// are drawn.
+    private func previewGroup(@ViewBuilder glyphs: () -> some View) -> some View {
+        HStack(spacing: 5) {
+            glyphs()
+        }
+        .font(.system(size: 9, weight: .medium))
+        .foregroundStyle(tokens.primaryText)
+        .padding(.horizontal, 6)
+        .frame(height: 22)
+        .background(tokens.controlFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
@@ -565,8 +623,6 @@ struct GeneralSettingsView: View {
                 ))
             } header: {
                 Text("启动与标签页")
-            } footer: {
-                Text("后台打开时，新标签页不会自动切换到前台。")
             }
 
             Section {
@@ -581,7 +637,7 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("历史记录保留")
             } footer: {
-                Text("超过保留期的记录会在下一次访问网页时被清理。设为「不自动清理」则一直保留。")
+                Text("超过保留期的记录会在下次访问时清理。")
             }
 
             Section {
@@ -721,7 +777,7 @@ struct UserAgentSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("选择一个标识后，此后打开的页面都会以它的身份出现。页面菜单里的「请求桌面网站」开启且未选预设时，页面收到的是 Vela 的桌面版标识。重新载入当前页面即可看到效果。")
+                Text("选择后，之后打开的页面都会以它出现。")
             }
 
             Section("移动端网页") {
@@ -765,7 +821,7 @@ struct UserAgentSettingsView: View {
                         title: "页面实际收到",
                         value: identifierReportedByPage,
                         note: identifierReportedByPage == nil
-                            ? "打开任意网页后，这里会显示这个设备真实发出的标识。"
+                            ? "打开网页后显示实际发出的标识。"
                             : nil
                     )
                     Divider()
@@ -783,7 +839,7 @@ struct UserAgentSettingsView: View {
             } header: {
                 Text("当前网页标识")
             } footer: {
-                Text("「页面实际收到」是从正在显示的页面里读回来的。如果某个网站说浏览器版本太低，先把这个串复制出来对照一下。")
+                Text("「页面实际收到」从当前页面读回，网站报版本太低时对照它。")
             }
         }
         .navigationTitle("网页标识")
@@ -864,8 +920,9 @@ struct UserAgentSettingsView: View {
 
 // MARK: - About
 
-/// The attribution section below is what the GPL-3.0 licence and the upstream
-/// trademark policy require.
+/// The attribution line below is what the GPL-3.0 licence and the upstream
+/// trademark policy require; everything else on the screen stays out of the
+/// way of the icon, the name and the version.
 struct AboutView: View {
     @Environment(AppEnvironment.self) private var env
 
@@ -883,10 +940,18 @@ struct AboutView: View {
     var body: some View {
         List {
             Section {
-                VStack(spacing: 8) {
-                    Image(systemName: "sailboat.fill")
-                        .font(.system(size: 44))
-                        .foregroundStyle(.tint)
+                VStack(spacing: 10) {
+                    // The icon as installed — the same asset the home screen
+                    // shows — rather than a glyph standing in for it.
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 76, height: 76)
+                        .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5)
+                        }
                     Text("Vela")
                         .font(.title2.weight(.semibold))
                     Text("版本 \(Self.marketingVersion) (\(Self.buildVersion))")
@@ -899,47 +964,17 @@ struct AboutView: View {
             }
 
             Section {
-                LabeledContent("数据库结构版本") {
-                    Text("\(BrowserSchema.velaSchemaVersion)")
-                        .monospacedDigit()
-                }
-                LabeledContent("过滤规则") {
-                    Text("\(env.adBlock.ruleCount) 条")
-                        .monospacedDigit()
-                }
-                LabeledContent("已加载的隐藏规则") {
-                    Text("\(env.adBlock.cosmeticSelectors.count) 条")
+                LabeledContent("规则总数") {
+                    Text("\(env.adBlock.ruleCount)")
                         .monospacedDigit()
                 }
             } header: {
-                Text("运行状态")
+                Text("状态")
             }
 
             Section {
-                Text("Vela 是 Aira Browser 的 iOS 移植。它保留了 Aira 的数据表结构和功能语义，并针对 iOS 平台重新实现。")
+                Text("Vela 是 Aira Browser（GPL-3.0）的 iOS 移植版，以自己的名称与视觉标识分发。")
                     .font(.footnote)
-                Text("上游项目：Aira Browser，以 GPL-3.0 发布。Vela 是修改后的分发版本，按照上游商标政策使用了自己的名称、应用标识和视觉标识。")
-                    .font(.footnote)
-            } header: {
-                Text("关于本项目")
-            }
-
-            Section {
-                Text("iOS 不允许使用第三方浏览器内核，因此 Vela 的网页渲染、网络请求和广告过滤都通过 WebKit 完成。以下能力因此受限：")
-                    .font(.footnote)
-                VStack(alignment: .leading, spacing: 6) {
-                    limitation("广告过滤", "使用系统的 WKContentRuleList。规则语法支持常见的 Adblock Plus 子集，但正则规则、$csp、$rewrite 和扩展选择器无法表达。")
-                    limitation("用户脚本", "在页面内执行，因此 GM_xmlhttpRequest、GM_download、GM_cookie 这类需要特权的接口不可用。申请了这些权限的脚本仍可安装，详情页会标注。")
-                    limitation("下载", "由 WKDownload 完成，支持断点续传，但没有分片多连接和下载队列。")
-                    limitation("统计", "WebKit 不报告被拦截的请求数，所以 Vela 不显示这个数字，只显示规则条数和实际隐藏的元素数。")
-                    limitation("同步", "WebDAV 与自建 Personal Server 的数据模型已移植，客户端的同步调度尚未实现。")
-                }
-                .font(.caption)
-            } header: {
-                Text("能力边界")
-            }
-
-            Section {
                 Link("GNU General Public License v3.0", destination: URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!)
                 Link("Aira Browser 上游仓库", destination: URL(string: "https://github.com/mason173/aira-browser")!)
             } header: {
@@ -948,15 +983,5 @@ struct AboutView: View {
         }
         .navigationTitle("关于")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func limitation(_ title: String, _ body: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
-            Text(body)
-                .foregroundStyle(.secondary)
-        }
     }
 }

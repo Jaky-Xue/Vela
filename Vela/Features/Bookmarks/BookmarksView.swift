@@ -63,12 +63,15 @@ struct BookmarksView: View {
                     title: isSearching ? "没有匹配的书签" : "还没有书签",
                     message: isSearching
                         ? "换个关键词试试。"
-                        : "浏览网页时点菜单里的「添加到书签」。"
+                        : "点菜单里的「添加到书签」即可保存。"
                 )
                 .listRowBackground(Color.clear)
             } else {
                 Section {
-                    if contentsExpanded || currentFolderId == nil {
+                    // Search results show regardless of the fold: the fold is
+                    // the folder view's control, and hiding rows a search just
+                    // found is a list that answers a question with nothing.
+                    if isSearching || contentsExpanded || currentFolderId == nil {
                         ForEach(currentItems) { item in
                             row(for: item)
                         }
@@ -198,7 +201,7 @@ struct BookmarksView: View {
         Button {
             if node.isFolder {
                 path.append(node.id)
-            } else if let urlString = node.url, let url = URL(string: urlString) {
+            } else if let url = Self.resolvedUrl(node.url) {
                 openInBrowser(url)
             }
         } label: {
@@ -237,6 +240,7 @@ struct BookmarksView: View {
                         .foregroundStyle(palette.secondaryText.opacity(0.6))
                 }
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -257,7 +261,7 @@ struct BookmarksView: View {
         .contextMenu {
             if !node.isFolder {
                 Button("在新标签页打开", systemImage: "plus.square.on.square") {
-                    guard let urlString = node.url, let url = URL(string: urlString) else { return }
+                    guard let url = Self.resolvedUrl(node.url) else { return }
                     env.tabManager.openTab(
                         url: url,
                         privacyMode: .regular,
@@ -279,6 +283,22 @@ struct BookmarksView: View {
         guard let tab = env.tabManager.activeTab else { return }
         env.tabManager.load(url: url, in: tab)
         dismiss()
+    }
+
+    /// The address a stored bookmark opens, repaired when it does not parse
+    /// as stored.
+    ///
+    /// A `URL(string:)` refusal is silent at every point after it: the row
+    /// simply does nothing when tapped, which reads as the bookmark list being
+    /// broken rather than as one malformed address. Trimming whitespace and
+    /// assuming `https` for a scheme-less host turns the rows that used to be
+    /// dead into rows that open.
+    static func resolvedUrl(_ raw: String?) -> URL? {
+        guard var text = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return nil
+        }
+        if !text.contains("://") { text = "https://" + text }
+        return URL(string: text)
     }
 
     private func deleteItems(at offsets: IndexSet) {

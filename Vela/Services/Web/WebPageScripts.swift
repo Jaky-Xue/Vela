@@ -109,6 +109,18 @@ public enum WebPageScripts {
     /// element to the video itself and the native player, which is the
     /// presentation the user asked for; elements without a video fall through
     /// to the ordinary API untouched.
+    ///
+    /// Subtitles need one more step on that redirect. The native player
+    /// renders a text track only while the track's mode is `showing`, but a
+    /// custom player keeps its tracks `hidden` and draws the cues into its own
+    /// DOM overlay — which the native player cannot show, because it plays the
+    /// bare video element. So the wrapper switches subtitle and caption tracks
+    /// to `showing` on the way in, which is what makes the native player draw
+    /// the captions, and restores each track's original mode when the video
+    /// returns to `inline`, which is what keeps those captions from doubling
+    /// the page's own overlay after leaving fullscreen. Subtitles a page
+    /// renders purely as DOM elements with no track behind them have no
+    /// representation the native player can draw, and are out of reach here.
     public static let fullscreenBridge = """
     (function () {
       if (window.__velaFullscreenBridgeInstalled === true) { return; }
@@ -121,12 +133,39 @@ public enum WebPageScripts {
         return null;
       }
 
+      function exposeSubtitlesToNativePlayer(video) {
+        var tracks = video.textTracks;
+        if (!tracks) { return; }
+        if (!video.__velaSavedTrackModes) {
+          var saved = [];
+          for (var i = 0; i < tracks.length; i++) { saved.push(tracks[i].mode); }
+          video.__velaSavedTrackModes = saved;
+          video.addEventListener('webkitpresentationmodechanged', function () {
+            if (video.webkitPresentationMode !== 'inline') { return; }
+            var modes = video.__velaSavedTrackModes;
+            if (!modes) { return; }
+            video.__velaSavedTrackModes = null;
+            for (var j = 0; j < tracks.length && j < modes.length; j++) {
+              try { tracks[j].mode = modes[j]; } catch (error) {}
+            }
+          });
+        }
+        for (var k = 0; k < tracks.length; k++) {
+          var kind = tracks[k].kind;
+          if (kind !== 'subtitles' && kind !== 'captions') { continue; }
+          if (tracks[k].mode !== 'showing') {
+            try { tracks[k].mode = 'showing'; } catch (error) {}
+          }
+        }
+      }
+
       function patch(proto, name) {
         var original = proto && proto[name];
         if (typeof original !== 'function') { return; }
         proto[name] = function () {
           var video = findVideo(this);
           if (video && typeof video.webkitEnterFullscreen === 'function') {
+            exposeSubtitlesToNativePlayer(video);
             try { video.webkitEnterFullscreen(); } catch (error) {}
             try { document.dispatchEvent(new Event('fullscreenchange')); } catch (error) {}
             return Promise.resolve();

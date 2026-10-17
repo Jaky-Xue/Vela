@@ -355,7 +355,12 @@ final class TabManagerTests: XCTestCase {
 
         XCTAssertEqual(restored.tabs.count, 2)
         XCTAssertEqual(restored.activeTabId, second.id)
-        // Only the visible tab is fetched; the rest wait until they are opened.
+        // Restore writes no web views at all — the shell fetches the active
+        // tab when it first appears, through the same cold-tab path every
+        // other tab takes. Activation is what materialises one.
+        XCTAssertNil(restored.webView(for: second.id))
+        XCTAssertNil(restored.webView(for: manager.tabs[0].id))
+        restored.activateTab(id: second.id)
         XCTAssertNotNil(restored.webView(for: second.id))
         XCTAssertNil(restored.webView(for: manager.tabs[0].id))
     }

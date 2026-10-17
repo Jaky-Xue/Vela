@@ -259,13 +259,16 @@ public final class AppEnvironment {
         try text.write(to: filterListUrl(sourceId: sourceId), atomically: true, encoding: .utf8)
     }
 
-    /// Removes every trace of browsing data.
+    /// Removes WebKit's browsing data, after the caller has already cleared
+    /// whichever database rows it asked about.
     ///
-    /// the database, the WebKit data store and the on-disk filter lists are
-    /// cleared together, because clearing one and not the others leaves the user
-    /// believing more was removed than actually was.
+    /// This method owns no database work on purpose: its one caller decides
+    /// per-toggle what rows to remove, and an unconditional whole-database
+    /// erase here is what wiped bookmarks and the open tab session even when
+    /// the user had asked only to clear cookies and cache. History and
+    /// bookmarks are reloaded afterwards so the list screens re-read
+    /// whatever the caller removed.
     public func clearAllBrowsingData(includeWebKitData: Bool = true) async {
-        try? database.eraseAllData()
         history.reload()
         bookmarks.reload()
 
@@ -285,6 +288,14 @@ public final class AppEnvironment {
     /// Ends a private session: private tabs close, private records clear, and
     /// WebKit's ephemeral store goes with them.
     ///
+    /// The profile database is deliberately untouched. Nothing private is in
+    /// it to begin with — the history repository suppresses private-boundary
+    /// writes, `tabManager.endPrivateSession` re-persists the session without
+    /// the private tabs, and the downloads' private records are cleared below
+    /// — so a whole-database erase here would not clean anything private. What
+    /// it would do is take the regular profile's bookmarks, history and
+    /// downloads with it, which is not a cleanup but a deletion of data the
+    /// user never asked to lose.
     public func endPrivateSession() async {
         tabManager.endPrivateSession()
         downloads.clearPrivateRecords()
@@ -296,7 +307,5 @@ public final class AppEnvironment {
                 continuation.resume()
             }
         }
-
-        try? database.eraseAllData()
     }
 }

@@ -64,7 +64,7 @@ struct AdBlockSettingsView: View {
             } header: {
                 Text("过滤状态")
             } footer: {
-                Text("系统不提供被拦截请求的计数，因此这里显示的是规则条数和实际隐藏的元素数。规则集中无法用系统接口表达的条目会被跳过，数量显示在上方。")
+                Text("系统不提供拦截计数，这里显示规则条数与实际隐藏的元素数。")
             }
 
             Section {
@@ -256,7 +256,7 @@ struct SitePermissionsSettingsView: View {
             } header: {
                 Text("默认行为")
             } footer: {
-                Text("网站请求相机或麦克风时按这里的设置处理。「询问」会在页面上弹出确认。系统级权限仍需要你在系统设置中允许 Vela 使用，系统层面拒绝时这里的「允许」不会生效。")
+                Text("「询问」会在页面上弹出确认。系统层面拒绝时，这里的「允许」不生效。")
             }
 
             Section {
@@ -293,7 +293,7 @@ struct ExternalNavigationSettingsView: View {
             } header: {
                 Text("默认行为")
             } footer: {
-                Text("网页里的 bilibili://、taobao:// 这类「唤起 App」链接默认被拦下，留在浏览器里，不会打断阅读。这个开关决定下面列出的例外网站，以及 tel:、mailto: 这类系统链接怎么处理。")
+                Text("「唤起 App」链接（bilibili:// 等）默认被拦下；这里决定例外网站和 tel:、mailto: 等系统链接的处理。")
             }
 
             Section {
@@ -308,7 +308,7 @@ struct ExternalNavigationSettingsView: View {
             } header: {
                 Text("添加例外")
             } footer: {
-                Text("填入来源网站的主机名，不必带 https://。添加后点该行的行为可以改成「允许」或「阻止」。")
+                Text("填入主机名即可，不必带 https://。")
             }
 
             if !env.settings.preferences.externalNavigationRules.isEmpty {
@@ -390,7 +390,7 @@ struct ClearDataView: View {
             } header: {
                 Text("要清除的内容")
             } footer: {
-                Text("书签默认不清除。密码和已保存的登录状态不在 Vela 的管理范围内，它们由系统钥匙串保存。")
+                Text("密码由系统钥匙串保存，不在此清除。")
             }
 
             Section {
@@ -501,7 +501,7 @@ struct DownloadSettingsView: View {
             } header: {
                 Text("保存位置")
             } footer: {
-                Text("iOS 不允许 App 直接写入任意路径，因此下载只能保存在 Vela 自己的文件夹里，或者由你在下载时选择位置。")
+                Text("下载保存在 Vela 的文件夹，或下载时自选位置。")
             }
 
             Section {
@@ -514,7 +514,7 @@ struct DownloadSettingsView: View {
                     set: { value in env.settings.updateDownloadSettings { $0.autoRemoveCompleted = value } }
                 ))
             } footer: {
-                Text("「自动移除记录」只删除列表里的条目，已经下载的文件会保留。")
+                Text("只删除列表条目，文件保留。")
             }
         }
         .navigationTitle("下载")

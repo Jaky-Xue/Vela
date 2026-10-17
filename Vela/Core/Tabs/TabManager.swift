@@ -188,6 +188,15 @@ public final class TabManager {
     /// restored alongside regular ones; a private session that was open when the
     /// app was killed is reopened, and its data is cleared when the user leaves
     /// private mode rather than at launch.
+    ///
+    /// Only the records are restored here — no web view is built and no page is
+    /// fetched. This runs during app initialisation, before SwiftUI has a
+    /// window, and a `WKWebView` created there starts its life without a window
+    /// for the whole first layout pass; the shell materialises the active tab
+    /// through `activateTab` once it is on screen, which is the path every
+    /// other cold tab already takes. Restoring the records is the one part that
+    /// has to happen now: the tab strip the user is about to see is built from
+    /// them.
     public func restoreSession(_ snapshot: BrowserSessionSnapshot) {
         tabs = snapshot.tabs.map { record in
             let tab = BrowserTabState(
@@ -207,17 +216,9 @@ public final class TabManager {
             return tab
         }
 
-        let restoredActive = tabs.contains { $0.id == snapshot.activeTabId }
+        activeTabId = tabs.contains { $0.id == snapshot.activeTabId }
             ? snapshot.activeTabId
             : (tabs.first?.id ?? "")
-        activeTabId = restoredActive
-
-        if let active = activeTab, !active.isHome, let url = URL(string: active.url) {
-            // Only the visible tab is fetched. The rest stay cold and load when
-            // they are first activated, which is what keeps a restore of twenty
-            // tabs from starting twenty page loads at launch.
-            load(url: url, in: active)
-        }
     }
 
     // MARK: - Activation

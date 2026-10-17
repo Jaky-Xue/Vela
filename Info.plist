@@ -4,6 +4,28 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+
+	<!-- The interface languages Vela answers to.
+
+	     The app's own strings are written in Chinese and carry no .lproj
+	     resources, so without this declaration the bundle reports English as
+	     its only localization. Every system surface the app hosts then follows
+	     English too — most visibly the native video player's menu, which a
+	     Chinese-language device renders in English inside Vela while Safari
+	     renders it in Chinese. Declaring zh-Hans lets the system resolve the
+	     process language to the user's preference, and AVKit's controls
+	     follow it. -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+		<string>en</string>
+	</array>
+
+	<!-- Frameworks may speak the user's language even where the app does not
+	     have its own translation for a string — the same reason as above, as
+	     seen from the framework side. -->
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
 	<key>CFBundleDisplayName</key>
 	<string>Vela</string>
 	<key>CFBundleExecutable</key>
