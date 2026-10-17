@@ -37,6 +37,13 @@ struct TabsOverviewView: View {
     @State private var isSearching = false
     @State private var searchQuery = ""
     @State private var backgroundPrint: UIImage?
+    /// The overview's own size, re-read on rotation — the shell's safe-area
+    /// reader pattern. The card's aspect derives from this rather than from a
+    /// GeometryReader inside the scroll hierarchy: a reader in the tree is
+    /// measured *by* the layout it feeds, and mid-rotation it hands the layout
+    /// its own intermediate sizes back, which is how a portrait-sized grid
+    /// survived inside a landscape window with its header scrolled away.
+    @State private var containerSize: CGSize = .zero
     @FocusState private var searchFieldFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -85,6 +92,15 @@ struct TabsOverviewView: View {
             }
         }
         .environment(\.colorScheme, .dark)
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { containerSize = geo.size }
+                    .onChange(of: geo.size) { _, size in
+                        containerSize = size
+                    }
+            }
+        }
         .task { await prepare() }
         .onChange(of: showPrivateTabs) { _, isPrivate in
             // Entering the private grid is what the lock gates, so the unlocked
@@ -402,50 +418,52 @@ struct TabsOverviewView: View {
         .padding(.top, BrowserSpacing.tight)
     }
 
-    private var grid: some View {
-        GeometryReader { geo in
-            // The card's shape is the screen's own shape, clamped: wide cards
-            // in landscape, upright ones in portrait. The ceiling sits where
-            // Safari's landscape cards do — past it a wide card stops reading
-            // as a page and starts reading as a letterbox.
-            let aspect = min(1.5, max(0.72, geo.size.width / max(geo.size.height, 1)))
+    /// The card's shape, from the screen's own shape and clamped: wide cards
+    /// in landscape, upright ones in portrait. The ceiling sits where Safari's
+    /// landscape cards do — past it a wide card stops reading as a page and
+    /// starts reading as a letterbox.
+    private var gridAspect: CGFloat {
+        min(1.5, max(0.72, containerSize.width / max(containerSize.height, 1)))
+    }
 
-            // Rotation re-keys the scroll view. A lazy grid that survives a
-            // rotation keeps the cell geometry it laid out for the old shape,
-            // and its cards end up parked past the screen's edge — the
-            // landscape row still occupying a portrait's width, shifted. A new
-            // identity forces the fresh layout pass, and each card retakes its
-            // print at the shape it now has.
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: BrowserSpacing.loose) {
-                    ForEach(unpinnedTabs) { tab in
-                        TabCard(
-                            tab: tab,
-                            aspect: aspect,
-                            isActive: tab.id == tabManager.activeTabId,
-                            blurPreview: tab.privacyMode == .private && env.settings.preferences.blurPrivateTabPreviews,
-                            onSelect: { activate(tab) },
-                            onClose: {
-                                withAnimation(.snappy(duration: 0.25)) {
-                                    tabManager.closeTab(id: tab.id)
-                                }
-                            },
-                            onPin: {
-                                tabManager.setPinned(!tab.pinned, id: tab.id)
+    /// The bucket the aspect rounds to, in hundredths. It is what tells the
+    /// cards to retake their prints when the shape they are drawn at changes —
+    /// a print taken for a portrait card cover-cropped into a landscape one
+    /// reads as the wrong page.
+    private var aspectBucket: Int {
+        Int((gridAspect * 100).rounded())
+    }
+
+    private var grid: some View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: BrowserSpacing.loose) {
+                ForEach(unpinnedTabs) { tab in
+                    TabCard(
+                        tab: tab,
+                        aspect: gridAspect,
+                        snapshotSeed: aspectBucket,
+                        isActive: tab.id == tabManager.activeTabId,
+                        blurPreview: tab.privacyMode == .private && env.settings.preferences.blurPrivateTabPreviews,
+                        onSelect: { activate(tab) },
+                        onClose: {
+                            withAnimation(.snappy(duration: 0.25)) {
+                                tabManager.closeTab(id: tab.id)
                             }
-                        )
-                    }
+                        },
+                        onPin: {
+                            tabManager.setPinned(!tab.pinned, id: tab.id)
+                        }
+                    )
                 }
-                .padding(.horizontal, BrowserSpacing.regular + 4)
-                .padding(.top, BrowserSpacing.regular - 6)
-                .padding(.bottom, BrowserSpacing.loose)
-                // The content box is pinned to the viewport's width: however a
-                // card misbehaves mid-rotation, the scroll view never grows a
-                // horizontal axis to drift along.
-                .frame(width: geo.size.width)
             }
-            .id("\(horizontalSizeClass == .regular ? "regular" : "compact")-\(Int((aspect * 100).rounded()))")
+            .padding(.horizontal, BrowserSpacing.regular + 4)
+            .padding(.top, BrowserSpacing.regular - 6)
+            .padding(.bottom, BrowserSpacing.loose)
         }
+        // A grid shorter than the screen has nothing to scroll, and this pins
+        // it to its top: no bounce, no offset, nothing for a rotation to leave
+        // parked above the header.
+        .scrollBounceBehavior(.basedOnSize)
     }
 
     private var emptyState: some View {
@@ -547,6 +565,11 @@ private struct TabCard: View {
 
     var tab: BrowserTabState
     var aspect: CGFloat
+    /// The shape bucket the print is taken for. When it moves — the device
+    /// rotated — the task re-runs and the print is taken again, so the
+    /// picture matches the card it sits in rather than the orientation it was
+    /// shot in.
+    var snapshotSeed: Int
     var isActive: Bool
     var blurPreview: Bool
     var onSelect: () -> Void
@@ -592,8 +615,8 @@ private struct TabCard: View {
             Button(tab.pinned ? "取消固定" : "固定标签页", systemImage: tab.pinned ? "pin.slash" : "pin", action: onPin)
             Button("关闭标签页", systemImage: "xmark", role: .destructive, action: onClose)
         }
-        .task(id: tab.id) {
-            guard snapshot == nil, !tab.isHome else { return }
+        .task(id: snapshotSeed) {
+            guard !tab.isHome else { return }
             snapshot = await takeSnapshot()
         }
         .accessibilityElement(children: .ignore)
