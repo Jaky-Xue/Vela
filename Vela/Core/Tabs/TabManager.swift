@@ -782,8 +782,13 @@ public enum BrowserUserAgent {
         "Version/\(operatingSystemVersion) Mobile/15E148 Safari/604.1"
     }
 
-    /// How a tab should identify itself, given the user's settings.
-    public static func identity(custom: String, prefersDesktop: Bool) -> BrowserWebIdentity {
+    /// How a tab should identify itself, given the user's settings — and the
+    /// host it is about to open, which one family of sites branches on.
+    public static func identity(
+        custom: String,
+        prefersDesktop: Bool,
+        host: String? = nil
+    ) -> BrowserWebIdentity {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
         // Someone who typed a string asked for that exact value. Letting the
         // desktop toggle override it is what made the field look broken.
@@ -796,10 +801,36 @@ public enum BrowserUserAgent {
                 customUserAgent: desktopIdentifier
             )
         }
+        // YouTube is the one host that gets an answer of its own. The iPad
+        // identifier WebKit builds by default hands YouTube its desktop site,
+        // and the desktop site is where its bot wall lives: a client with no
+        // Google session, arriving from a VPN-shaped IP, is told to sign in
+        // 「以确认你不是聊天机器人」 before the first video plays. The mobile
+        // site an iPhone identifier receives is the shape that plays without a
+        // login. The string is written out whole — WebKit will not rewrite its
+        // own platform token, so claiming a phone from an iPad needs the
+        // complete value, the way the desktop form does; everything beyond the
+        // platform token is still the running system's own.
+        if let host, isVideoSiteHost(host) {
+            return BrowserWebIdentity(
+                applicationNameForUserAgent: safariTail,
+                customUserAgent: mobileIdentifier
+            )
+        }
         // The default: no custom identifier at all, so WebKit appends the tail to
         // its own prefix and the result is what Safari would have sent on this
         // device.
         return BrowserWebIdentity(applicationNameForUserAgent: safariTail)
+    }
+
+    /// The video-site hosts that receive the mobile identifier.
+    ///
+    /// Domain-or-subdomain matching, the same shape the page scripts apply
+    /// when they stand down for a site's own player.
+    public static func isVideoSiteHost(_ host: String) -> Bool {
+        let lowered = host.lowercased()
+        let domains = ["youtube.com", "youtube-nocookie.com", "youtubekids.com", "youtu.be"]
+        return domains.contains { lowered == $0 || lowered.hasSuffix(".\($0)") }
     }
 
     /// A complete desktop identifier, for the "请求桌面网站" toggle.

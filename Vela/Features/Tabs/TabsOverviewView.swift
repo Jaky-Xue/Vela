@@ -410,6 +410,12 @@ struct TabsOverviewView: View {
             // as a page and starts reading as a letterbox.
             let aspect = min(1.5, max(0.72, geo.size.width / max(geo.size.height, 1)))
 
+            // Rotation re-keys the scroll view. A lazy grid that survives a
+            // rotation keeps the cell geometry it laid out for the old shape,
+            // and its cards end up parked past the screen's edge — the
+            // landscape row still occupying a portrait's width, shifted. A new
+            // identity forces the fresh layout pass, and each card retakes its
+            // print at the shape it now has.
             ScrollView {
                 LazyVGrid(columns: columns, spacing: BrowserSpacing.loose) {
                     ForEach(unpinnedTabs) { tab in
@@ -433,7 +439,12 @@ struct TabsOverviewView: View {
                 .padding(.horizontal, BrowserSpacing.regular + 4)
                 .padding(.top, BrowserSpacing.regular - 6)
                 .padding(.bottom, BrowserSpacing.loose)
+                // The content box is pinned to the viewport's width: however a
+                // card misbehaves mid-rotation, the scroll view never grows a
+                // horizontal axis to drift along.
+                .frame(width: geo.size.width)
             }
+            .id("\(horizontalSizeClass == .regular ? "regular" : "compact")-\(Int((aspect * 100).rounded()))")
         }
     }
 

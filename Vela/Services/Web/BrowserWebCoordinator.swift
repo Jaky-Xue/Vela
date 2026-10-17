@@ -570,7 +570,11 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     public func webIdentity(for tab: BrowserTabState) -> BrowserWebIdentity {
         BrowserUserAgent.identity(
             custom: settings.preferences.customUserAgent,
-            prefersDesktop: settings.preferences.desktopSiteByDefault
+            prefersDesktop: settings.preferences.desktopSiteByDefault,
+            // The host the tab is on or heading to — `load` writes the URL
+            // before the web view exists, and `didCommit` keeps it current, so
+            // a site that branches on the identifier is read from here.
+            host: URL(string: tab.url)?.host
         )
     }
 
