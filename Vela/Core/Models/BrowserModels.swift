@@ -407,6 +407,13 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// absent key, which decodes to the same — means the palette surface.
     /// The image itself lives on disk (`HomeBackgroundStore`), not in here.
     public var homeBackgroundStamp: Double?
+    /// 全局顶部保护：页面内容只从系统状态栏下方开始，不滚动到时钟底下。
+    ///
+    /// Optional for the same reason `homeBackgroundStamp` is — the preferences
+    /// document decodes as a whole, and a required key absent from an existing
+    /// install's document would fail the decode and reset every setting with
+    /// it. `nil` decodes to the default, which is protection on.
+    public var topProtection: Bool?
 
     public init(
         searchEngine: SearchEngineSettings = .default,
@@ -429,7 +436,8 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         userScriptsEnabled: Bool = true,
         homepageUrl: String = "about:home",
         themePaletteId: String = "default",
-        homeBackgroundStamp: Double? = nil
+        homeBackgroundStamp: Double? = nil,
+        topProtection: Bool? = true
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -452,7 +460,11 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.homepageUrl = homepageUrl
         self.themePaletteId = themePaletteId
         self.homeBackgroundStamp = homeBackgroundStamp
+        self.topProtection = topProtection
     }
+
+    /// The resolved switch: protection is on unless explicitly turned off.
+    public var topProtectionEnabled: Bool { topProtection ?? true }
 
     public static let `default` = BrowserPreferences()
 }

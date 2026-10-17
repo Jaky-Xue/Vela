@@ -654,6 +654,17 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("阅读")
             }
+
+            Section {
+                Toggle("全局顶部保护", isOn: Binding(
+                    get: { env.settings.preferences.topProtectionEnabled },
+                    set: { value in env.settings.update { $0.topProtection = value } }
+                ))
+            } header: {
+                Text("页面显示")
+            } footer: {
+                Text("开启后，页面内容只从系统状态栏下方开始，不再滚动到时钟底下。")
+            }
         }
         .navigationTitle("通用")
         .navigationBarTitleDisplayMode(.inline)

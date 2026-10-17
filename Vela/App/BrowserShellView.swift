@@ -480,13 +480,22 @@ struct BrowserShellView: View {
                         Color.clear.frame(height: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap)
                     }
                 } else if let webView = tabManager.webView(for: tab.id) {
+                    // 全局顶部保护 decides how the status bar strip is kept.
+                    // Off, the page scrolls under the clock with an inset
+                    // holding its first line clear — Safari's arrangement. On,
+                    // the web view's frame is held below the strip and the
+                    // strip shows the surface colour, so the page never paints
+                    // there at all.
+                    let protectsTop = env.settings.preferences.topProtectionEnabled
                     WebViewHost(
                         webView: webView,
                         // The status bar's height, so the page's own first
                         // line starts below it instead of running under the
                         // clock — while still scrolling underneath, the way
-                        // Safari's does.
-                        topContentInset: safeTop,
+                        // Safari's does. A reserved strip makes the page start
+                        // at its own top, so the inset drops to zero there.
+                        topContentInset: protectsTop ? 0 : safeTop,
+                        topReservedInset: protectsTop ? safeTop : 0,
                         bottomContentInset: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap,
                         onScroll: { offset in
                             handleScroll(offset: offset)

@@ -52,6 +52,17 @@ struct WebViewHost: UIViewRepresentable {
     /// while the chrome hides, so the page does not jump under the user's
     /// finger; hiding the bar simply reveals more of the document.
     let topContentInset: CGFloat
+    /// How much of the container's top the web view may not paint in — the
+    /// 全局顶部保护 strip, the height of the status bar.
+    ///
+    /// Zero keeps the default arrangement: the web view owns the whole
+    /// container and the page scrolls under the clock with only
+    /// `topContentInset` keeping its first line clear. Non-zero pulls the web
+    /// view's own frame down below the strip and clips the container, so the
+    /// page never renders there at all and the shell's surface colour shows —
+    /// which is why the two insets travel together: a reserved strip makes the
+    /// page start at its own top, so the scroll inset becomes zero.
+    let topReservedInset: CGFloat
     /// The bottom content inset: the command bar's height plus the safe area,
     /// so the page's last lines stay scrollable clear of the bar.
     let bottomContentInset: CGFloat
@@ -78,6 +89,8 @@ struct WebViewHost: UIViewRepresentable {
             context.coordinator.observe(webView: webView, onScroll: onScroll, onProgress: onProgress)
         }
         container.attach(webView)
+        container.reservedTop = topReservedInset
+        container.clipsToBounds = topReservedInset > 0
 
         let scrollView = webView.scrollView
         // The page runs to the bottom edge of the screen — a reserved strip
@@ -172,6 +185,15 @@ struct WebViewHost: UIViewRepresentable {
 /// A view that hosts exactly zero or one pooled web view as a subview.
 final class WebViewContainerView: UIView {
     private weak var attachedWebView: WKWebView?
+    /// The top constraint's constant carries `reservedTop` across re-attaches,
+    /// so a web view swapped in under memory pressure lands below the strip
+    /// the previous one was held to.
+    private var topConstraint: NSLayoutConstraint?
+
+    /// How much of the container's top the web view is held below.
+    var reservedTop: CGFloat = 0 {
+        didSet { topConstraint?.constant = reservedTop }
+    }
 
     /// Attaches `webView` as the sole subview, adding it only when it is not
     /// already attached.
@@ -184,12 +206,14 @@ final class WebViewContainerView: UIView {
 
         webView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(webView)
+        let top = webView.topAnchor.constraint(equalTo: topAnchor, constant: reservedTop)
         NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: topAnchor),
+            top,
             webView.leadingAnchor.constraint(equalTo: leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: trailingAnchor),
             webView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+        topConstraint = top
         attachedWebView = webView
     }
 

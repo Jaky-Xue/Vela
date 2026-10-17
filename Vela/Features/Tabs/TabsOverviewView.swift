@@ -38,6 +38,7 @@ struct TabsOverviewView: View {
     @State private var searchQuery = ""
     @State private var backgroundPrint: UIImage?
     @FocusState private var searchFieldFocused: Bool
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var tabManager: TabManager { env.tabManager }
 
@@ -60,10 +61,18 @@ struct TabsOverviewView: View {
     private var pinnedTabs: [BrowserTabState] { visibleTabs.filter(\.pinned) }
     private var unpinnedTabs: [BrowserTabState] { visibleTabs.filter { !$0.pinned } }
 
-    /// Safari's cards are large — four across on a landscape iPad — so the
-    /// adaptive minimum is sized for that, not for the three-across wall a
-    /// smaller minimum would build.
-    private let columns = [GridItem(.adaptive(minimum: 240, maximum: 320), spacing: BrowserSpacing.regular)]
+    /// Safari's cards are large — three across on a portrait iPad, four in
+    /// landscape — so the regular width sizes for that. A compact width takes
+    /// the smaller minimum, which is what puts two columns on a phone.
+    private var columns: [GridItem] {
+        [GridItem(
+            .adaptive(
+                minimum: horizontalSizeClass == .regular ? 240 : 170,
+                maximum: 320
+            ),
+            spacing: BrowserSpacing.regular
+        )]
+    }
 
     var body: some View {
         ZStack {
@@ -356,11 +365,13 @@ struct TabsOverviewView: View {
                         activate(tab)
                     } label: {
                         HStack(spacing: BrowserSpacing.tight) {
-                            SiteIconView(
-                                host: tab.displayHost,
-                                size: 16,
-                                faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl
-                            )
+                            if !tab.isHome {
+                                SiteIconView(
+                                    host: tab.displayHost,
+                                    size: 16,
+                                    faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl
+                                )
+                            }
                             Text(tab.displayHost.isEmpty ? tab.displayTitle : tab.displayHost)
                                 .font(.footnote)
                                 .lineLimit(1)
@@ -394,9 +405,10 @@ struct TabsOverviewView: View {
     private var grid: some View {
         GeometryReader { geo in
             // The card's shape is the screen's own shape, clamped: wide cards
-            // in landscape, upright ones in portrait, and a floor that keeps
-            // a narrow phone column from going extreme.
-            let aspect = min(1.7, max(0.72, geo.size.width / max(geo.size.height, 1)))
+            // in landscape, upright ones in portrait. The ceiling sits where
+            // Safari's landscape cards do — past it a wide card stops reading
+            // as a page and starts reading as a letterbox.
+            let aspect = min(1.5, max(0.72, geo.size.width / max(geo.size.height, 1)))
 
             ScrollView {
                 LazyVGrid(columns: columns, spacing: BrowserSpacing.loose) {
@@ -538,18 +550,7 @@ private struct TabCard: View {
     var body: some View {
         VStack(spacing: BrowserSpacing.tight) {
             ZStack(alignment: .topTrailing) {
-                thumbnail
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(aspect, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .strokeBorder(
-                                isActive ? palette.accent : .white.opacity(0.16),
-                                lineWidth: isActive ? 2 : 0.5
-                            )
-                            .allowsHitTesting(false)
-                    }
+                cardFace
 
                 closeButton
             }
@@ -557,11 +558,15 @@ private struct TabCard: View {
             .blur(radius: blurPreview ? 5 : 0)
 
             HStack(spacing: 5) {
-                SiteIconView(
-                    host: tab.displayHost,
-                    size: 15,
-                    faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl
-                )
+                // The start page has no site to identify, so its title stands
+                // alone — a letter swatch in front of 主页 is noise.
+                if !tab.isHome {
+                    SiteIconView(
+                        host: tab.displayHost,
+                        size: 15,
+                        faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl
+                    )
+                }
                 Text(tab.displayTitle)
                     .font(.caption)
                     .lineLimit(1)
@@ -583,6 +588,30 @@ private struct TabCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tab.displayTitle)
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// The card's picture in a frame that owns its aspect outright.
+    ///
+    /// `Color.clear` takes the ratio-fitted size the grid proposes and the
+    /// print overflows inside an overlay, where the clip cuts it off. Placing
+    /// a `scaledToFill` image directly in the chain instead lets it report its
+    /// own oversized height back up: landscape prints then bled sideways past
+    /// the card and portrait ones grew taller than the home placeholder beside
+    /// them, and no card matched its neighbours.
+    @ViewBuilder
+    private var cardFace: some View {
+        Color.clear
+            .aspectRatio(aspect, contentMode: .fit)
+            .overlay { thumbnail }
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .strokeBorder(
+                        isActive ? palette.accent : .white.opacity(0.16),
+                        lineWidth: isActive ? 2 : 0.5
+                    )
+                    .allowsHitTesting(false)
+            }
     }
 
     /// The card's picture: the page itself where one exists, and a quiet
