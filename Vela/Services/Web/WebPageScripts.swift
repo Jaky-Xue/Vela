@@ -194,18 +194,34 @@ public enum WebPageScripts {
         return '';
       }
 
-      function trackIsShowingCues(video, mirror) {
+      // The mirror and a page track can otherwise both draw the same sentence
+      // in the native player — two identical lines, which is exactly what the
+      // reader saw. Once the mirror carries text it owns the captions: the
+      // page's own subtitle/caption tracks are taken out of the presentation
+      // (their modes are handed back when the video leaves it).
+      function hideRealCaptionTracks(video, mirror) {
         var tracks = video.textTracks;
-        if (!tracks) { return false; }
+        if (!tracks) { return; }
+        if (!video.__velaSuppressedCaptionTracks) {
+          video.__velaSuppressedCaptionTracks = [];
+        }
         for (var i = 0; i < tracks.length; i++) {
           var track = tracks[i];
           if (track === mirror) { continue; }
           if (track.kind !== 'subtitles' && track.kind !== 'captions') { continue; }
-          if (track.mode === 'showing' && track.activeCues && track.activeCues.length > 0) {
-            return true;
-          }
+          if (track.mode !== 'showing') { continue; }
+          video.__velaSuppressedCaptionTracks.push(track);
+          try { track.mode = 'hidden'; } catch (error) {}
         }
-        return false;
+      }
+
+      function restoreRealCaptionTracks(video) {
+        var tracks = video.__velaSuppressedCaptionTracks;
+        if (!tracks) { return; }
+        video.__velaSuppressedCaptionTracks = null;
+        for (var i = 0; i < tracks.length; i++) {
+          try { tracks[i].mode = 'hidden'; } catch (error) {}
+        }
       }
 
       function clearMirrorCues(track) {
@@ -220,6 +236,7 @@ public enum WebPageScripts {
           clearInterval(video.__velaCaptionMirrorTimer);
           video.__velaCaptionMirrorTimer = null;
         }
+        restoreRealCaptionTracks(video);
         var track = video.__velaCaptionMirrorTrack;
         if (!track) { return; }
         clearMirrorCues(track);
@@ -266,13 +283,12 @@ public enum WebPageScripts {
           // player and may be hidden outright, so text counts there whether
           // or not it is painted. Inline it has to be visible: a player keeps
           // hidden copies of its cue elements, and those are not captions.
-          var text = trackIsShowingCues(video, track)
-            ? ''
-            : paintedCaptionText(mode && mode !== 'inline');
+          var text = paintedCaptionText(mode && mode !== 'inline');
           if (text === painted) { return; }
           painted = text;
           clearMirrorCues(track);
           if (!text) { return; }
+          hideRealCaptionTracks(video, track);
           try {
             var cue = new VTTCue(Math.max(0, video.currentTime - 0.3), video.currentTime + 600, text);
             cue.line = 'auto';
@@ -551,15 +567,21 @@ public enum WebPageScripts {
 
     /// Taps the picture to show the controls rather than to pause.
     ///
-    /// YouTube's player reads a click on the picture as play/pause. On a phone
+    /// YouTube's player reads a tap on the picture as play/pause. On a phone
     /// or a tablet that tap means "show me the controls" — the progress bar,
     /// the play button, the fullscreen button — and a second tap means "put
-    /// them away"; stopping the film belongs to the play button alone. A
-    /// capture-phase listener takes over a tap that lands on the picture
-    /// itself, keeps it from reaching the player's pause path, and toggles the
-    /// control layer, whose visibility YouTube draws as `ytp-autohide` on the
-    /// player element. Taps on the player's own buttons, seek bar, menus and
-    /// end-screen cards are left alone, so every control keeps its job.
+    /// them away"; stopping the film belongs to the play button alone.
+    ///
+    /// The player takes the gesture from pointer and touch events as well as
+    /// from clicks — a click-only guard left the pause path intact — so a
+    /// short, still tap on the picture is claimed in the capture phase of
+    /// whichever event lands first, before any player handler runs. The event
+    /// is kept from the page and the control layer is toggled through the
+    /// player's own `ytp-autohide` state; a repeat inside 350 ms is swallowed
+    /// rather than toggled again, which is what keeps pointerup, touchend and
+    /// the synthetic click from reading as three taps. Taps on the player's
+    /// buttons, seek bar, menus and end-screen cards are left alone, and a
+    /// drag is never claimed, so every control and every scroll keeps its job.
     public static let youtubeTapControlsScript = """
     (function () {
       if (window.__velaYouTubeTapControlsInstalled === true) { return; }
@@ -571,7 +593,6 @@ public enum WebPageScripts {
         '.ytp-button',
         '.ytp-chrome-controls',
         '.ytp-progress-bar-container',
-        '.ytp-cued-thumbnail-overlay',
         '.ytp-pause-overlay',
         '.ytp-endscreen-content',
         '.ytp-ce-element',
@@ -589,6 +610,20 @@ public enum WebPageScripts {
         'select'
       ].join(',');
 
+      var startX = 0;
+      var startY = 0;
+      var startAt = 0;
+      var tracking = false;
+      var handledAt = 0;
+
+      function playerForPicture(node) {
+        if (!node || node.nodeType !== 1) { return null; }
+        var player = node.closest ? node.closest('.html5-video-player') : null;
+        if (!player) { return null; }
+        if (node.closest(ownedTapSelector)) { return null; }
+        return player;
+      }
+
       function toggleControls(player) {
         if (player.classList.contains('ytp-autohide')) {
           player.classList.remove('ytp-autohide');
@@ -598,15 +633,64 @@ public enum WebPageScripts {
         }
       }
 
-      document.addEventListener('click', function (event) {
-        var node = event.target;
-        if (!node || node.nodeType !== 1) { return; }
-        var player = node.closest ? node.closest('.html5-video-player') : null;
-        if (!player) { return; }
-        if (node.closest(ownedTapSelector)) { return; }
+      // Claims one tap. The same tap reaches several events; only the first
+      // one toggles and the rest are swallowed, so the controls move once.
+      function claimTap(event) {
+        var player = playerForPicture(event.target);
+        if (!player) { return false; }
         event.preventDefault();
         event.stopImmediatePropagation();
-        try { toggleControls(player); } catch (error) {}
+        var now = Date.now();
+        if (now - handledAt > 350) {
+          handledAt = now;
+          try { toggleControls(player); } catch (error) {}
+        }
+        return true;
+      }
+
+      function recordStart(x, y) {
+        startX = x;
+        startY = y;
+        startAt = Date.now();
+        tracking = true;
+      }
+
+      function isStillTap(x, y) {
+        if (!tracking) { return false; }
+        if (Date.now() - startAt > 700) { return false; }
+        return Math.abs(x - startX) <= 12 && Math.abs(y - startY) <= 12;
+      }
+
+      window.addEventListener('pointerdown', function (event) {
+        recordStart(event.clientX, event.clientY);
+      }, true);
+
+      window.addEventListener('touchstart', function (event) {
+        var touch = event.touches && event.touches[0];
+        if (touch) { recordStart(touch.clientX, touch.clientY); }
+      }, true);
+
+      window.addEventListener('pointerup', function (event) {
+        var repeat = Date.now() - handledAt < 350;
+        if (isStillTap(event.clientX, event.clientY) || repeat) { claimTap(event); }
+        tracking = false;
+      }, true);
+
+      window.addEventListener('touchend', function (event) {
+        var touch = event.changedTouches && event.changedTouches[0];
+        var repeat = Date.now() - handledAt < 350;
+        if (touch && (isStillTap(touch.clientX, touch.clientY) || repeat)) { claimTap(event); }
+        tracking = false;
+      }, true);
+
+      window.addEventListener('touchcancel', function () {
+        tracking = false;
+      }, true);
+
+      // A mouse click, a keyboard activation, or a path that delivered only a
+      // click still gets the same treatment.
+      window.addEventListener('click', function (event) {
+        claimTap(event);
       }, true);
     })();
     """
