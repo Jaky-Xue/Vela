@@ -102,14 +102,46 @@ struct TabsOverviewView: View {
     /// Safari's cards are large — three across on a portrait iPad, four in
     /// landscape — so the regular width sizes for that. A compact width takes
     /// the smaller minimum, which is what puts two columns on a phone.
-    private var columns: [GridItem] {
-        [GridItem(
-            .adaptive(
-                minimum: horizontalSizeClass == .regular ? 240 : 170,
-                maximum: 320
-            ),
-            spacing: BrowserSpacing.regular
-        )]
+    /// The overview's columns, plain arithmetic on the measured container.
+    ///
+    /// This used to be a lazy grid's `adaptive` column spec, and the lazy
+    /// grid is what kept breaking: a container change under it leaves rows
+    /// laid out for the old width — four landscape columns drawn across a
+    /// portrait window, clipped on both edges, content size reported so
+    /// wrongly the view would not even scroll. Every failure the overview
+    /// ever reported was that one bug wearing different clothes. Eager rows
+    /// with an explicit width have nothing to remember: each cell re-lays out
+    /// from the same measurement every other part of the layout reads, so the
+    /// grid cannot disagree with the frame it sits in.
+    private var gridAvailableWidth: CGFloat {
+        max(0, containerSize.width - 2 * (BrowserSpacing.regular + 4))
+    }
+
+    private var gridColumnCount: Int {
+        let available = gridAvailableWidth
+        let minimum: CGFloat = horizontalSizeClass == .regular ? 240 : 170
+        guard available > minimum else { return 1 }
+        return max(1, Int((available + BrowserSpacing.loose) / (minimum + BrowserSpacing.loose)))
+    }
+
+    private var gridCellWidth: CGFloat {
+        let available = gridAvailableWidth
+        let count = CGFloat(gridColumnCount)
+        return min(320, (available - BrowserSpacing.loose * (count - 1)) / count)
+    }
+
+    /// The cards chunked into rows of `gridColumnCount`. The tail row keeps
+    /// the shared width because every cell's width is fixed, not stretched —
+    /// no filler slots needed.
+    private struct TabRow: Identifiable {
+        let tabs: [BrowserTabState]
+        var id: String { tabs.map(\.id).joined(separator: "-") }
+    }
+
+    private var gridRows: [TabRow] {
+        stride(from: 0, to: unpinnedTabs.count, by: gridColumnCount).map { start in
+            TabRow(tabs: Array(unpinnedTabs[start..<min(start + gridColumnCount, unpinnedTabs.count)]))
+        }
     }
 
     var body: some View {
@@ -519,25 +551,30 @@ struct TabsOverviewView: View {
 
     private var grid: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: BrowserSpacing.loose) {
-                ForEach(unpinnedTabs) { tab in
-                    TabCard(
-                        tab: tab,
-                        aspect: gridAspect,
-                        cachedSnapshot: { snapshotCache[tab.id] },
-                        storeSnapshot: { cacheSnapshot($0, for: tab.id) },
-                        isActive: tab.id == tabManager.activeTabId,
-                        blurPreview: tab.privacyMode == .private && env.settings.preferences.blurPrivateTabPreviews,
-                        onSelect: { activate(tab) },
-                        onClose: {
-                            withAnimation(.snappy(duration: 0.25)) {
-                                tabManager.closeTab(id: tab.id)
-                            }
-                        },
-                        onPin: {
-                            tabManager.setPinned(!tab.pinned, id: tab.id)
+            VStack(spacing: BrowserSpacing.loose) {
+                ForEach(gridRows) { row in
+                    HStack(alignment: .top, spacing: BrowserSpacing.loose) {
+                        ForEach(row.tabs) { tab in
+                            TabCard(
+                                tab: tab,
+                                aspect: gridAspect,
+                                cachedSnapshot: { snapshotCache[tab.id] },
+                                storeSnapshot: { cacheSnapshot($0, for: tab.id) },
+                                isActive: tab.id == tabManager.activeTabId,
+                                blurPreview: tab.privacyMode == .private && env.settings.preferences.blurPrivateTabPreviews,
+                                onSelect: { activate(tab) },
+                                onClose: {
+                                    withAnimation(.snappy(duration: 0.25)) {
+                                        tabManager.closeTab(id: tab.id)
+                                    }
+                                },
+                                onPin: {
+                                    tabManager.setPinned(!tab.pinned, id: tab.id)
+                                }
+                            )
+                            .frame(width: gridCellWidth)
                         }
-                    )
+                    }
                 }
             }
             .padding(.horizontal, BrowserSpacing.regular + 4)

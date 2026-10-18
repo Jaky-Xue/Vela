@@ -185,6 +185,54 @@ struct HomeSettingsView: View {
             } header: {
                 Text("主页背景")
             }
+
+            Section {
+                HStack {
+                    Text("图标大小")
+                    Spacer()
+                    Text("\(Int(env.settings.preferences.homeTileIconSize ?? 40)) pt")
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Slider(
+                    value: Binding(
+                        get: { env.settings.preferences.homeTileIconSize ?? 40 },
+                        set: { env.settings.update { $0.homeTileIconSize = Double($0) } }
+                    ),
+                    in: 28...64,
+                    step: 2
+                )
+
+                Picker("形状", selection: Binding(
+                    get: { env.settings.preferences.homeTileShape ?? "rounded" },
+                    set: { env.settings.update { $0.homeTileShape = $0 } }
+                )) {
+                    Text("圆角").tag("rounded")
+                    Text("圆形").tag("circle")
+                    Text("方角").tag("square")
+                }
+                .pickerStyle(.segmented)
+
+                HStack {
+                    Text("间距")
+                    Spacer()
+                    Text("\(Int(env.settings.preferences.homeTileSpacing ?? 12)) pt")
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Slider(
+                    value: Binding(
+                        get: { env.settings.preferences.homeTileSpacing ?? 12 },
+                        set: { env.settings.update { $0.homeTileSpacing = Double($0) } }
+                    ),
+                    in: 8...28,
+                    step: 2
+                )
+            } header: {
+                Text("收藏图标")
+            } footer: {
+                Text("改动即时生效，直接回到主页就能看到。")
+            }
         }
         .navigationTitle("主页")
         .navigationBarTitleDisplayMode(.inline)

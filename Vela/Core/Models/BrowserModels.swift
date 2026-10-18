@@ -411,6 +411,11 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// 打开。Optional for the same decode reason as the two fields above —
     /// an absent key decodes to the default, which is off.
     public var privateBrowsingMode: Bool?
+    /// 主页收藏的自定义：图标大小、磁贴形状、磁贴间距。三者都 optional，
+    /// 缺省时走代码里的原值 — 解码原因同上，老安装的文档里没有这些键。
+    public var homeTileIconSize: Double?
+    public var homeTileShape: String?
+    public var homeTileSpacing: Double?
     /// 全局顶部保护：页面内容只从系统状态栏下方开始，不滚动到时钟底下。
     ///
     /// Optional for the same reason `homeBackgroundStamp` is — the preferences
@@ -442,7 +447,10 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         themePaletteId: String = "default",
         homeBackgroundStamp: Double? = nil,
         topProtection: Bool? = true,
-        privateBrowsingMode: Bool? = false
+        privateBrowsingMode: Bool? = false,
+        homeTileIconSize: Double? = nil,
+        homeTileShape: String? = nil,
+        homeTileSpacing: Double? = nil
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -467,6 +475,9 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.homeBackgroundStamp = homeBackgroundStamp
         self.topProtection = topProtection
         self.privateBrowsingMode = privateBrowsingMode
+        self.homeTileIconSize = homeTileIconSize
+        self.homeTileShape = homeTileShape
+        self.homeTileSpacing = homeTileSpacing
     }
 
     /// The resolved switch: protection is on unless explicitly turned off.

@@ -46,6 +46,8 @@ struct BrowserShellView: View {
     @State private var omnibox: OmniboxViewModel
 
     @State private var showTabsOverview = false
+    @State private var showQRScanner = false
+    @State private var qrCopyNotice: String?
     @State private var showBookmarks = false
     @State private var showHistory = false
     @State private var showDownloads = false
@@ -178,6 +180,33 @@ struct BrowserShellView: View {
             }
         }
         .animation(.snappy(duration: 0.3), value: showTabsOverview)
+        .overlay {
+            // The scanner rides the same in-hierarchy rule the overview does:
+            // a presented controller's geometry is the thing that wedges on
+            // rotation, and a layer does not.
+            if showQRScanner {
+                QRScannerView(
+                    onRecognize: { handleScannedText($0) },
+                    onClose: { showQRScanner = false }
+                )
+                .transition(.opacity)
+                .zIndex(30)
+            }
+        }
+        .animation(.snappy(duration: 0.2), value: showQRScanner)
+        .alert(
+            "无法识别为网址",
+            isPresented: Binding(
+                get: { qrCopyNotice != nil },
+                set: { if !$0 { qrCopyNotice = nil } }
+            ),
+            presenting: qrCopyNotice
+        ) { _ in
+            Button("好", role: .cancel) { qrCopyNotice = nil }
+        } message: { text in
+            Text("内容已复制到剪贴板：
+\(text)")
+        }
         // The keyboard never rearranges the shell. Keyboard avoidance applied
         // to the bar itself does not hold: the bottom-aligned overlay resolves
         // its position against the container's safe area, which still contains
@@ -1246,6 +1275,35 @@ struct BrowserShellView: View {
         syncAddressText()
     }
 
+    /// Acts on a scanned QR payload. A web address opens in a new tab —
+    /// routed through 无痕模式 like every other new page; anything else is
+    /// copied, with the payload named in the notice so the copy is
+    /// confirmed rather than assumed.
+    private func handleScannedText(_ raw: String) {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        let looksLikeAddress: Bool = {
+            if text.contains("://") {
+                return URL(string: text)?.host?.isEmpty == false
+            }
+            // A bare domain: ASCII, dotted, no whitespace, and it parses
+            // once the scheme is supplied.
+            return !text.contains(" ")
+                && text.contains(".")
+                && text.allSatisfy(\.isASCII)
+                && URL(string: "https://\(text)")?.host?.isEmpty == false
+        }()
+
+        showQRScanner = false
+        if looksLikeAddress, let url = BrowserUrlResolver.storedUrl(text) {
+            tabManager.openTab(url: url, openSource: .user)
+        } else {
+            UIPasteboard.general.string = text
+            qrCopyNotice = text
+        }
+    }
+
     /// Whether the menu's page-bound actions have something to act on.
     private var canActOnPage: Bool {
         guard let tab = activeTab, !tab.isHome else { return false }
@@ -1268,6 +1326,8 @@ struct BrowserShellView: View {
             case .history: showHistory = true
             case .downloads: showDownloads = true
             case .settings: showSettings = true
+            case .scanQRCode:
+                showQRScanner = true
             case .privateTab:
                 // No tab on screen does not make the switch a tab factory:
                 // turning 无痕模式 on here materialises the private home it
@@ -1308,6 +1368,8 @@ struct BrowserShellView: View {
             showHistory = true
         case .downloads:
             showDownloads = true
+        case .scanQRCode:
+            showQRScanner = true
         case .privateTab:
             // The tile is 无痕模式's switch: on, everything new routes private
             // and the browser lands on the private home; off, routing returns

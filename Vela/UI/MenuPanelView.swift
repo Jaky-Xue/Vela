@@ -25,6 +25,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable {
     case bookmarks
     case history
     case downloads
+    case scanQRCode
     case privateTab
     case adBlock
     case reload
@@ -47,6 +48,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable {
         case .bookmarks: return "书签"
         case .history: return "历史记录"
         case .downloads: return "下载管理"
+        case .scanQRCode: return "扫一扫"
         case .privateTab: return "无痕模式"
         case .adBlock: return "广告过滤"
         case .reload: return "重新载入"
@@ -67,6 +69,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable {
         case .bookmarks: return "book"
         case .history: return "clock.arrow.circlepath"
         case .downloads: return "arrow.down.circle"
+        case .scanQRCode: return "qrcode.viewfinder"
         case .privateTab: return "eyeglasses"
         case .adBlock: return "shield.lefthalf.filled"
         case .reload: return "arrow.clockwise"

@@ -226,9 +226,9 @@ struct NewTabHomeView: View {
             // here and determinism is worth more. Five slots to a row, the
             // tail padded with spacers, so every tile keeps the width a full
             // row gives it however many tiles the last row holds.
-            VStack(spacing: 14) {
+            VStack(spacing: tileSpacing) {
                 ForEach(bookmarkRows) { row in
-                    HStack(spacing: 12) {
+                    HStack(spacing: tileSpacing) {
                         ForEach(row.slots) { slot in
                             if let node = slot.node {
                                 bookmarkCell(node)
@@ -269,22 +269,39 @@ struct NewTabHomeView: View {
         }
     }
 
-    /// A bookmark tile: the site's icon on a rounded square, and nothing else —
-    /// the icon is the label, the way a home screen reads.
+    /// The tile customisation from 主页 settings, resolved to concrete values.
+    private var tileIconSize: CGFloat {
+        CGFloat(env.settings.preferences.homeTileIconSize ?? 40)
+    }
+
+    private var tileSpacing: CGFloat {
+        CGFloat(env.settings.preferences.homeTileSpacing ?? 12)
+    }
+
+    private var tileShape: AnyShape {
+        switch env.settings.preferences.homeTileShape ?? "rounded" {
+        case "circle": AnyShape(Circle())
+        case "square": AnyShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        default: AnyShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+        }
+    }
+
+    /// A bookmark tile: the site's icon on a shaped square, and nothing else —
+    /// the icon is the label, the way a home screen reads. Size, shape and
+    /// spacing answer to 主页 settings.
     private func bookmarkCell(_ node: BookmarkNode) -> some View {
         Button {
             guard let url = BrowserUrlResolver.storedUrl(node.url) else { return }
             onNavigate(url)
         } label: {
-            SiteIconView(host: node.displayHost, size: 40)
+            SiteIconView(host: node.displayHost, size: tileIconSize)
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
                 .background(
-                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                        .fill(palette.card.opacity(0.6))
+                    tileShape.fill(palette.card.opacity(0.6))
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                    tileShape
                         .strokeBorder(
                             LinearGradient(
                                 colors: [.white.opacity(0.14), .white.opacity(0.03)],
@@ -295,7 +312,7 @@ struct NewTabHomeView: View {
                         )
                         .allowsHitTesting(false)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+                .contentShape(tileShape)
         }
         .buttonStyle(HomeTileButtonStyle())
         .contextMenu {
@@ -330,17 +347,16 @@ struct NewTabHomeView: View {
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
                 .background(
-                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
-                        .fill(palette.card.opacity(0.2))
+                    tileShape.fill(palette.card.opacity(0.2))
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous)
+                    tileShape
                         .strokeBorder(
                             palette.secondaryText.opacity(0.35),
                             style: StrokeStyle(lineWidth: 1, dash: [4, 3])
                         )
                 }
-                .contentShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+                .contentShape(tileShape)
         }
         .buttonStyle(HomeTileButtonStyle())
         .accessibilityLabel("添加书签")
