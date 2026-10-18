@@ -22,15 +22,9 @@
 //
 
 import Foundation
-import ObjectiveC
 import UIKit
 import WebKit
 import Observation
-
-/// Association key for the user scripts last attached to one web view, so the
-/// next navigation can take them off again before attaching its own set. A
-/// file-scope variable gives the runtime a stable address to key on.
-private var velaUserScriptsAssociationKey: UInt8 = 0
 
 @MainActor
 @Observable
@@ -487,38 +481,8 @@ public final class BrowserWebCoordinator: NSObject {
     @MainActor
     private func refreshUserScripts(webView: WKWebView, tab: BrowserTabState, url: URL) {
         let controller = webView.configuration.userContentController
-        let previous = objc_getAssociatedObject(webView, &velaUserScriptsAssociationKey) as? [WKUserScript] ?? []
-        for script in previous {
-            controller.removeUserScript(script)
-        }
-
-        var attached: [WKUserScript] = []
-        if settings.preferences.userScriptsEnabled, tab.privacyMode != .private {
-            let installed = (try? userScripts.enabledScripts()) ?? []
-            let matching = UserScriptMatcher.matchingScripts(in: installed, url: url)
-            if !matching.isEmpty {
-                var values: [String: [String: String]] = [:]
-                for script in matching {
-                    values[script.id] = (try? userScripts.allValues(scriptId: script.id)) ?? [:]
-                }
-                attached = UserScriptInjector.makeUserScripts(
-                    for: matching,
-                    url: url,
-                    valuesByScriptId: values
-                ).scripts
-                for script in attached {
-                    controller.addUserScript(script)
-                }
-            }
-        }
-        // Held with the web view, so a discarded tab takes its script list
-        // with it instead of leaving an entry in a coordinator-wide table.
-        objc_setAssociatedObject(
-            webView,
-            &velaUserScriptsAssociationKey,
-            attached,
-            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
-        )
+        controller.removeAllUserScripts()
+        attachPageScripts(to: controller, tab: tab, url: url)
     }
 
 }
@@ -526,32 +490,21 @@ public final class BrowserWebCoordinator: NSObject {
 // MARK: - Configuration providing
 
 extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
-    /// Builds the configuration for a tab.
+    /// Attaches every page script a navigation needs: the browser's own
+    /// bridges, the cosmetic filter for this host, and the user scripts that
+    /// match this URL.
     ///
-    /// The two decisions that matter:
-    ///
-    /// * Data store. A private tab gets `WKWebsiteDataStore.nonPersistent()`,
-    ///   which is what makes private mode real on iOS: cookies, cache and local
-    ///   storage live in a store that is discarded with the session.
-    /// * Content rules. The compiled `WKContentRuleList` is attached here, per
-    ///   navigation, because a list compiled after a web view existed is not
-    ///   picked up retroactively.
-    public func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration {
-        let configuration = WKWebViewConfiguration()
-
-        configuration.websiteDataStore = tab.privacyMode == .private
-            ? WKWebsiteDataStore.nonPersistent()
-            : WKWebsiteDataStore.default()
-
-        let controller = WKUserContentController()
-        configuration.userContentController = controller
-
-        // Message handlers. The coordinator is the handler for all of them; the
-        // name on the message decides the branch.
-        for handler in WebPageScripts.Handler.allCases {
-            controller.add(MessageBridge(coordinator: self), name: handler.rawValue)
-        }
-
+    /// The whole set is rebuilt per navigation because WebKit has no way to
+    /// remove one user script — `removeAllUserScripts` is the only removal —
+    /// and because the cosmetic filter and the user-script match belong to the
+    /// page being loaded, not to the URL the web view happened to have when it
+    /// was built.
+    @MainActor
+    private func attachPageScripts(
+        to controller: WKUserContentController,
+        tab: BrowserTabState,
+        url: URL?
+    ) {
         // Document-start scripts. Order matters: the history bridge has to be in
         // place before the page's own scripts can call pushState.
         let startScripts: [String] = [
@@ -608,7 +561,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // the rule list because a rule list can only hide by selector if the
         // selector is known at compile time, and the manual element hides are
         // per-host.
-        if let host = URL(string: tab.url)?.host,
+        if let host = url?.host,
            let css = adBlock.cosmeticStyle(
                for: host,
                manualSelectors: settings.manualElementHide.effectiveSelectors(for: host)
@@ -626,19 +579,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
-        // Attach the compiled rule list synchronously from the last load. The
-        // engine keeps the compiled `WKContentRuleList` in memory after it loads
-        // it, so a navigation does not have to await a lookup.
-        for list in adBlock.attachedRuleLists() {
-            controller.add(list)
-        }
-
-        // User scripts are attached per navigation by `refreshUserScripts`,
-        // not here. Choosing them once, from the URL the tab had when this
-        // configuration was built, is what made a script installed afterwards
-        // never run and a script that matched the first page keep running on
-        // every page after it.
-
         if overlays.isElementPickerArmed {
             controller.addUserScript(
                 WKUserScript(
@@ -647,6 +587,65 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                     forMainFrameOnly: true
                 )
             )
+        }
+
+        // User scripts belong to this page, so the match is recomputed here,
+        // for this URL, on every navigation.
+        if settings.preferences.userScriptsEnabled,
+           tab.privacyMode != .private,
+           let pageURL = url {
+            let installed = (try? userScripts.enabledScripts()) ?? []
+            let matching = UserScriptMatcher.matchingScripts(in: installed, url: pageURL)
+            if !matching.isEmpty {
+                var values: [String: [String: String]] = [:]
+                for script in matching {
+                    values[script.id] = (try? userScripts.allValues(scriptId: script.id)) ?? [:]
+                }
+                let built = UserScriptInjector.makeUserScripts(
+                    for: matching,
+                    url: pageURL,
+                    valuesByScriptId: values
+                )
+                for script in built.scripts {
+                    controller.addUserScript(script)
+                }
+            }
+        }
+    }
+
+    /// Builds the configuration for a tab.
+    ///
+    /// The two decisions that matter:
+    ///
+    /// * Data store. A private tab gets `WKWebsiteDataStore.nonPersistent()`,
+    ///   which is what makes private mode real on iOS: cookies, cache and local
+    ///   storage live in a store that is discarded with the session.
+    /// * Content rules. The compiled `WKContentRuleList` is attached here, per
+    ///   navigation, because a list compiled after a web view existed is not
+    ///   picked up retroactively.
+    public func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration {
+        let configuration = WKWebViewConfiguration()
+
+        configuration.websiteDataStore = tab.privacyMode == .private
+            ? WKWebsiteDataStore.nonPersistent()
+            : WKWebsiteDataStore.default()
+
+        let controller = WKUserContentController()
+        configuration.userContentController = controller
+
+        // Message handlers. The coordinator is the handler for all of them; the
+        // name on the message decides the branch.
+        for handler in WebPageScripts.Handler.allCases {
+            controller.add(MessageBridge(coordinator: self), name: handler.rawValue)
+        }
+
+        attachPageScripts(to: controller, tab: tab, url: URL(string: tab.url))
+
+        // Attach the compiled rule list synchronously from the last load. The
+        // engine keeps the compiled `WKContentRuleList` in memory after it loads
+        // it, so a navigation does not have to await a lookup.
+        for list in adBlock.attachedRuleLists() {
+            controller.add(list)
         }
 
         // Preferences. `javaScriptCanOpenWindowsAutomatically` stays false: a
