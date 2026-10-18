@@ -166,6 +166,7 @@ public enum WebPageScripts {
       // wins, so a player's outer window cannot duplicate its segments.
       var captionSelectors = [
         '.ytp-caption-segment',
+        '.caption-window .captions-text',
         '.bpx-player-subtitle-panel-text',
         '.bpx-player-video-subtitle',
         '.vjs-text-track-cue',
@@ -195,12 +196,13 @@ public enum WebPageScripts {
         return '';
       }
 
-      // The mirror and a page track can otherwise both draw the same sentence
-      // in the native player — two identical lines, which is exactly what the
-      // reader saw. Once the mirror carries text it owns the captions: the
-      // page's own subtitle/caption tracks are taken out of the presentation
-      // (their modes are handed back when the video leaves it).
-      function hideRealCaptionTracks(video, mirror) {
+      // Every other caption layer stands down while the mirror carries text.
+      // That includes WebKit's own YouTube caption mirror — a forced track it
+      // names 'YouTube Captions' and draws beside ours, which is what put two
+      // identical lines on screen. A track is only suppressed once our mirror
+      // has a sentence to show: on a video whose cues our selectors cannot
+      // read, WebKit's track is left alone and may still draw the caption.
+      function hideOtherCaptionTracks(video, mirror) {
         var tracks = video.textTracks;
         if (!tracks) { return; }
         if (!video.__velaSuppressedCaptionTracks) {
@@ -209,39 +211,23 @@ public enum WebPageScripts {
         for (var i = 0; i < tracks.length; i++) {
           var track = tracks[i];
           if (track === mirror) { continue; }
-          if (track.kind !== 'subtitles' && track.kind !== 'captions') { continue; }
+          var carriesCaption = track.kind === 'subtitles' ||
+            track.kind === 'captions' ||
+            track.kind === 'forced';
+          if (!carriesCaption) { continue; }
           if (track.mode !== 'showing') { continue; }
           video.__velaSuppressedCaptionTracks.push(track);
-          try { track.mode = 'hidden'; } catch (error) {}
+          try { track.mode = 'disabled'; } catch (error) {}
         }
       }
 
-      function restoreRealCaptionTracks(video) {
+      function restoreOtherCaptionTracks(video) {
         var tracks = video.__velaSuppressedCaptionTracks;
         if (!tracks) { return; }
         video.__velaSuppressedCaptionTracks = null;
         for (var i = 0; i < tracks.length; i++) {
           try { tracks[i].mode = 'hidden'; } catch (error) {}
         }
-      }
-
-      // WebKit ships its own caption mirror for YouTube: a forced track named
-      // 'YouTube Captions' whose cues it keeps in step with the player and
-      // positions where the page drew them. When that track is present our own
-      // mirror is a second copy of the same sentence — two identical lines in
-      // the native player — so the mirror reuses WebKit's track instead.
-      function externalCaptionTrack(video, mirror) {
-        var tracks = video.textTracks;
-        if (!tracks) { return null; }
-        for (var i = 0; i < tracks.length; i++) {
-          var track = tracks[i];
-          if (track === mirror) { continue; }
-          var looksLikeMirror = track.kind === 'forced' ||
-            (track.label && /youtube|captions/i.test(track.label));
-          if (!looksLikeMirror) { continue; }
-          if (track.cues && track.cues.length > 0) { return track; }
-        }
-        return null;
       }
 
       function clearMirrorCues(track) {
@@ -256,13 +242,9 @@ public enum WebPageScripts {
           clearInterval(video.__velaCaptionMirrorTimer);
           video.__velaCaptionMirrorTimer = null;
         }
-        restoreRealCaptionTracks(video);
+        restoreOtherCaptionTracks(video);
         var track = video.__velaCaptionMirrorTrack;
         if (!track) { return; }
-        if (video.__velaCaptionMirrorExternal === true) {
-          try { track.mode = 'hidden'; } catch (error) {}
-          return;
-        }
         clearMirrorCues(track);
         try { track.mode = 'disabled'; } catch (error) {}
       }
@@ -279,22 +261,16 @@ public enum WebPageScripts {
         if (typeof video.addTextTrack !== 'function') { return; }
         var track = video.__velaCaptionMirrorTrack;
         if (!track) {
-          track = externalCaptionTrack(video, null);
-          if (track) {
-            video.__velaCaptionMirrorExternal = true;
-          } else {
-            // `forced` is the kind WebKit's own caption mirror uses, and the
-            // native player draws it without a menu choice; a WebKit that
-            // refuses the kind still gets an ordinary captions track.
-            try {
-              track = video.addTextTrack('forced', '字幕', 'und');
-            } catch (error) {
-              try { track = video.addTextTrack('captions', '字幕', 'und'); } catch (error) { return; }
-            }
+          // `forced` is the kind WebKit's own caption mirrors use, and the
+          // native player draws it without a menu choice; a WebKit that
+          // refuses the kind still gets an ordinary captions track.
+          try {
+            track = video.addTextTrack('forced', '字幕', 'und');
+          } catch (error) {
+            try { track = video.addTextTrack('captions', '字幕', 'und'); } catch (error) { return; }
           }
           video.__velaCaptionMirrorTrack = track;
         }
-        var external = video.__velaCaptionMirrorExternal === true;
         try { track.mode = 'hidden'; } catch (error) {}
         var startedAt = Date.now();
         var painted = null;
@@ -306,21 +282,9 @@ public enum WebPageScripts {
             stopCaptionMirror(video);
             return;
           }
-          var other = externalCaptionTrack(video, track);
-          if (other) {
-            if (!external) {
-              external = true;
-              video.__velaCaptionMirrorExternal = true;
-              clearMirrorCues(track);
-              try { track.mode = 'disabled'; } catch (error) {}
-              track = other;
-              video.__velaCaptionMirrorTrack = track;
-            }
-          }
           if (mode && mode !== 'inline' && track.mode !== 'showing') {
             try { track.mode = 'showing'; } catch (error) {}
           }
-          if (external) { return; }
           // Inside the native presentation the page's overlay is behind the
           // player and may be hidden outright, so text counts there whether
           // or not it is painted. Inline it has to be visible: a player keeps
@@ -338,9 +302,10 @@ public enum WebPageScripts {
             }
           }
           // Repeated every tick: a player can switch a track on at any time
-          // (its addtrack listener, the native menu), and the mirror has to
-          // stay the only caption layer while it is carrying the sentence.
-          if (painted) { hideRealCaptionTracks(video, track); }
+          // (its addtrack listener, WebKit's quirk, the native menu), and the
+          // mirror has to stay the only caption layer while it carries the
+          // sentence.
+          if (painted) { hideOtherCaptionTracks(video, track); }
         }
 
         sync();
@@ -619,16 +584,17 @@ public enum WebPageScripts {
     /// the play button, the fullscreen button — and a second tap means "put
     /// them away"; stopping the film belongs to the play button alone.
     ///
-    /// The player takes the gesture from pointer and touch events as well as
-    /// from clicks — a click-only guard left the pause path intact — so a
-    /// short, still tap on the picture is claimed in the capture phase of
-    /// whichever event lands first, before any player handler runs. The event
-    /// is kept from the page and the control layer is toggled through the
-    /// player's own `ytp-autohide` state; a repeat inside 350 ms is swallowed
-    /// rather than toggled again, which is what keeps pointerup, touchend and
-    /// the synthetic click from reading as three taps. Taps on the player's
-    /// buttons, seek bar, menus and end-screen cards are left alone, and a
-    /// drag is never claimed, so every control and every scroll keeps its job.
+    /// Switching the events off is not enough by itself: the player answers
+    /// the tap from whichever handler it bound — pointerdown, touchend, click,
+    /// or a private command — and a click-only guard left that pause path
+    /// alive. So the media element itself stands down for the length of a
+    /// picture tap: `play()` and `pause()` calls on the tapped video are
+    /// dropped inside the gesture's window, whatever called them, and the tap
+    /// only toggles the control layer through the player's own
+    /// `ytp-autohide` state. A tap that begins on a control clears the guard,
+    /// so the play button — and every other button, the seek bar, the menus
+    /// and the end screen — keeps its own job, and a drag cancels the guard
+    /// before a scroll can be mistaken for a tap.
     public static let youtubeTapControlsScript = """
     (function () {
       if (window.__velaYouTubeTapControlsInstalled === true) { return; }
@@ -685,6 +651,28 @@ public enum WebPageScripts {
         }
       }
 
+      // The player answers a picture tap by calling play() or pause() from
+      // whichever handler it bound. Blocking the event alone left that path
+      // alive, so the media element stands down for the length of a picture
+      // tap: a play/pause call inside the window is dropped. A tap that starts
+      // on a control clears the guard, so every control keeps its own job.
+      var nativePlay = HTMLMediaElement.prototype.play;
+      var nativePause = HTMLMediaElement.prototype.pause;
+
+      function mediaIsGuarded(video) {
+        return video && video === tapVideo && Date.now() < guardUntil;
+      }
+
+      HTMLMediaElement.prototype.play = function () {
+        if (mediaIsGuarded(this)) { return Promise.resolve(); }
+        return nativePlay.apply(this, arguments);
+      };
+
+      HTMLMediaElement.prototype.pause = function () {
+        if (mediaIsGuarded(this)) { return; }
+        return nativePause.apply(this, arguments);
+      };
+
       // Claims one tap. The same tap reaches several events; only the first
       // one acts and the rest are swallowed, so the controls move once.
       //
@@ -704,10 +692,7 @@ public enum WebPageScripts {
             ? startHidden
             : player.classList.contains('ytp-autohide');
           try { setControls(player, show); } catch (error) {}
-          // A player that answers the picture tap with play/pause — whatever
-          // event it listens to — is put back the way it was for the length
-          // of this gesture; only the play button may change the state.
-          guardUntil = now + 400;
+          guardUntil = Math.max(guardUntil, now + 400);
         }
         return true;
       }
@@ -720,7 +705,7 @@ public enum WebPageScripts {
         startHidden = startPlayer ? startPlayer.classList.contains('ytp-autohide') : false;
         tapVideo = startPlayer ? startPlayer.querySelector('video') : null;
         tapWasPlaying = tapVideo ? !tapVideo.paused : false;
-        guardUntil = tapVideo ? Date.now() + 650 : 0;
+        guardUntil = tapVideo ? Date.now() + 900 : 0;
         tracking = true;
       }
 
@@ -777,18 +762,18 @@ public enum WebPageScripts {
         cancelTap();
       }, true);
 
-      // The safety net for the player's own pause/play path: the gesture's
-      // state is restored if the player changed it inside the tap window.
+      // Anything that bypasses the prototype (a native command, a private
+      // player path) is put back here, using the unguarded originals.
       document.addEventListener('pause', function (event) {
         if (event.target !== tapVideo || Date.now() > guardUntil) { return; }
         if (!tapWasPlaying) { return; }
-        try { tapVideo.play(); } catch (error) {}
+        try { nativePlay.call(tapVideo); } catch (error) {}
       }, true);
 
       document.addEventListener('play', function (event) {
         if (event.target !== tapVideo || Date.now() > guardUntil) { return; }
         if (tapWasPlaying) { return; }
-        try { tapVideo.pause(); } catch (error) {}
+        try { nativePause.call(tapVideo); } catch (error) {}
       }, true);
 
       // A mouse click, a keyboard activation, or a path that delivered only a
