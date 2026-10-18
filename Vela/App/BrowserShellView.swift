@@ -160,6 +160,24 @@ struct BrowserShellView: View {
         }
         .overlay(alignment: .bottom) { commandBar }
         .overlay(alignment: .bottom) { floatingToolsInGlassContainer }
+        .overlay {
+            // The overview is a layer of this hierarchy, not a presented
+            // controller. A full-screen cover's geometry can survive a
+            // rotation wedged at the size it was presented at — the overview
+            // once laid itself out for a portrait window inside a landscape
+            // one: four narrow columns, the header pushed off-screen, touch
+            // mapping gone with it. Nothing presented here; a layer rotates
+            // with the window, because everything in this hierarchy already
+            // provably does.
+            if showTabsOverview {
+                TabsOverviewView(
+                    onClose: { showTabsOverview = false }
+                )
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .zIndex(20)
+            }
+        }
+        .animation(.snappy(duration: 0.3), value: showTabsOverview)
         // The keyboard never rearranges the shell. Keyboard avoidance applied
         // to the bar itself does not hold: the bottom-aligned overlay resolves
         // its position against the container's safe area, which still contains
@@ -267,13 +285,6 @@ struct BrowserShellView: View {
     /// of one enormous one.
     private func presentations() -> some View {
         shellRoot
-        // A full-screen cover, not a sheet: Safari's overview takes the whole
-        // screen, and a floating panel would put the page's edges back where
-        // the blurred scrim is meant to replace them.
-        .fullScreenCover(isPresented: $showTabsOverview) {
-            TabsOverviewView()
-                .environment(env)
-        }
         .sheet(isPresented: $showBookmarks) {
             NavigationStack { BookmarksView() }
                 .environment(env)
@@ -911,7 +922,9 @@ struct BrowserShellView: View {
     /// a footnote under a glyph.
     private var tabsButton: some View {
         Button {
-            showTabsOverview = true
+            withAnimation(.snappy(duration: 0.3)) {
+                showTabsOverview = true
+            }
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 6.5, style: .continuous)

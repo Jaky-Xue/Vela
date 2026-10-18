@@ -28,7 +28,12 @@ import WebKit
 struct TabsOverviewView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
-    @Environment(\.dismiss) private var dismiss
+
+    /// Closes the overview. The overview is a layer in the shell's own
+    /// hierarchy rather than a presented controller, so there is no
+    /// presentation to dismiss — the shell owns the flag, and hands the way
+    /// out down here.
+    var onClose: () -> Void
 
     @State private var showPrivateTabs = false
     @State private var didSyncMode = false
@@ -250,7 +255,7 @@ struct TabsOverviewView: View {
                 // Reopen is scoped to the mode being viewed, so a private tab
                 // can never be restored into the regular list.
                 if tabManager.reopenLastClosedTab(privacyMode: currentMode) != nil {
-                    dismiss()
+                    onClose()
                 }
             } label: {
                 Label("重新打开关闭的标签页", systemImage: "arrow.uturn.backward")
@@ -309,7 +314,7 @@ struct TabsOverviewView: View {
             .accessibilityLabel("搜索标签页")
 
             Button {
-                dismiss()
+                onClose()
             } label: {
                 Image(systemName: "checkmark")
                     .font(.system(size: 14, weight: .bold))
@@ -621,7 +626,7 @@ struct TabsOverviewView: View {
 
     private func activate(_ tab: BrowserTabState) {
         tabManager.activateTab(id: tab.id)
-        dismiss()
+        onClose()
     }
 
     private func addTab() {
@@ -630,7 +635,7 @@ struct TabsOverviewView: View {
             openSource: .user
         )
         tabManager.activateTab(id: tab.id)
-        dismiss()
+        onClose()
     }
 
     private func prepare() async {
