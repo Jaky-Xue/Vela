@@ -118,9 +118,18 @@ public enum WebPageScripts {
     /// to `showing` on the way in, which is what makes the native player draw
     /// the captions, and restores each track's original mode when the video
     /// returns to `inline`, which is what keeps those captions from doubling
-    /// the page's own overlay after leaving fullscreen. Subtitles a page
-    /// renders purely as DOM elements with no track behind them have no
-    /// representation the native player can draw, and are out of reach here.
+    /// the page's own overlay after leaving fullscreen.
+    ///
+    /// A page with no track behind its captions needs a second road. YouTube
+    /// is the case that matters: its player paints the sentence into its own
+    /// cue windows and never exposes a text track, so there is nothing to
+    /// switch on and the native player shows a silent picture. While the video
+    /// is in the native player a mirror therefore reads the sentence the page
+    /// is painting and re-states it as a cue on a text track it adds to the
+    /// video — the one shape the native player can draw. It covers YouTube's
+    /// cue windows, Bilibili's subtitle strip and the cue elements of the
+    /// common JavaScript players; a page that does have a showing track with
+    /// live cues is left alone, so the two never draw the same sentence twice.
     ///
     /// The takeover has to cover every road into the native player, not just
     /// the Fullscreen API: the fullscreen button on many players calls the
@@ -152,6 +161,129 @@ public enum WebPageScripts {
         }
       }
 
+      // Captions a page paints itself, rather than through a text track.
+      // Ordered by specificity: the first selector that yields visible text
+      // wins, so a player's outer window cannot duplicate its segments.
+      var captionSelectors = [
+        '.ytp-caption-segment',
+        '.bpx-player-subtitle-panel-text',
+        '.bpx-player-video-subtitle',
+        '.vjs-text-track-cue',
+        '.jw-text-track-cue',
+        '.plyr__captions',
+        '.dplayer-subtitle',
+        '.art-subtitle'
+      ];
+
+      function paintedCaptionText(includeHidden) {
+        for (var s = 0; s < captionSelectors.length; s++) {
+          var nodes = document.querySelectorAll(captionSelectors[s]);
+          var parts = [];
+          for (var i = 0; i < nodes.length; i++) {
+            var node = nodes[i];
+            if (!includeHidden && (!node.getClientRects || node.getClientRects().length === 0)) { continue; }
+            var text = node.innerText || node.textContent || '';
+            text = String(text).replace(/\\s+/g, ' ').trim();
+            if (text && parts.indexOf(text) === -1) { parts.push(text); }
+          }
+          if (parts.length) {
+            var joined = parts.join(' ');
+            return joined.length > 400 ? joined.slice(0, 400) : joined;
+          }
+        }
+        return '';
+      }
+
+      function trackIsShowingCues(video, mirror) {
+        var tracks = video.textTracks;
+        if (!tracks) { return false; }
+        for (var i = 0; i < tracks.length; i++) {
+          var track = tracks[i];
+          if (track === mirror) { continue; }
+          if (track.kind !== 'subtitles' && track.kind !== 'captions') { continue; }
+          if (track.mode === 'showing' && track.activeCues && track.activeCues.length > 0) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function clearMirrorCues(track) {
+        if (!track || !track.cues) { return; }
+        while (track.cues.length > 0) {
+          try { track.removeCue(track.cues[0]); } catch (error) { break; }
+        }
+      }
+
+      function stopCaptionMirror(video) {
+        if (video.__velaCaptionMirrorTimer) {
+          clearInterval(video.__velaCaptionMirrorTimer);
+          video.__velaCaptionMirrorTimer = null;
+        }
+        var track = video.__velaCaptionMirrorTrack;
+        if (!track) { return; }
+        clearMirrorCues(track);
+        try { track.mode = 'disabled'; } catch (error) {}
+      }
+
+      // Mirrors the page's own caption paint into a text track the native
+      // player can draw. The track is `forced` and stays hidden until the
+      // presentation actually opens: a forced track is drawn by the native
+      // player without having to be picked from its caption menu, and keeping
+      // it hidden inline is what stops the mirror from doubling the page's own
+      // captions before fullscreen. WebKit's own CNN quirk mirrors DOM
+      // captions into a forced track the same way.
+      function startCaptionMirror(video) {
+        if (video.__velaCaptionMirrorTimer) { return; }
+        if (typeof video.addTextTrack !== 'function') { return; }
+        var track = video.__velaCaptionMirrorTrack;
+        if (!track) {
+          // `forced` is the kind WebKit's own caption mirror uses, and the
+          // native player draws it without a menu choice; a WebKit that
+          // refuses the kind still gets an ordinary captions track.
+          try {
+            track = video.addTextTrack('forced', '字幕', 'und');
+          } catch (error) {
+            try { track = video.addTextTrack('captions', '字幕', 'und'); } catch (error) { return; }
+          }
+          video.__velaCaptionMirrorTrack = track;
+        }
+        try { track.mode = 'hidden'; } catch (error) {}
+        var startedAt = Date.now();
+        var painted = null;
+
+        function sync() {
+          if (!video.isConnected) { stopCaptionMirror(video); return; }
+          var mode = video.webkitPresentationMode;
+          if (mode === 'inline' && Date.now() - startedAt > 2000) {
+            stopCaptionMirror(video);
+            return;
+          }
+          if (mode && mode !== 'inline' && track.mode !== 'showing') {
+            try { track.mode = 'showing'; } catch (error) {}
+          }
+          // Inside the native presentation the page's overlay is behind the
+          // player and may be hidden outright, so text counts there whether
+          // or not it is painted. Inline it has to be visible: a player keeps
+          // hidden copies of its cue elements, and those are not captions.
+          var text = trackIsShowingCues(video, track)
+            ? ''
+            : paintedCaptionText(mode && mode !== 'inline');
+          if (text === painted) { return; }
+          painted = text;
+          clearMirrorCues(track);
+          if (!text) { return; }
+          try {
+            var cue = new VTTCue(Math.max(0, video.currentTime - 0.3), video.currentTime + 600, text);
+            cue.line = 'auto';
+            track.addCue(cue);
+          } catch (error) {}
+        }
+
+        sync();
+        video.__velaCaptionMirrorTimer = setInterval(sync, 150);
+      }
+
       function exposeSubtitlesToNativePlayer(video) {
         var tracks = video.textTracks;
         if (!tracks) { return; }
@@ -173,7 +305,11 @@ public enum WebPageScripts {
             });
           } catch (error) {}
           video.addEventListener('webkitpresentationmodechanged', function () {
-            if (video.webkitPresentationMode !== 'inline') { return; }
+            if (video.webkitPresentationMode !== 'inline') {
+              startCaptionMirror(video);
+              return;
+            }
+            stopCaptionMirror(video);
             var modes = video.__velaSavedTrackModes;
             if (!modes) { return; }
             video.__velaSavedTrackModes = null;
@@ -181,8 +317,17 @@ public enum WebPageScripts {
               try { tracks[j].mode = modes[j]; } catch (error) {}
             }
           });
+          // The native player's own roads also announce themselves; they are
+          // the only signal when the system's controls opened the presentation.
+          video.addEventListener('webkitbeginfullscreen', function () {
+            startCaptionMirror(video);
+          });
+          video.addEventListener('webkitendfullscreen', function () {
+            stopCaptionMirror(video);
+          });
         }
         forceShowing(tracks);
+        startCaptionMirror(video);
       }
 
       function patch(proto, name) {
