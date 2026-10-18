@@ -699,6 +699,12 @@ struct SiteIconView: View {
                     .minimumScaleFactor(0.6)
             }
         }
+        // The chosen shape is the tile's shape, picture included. An icon
+        // that carries its own opaque background covers the fill entirely,
+        // so shaping only the fill let 圆角/圆形/方角 change something no
+        // one could see; clipping the stack makes the shape the icon's own
+        // silhouette too.
+        .clipShape(RoundedRectangle(cornerRadius: resolvedCornerRadius, style: .continuous))
         .overlay {
             // A hairline that keeps the tile reading as a tile over any
             // backdrop, the way Via's tiles hold their edge on a picture.
@@ -730,6 +736,7 @@ struct SiteIconView: View {
     /// stays sharp at 40 points, where a 16-or-32-pixel `.ico` is mush. An
     /// explicit URL from the page itself outranks both.
     private func loadIcon() async {
+        image = nil
         for candidate in candidateUrls {
             guard let url = candidate else { continue }
             if let cached = Self.iconCache.object(forKey: url.absoluteString as NSString) {
@@ -738,10 +745,70 @@ struct SiteIconView: View {
             }
             guard let (data, _) = try? await URLSession.shared.data(from: url),
                   let decoded = UIImage(data: data) else { continue }
-            Self.iconCache.setObject(decoded, forKey: url.absoluteString as NSString)
-            image = decoded
+            let prepared = Self.trimmedToOpaqueBounds(decoded)
+            Self.iconCache.setObject(prepared, forKey: url.absoluteString as NSString)
+            image = prepared
             return
         }
+    }
+
+    /// The icon cropped to the pixels that actually paint.
+    ///
+    /// A site's icon file is not always its artwork: favicons routinely carry
+    /// transparent margins, and a glyph drawn across four fifths of its
+    /// canvas lands in the tile visibly smaller than the neighbour that fills
+    /// its own — the unevenness the uniform backdrop alone could not fix.
+    /// Cropping to the opaque bounds makes every icon answer the tile at the
+    /// same size. A fully opaque icon — the usual apple-touch-icon — has
+    /// nothing to crop and is handed back untouched.
+    private static func trimmedToOpaqueBounds(_ image: UIImage) -> UIImage {
+        guard let cgImage = image.cgImage else { return image }
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 1, height > 1,
+              let context = CGContext(
+                  data: nil,
+                  width: width,
+                  height: height,
+                  bitsPerComponent: 8,
+                  bytesPerRow: width * 4,
+                  space: CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else { return image }
+
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let data = context.data else { return image }
+        let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
+
+        let alphaThreshold: UInt8 = 6
+        var minX = width
+        var minY = height
+        var maxX = -1
+        var maxY = -1
+        for y in 0..<height {
+            let row = y * width * 4
+            for x in 0..<width where pixels[row + x * 4 + 3] > alphaThreshold {
+                if x < minX { minX = x }
+                if x > maxX { maxX = x }
+                if y < minY { minY = y }
+                if y > maxY { maxY = y }
+            }
+        }
+
+        // Nothing opaque, or nothing to trim: the original stands.
+        guard maxX >= minX, maxY >= minY,
+              minX > 0 || minY > 0 || maxX < width - 1 || maxY < height - 1 else {
+            return image
+        }
+
+        let bounds = CGRect(
+            x: minX,
+            y: minY,
+            width: maxX - minX + 1,
+            height: maxY - minY + 1
+        )
+        guard let cropped = cgImage.cropping(to: bounds) else { return image }
+        return UIImage(cgImage: cropped, scale: image.scale, orientation: .up)
     }
 
     /// The URLs to try, strongest first.

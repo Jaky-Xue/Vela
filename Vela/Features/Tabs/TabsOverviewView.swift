@@ -89,15 +89,23 @@ struct TabsOverviewView: View {
     }
 
     var body: some View {
-        ZStack {
-            backgroundLayer
-
+        // The backdrop is a background, never a ZStack sibling. A
+        // `scaledToFill` picture reports its own oversized layout size back
+        // up the tree — a portrait print in a landscape window asks for the
+        // window's width at a portrait's height — and as a sibling it sized
+        // this whole surface: the stack then laid out against that inflated
+        // height, its header pushed off-screen above and the grid drawn at
+        // the print's aspect instead of the screen's. A background is
+        // proposed the content's size and cannot grow it.
+        Group {
             if showPrivateTabs && isLocked && !isPrivateUnlocked {
                 lockedState
             } else {
                 contentStack
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { backgroundLayer }
         .environment(\.colorScheme, .dark)
         .task { await prepare() }
         .onChange(of: showPrivateTabs) { _, isPrivate in
@@ -134,24 +142,33 @@ struct TabsOverviewView: View {
     /// does this rather than a flat fill, and the result is what makes the
     /// take-over read as "the same place, pulled back" instead of a new screen.
     private var backgroundLayer: some View {
-        ZStack {
-            if let backgroundPrint {
-                Image(uiImage: backgroundPrint)
-                    .resizable()
-                    .scaledToFill()
-                    .blur(radius: 32)
-                    .overlay(palette.chromeBackground.opacity(0.72))
-                    .scaleEffect(1.2)
-                    .ignoresSafeArea()
-            } else {
-                LinearGradient(
-                    colors: [palette.chromeBackground, palette.surface],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
+        // The reader pins the picture to the window's size and swallows the
+        // overflow: `scaledToFill` answers with the size it would like to be,
+        // and a background that told its container how big to be is exactly
+        // the bug this layer used to be.
+        GeometryReader { geo in
+            ZStack {
+                if let backgroundPrint {
+                    Image(uiImage: backgroundPrint)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .blur(radius: 32)
+                        .overlay(palette.chromeBackground.opacity(0.72))
+                        .scaleEffect(1.2)
+                        .clipped()
+                } else {
+                    LinearGradient(
+                        colors: [palette.chromeBackground, palette.surface],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped()
         }
+        .ignoresSafeArea()
     }
 
     // MARK: - Content

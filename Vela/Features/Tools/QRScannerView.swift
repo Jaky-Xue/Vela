@@ -215,9 +215,7 @@ struct QRScannerView: View {
 
                 Spacer()
 
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(.white.opacity(0.75), lineWidth: 2)
-                    .frame(width: 250, height: 250)
+                ScannerViewfinder()
 
                 Spacer()
 
@@ -244,5 +242,52 @@ struct QRScannerView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
+    }
+}
+
+/// The viewfinder: the corner frame and the beam that sweeps it.
+///
+/// A still frame over a live camera reads as a paused picture; the moving
+/// beam is what says the scanner is working. It sweeps top to bottom and
+/// back on a loop, clipped to the frame so neither end pokes past it.
+private struct ScannerViewfinder: View {
+    @State private var beamIsDown = false
+
+    private let side: CGFloat = 250
+    private let corner: CGFloat = 18
+    private let beamHeight: CGFloat = 3
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: corner, style: .continuous)
+            .stroke(.white.opacity(0.75), lineWidth: 2)
+            .frame(width: side, height: side)
+            .overlay {
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .green.opacity(0),
+                                .green.opacity(0.85),
+                                .white,
+                                .green.opacity(0.85),
+                                .green.opacity(0)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: beamHeight)
+                    .shadow(color: .green.opacity(0.85), radius: 7)
+                    // Centred in the frame, so the rest positions are half
+                    // the side less half the beam at either end.
+                    .offset(y: beamIsDown ? side / 2 - beamHeight : beamHeight - side / 2)
+                    .animation(
+                        .easeInOut(duration: 1.9).repeatForever(autoreverses: true),
+                        value: beamIsDown
+                    )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .onAppear { beamIsDown = true }
+            .accessibilityHidden(true)
     }
 }
