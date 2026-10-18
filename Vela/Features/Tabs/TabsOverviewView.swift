@@ -695,13 +695,6 @@ private struct TabCard: View {
         VStack(spacing: BrowserSpacing.tight) {
             ZStack(alignment: .topTrailing) {
                 cardFace
-                    // The blur is the card's picture and nothing else — the
-                    // scope 无痕模糊 is given: a blurred page, with the control
-                    // on it still findable. Riding the blur on the whole stack
-                    // blurred the close button with the page; the × is the one
-                    // thing on a blurred card the user must be able to read
-                    // and press.
-                    .blur(radius: blurPreview ? 5 : 0)
 
                 closeButton
             }
@@ -772,12 +765,18 @@ private struct TabCard: View {
     /// The card's picture: the page itself where one exists, and a quiet
     /// placeholder where none does yet — the start page's house on the home
     /// surface, the site's icon on a tab that has never been opened here.
+    ///
+    /// The private blur lives on the picture itself, *inside* the card's clip:
+    /// the smeared content is cut off at the rounded rectangle, so the card
+    /// keeps a crisp silhouette and border while what is inside it stops being
+    /// a picture of anything.
     @ViewBuilder
     private var thumbnail: some View {
         if let snapshot {
             Image(uiImage: snapshot)
                 .resizable()
                 .scaledToFill()
+                .blur(radius: blurPreview ? Self.previewBlurRadius : 0)
         } else {
             ZStack {
                 palette.surface
@@ -791,6 +790,13 @@ private struct TabCard: View {
             }
         }
     }
+
+    /// How far a private preview is smeared. The bar the setting has to meet
+    /// is "cannot tell what the page is": five points softened the shapes but
+    /// left the layout legible, which is a blur the page survives. Thirty
+    /// points destroys the picture outright and leaves only the page's palette
+    /// — the same information a colour swatch would carry.
+    static let previewBlurRadius: CGFloat = 30
 
     /// The live page's own picture.
     private func takeSnapshot() async -> UIImage? {

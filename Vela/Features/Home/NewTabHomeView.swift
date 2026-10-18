@@ -187,7 +187,11 @@ struct NewTabHomeView: View {
     /// The grid the bookmark tiles share — five flexible columns, here and in
     /// the empty state's single-tile grid, so the dashed tile is the same size
     /// either way.
-    static let tileColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
+    static let tileColumnCount = 5
+    static let tileColumns = Array(
+        repeating: GridItem(.flexible(), spacing: 12),
+        count: tileColumnCount
+    )
 
     private var bookmarkBlock: some View {
         CollapsibleSection(
@@ -196,15 +200,54 @@ struct NewTabHomeView: View {
             count: nil,
             isExpanded: $bookmarksExpanded
         ) {
-            LazyVGrid(
-                columns: Self.tileColumns,
-                spacing: 14
-            ) {
-                ForEach(bookmarkNodes) { node in
-                    bookmarkCell(node)
+            // Laid out in eager rows rather than a lazy grid. A lazy grid that
+            // survives a rotation keeps the cell geometry it laid out for the
+            // old width — the stranded-rows failure the tab overview fixes by
+            // re-keying — and the odd misplaced tile after a turn is exactly
+            // that. A favourites collection is short, so laziness buys nothing
+            // here and determinism is worth more. Five slots to a row, the
+            // tail padded with spacers, so every tile keeps the width a full
+            // row gives it however many tiles the last row holds.
+            VStack(spacing: 14) {
+                ForEach(bookmarkRows) { row in
+                    HStack(spacing: 12) {
+                        ForEach(row.slots) { slot in
+                            if let node = slot.node {
+                                bookmarkCell(node)
+                            } else {
+                                addBookmarkTile
+                            }
+                        }
+                        ForEach(0..<(Self.tileColumnCount - row.slots.count), id: \.self) { _ in
+                            Color.clear
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
                 }
-                addBookmarkTile
             }
+        }
+    }
+
+    /// One slot of the favourites grid: a bookmark, or the dashed add tile
+    /// that always trails the collection.
+    private struct BookmarkSlot: Identifiable {
+        let id: String
+        let node: BookmarkNode?
+    }
+
+    /// A row of slots plus how many tiles it holds — the count is what pads
+    /// the row's tail so its tiles keep a full row's width.
+    private struct BookmarkRow: Identifiable {
+        let slots: [BookmarkSlot]
+        var id: String { slots.map(\.id).joined(separator: "-") }
+    }
+
+    /// The favourites and the add tile, chunked into rows of five.
+    private var bookmarkRows: [BookmarkRow] {
+        var slots = bookmarkNodes.map { BookmarkSlot(id: $0.id, node: $0) }
+        slots.append(BookmarkSlot(id: "add-bookmark", node: nil))
+        return stride(from: 0, to: slots.count, by: Self.tileColumnCount).map { start in
+            BookmarkRow(slots: Array(slots[start..<min(start + Self.tileColumnCount, slots.count)]))
         }
     }
 
