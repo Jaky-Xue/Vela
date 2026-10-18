@@ -641,10 +641,14 @@ struct TabsOverviewView: View {
             showPrivateTabs = tabManager.activeTab?.privacyMode == .private
         }
         // The print behind the scrim is the page you came from — unless that
-        // page is private and the lock is on: a blurred private page is still
-        // a private page, and the lock's job is exactly to keep it off screen.
+        // page is private. 无痕模糊 is a blur of the tab cards, and a blurred
+        // print of a private page stretched across the whole surface is not a
+        // card blur: it is the private page itself, on screen, at whatever
+        // detail thirty-two points of blur still leave. The gradient stands in
+        // for it. (The lock's stricter rule — no private page anywhere, cards
+        // included — sits on top of this one.)
         guard let active = tabManager.activeTab, !active.isHome,
-              !(active.privacyMode == .private && isLocked)
+              active.privacyMode != .private
         else { return }
         backgroundPrint = await takeSnapshot(of: active.id)
     }
