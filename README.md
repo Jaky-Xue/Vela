@@ -1,8 +1,31 @@
 # Vela
 
-一个 iOS 原生浏览器。标签页、广告过滤、用户脚本、阅读模式、无痕浏览，全都在，而且全都跑在这台设备上。
+**一个 iOS 原生浏览器。** 标签页、广告过滤、用户脚本、阅读模式、无痕浏览都在，而且全都跑在这台设备上。
+
+[![最新版本](https://img.shields.io/github/v/release/Jaky-Xue/Vela?label=%E4%B8%8B%E8%BD%BD&color=blue)](https://github.com/Jaky-Xue/Vela/releases/latest)
+[![许可证](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+[![平台](https://img.shields.io/badge/iOS-17.0%2B-lightgrey)](https://github.com/Jaky-Xue/Vela/releases/latest)
 
 Vela 用系统 WebKit 渲染网页，不带自己的网络栈，也没有账号体系。没有登录，没有云端，没有遥测——装上去就是一个能用的浏览器，卸载之后不留下任何东西。
+
+---
+
+## 下载与安装
+
+每个版本都在 [**Releases**](https://github.com/Jaky-Xue/Vela/releases/latest) 发布，里面有一份未签名的 `.ipa`，以及 GitHub 自动打包的源码（`Source code (zip)` / `Source code (tar.gz)`）。
+
+iOS 不允许安装没有签名的应用，所以 `.ipa` 需要用自己的 Apple ID 签一次名再装：
+
+1. Windows / macOS 上安装 [Sideloadly](https://sideloadly.io/)（Windows 需要 [官网版 iTunes](https://www.apple.com/itunes/download/win64)，**不能**是 Microsoft Store 版，它不带 Sideloadly 需要的驱动）。
+2. **先**插上 iPhone、解锁、信任这台电脑，**再**打开 Sideloadly。
+3. 把 `Vela-unsigned.ipa` 拖进窗口，填入 Apple ID，点 **Start**。
+4. 手机上到 **设置 ▸ 通用 ▸ VPN 与设备管理** 信任你的开发者证书。
+
+免费 Apple ID 签出的证书 **7 天过期**，过期后应用会闪退，重新签名即可（[AltStore](https://altstore.io/) 可以自动续签）；付费开发者账号签出的证书有效期一年。
+
+完整的 Windows 侧载流程、云 Mac 构建、常见故障排查，见 [`BUILD_WITHOUT_MAC.md`](BUILD_WITHOUT_MAC.md)。
+
+**最低版本：iOS 17.0。**
 
 ---
 
@@ -30,7 +53,7 @@ Vela 用系统 WebKit 渲染网页，不带自己的网络栈，也没有账号�
 
 - 广告与内容过滤：Adblock Plus 语法编译成 `WKContentRuleList`，支持内置规则、远程订阅、自定义规则、站点白名单和元素隐藏
 - 手动隐藏页面元素：元素选择器会生成稳定的 CSS 选择器，跳过 `css-1x2y3z` 这种每次发版都变的类名
-- 用户脚本：元数据块解析、`@match` 与 `@include` 双语法匹配、`GM_*` 值存储、菜单命令、元数据编辑
+- 用户脚本：元数据块解析、`@match` 与 `@include` 双语法匹配、`GM_*` 值存储、菜单命令、元数据编辑；支持从文件安装，按当前页面的 URL 逐次重算匹配结果
 - 阅读模式：按可读性评分提取正文，用原生阅读界面呈现
 - 网页标识：桌面版、手机版或自定义 User-Agent
 
@@ -95,11 +118,9 @@ open Vela.xcodeproj
 3. 如果 `org.vela.browser.ios` 被占用，改成你自己的包名
 4. 连上 iPhone，选为运行目标，⌘R
 
-**手上没有 Mac** 也可以：见 [`BUILD_WITHOUT_MAC.md`](BUILD_WITHOUT_MAC.md)，用 GitHub Actions 的 macOS runner 出未签名的 IPA，再用 Sideloadly 之类的工具用自己的 Apple ID 签名安装。
+**手上没有 Mac** 也可以：见 [`BUILD_WITHOUT_MAC.md`](BUILD_WITHOUT_MAC.md)。仓库里的 GitHub Actions 工作流（[`.github/workflows/build-ios.yml`](.github/workflows/build-ios.yml)）会在 macOS runner 上出未签名的 IPA，Release 里的 `.ipa` 就是这么来的。
 
 工程用的是 Xcode 16 的文件系统同步组（`PBXFileSystemSynchronizedRootGroup`）：往 `Vela/` 里加 `.swift` 文件会自动参与编译，不用改 `project.pbxproj`。
-
-**最低版本**：iOS 17.0。
 
 ### 测试
 
@@ -108,7 +129,7 @@ xcodebuild test -project Vela.xcodeproj -scheme Vela \
   -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
-单元测试在 `VelaTests/`，覆盖的是类型签名保证不了的那部分行为：web view 池（超过上限怎么丢、丢完之后标签页上的前进后退状态怎么清）、地址栏把输入判成网址还是搜索词、标签页对外呈现的身份、历史 URL 的归一化。没有界面测试——界面部分需要的是跑起来看，而不是断言。
+单元测试在 `VelaTests/`，覆盖的是类型签名保证不了的那部分行为：web view 池（超过上限怎么丢、丢完之后标签页上的前进后退状态怎么清）、地址栏把输入判成网址还是搜索词、标签页对外呈现的身份、历史 URL 的归一化、导航与加载状态、页面脚本的装配。没有界面测试——界面部分需要的是跑起来看，而不是断言。
 
 CI 上这是独立的第二个 job，不会挡住 IPA 的产出，原因见 `BUILD_WITHOUT_MAC.md`。
 
