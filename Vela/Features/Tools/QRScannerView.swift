@@ -14,6 +14,7 @@
 
 import SwiftUI
 import VisionKit
+import Vision
 import AVFoundation
 
 /// The camera layer — a representable over the system data scanner.
@@ -56,8 +57,11 @@ private struct CameraScanner: UIViewControllerRepresentable {
 
         func dataScanner(_ dataScanner: DataScannerViewController, didAdd items: [RecognizedItem]) {
             for item in items {
+                // The payload lives on the Vision observation the barcode
+                // carries; this SDK's RecognizedItem.Barcode exposes no
+                // payload reader of its own.
                 if case .barcode(let barcode) = item,
-                   let payload = barcode.payloadString(withEncoding: .utf8),
+                   let payload = barcode.observation.payloadStringValue,
                    payload != lastPayload {
                     lastPayload = payload
                     onRecognize(payload)
@@ -68,7 +72,7 @@ private struct CameraScanner: UIViewControllerRepresentable {
         func dataScanner(_ dataScanner: DataScannerViewController, didRemove items: [RecognizedItem]) {
             for item in items {
                 if case .barcode(let barcode) = item,
-                   let payload = barcode.payloadString(withEncoding: .utf8),
+                   let payload = barcode.observation.payloadStringValue,
                    payload == lastPayload {
                     lastPayload = nil
                 }
