@@ -42,23 +42,6 @@ struct TabsOverviewView: View {
     @State private var isSearching = false
     @State private var searchQuery = ""
     @State private var backgroundPrint: UIImage?
-    /// The overview's own size, re-read on rotation — the shell's safe-area
-    /// reader pattern. The card's aspect derives from this rather than from a
-    /// GeometryReader inside the scroll hierarchy: a reader in the tree is
-    /// measured *by* the layout it feeds, and mid-rotation it hands the layout
-    /// its own intermediate sizes back, which is how a portrait-sized grid
-    /// survived inside a landscape window with its header scrolled away.
-    @State private var containerSize: CGSize = .zero
-    /// The shape the grid's identity is keyed on: the size as it stands once
-    /// the geometry has stopped moving. A rotation animates the container
-    /// through a handful of intermediate sizes, and re-keying on each of them
-    /// tears the grid down and rebuilds it several times inside one rotation —
-    /// the mid-flight churn that reads as cards being cut apart, and the more
-    /// cards there are, the more of them are rebuilt each time. The key moves
-    /// only when the size has held still for a beat, which lands exactly once
-    /// per rotation, after it has finished.
-    @State private var settledShape: CGSize = .zero
-    @State private var settleTask: Task<Void, Never>?
     /// Prints taken this presentation, keyed by tab. A re-key rebuilds every
     /// card on screen, and without this each of them would re-ask its web view
     /// for a picture — the storm that made a rotation of a full grid crawl and
@@ -99,48 +82,17 @@ struct TabsOverviewView: View {
     private var pinnedTabs: [BrowserTabState] { visibleTabs.filter(\.pinned) }
     private var unpinnedTabs: [BrowserTabState] { visibleTabs.filter { !$0.pinned } }
 
-    /// Safari's cards are large — three across on a portrait iPad, four in
-    /// landscape — so the regular width sizes for that. A compact width takes
-    /// the smaller minimum, which is what puts two columns on a phone.
-    /// The overview's columns, plain arithmetic on the measured container.
-    ///
-    /// This used to be a lazy grid's `adaptive` column spec, and the lazy
-    /// grid is what kept breaking: a container change under it leaves rows
-    /// laid out for the old width — four landscape columns drawn across a
-    /// portrait window, clipped on both edges, content size reported so
-    /// wrongly the view would not even scroll. Every failure the overview
-    /// ever reported was that one bug wearing different clothes. Eager rows
-    /// with an explicit width have nothing to remember: each cell re-lays out
-    /// from the same measurement every other part of the layout reads, so the
-    /// grid cannot disagree with the frame it sits in.
-    private var gridAvailableWidth: CGFloat {
-        max(0, containerSize.width - 2 * (BrowserSpacing.regular + 4))
-    }
-
-    private var gridColumnCount: Int {
-        let available = gridAvailableWidth
-        let minimum: CGFloat = horizontalSizeClass == .regular ? 240 : 170
-        guard available > minimum else { return 1 }
-        return max(1, Int((available + BrowserSpacing.loose) / (minimum + BrowserSpacing.loose)))
-    }
-
-    private var gridCellWidth: CGFloat {
-        let available = gridAvailableWidth
-        let count = CGFloat(gridColumnCount)
-        return min(320, (available - BrowserSpacing.loose * (count - 1)) / count)
-    }
-
-    /// The cards chunked into rows of `gridColumnCount`. The tail row keeps
-    /// the shared width because every cell's width is fixed, not stretched —
-    /// no filler slots needed.
+    /// One chunk of the card list: the cards that share a row, at whatever
+    /// width the grid's reader hands down. The tail row keeps the shared
+    /// width because every cell's width is fixed, not stretched.
     private struct TabRow: Identifiable {
         let tabs: [BrowserTabState]
         var id: String { tabs.map(\.id).joined(separator: "-") }
     }
 
-    private var gridRows: [TabRow] {
-        stride(from: 0, to: unpinnedTabs.count, by: gridColumnCount).map { start in
-            TabRow(tabs: Array(unpinnedTabs[start..<min(start + gridColumnCount, unpinnedTabs.count)]))
+    private func gridRows(count: Int) -> [TabRow] {
+        stride(from: 0, to: unpinnedTabs.count, by: count).map { start in
+            TabRow(tabs: Array(unpinnedTabs[start..<min(start + count, unpinnedTabs.count)]))
         }
     }
 
@@ -155,28 +107,6 @@ struct TabsOverviewView: View {
             }
         }
         .environment(\.colorScheme, .dark)
-        .background {
-            GeometryReader { geo in
-                Color.clear
-                    .onAppear {
-                        containerSize = geo.size
-                        settledShape = geo.size
-                    }
-                    .onChange(of: geo.size) { _, size in
-                        containerSize = size
-                        // A re-key is scheduled for when the size holds still.
-                        // Every intermediate size cancels the previous wait,
-                        // so a rotation that animates through several shapes
-                        // pays for exactly one rebuild — the one that matters.
-                        settleTask?.cancel()
-                        settleTask = Task {
-                            try? await Task.sleep(nanoseconds: 400_000_000)
-                            guard !Task.isCancelled else { return }
-                            settledShape = size
-                        }
-                    }
-            }
-        }
         .task { await prepare() }
         .onChange(of: showPrivateTabs) { _, isPrivate in
             // Entering the private grid is what the lock gates, so the unlocked
@@ -519,82 +449,65 @@ struct TabsOverviewView: View {
         .padding(.top, BrowserSpacing.tight)
     }
 
-    /// The card's shape, from the screen's own shape and clamped: wide cards
-    /// in landscape, upright ones in portrait. The ceiling sits where Safari's
-    /// landscape cards do — past it a wide card stops reading as a page and
-    /// starts reading as a letterbox. Read from the live container size, so a
-    /// card tracks the rotation as it animates instead of jumping at its end.
-    private var gridAspect: CGFloat {
-        min(1.5, max(0.72, containerSize.width / max(containerSize.height, 1)))
-    }
-
-    /// The bucket the *settled* shape rounds to, in hundredths. It is the one
-    /// part of the grid's identity that moves with the device's shape: a lazy
-    /// grid that survives a rotation keeps the cell geometry it laid out for
-    /// the old shape, and the rows it has already materialised stay parked
-    /// past the screen's edge. Re-keying rebuilds it at the new shape — but
-    /// only here, once, after the geometry has stopped, never per
-    /// intermediate size.
-    private var shapeBucket: Int {
-        Int((min(1.5, max(0.72, settledShape.width / max(settledShape.height, 1))) * 100).rounded())
-    }
-
-    /// What the scroll view's identity is keyed on: the width class, the mode
-    /// on screen, and the settled shape. The mode is part of it because a mode
-    /// switch swaps the grid's entire contents at once, and an animated swap
-    /// through a lazy grid's diffing is the same torn-rows failure a rotation
-    /// produces — a fresh identity gives the new mode a fresh layout instead
-    /// of a repair of the old one.
-    private var gridIdentity: String {
-        "\(horizontalSizeClass == .regular ? "regular" : "compact")-\(showPrivateTabs ? "private" : "regular")-\(shapeBucket)"
-    }
-
     private var grid: some View {
-        ScrollView {
-            VStack(spacing: BrowserSpacing.loose) {
-                ForEach(gridRows) { row in
-                    HStack(alignment: .top, spacing: BrowserSpacing.loose) {
-                        ForEach(row.tabs) { tab in
-                            TabCard(
-                                tab: tab,
-                                aspect: gridAspect,
-                                cachedSnapshot: { snapshotCache[tab.id] },
-                                storeSnapshot: { cacheSnapshot($0, for: tab.id) },
-                                isActive: tab.id == tabManager.activeTabId,
-                                blurPreview: tab.privacyMode == .private && env.settings.preferences.blurPrivateTabPreviews,
-                                onSelect: { activate(tab) },
-                                onClose: {
-                                    withAnimation(.snappy(duration: 0.25)) {
-                                        tabManager.closeTab(id: tab.id)
+        GeometryReader { geo in
+            // The grid reads its frame straight out of this reader, on every
+            // layout pass. The reader is measured by the shell's own layout —
+            // the one that provably rotates with the window — so the numbers
+            // here cannot be last rotation's. Cached sizes, debounced shape
+            // keys and re-keyed identities were all repairs of a measurement
+            // that kept going stale; nothing is cached any more, so nothing
+            // can go stale.
+            let width = max(0, geo.size.width - 2 * (BrowserSpacing.regular + 4))
+            let minimum: CGFloat = horizontalSizeClass == .regular ? 240 : 170
+            let count = width > minimum
+                ? max(1, Int((width + BrowserSpacing.loose) / (minimum + BrowserSpacing.loose)))
+                : 1
+            let cellWidth = min(
+                320,
+                (width - BrowserSpacing.loose * CGFloat(count - 1)) / CGFloat(count)
+            )
+            // Wide cards in landscape, upright ones in portrait, clamped
+            // where a wide card stops reading as a page and starts reading
+            // as a letterbox.
+            let aspect = min(1.5, max(0.72, geo.size.width / max(geo.size.height, 1)))
+
+            ScrollView {
+                VStack(spacing: BrowserSpacing.loose) {
+                    ForEach(gridRows(count: count)) { row in
+                        HStack(alignment: .top, spacing: BrowserSpacing.loose) {
+                            ForEach(row.tabs) { tab in
+                                TabCard(
+                                    tab: tab,
+                                    aspect: aspect,
+                                    cachedSnapshot: { snapshotCache[tab.id] },
+                                    storeSnapshot: { cacheSnapshot($0, for: tab.id) },
+                                    isActive: tab.id == tabManager.activeTabId,
+                                    blurPreview: tab.privacyMode == .private && env.settings.preferences.blurPrivateTabPreviews,
+                                    onSelect: { activate(tab) },
+                                    onClose: {
+                                        withAnimation(.snappy(duration: 0.25)) {
+                                            tabManager.closeTab(id: tab.id)
+                                        }
+                                    },
+                                    onPin: {
+                                        tabManager.setPinned(!tab.pinned, id: tab.id)
                                     }
-                                },
-                                onPin: {
-                                    tabManager.setPinned(!tab.pinned, id: tab.id)
-                                }
-                            )
-                            .frame(width: gridCellWidth)
+                                )
+                                .frame(width: cellWidth)
+                            }
                         }
                     }
                 }
+                .padding(.horizontal, BrowserSpacing.regular + 4)
+                .padding(.top, BrowserSpacing.regular - 6)
+                .padding(.bottom, BrowserSpacing.loose)
             }
-            .padding(.horizontal, BrowserSpacing.regular + 4)
-            .padding(.top, BrowserSpacing.regular - 6)
-            .padding(.bottom, BrowserSpacing.loose)
+            // A grid shorter than the screen has nothing to scroll, and this
+            // pins it to its top: no bounce, no offset, nothing for a
+            // rotation to leave parked above the header.
+            .scrollBounceBehavior(.basedOnSize)
         }
-        // Rotation and mode switches re-key the scroll view — see
-        // `gridIdentity`. A lazy grid that survives either keeps the cell
-        // geometry it laid out for the old shape, with its already-materialised
-        // rows parked wherever the old width left them; a new identity forces
-        // a fresh layout pass at the new shape instead of a repair of the old
-        // one. The identity moves once per rotation (at the settled shape) and
-        // once per mode switch, never per intermediate size — re-keying on
-        // every size the rotation animates through is what read as the cards
-        // being cut apart mid-turn.
-        .id(gridIdentity)
-        // A grid shorter than the screen has nothing to scroll, and this pins
-        // it to its top: no bounce, no offset, nothing for a rotation to leave
-        // parked above the header.
-        .scrollBounceBehavior(.basedOnSize)
     }
 
     /// Files a print in the presentation's cache, evicting the oldest entry

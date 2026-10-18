@@ -5,106 +5,163 @@
 //  The 扫一扫 surface: the camera live, a frame to aim at, and the first QR
 //  payload it reads handed to the shell.
 //
-//  It rides VisionKit's `DataScannerViewController` rather than AVCapture:
-//  the system scanner brings tracking and the permission plumbing already
-//  tuned, and the browser's job is only to react to what it reads. The
-//  representable is a view-CONTROLLER one — the data scanner is a view
-//  controller, and wrapping it as a view representable fails to compile.
+//  Built on AVCaptureSession directly rather than VisionKit's data scanner:
+//  the scanner's delivery proved unreliable on device, and the capture
+//  pipeline is the one path every QR reader on the platform has run for a
+//  decade — a session, a preview layer, a metadata output, and nothing else
+//  to stand between the code and the callback.
 //
 
 import SwiftUI
-import VisionKit
-import Vision
 import AVFoundation
 
-/// The camera layer — a representable over the system data scanner.
+/// The camera layer. Owns the session, the preview, and the permission ask;
+/// reports what it can and cannot do through `onStatus`.
 private struct CameraScanner: UIViewControllerRepresentable {
     var onRecognize: (String) -> Void
+    var onStatus: (ScannerStatus) -> Void
 
-    func makeUIViewController(context: Context) -> DataScannerViewController {
-        let scanner = DataScannerViewController(
-            recognizedDataTypes: [.barcode(symbologies: [.qr])],
-            qualityLevel: .balanced,
-            recognizesMultipleItems: false,
-            isHighFrameRateTrackingEnabled: true,
-            isPinchToZoomEnabled: true,
-            isGuidanceEnabled: false,
-            isHighlightingEnabled: false
-        )
-        scanner.delegate = context.coordinator
-        return scanner
+    enum ScannerStatus {
+        case running, denied, unavailable
     }
 
-    func updateUIViewController(_ scanner: DataScannerViewController, context: Context) {
-        if !scanner.isScanning {
-            try? scanner.startScanning()
-        }
+    func makeUIViewController(context: Context) -> ScannerController {
+        let controller = ScannerController()
+        controller.onRecognize = onRecognize
+        controller.onStatus = onStatus
+        return controller
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onRecognize: onRecognize)
-    }
+    func updateUIViewController(_ controller: ScannerController, context: Context) {}
 
-    final class Coordinator: NSObject, DataScannerViewControllerDelegate {
-        private let onRecognize: (String) -> Void
+    final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+        var onRecognize: ((String) -> Void)?
+        var onStatus: ((ScannerStatus) -> Void)?
+
+        private let session = AVCaptureSession()
+        private var previewLayer: AVCaptureVideoPreviewLayer?
+        private var sessionConfigured = false
         /// A code held in view is re-reported frame after frame; the first
         /// read wins until it leaves, so one scan is one action.
         private var lastPayload: String?
 
-        init(onRecognize: @escaping (String) -> Void) {
-            self.onRecognize = onRecognize
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .black
+            startIfPossible()
         }
 
-        func dataScanner(_ dataScanner: DataScannerViewController, didAdd items: [RecognizedItem]) {
-            for item in items {
-                // The payload lives on the Vision observation the barcode
-                // carries; this SDK's RecognizedItem.Barcode exposes no
-                // payload reader of its own.
-                if case .barcode(let barcode) = item,
-                   let payload = barcode.observation.payloadStringValue,
-                   payload != lastPayload {
-                    lastPayload = payload
-                    onRecognize(payload)
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            previewLayer?.frame = view.bounds
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            if sessionConfigured {
+                DispatchQueue.global(qos: .userInitiated).async { [session] in
+                    session.stopRunning()
                 }
             }
         }
 
-        func dataScanner(_ dataScanner: DataScannerViewController, didRemove items: [RecognizedItem]) {
-            for item in items {
-                if case .barcode(let barcode) = item,
-                   let payload = barcode.observation.payloadStringValue,
-                   payload == lastPayload {
-                    lastPayload = nil
+        private func startIfPossible() {
+            switch AVCaptureDevice.authorizationStatus(for: .video) {
+            case .authorized:
+                configureAndRun()
+            case .notDetermined:
+                // The ask happens on the controller's own appearance; the
+                // answer comes back on an arbitrary queue and hops to main
+                // to touch the view.
+                AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        if granted {
+                            self.configureAndRun()
+                        } else {
+                            self.onStatus?(.denied)
+                        }
+                    }
+                }
+            default:
+                onStatus?(.denied)
+            }
+        }
+
+        private func configureAndRun() {
+            guard !sessionConfigured else { return }
+            guard let device = AVCaptureDevice.default(for: .video),
+                  let input = try? AVCaptureDeviceInput(device: device),
+                  session.canAddInput(input) else {
+                onStatus?(.unavailable)
+                return
+            }
+            session.beginConfiguration()
+            session.addInput(input)
+            let output = AVCaptureMetadataOutput()
+            guard session.canAddOutput(output) else {
+                session.commitConfiguration()
+                onStatus?(.unavailable)
+                return
+            }
+            output.setMetadataObjectsDelegate(self, queue: .main)
+            output.metadataObjectTypes = [.qr]
+            session.addOutput(output)
+            session.commitConfiguration()
+
+            let preview = AVCaptureVideoPreviewLayer(session: session)
+            preview.videoGravity = .resizeAspectFill
+            preview.frame = view.bounds
+            view.layer.insertSublayer(preview, at: 0)
+            previewLayer = preview
+            sessionConfigured = true
+            onStatus?(.running)
+
+            // Starting touches hardware; off the main thread, as the
+            // documentation asks.
+            DispatchQueue.global(qos: .userInitiated).async { [session] in
+                session.startRunning()
+            }
+        }
+
+        func metadataOutput(
+            _ output: AVCaptureMetadataOutput,
+            didOutput metadataObjects: [AVMetadataObject],
+            from connection: AVCaptureConnection
+        ) {
+            for object in metadataObjects {
+                if let code = object as? AVMetadataMachineReadableCodeObject,
+                   code.type == .qr,
+                   let payload = code.stringValue,
+                   payload != lastPayload {
+                    lastPayload = payload
+                    onRecognize?(payload)
                 }
             }
         }
     }
 }
 
-/// The 扫一扫 layer: camera, a hint line, and the ways the camera can be
-/// unusable said plainly on screen.
+/// The 扫一扫 layer: camera, a viewfinder frame, a hint line, and the ways
+/// the camera can be unusable said plainly on screen.
 struct QRScannerView: View {
     /// Called with the payload of a recognised QR code.
     var onRecognize: (String) -> Void
     var onClose: () -> Void
 
-    @State private var permission: CameraPermission = .notDetermined
-
-    private enum CameraPermission {
-        case notDetermined, granted, denied, unavailable
-    }
+    @State private var status: CameraScanner.ScannerStatus = .running
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            switch permission {
-            case .notDetermined, .granted:
-                // `notDetermined` shows the camera anyway: starting the
-                // scanner is what raises the system's own prompt, and the
-                // answer arrives as the next authorization report.
-                CameraScanner(onRecognize: onRecognize)
-                    .ignoresSafeArea()
+            switch status {
+            case .running:
+                CameraScanner(
+                    onRecognize: onRecognize,
+                    onStatus: { status = $0 }
+                )
+                .ignoresSafeArea()
 
             case .denied:
                 permissionMessage(
@@ -115,7 +172,7 @@ struct QRScannerView: View {
             case .unavailable:
                 permissionMessage(
                     systemImage: "camera.on.rectangle",
-                    text: "此设备不支持相机扫描。"
+                    text: "此设备无法使用相机扫描。"
                 )
             }
 
@@ -139,6 +196,12 @@ struct QRScannerView: View {
 
                 Spacer()
 
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(.white.opacity(0.75), lineWidth: 2)
+                    .frame(width: 250, height: 250)
+
+                Spacer()
+
                 Text("将二维码对准取景框")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.white.opacity(0.85))
@@ -147,24 +210,8 @@ struct QRScannerView: View {
                     .background(.black.opacity(0.45), in: Capsule())
                     .padding(.bottom, 64)
             }
+            .allowsHitTesting(status == .running)
         }
-        .onAppear {
-            permission = Self.checkPermission()
-            if permission == .notDetermined {
-                Task { await awaitAuthorization() }
-            }
-        }
-    }
-
-    /// Re-checks until the system's first-run camera prompt is answered.
-    /// Nothing else announces the answer to SwiftUI, and without this the
-    /// scanner would sit unstarted after the user taps 允许.
-    private func awaitAuthorization() async {
-        for _ in 0..<30 {
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            guard AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined else { break }
-        }
-        permission = Self.checkPermission()
     }
 
     private func permissionMessage(systemImage: String, text: String) -> some View {
@@ -177,25 +224,6 @@ struct QRScannerView: View {
                 .foregroundStyle(.white.opacity(0.85))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
-        }
-    }
-
-    private static func checkPermission() -> CameraPermission {
-        // `isAvailable` is false until the camera is authorized, so it is
-        // only consulted once authorization exists — otherwise a first run
-        // would be told the device does not support scanning before the
-        // system has even asked for permission.
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .denied, .restricted:
-            return .denied
-        case .notDetermined:
-            return .notDetermined
-        case .authorized:
-            return DataScannerViewController.isSupported && DataScannerViewController.isAvailable
-                ? .granted
-                : .unavailable
-        @unknown default:
-            return .unavailable
         }
     }
 }
