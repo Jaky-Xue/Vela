@@ -204,8 +204,12 @@ struct BrowserShellView: View {
         ) { _ in
             Button("好", role: .cancel) { qrCopyNotice = nil }
         } message: { text in
-            Text("内容已复制到剪贴板：
-\(text)")
+            Text(
+                """
+                内容已复制到剪贴板：
+                \(text)
+                """
+            )
         }
         // The keyboard never rearranges the shell. Keyboard avoidance applied
         // to the bar itself does not hold: the bottom-aligned overlay resolves
