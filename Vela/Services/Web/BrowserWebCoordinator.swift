@@ -505,6 +505,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             WebPageScripts.historyApiBridge,
             WebPageScripts.fullscreenBridge,
             WebPageScripts.inlineVideoControlsScript,
+            WebPageScripts.youtubeTapControlsScript,
             WebPageScripts.colorSchemeScript(prefersDark: tab.privacyMode == .private)
         ]
 

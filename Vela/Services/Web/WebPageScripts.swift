@@ -547,6 +547,70 @@ public enum WebPageScripts {
     })();
     """
 
+    // MARK: - Inline video tap
+
+    /// Taps the picture to show the controls rather than to pause.
+    ///
+    /// YouTube's player reads a click on the picture as play/pause. On a phone
+    /// or a tablet that tap means "show me the controls" — the progress bar,
+    /// the play button, the fullscreen button — and a second tap means "put
+    /// them away"; stopping the film belongs to the play button alone. A
+    /// capture-phase listener takes over a tap that lands on the picture
+    /// itself, keeps it from reaching the player's pause path, and toggles the
+    /// control layer, whose visibility YouTube draws as `ytp-autohide` on the
+    /// player element. Taps on the player's own buttons, seek bar, menus and
+    /// end-screen cards are left alone, so every control keeps its job.
+    public static let youtubeTapControlsScript = """
+    (function () {
+      if (window.__velaYouTubeTapControlsInstalled === true) { return; }
+      window.__velaYouTubeTapControlsInstalled = true;
+
+      // Elements that own the tap they receive: the play button, the seek
+      // bar, the settings menu, the end screen, and the player's links.
+      var ownedTapSelector = [
+        '.ytp-button',
+        '.ytp-chrome-controls',
+        '.ytp-progress-bar-container',
+        '.ytp-cued-thumbnail-overlay',
+        '.ytp-pause-overlay',
+        '.ytp-endscreen-content',
+        '.ytp-ce-element',
+        '.ytp-cards-teaser',
+        '.ytp-paid-content-overlay',
+        '.ytp-ad-overlay-container',
+        '.ytp-popup',
+        '.ytp-settings-menu',
+        '.ytp-contextmenu',
+        'button',
+        '[role="button"]',
+        'a[href]',
+        'input',
+        'textarea',
+        'select'
+      ].join(',');
+
+      function toggleControls(player) {
+        if (player.classList.contains('ytp-autohide')) {
+          player.classList.remove('ytp-autohide');
+          player.classList.remove('ytp-hide-controls');
+        } else {
+          player.classList.add('ytp-autohide');
+        }
+      }
+
+      document.addEventListener('click', function (event) {
+        var node = event.target;
+        if (!node || node.nodeType !== 1) { return; }
+        var player = node.closest ? node.closest('.html5-video-player') : null;
+        if (!player) { return; }
+        if (node.closest(ownedTapSelector)) { return; }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        try { toggleControls(player); } catch (error) {}
+      }, true);
+    })();
+    """
+
     // MARK: - Viewport and safe area
 
     /// Reports viewport metrics and applies the bottom safe-area inset.
