@@ -545,7 +545,14 @@ struct BrowserShellView: View {
                     NewTabHomeView(
                         isPrivate: tab.privacyMode == .private,
                         onNavigate: { url in navigate(to: url, in: tab) },
-                        onScroll: { offset in handleScroll(offset: offset) }
+                        onChromeSwipe: { translation in
+                            guard canDragChromeAway else { return }
+                            if translation < -48 {
+                                setChromeHidden(true)
+                            } else if translation > 48 {
+                                setChromeHidden(false)
+                            }
+                        }
                     )
                     .id("home-\(tab.id)")
                     .safeAreaInset(edge: .bottom) {
