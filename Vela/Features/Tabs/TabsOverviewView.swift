@@ -42,15 +42,6 @@ struct TabsOverviewView: View {
     @State private var isSearching = false
     @State private var searchQuery = ""
     @State private var backgroundPrint: UIImage?
-    /// Prints taken this presentation, keyed by tab. A re-key rebuilds every
-    /// card on screen, and without this each of them would re-ask its web view
-    /// for a picture — the storm that made a rotation of a full grid crawl and
-    /// a mode switch show placeholders where pictures had just been. The cache
-    /// bounds itself to roughly a viewport of cards and dies with the
-    /// overview, which is the lifetime a web view's print is trustworthy for
-    /// anyway.
-    @State private var snapshotCache: [String: UIImage] = [:]
-    @State private var snapshotCacheOrder: [String] = []
     @FocusState private var searchFieldFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -82,17 +73,18 @@ struct TabsOverviewView: View {
     private var pinnedTabs: [BrowserTabState] { visibleTabs.filter(\.pinned) }
     private var unpinnedTabs: [BrowserTabState] { visibleTabs.filter { !$0.pinned } }
 
-    /// One chunk of the card list: the cards that share a row, at whatever
-    /// width the grid's reader hands down. The tail row keeps the shared
-    /// width because every cell's width is fixed, not stretched.
+    /// One chunk of the card list: the cards that share a row. The column
+    /// count is part of the identity so a rotation that changes it re-creates
+    /// the rows outright rather than asking SwiftUI to re-diff a changed row.
     private struct TabRow: Identifiable {
+        let count: Int
         let tabs: [BrowserTabState]
-        var id: String { tabs.map(\.id).joined(separator: "-") }
+        var id: String { "\(count)-\(tabs.map(\.id).joined(separator: "-"))" }
     }
 
     private func gridRows(count: Int) -> [TabRow] {
         stride(from: 0, to: unpinnedTabs.count, by: count).map { start in
-            TabRow(tabs: Array(unpinnedTabs[start..<min(start + count, unpinnedTabs.count)]))
+            TabRow(count: count, tabs: Array(unpinnedTabs[start..<min(start + count, unpinnedTabs.count)]))
         }
     }
 
@@ -451,26 +443,20 @@ struct TabsOverviewView: View {
 
     private var grid: some View {
         GeometryReader { geo in
-            // The grid reads its frame straight out of this reader, on every
-            // layout pass. The reader is measured by the shell's own layout —
-            // the one that provably rotates with the window — so the numbers
-            // here cannot be last rotation's. Cached sizes, debounced shape
-            // keys and re-keyed identities were all repairs of a measurement
-            // that kept going stale; nothing is cached any more, so nothing
-            // can go stale.
-            let width = max(0, geo.size.width - 2 * (BrowserSpacing.regular + 4))
+            // The reader is only consulted for two things: how many columns
+            // the width can carry, and the card aspect. The width of each
+            // card is NOT taken from it — cards are flexible and share the
+            // HStack's width out equally, so even a measurement that is one
+            // rotation behind can only change the column COUNT, never push a
+            // card past the screen edge. Fixed-width cells computed from a
+            // stale number were the last layout failure left.
             let minimum: CGFloat = horizontalSizeClass == .regular ? 240 : 170
-            let count = width > minimum
-                ? max(1, Int((width + BrowserSpacing.loose) / (minimum + BrowserSpacing.loose)))
-                : 1
-            let cellWidth = min(
-                320,
-                (width - BrowserSpacing.loose * CGFloat(count - 1)) / CGFloat(count)
-            )
+            let count = max(1, Int((geo.size.width + BrowserSpacing.loose) / (minimum + BrowserSpacing.loose)))
             // Wide cards in landscape, upright ones in portrait, clamped
             // where a wide card stops reading as a page and starts reading
             // as a letterbox.
             let aspect = min(1.5, max(0.72, geo.size.width / max(geo.size.height, 1)))
+            let bucket = Int((aspect * 100).rounded())
 
             ScrollView {
                 VStack(spacing: BrowserSpacing.loose) {
@@ -480,8 +466,7 @@ struct TabsOverviewView: View {
                                 TabCard(
                                     tab: tab,
                                     aspect: aspect,
-                                    cachedSnapshot: { snapshotCache[tab.id] },
-                                    storeSnapshot: { cacheSnapshot($0, for: tab.id) },
+                                    aspectBucket: bucket,
                                     isActive: tab.id == tabManager.activeTabId,
                                     blurPreview: tab.privacyMode == .private && env.settings.preferences.blurPrivateTabPreviews,
                                     onSelect: { activate(tab) },
@@ -494,7 +479,15 @@ struct TabsOverviewView: View {
                                         tabManager.setPinned(!tab.pinned, id: tab.id)
                                     }
                                 )
-                                .frame(width: cellWidth)
+                                .frame(maxWidth: .infinity)
+                            }
+                            // The tail row's empty slots, so its cards keep
+                            // the width a full row would give them instead of
+                            // stretching wide across the leftover space.
+                            ForEach(0..<max(0, count - row.tabs.count), id: \.self) { _ in
+                                Color.clear
+                                    .frame(height: 0)
+                                    .frame(maxWidth: .infinity)
                             }
                         }
                     }
@@ -507,20 +500,19 @@ struct TabsOverviewView: View {
             // pins it to its top: no bounce, no offset, nothing for a
             // rotation to leave parked above the header.
             .scrollBounceBehavior(.basedOnSize)
-        }
-    }
-
-    /// Files a print in the presentation's cache, evicting the oldest entry
-    /// past a viewport's worth — a cache of every tab's print is the overview
-    /// holding several hundred megabytes of decoded page in memory for tabs
-    /// nobody is looking at.
-    private func cacheSnapshot(_ image: UIImage, for tabId: String) {
-        snapshotCacheOrder.removeAll { $0 == tabId }
-        snapshotCacheOrder.append(tabId)
-        snapshotCache[tabId] = image
-        if snapshotCacheOrder.count > 16, let evicted = snapshotCacheOrder.first {
-            snapshotCacheOrder.removeFirst()
-            snapshotCache[evicted] = nil
+            // TEMPORARY diagnostic: one line of the grid's own live numbers,
+            // drawn where the next screenshot of a misbehaviour carries them
+            // out. It goes away once the rotation reports are closed.
+            .overlay(alignment: .topTrailing) {
+                Text("w\(Int(geo.size.width)) h\(Int(geo.size.height)) c\(count) a\(bucket)")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 3)
+                    .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
+                    .padding(.trailing, 4)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
@@ -627,23 +619,21 @@ private struct TabCard: View {
 
     var tab: BrowserTabState
     var aspect: CGFloat
-    /// The presentation's print cache: what this tab's card showed last time
-    /// it was on screen. A re-key rebuilds every card, and reading the cache
-    /// instead of re-asking the web view is what keeps that rebuild instant —
-    /// the print is the same page either way, and the card's frame cover-crops
-    /// it to whatever shape it is drawn at.
-    var cachedSnapshot: () -> UIImage?
-    var storeSnapshot: (UIImage) -> Void
+    /// The shape bucket the print is taken for, in hundredths. When it moves —
+    /// the device rotated — the task re-runs and the print is taken again: a
+    /// portrait print cover-cropped into a landscape card is a picture of the
+    /// wrong slice of the page, which reads as the card being cut apart even
+    /// when its frame is exactly right.
+    var aspectBucket: Int
     var isActive: Bool
     var blurPreview: Bool
     var onSelect: () -> Void
     var onClose: () -> Void
     var onPin: () -> Void
 
-    /// The page's picture, taken once per card appearance from the live web
-    /// view, or restored from the presentation's cache when one exists. A cold
-    /// tab has no web view to ask and keeps its placeholder until it has been
-    /// opened once.
+    /// The page's picture, taken from the live web view. A cold tab has no
+    /// web view to ask and keeps its placeholder until it has been opened
+    /// once.
     @State private var snapshot: UIImage?
 
     var body: some View {
@@ -678,15 +668,9 @@ private struct TabCard: View {
             Button(tab.pinned ? "取消固定" : "固定标签页", systemImage: tab.pinned ? "pin.slash" : "pin", action: onPin)
             Button("关闭标签页", systemImage: "xmark", role: .destructive, action: onClose)
         }
-        .task {
+        .task(id: aspectBucket) {
             guard !tab.isHome else { return }
-            if let cached = cachedSnapshot() {
-                snapshot = cached
-                return
-            }
-            guard let fresh = await takeSnapshot() else { return }
-            snapshot = fresh
-            storeSnapshot(fresh)
+            snapshot = await takeSnapshot()
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tab.displayTitle)

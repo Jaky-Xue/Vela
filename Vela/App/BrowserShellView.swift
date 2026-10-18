@@ -752,11 +752,6 @@ struct BrowserShellView: View {
                 // inert on a disabled button, which is exactly the state with
                 // no history in that direction.
                 .contextMenu { backHistoryMenu }
-
-                chromeButton(symbol: "chevron.right", isEnabled: canGoForward) {
-                    env.webCoordinator.goForward()
-                }
-                .contextMenu { forwardHistoryMenu }
             }
             .padding(.horizontal, 5)
             .frame(height: BrowserChrome.barHeight)
@@ -805,9 +800,7 @@ struct BrowserShellView: View {
             isEnabled ? barForeground : barForeground.opacity(0.35)
         )
         .disabled(!isEnabled)
-        .accessibilityLabel(
-            symbol == "chevron.left" ? "后退" : symbol == "chevron.right" ? "前进" : "菜单"
-        )
+        .accessibilityLabel(symbol == "chevron.left" ? "后退" : "菜单")
     }
 
     // MARK: - Chrome backdrop sampling
@@ -909,30 +902,6 @@ struct BrowserShellView: View {
             let items = Array(webView.backForwardList.backList.suffix(6).reversed())
             if items.isEmpty {
                 Text("没有更早的页面")
-            } else {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    Button {
-                        _ = webView.go(to: item)
-                    } label: {
-                        Label(
-                            item.title?.isEmpty == false
-                                ? item.title!
-                                : (item.url.host ?? item.url.absoluteString),
-                            systemImage: "clock.arrow.circlepath"
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    /// The pages ahead, oldest first, for the forward button's long-press menu.
-    @ViewBuilder
-    private var forwardHistoryMenu: some View {
-        if let tab = activeTab, let webView = tabManager.webView(for: tab.id) {
-            let items = Array(webView.backForwardList.forwardList.prefix(6))
-            if items.isEmpty {
-                Text("没有更晚的页面")
             } else {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     Button {
@@ -1075,18 +1044,6 @@ struct BrowserShellView: View {
         guard let tab = activeTab else { return false }
         if tab.isHome { return !tab.url.isEmpty }
         return true
-    }
-
-    /// Whether the forward button should be live.
-    ///
-    /// Read from the tab's mirrored copy of WebKit's list rather than asked of
-    /// the web view directly, so the chrome is a pure function of observable
-    /// state and re-renders when the list changes. The home surface pins it off
-    /// because the list's position is only meaningful relative to a document
-    /// that is on screen.
-    private var canGoForward: Bool {
-        guard let tab = activeTab, !tab.isHome else { return false }
-        return tab.canGoForward
     }
 
     /// The tallest the suggestion card may grow.

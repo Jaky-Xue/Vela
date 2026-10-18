@@ -241,41 +241,34 @@ struct NewTabHomeView: View {
         CGFloat(env.settings.preferences.homeTileSpacing ?? 12)
     }
 
-    private var tileShape: AnyShape {
+    /// The chosen shape, as the corner radius the icon tile is drawn with.
+    /// A square tile at half its size in radius is a circle, so the three
+    /// settings land on three radii and nothing else about the tile changes.
+    private var tileCornerRadius: CGFloat? {
         switch env.settings.preferences.homeTileShape ?? "rounded" {
-        case "circle": AnyShape(Circle())
-        case "square": AnyShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-        default: AnyShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+        case "circle": return tileIconSize / 2
+        case "square": return 3
+        default: return nil
         }
     }
 
-    /// A bookmark tile: the site's icon on a shaped square, and nothing else —
-    /// the icon is the label, the way a home screen reads. Size, shape and
-    /// spacing answer to 主页 settings.
+    /// A bookmark tile: the site's icon on its own uniform tile, and nothing
+    /// else — the icon is the label, the way a home screen reads. Size, shape
+    /// and spacing answer to 主页 settings; the tile itself is the icon
+    /// component's, so every favourite reads as one shelf of equals.
     private func bookmarkCell(_ node: BookmarkNode) -> some View {
         Button {
             guard let url = BrowserUrlResolver.storedUrl(node.url) else { return }
             onNavigate(url)
         } label: {
-            SiteIconView(host: node.displayHost, size: tileIconSize)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
-                .background(
-                    tileShape.fill(palette.card.opacity(0.6))
-                )
-                .overlay {
-                    tileShape
-                        .stroke(
-                            LinearGradient(
-                                colors: [.white.opacity(0.14), .white.opacity(0.03)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 0.5
-                        )
-                        .allowsHitTesting(false)
-                }
-                .contentShape(tileShape)
+            SiteIconView(
+                host: node.displayHost,
+                size: tileIconSize,
+                cornerRadius: tileCornerRadius
+            )
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1, contentMode: .fit)
+            .contentShape(Rectangle())
         }
         .buttonStyle(HomeTileButtonStyle())
         .contextMenu {

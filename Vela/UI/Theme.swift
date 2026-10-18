@@ -667,57 +667,95 @@ struct SiteIconView: View {
     var host: String
     var size: CGFloat = 28
     var faviconUrl: String?
+    /// The tile's corner radius, when the caller owns the shape the tile sits
+    /// in — the home's favourites pass their chosen shape through here. `nil`
+    /// keeps the component's own proportion of the size.
+    var cornerRadius: CGFloat? = nil
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// The decoded icon, once one of the candidate sources has answered.
+    @State private var image: UIImage?
+
+    /// Decoded icons for this process, keyed by URL. `URLSession`'s own cache
+    /// answers the bytes; this one answers the decode, so a tile that scrolls
+    /// back into view shows instantly.
+    private static let iconCache = NSCache<NSString, UIImage>()
 
     var body: some View {
-        Group {
-            if let resolvedFaviconUrl, let url = URL(string: resolvedFaviconUrl) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFit()
-                } placeholder: {
-                    placeholder
-                }
+        ZStack {
+            RoundedRectangle(cornerRadius: resolvedCornerRadius, style: .continuous)
+                .fill(tileFill)
+
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(size * 0.14)
             } else {
-                placeholder
+                Text(initial)
+                    .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
+                    .foregroundStyle(color)
+                    .minimumScaleFactor(0.6)
             }
         }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
-    }
-
-    /// The icon URL to try, given what the caller knows.
-    ///
-    /// An explicit URL wins. Otherwise the site's own `/favicon.ico` is used,
-    /// which is what most sites serve and the rest answer with a 404 — in which
-    /// case `AsyncImage` reports a failure and the letter swatch is what stays
-    /// on screen. WebKit does not expose a page's declared icon to the host app,
-    /// so there is no better source than the well-known path. Rows are built
-    /// lazily, so this costs one request per icon actually on screen, and the
-    /// shared URL cache answers the repeats.
-    private var resolvedFaviconUrl: String? {
-        if let faviconUrl, !faviconUrl.isEmpty { return faviconUrl }
-        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.contains(".") else { return nil }
-        return "https://\(trimmed)/favicon.ico"
-    }
-
-    private var placeholder: some View {
-        ZStack {
-            LinearGradient(
-                colors: [color.opacity(0.82), color],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Text(initial)
-                .font(.system(size: size * 0.46, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.22), radius: 1, y: 1)
-        }
         .overlay {
-            // A rim that catches the light keeps the swatch from reading as a
-            // flat block of colour against a white card.
-            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-                .strokeBorder(.white.opacity(0.22), lineWidth: 0.5)
+            // A hairline that keeps the tile reading as a tile over any
+            // backdrop, the way Via's tiles hold their edge on a picture.
+            RoundedRectangle(cornerRadius: resolvedCornerRadius, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         }
+        .frame(width: size, height: size)
+        .task(id: "\(host)|\(faviconUrl ?? "")") {
+            await loadIcon()
+        }
+    }
+
+    private var resolvedCornerRadius: CGFloat {
+        cornerRadius ?? size * 0.22
+    }
+
+    /// The tile every icon rides: one quiet neutral, so a grid of them reads
+    /// as a shelf of equals — the uniformity the reference home has — instead
+    /// of every favicon arriving on whatever backdrop its own alpha implies.
+    private var tileFill: Color {
+        colorScheme == .dark ? Color(white: 0.17) : Color(white: 0.94)
+    }
+
+    /// Walks the candidate sources in order and keeps the first one that
+    /// decodes.
+    ///
+    /// `/apple-touch-icon.png` comes before `/favicon.ico` because it is the
+    /// icon the site built for a home screen — usually 152-180 pixels, which
+    /// stays sharp at 40 points, where a 16-or-32-pixel `.ico` is mush. An
+    /// explicit URL from the page itself outranks both.
+    private func loadIcon() async {
+        for candidate in candidateUrls {
+            guard let url = candidate else { continue }
+            if let cached = Self.iconCache.object(forKey: url.absoluteString as NSString) {
+                image = cached
+                return
+            }
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let decoded = UIImage(data: data) else { continue }
+            Self.iconCache.setObject(decoded, forKey: url.absoluteString as NSString)
+            image = decoded
+            return
+        }
+    }
+
+    /// The URLs to try, strongest first.
+    private var candidateUrls: [URL?] {
+        var urls: [URL?] = []
+        if let faviconUrl, !faviconUrl.isEmpty {
+            urls.append(URL(string: faviconUrl))
+        }
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, trimmed.contains(".") {
+            urls.append(URL(string: "https://\(trimmed)/apple-touch-icon.png"))
+            urls.append(URL(string: "https://\(trimmed)/favicon.ico"))
+        }
+        return urls
     }
 
     private var initial: String {
@@ -728,9 +766,9 @@ struct SiteIconView: View {
     /// A stable hue from the host. FNV-1a rather than `hashValue`, which is
     /// seeded per process and would make a site change colour between launches.
     ///
-    /// The saturation and brightness are pinned to values that leave white text
-    /// legible on top, in both appearances, which is why the swatch is not
-    /// derived from the palette.
+    /// The hue colours the letter only — the tile stays neutral — so sites
+    /// without an icon stay distinguishable without breaking the grid's
+    /// uniform backdrop.
     private var color: Color {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325
         for byte in host.lowercased().utf8 {
