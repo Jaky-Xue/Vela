@@ -225,6 +225,25 @@ public enum WebPageScripts {
         }
       }
 
+      // WebKit ships its own caption mirror for YouTube: a forced track named
+      // 'YouTube Captions' whose cues it keeps in step with the player and
+      // positions where the page drew them. When that track is present our own
+      // mirror is a second copy of the same sentence — two identical lines in
+      // the native player — so the mirror reuses WebKit's track instead.
+      function externalCaptionTrack(video, mirror) {
+        var tracks = video.textTracks;
+        if (!tracks) { return null; }
+        for (var i = 0; i < tracks.length; i++) {
+          var track = tracks[i];
+          if (track === mirror) { continue; }
+          var looksLikeMirror = track.kind === 'forced' ||
+            (track.label && /youtube|captions/i.test(track.label));
+          if (!looksLikeMirror) { continue; }
+          if (track.cues && track.cues.length > 0) { return track; }
+        }
+        return null;
+      }
+
       function clearMirrorCues(track) {
         if (!track || !track.cues) { return; }
         while (track.cues.length > 0) {
@@ -240,6 +259,10 @@ public enum WebPageScripts {
         restoreRealCaptionTracks(video);
         var track = video.__velaCaptionMirrorTrack;
         if (!track) { return; }
+        if (video.__velaCaptionMirrorExternal === true) {
+          try { track.mode = 'hidden'; } catch (error) {}
+          return;
+        }
         clearMirrorCues(track);
         try { track.mode = 'disabled'; } catch (error) {}
       }
@@ -256,16 +279,22 @@ public enum WebPageScripts {
         if (typeof video.addTextTrack !== 'function') { return; }
         var track = video.__velaCaptionMirrorTrack;
         if (!track) {
-          // `forced` is the kind WebKit's own caption mirror uses, and the
-          // native player draws it without a menu choice; a WebKit that
-          // refuses the kind still gets an ordinary captions track.
-          try {
-            track = video.addTextTrack('forced', '字幕', 'und');
-          } catch (error) {
-            try { track = video.addTextTrack('captions', '字幕', 'und'); } catch (error) { return; }
+          track = externalCaptionTrack(video, null);
+          if (track) {
+            video.__velaCaptionMirrorExternal = true;
+          } else {
+            // `forced` is the kind WebKit's own caption mirror uses, and the
+            // native player draws it without a menu choice; a WebKit that
+            // refuses the kind still gets an ordinary captions track.
+            try {
+              track = video.addTextTrack('forced', '字幕', 'und');
+            } catch (error) {
+              try { track = video.addTextTrack('captions', '字幕', 'und'); } catch (error) { return; }
+            }
           }
           video.__velaCaptionMirrorTrack = track;
         }
+        var external = video.__velaCaptionMirrorExternal === true;
         try { track.mode = 'hidden'; } catch (error) {}
         var startedAt = Date.now();
         var painted = null;
@@ -277,9 +306,21 @@ public enum WebPageScripts {
             stopCaptionMirror(video);
             return;
           }
+          var other = externalCaptionTrack(video, track);
+          if (other) {
+            if (!external) {
+              external = true;
+              video.__velaCaptionMirrorExternal = true;
+              clearMirrorCues(track);
+              try { track.mode = 'disabled'; } catch (error) {}
+              track = other;
+              video.__velaCaptionMirrorTrack = track;
+            }
+          }
           if (mode && mode !== 'inline' && track.mode !== 'showing') {
             try { track.mode = 'showing'; } catch (error) {}
           }
+          if (external) { return; }
           // Inside the native presentation the page's overlay is behind the
           // player and may be hidden outright, so text counts there whether
           // or not it is painted. Inline it has to be visible: a player keeps
