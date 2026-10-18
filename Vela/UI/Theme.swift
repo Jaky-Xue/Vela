@@ -342,7 +342,7 @@ enum BrowserChrome {
     /// The gap between the command bar and the page below it.
     static let barGap: CGFloat = 8
     /// The command bar's own height.
-    static let barHeight: CGFloat = 44
+    static let barHeight: CGFloat = 40
     /// The chrome's total height measured below the status bar, from the top of
     /// the safe area to where the page begins. This is the number the web
     /// view's top content inset is set to, and the number every surface that

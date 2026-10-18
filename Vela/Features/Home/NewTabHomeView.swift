@@ -71,7 +71,6 @@ struct NewTabHomeView: View {
 
     @State private var bookmarkNodes: [BookmarkNode] = []
     @State private var recentlyClosed: [RecentlyClosedTabRecord] = []
-    @State private var showAddBookmark = false
     /// The custom background, reloaded whenever the settings document's stamp
     /// moves — which happens the moment a picture is saved or cleared behind
     /// the settings sheet, so the change is live without leaving the screen.
@@ -96,21 +95,16 @@ struct NewTabHomeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 2)
                 }
-                if bookmarkNodes.isEmpty {
-                    // No bookmarks yet: the dashed add tile alone. A header
-                    // over an empty grid is furniture for a collection that
-                    // does not exist, and the recently-closed list is noise
-                    // on a surface the user is seeing for the first time —
-                    // both come back the moment the first bookmark does.
-                    LazyVGrid(
-                        columns: Self.tileColumns,
-                        spacing: 14
-                    ) {
-                        addBookmarkTile
-                    }
-                } else {
+                // The home carries what the user has saved: the favourites
+                // grid, and the recently-closed list behind it. There is no
+                // add tile — a bookmark joins the home when it is added, so
+                // an empty collection hides its section rather than offering
+                // a control the flow no longer needs.
+                if !bookmarkNodes.isEmpty {
                     bookmarkBlock
-                    if !recentlyClosed.isEmpty { recentlyClosedBlock }
+                }
+                if !recentlyClosed.isEmpty {
+                    recentlyClosedBlock
                 }
             }
             .padding(.horizontal, BrowserSpacing.regular)
@@ -132,17 +126,6 @@ struct NewTabHomeView: View {
         }
         .onAppear {
             loadBookmarks()
-        }
-        .sheet(isPresented: $showAddBookmark) {
-            AddBookmarkSheet { url, title in
-                let node = env.bookmarks.addBookmark(url: url, title: title, parentNodeId: nil)
-                // Added from the home tile, so it belongs on the home surface —
-                // whether the store created it or the bookmark already existed.
-                if let id = node?.id ?? env.bookmarks.bookmark(for: url)?.id {
-                    HomeBookmarkStore.add(id)
-                }
-                loadBookmarks()
-            }
         }
     }
 
@@ -202,14 +185,9 @@ struct NewTabHomeView: View {
         bookmarkNodes = all.filter { homeIds.contains($0.id) }
     }
 
-    /// The grid the bookmark tiles share — five flexible columns, here and in
-    /// the empty state's single-tile grid, so the dashed tile is the same size
-    /// either way.
+    /// The favourites grid's row width, in tiles — five flexible slots, what
+    /// a home screen's density reads as.
     static let tileColumnCount = 5
-    static let tileColumns = Array(
-        repeating: GridItem(.flexible(), spacing: 12),
-        count: tileColumnCount
-    )
 
     private var bookmarkBlock: some View {
         CollapsibleSection(
@@ -229,14 +207,10 @@ struct NewTabHomeView: View {
             VStack(spacing: tileSpacing) {
                 ForEach(bookmarkRows) { row in
                     HStack(spacing: tileSpacing) {
-                        ForEach(row.slots) { slot in
-                            if let node = slot.node {
-                                bookmarkCell(node)
-                            } else {
-                                addBookmarkTile
-                            }
+                        ForEach(row.nodes) { node in
+                            bookmarkCell(node)
                         }
-                        ForEach(0..<(Self.tileColumnCount - row.slots.count), id: \.self) { _ in
+                        ForEach(0..<(Self.tileColumnCount - row.nodes.count), id: \.self) { _ in
                             Color.clear
                                 .frame(maxWidth: .infinity)
                         }
@@ -246,26 +220,15 @@ struct NewTabHomeView: View {
         }
     }
 
-    /// One slot of the favourites grid: a bookmark, or the dashed add tile
-    /// that always trails the collection.
-    private struct BookmarkSlot: Identifiable {
-        let id: String
-        let node: BookmarkNode?
-    }
-
-    /// A row of slots plus how many tiles it holds — the count is what pads
-    /// the row's tail so its tiles keep a full row's width.
+    /// The favourites chunked into rows of five.
     private struct BookmarkRow: Identifiable {
-        let slots: [BookmarkSlot]
-        var id: String { slots.map(\.id).joined(separator: "-") }
+        let nodes: [BookmarkNode]
+        var id: String { nodes.map(\.id).joined(separator: "-") }
     }
 
-    /// The favourites and the add tile, chunked into rows of five.
     private var bookmarkRows: [BookmarkRow] {
-        var slots = bookmarkNodes.map { BookmarkSlot(id: $0.id, node: $0) }
-        slots.append(BookmarkSlot(id: "add-bookmark", node: nil))
-        return stride(from: 0, to: slots.count, by: Self.tileColumnCount).map { start in
-            BookmarkRow(slots: Array(slots[start..<min(start + Self.tileColumnCount, slots.count)]))
+        stride(from: 0, to: bookmarkNodes.count, by: Self.tileColumnCount).map { start in
+            BookmarkRow(nodes: Array(bookmarkNodes[start..<min(start + Self.tileColumnCount, bookmarkNodes.count)]))
         }
     }
 
@@ -334,32 +297,6 @@ struct NewTabHomeView: View {
             }
         }
         .accessibilityLabel(node.title.isEmpty ? node.displayHost : node.title)
-    }
-
-    /// The tile that saves a new bookmark.
-    private var addBookmarkTile: some View {
-        Button {
-            showAddBookmark = true
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(palette.secondaryText)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
-                .background(
-                    tileShape.fill(palette.card.opacity(0.2))
-                )
-                .overlay {
-                    tileShape
-                        .stroke(
-                            palette.secondaryText.opacity(0.35),
-                            style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-                        )
-                }
-                .contentShape(tileShape)
-        }
-        .buttonStyle(HomeTileButtonStyle())
-        .accessibilityLabel("添加书签")
     }
 
     // MARK: - Recently closed
@@ -435,78 +372,6 @@ struct NewTabHomeView: View {
 
 /// The form behind the "添加" tile.
 ///
-/// Two fields, because a bookmark is a name and an address. The name is
-/// optional — an untitled bookmark takes its host, which is what the tiles
-/// show anyway.
-private struct AddBookmarkSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var onAdd: (String, String) -> Void
-
-    @State private var urlText = ""
-    @State private var title = ""
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("example.com", text: $urlText)
-                        .keyboardType(.URL)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                } header: {
-                    Text("网址")
-                }
-
-                Section {
-                    TextField("默认取自网址", text: $title)
-                } header: {
-                    Text("名称")
-                }
-
-                if !urlText.isEmpty && resolvedUrl == nil {
-                    Text("请输入有效的网址。")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
-            }
-            .navigationTitle("添加书签")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("添加") { commit() }
-                        .disabled(resolvedUrl == nil)
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
-
-    /// The address as it would be saved: schemeless input is assumed to be
-    /// https, and anything the browser could not navigate to is refused here
-    /// rather than after it lands on the tab.
-    private var resolvedUrl: URL? {
-        var trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        if !trimmed.contains("://") { trimmed = "https://" + trimmed }
-        guard let url = URL(string: trimmed),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http",
-              !(url.host ?? "").isEmpty else { return nil }
-        return url
-    }
-
-    private func commit() {
-        guard let url = resolvedUrl else { return }
-        let name = title.trimmingCharacters(in: .whitespaces)
-        onAdd(url.absoluteString, name.isEmpty ? (url.host ?? url.absoluteString) : name)
-        dismiss()
-    }
-}
-
 /// The press feedback for a home tile.
 private struct HomeTileButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

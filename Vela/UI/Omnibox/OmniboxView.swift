@@ -145,7 +145,7 @@ struct OmniboxView: View {
                     .accessibilityHint("打开地址栏以输入网址或搜索")
             }
         }
-        .frame(height: BrowserChrome.barHeight - 14)
+        .frame(height: BrowserChrome.barHeight - 8)
     }
 
     // MARK: - Accessories

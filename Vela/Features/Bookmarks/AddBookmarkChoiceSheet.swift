@@ -21,7 +21,9 @@ struct AddBookmarkChoiceSheet: View {
     var title: String
 
     @State private var chosenRole: BookmarkRootRole = .toolbar
-    @State private var addToHome = false
+    // The home carries every bookmark by default now — the surface's own add
+    // tile is gone, so this toggle is the one way to keep a bookmark off it.
+    @State private var addToHome = true
 
     var body: some View {
         VStack(spacing: 0) {
