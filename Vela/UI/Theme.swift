@@ -728,28 +728,44 @@ struct SiteIconView: View {
         colorScheme == .dark ? Color(white: 0.17) : Color(white: 0.94)
     }
 
+    /// A source is good enough when its long edge covers the tile at 3x.
+    /// Anything smaller is remembered and used only when nothing better
+    /// answers — a 16-pixel favicon is still the site's mark, just a soft
+    /// one, and it beats a letter placeholder.
+    private static let sharpIconEdge: CGFloat = 96
+
     /// Walks the candidate sources in order and keeps the first one that
-    /// decodes.
+    /// decodes at a usable resolution.
     ///
-    /// `/apple-touch-icon.png` comes before `/favicon.ico` because it is the
-    /// icon the site built for a home screen — usually 152-180 pixels, which
-    /// stays sharp at 40 points, where a 16-or-32-pixel `.ico` is mush. An
-    /// explicit URL from the page itself outranks both.
+    /// `/apple-touch-icon.png` comes first because it is the icon the site
+    /// built for a home screen — usually 152-180 pixels, which stays sharp at
+    /// 40 points, where a 16-or-32-pixel `.ico` is mush. The favicon service
+    /// answers for the sites that publish no touch icon at all. An explicit
+    /// URL from the page outranks everything.
     private func loadIcon() async {
         image = nil
+        var fallback: UIImage?
         for candidate in candidateUrls {
             guard let url = candidate else { continue }
             if let cached = Self.iconCache.object(forKey: url.absoluteString as NSString) {
-                image = cached
-                return
+                if max(cached.size.width, cached.size.height) >= Self.sharpIconEdge {
+                    image = cached
+                    return
+                }
+                if fallback == nil { fallback = cached }
+                continue
             }
             guard let (data, _) = try? await URLSession.shared.data(from: url),
                   let decoded = UIImage(data: data) else { continue }
             let prepared = Self.trimmedToOpaqueBounds(decoded)
             Self.iconCache.setObject(prepared, forKey: url.absoluteString as NSString)
-            image = prepared
-            return
+            if max(prepared.size.width, prepared.size.height) >= Self.sharpIconEdge {
+                image = prepared
+                return
+            }
+            if fallback == nil { fallback = prepared }
         }
+        image = fallback
     }
 
     /// The icon cropped to the pixels that actually paint.
@@ -812,6 +828,14 @@ struct SiteIconView: View {
     }
 
     /// The URLs to try, strongest first.
+    ///
+    /// The site's home-screen icon comes first, then the favicon service:
+    /// a site's own `favicon.ico` is routinely 16 pixels (YouTube's is
+    /// exactly that), and a 16-pixel mark blown up into a 40-point tile is
+    /// the blur the grid showed. The service answers with the largest
+    /// rendition it holds — 128-256 pixels for the sites that matter — and
+    /// the site's own `.ico` is kept as the last resort for a network where
+    /// the service cannot be reached.
     private var candidateUrls: [URL?] {
         var urls: [URL?] = []
         if let faviconUrl, !faviconUrl.isEmpty {
@@ -820,6 +844,8 @@ struct SiteIconView: View {
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty, trimmed.contains(".") {
             urls.append(URL(string: "https://\(trimmed)/apple-touch-icon.png"))
+            urls.append(URL(string: "https://\(trimmed)/apple-touch-icon-precomposed.png"))
+            urls.append(URL(string: "https://www.google.com/s2/favicons?sz=256&domain=\(trimmed)"))
             urls.append(URL(string: "https://\(trimmed)/favicon.ico"))
         }
         return urls
