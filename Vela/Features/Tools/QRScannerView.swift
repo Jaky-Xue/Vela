@@ -7,7 +7,9 @@
 //
 //  It rides VisionKit's `DataScannerViewController` rather than AVCapture:
 //  the system scanner brings tracking and the permission plumbing already
-//  tuned, and the browser's job is only to react to what it reads.
+//  tuned, and the browser's job is only to react to what it reads. The
+//  representable is a view-CONTROLLER one — the data scanner is a view
+//  controller, and wrapping it as a view representable fails to compile.
 //
 
 import SwiftUI
@@ -15,10 +17,10 @@ import VisionKit
 import AVFoundation
 
 /// The camera layer — a representable over the system data scanner.
-private struct CameraScanner: UIViewRepresentable {
+private struct CameraScanner: UIViewControllerRepresentable {
     var onRecognize: (String) -> Void
 
-    func makeUIView(context: Context) -> DataScannerViewController {
+    func makeUIViewController(context: Context) -> DataScannerViewController {
         let scanner = DataScannerViewController(
             recognizedDataTypes: [.barcode(symbologies: [.qr])],
             qualityLevel: .balanced,
@@ -29,12 +31,10 @@ private struct CameraScanner: UIViewRepresentable {
             isHighlightingEnabled: false
         )
         scanner.delegate = context.coordinator
-        // Starting is the app's job, and it needs the view in a window; the
-        // first `updateUIView` after insertion is that moment.
         return scanner
     }
 
-    func updateUIView(_ scanner: DataScannerViewController, context: Context) {
+    func updateUIViewController(_ scanner: DataScannerViewController, context: Context) {
         if !scanner.isScanning {
             try? scanner.startScanning()
         }
@@ -57,7 +57,7 @@ private struct CameraScanner: UIViewRepresentable {
         func dataScanner(_ dataScanner: DataScannerViewController, didAdd items: [RecognizedItem]) {
             for item in items {
                 if case .barcode(let barcode) = item,
-                   let payload = barcode.payloadString(withEncoding: .utf8) ?? barcode.payloadString,
+                   let payload = String(data: barcode.payload, encoding: .utf8),
                    payload != lastPayload {
                     lastPayload = payload
                     onRecognize(payload)
@@ -68,7 +68,8 @@ private struct CameraScanner: UIViewRepresentable {
         func dataScanner(_ dataScanner: DataScannerViewController, didRemove items: [RecognizedItem]) {
             for item in items {
                 if case .barcode(let barcode) = item,
-                   barcode.payloadString == lastPayload {
+                   let payload = String(data: barcode.payload, encoding: .utf8),
+                   payload == lastPayload {
                     lastPayload = nil
                 }
             }
