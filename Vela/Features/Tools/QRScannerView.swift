@@ -58,6 +58,18 @@ private struct CameraScanner: UIViewControllerRepresentable {
 
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
+            stopSession()
+        }
+
+        /// SwiftUI can tear the layer down without walking its appearance
+        /// callbacks, so the session's stop lives here too — a camera that
+        /// keeps running after the scanner is gone is exactly the kind of
+        /// quiet leak that reads as a broken scanner the next time.
+        deinit {
+            session.stopRunning()
+        }
+
+        private func stopSession() {
             if sessionConfigured {
                 DispatchQueue.global(qos: .userInitiated).async { [session] in
                     session.stopRunning()
@@ -104,9 +116,16 @@ private struct CameraScanner: UIViewControllerRepresentable {
                 onStatus?(.unavailable)
                 return
             }
-            output.setMetadataObjectsDelegate(self, queue: .main)
-            output.metadataObjectTypes = [.qr]
+            // The output joins the session BEFORE its object types are named:
+            // the available types are decided by the connection, and setting
+            // them on an unconnected output raises an exception — the crash
+            // the scanner opened with on a device whose permission was
+            // already granted.
             session.addOutput(output)
+            output.setMetadataObjectsDelegate(self, queue: .main)
+            if output.availableMetadataObjectTypes.contains(.qr) {
+                output.metadataObjectTypes = [.qr]
+            }
             session.commitConfiguration()
 
             let preview = AVCaptureVideoPreviewLayer(session: session)
