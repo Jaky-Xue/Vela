@@ -22,9 +22,15 @@
 //
 
 import Foundation
+import ObjectiveC
 import UIKit
 import WebKit
 import Observation
+
+/// Association key for the user scripts last attached to one web view, so the
+/// next navigation can take them off again before attaching its own set. A
+/// file-scope variable gives the runtime a stable address to key on.
+private var velaUserScriptsAssociationKey: UInt8 = 0
 
 @MainActor
 @Observable
@@ -468,6 +474,53 @@ public final class BrowserWebCoordinator: NSObject {
         webView.evaluateJavaScript(WebPageScripts.clearFindInPageScript)
         overlays.findResult = FindResult(count: 0, index: -1)
     }
+
+    /// Recomputes the user scripts attached to a web view for the page it is
+    /// about to load.
+    ///
+    /// WebKit copies the content controller's scripts when the document starts
+    /// loading, and the navigation policy callback runs before that, so this is
+    /// the last point at which the set can be corrected for the page being
+    /// visited. It runs for every main-frame navigation — including a reload —
+    /// which is what lets a script installed a moment ago take effect without
+    /// rebuilding the web view.
+    @MainActor
+    private func refreshUserScripts(webView: WKWebView, tab: BrowserTabState, url: URL) {
+        let controller = webView.configuration.userContentController
+        let previous = objc_getAssociatedObject(webView, &velaUserScriptsAssociationKey) as? [WKUserScript] ?? []
+        for script in previous {
+            controller.removeUserScript(script)
+        }
+
+        var attached: [WKUserScript] = []
+        if settings.preferences.userScriptsEnabled, tab.privacyMode != .private {
+            let installed = (try? userScripts.enabledScripts()) ?? []
+            let matching = UserScriptMatcher.matchingScripts(in: installed, url: url)
+            if !matching.isEmpty {
+                var values: [String: [String: String]] = [:]
+                for script in matching {
+                    values[script.id] = (try? userScripts.allValues(scriptId: script.id)) ?? [:]
+                }
+                attached = UserScriptInjector.makeUserScripts(
+                    for: matching,
+                    url: url,
+                    valuesByScriptId: values
+                ).scripts
+                for script in attached {
+                    controller.addUserScript(script)
+                }
+            }
+        }
+        // Held with the web view, so a discarded tab takes its script list
+        // with it instead of leaving an entry in a coordinator-wide table.
+        objc_setAssociatedObject(
+            webView,
+            &velaUserScriptsAssociationKey,
+            attached,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+    }
+
 }
 
 // MARK: - Configuration providing
@@ -580,26 +633,11 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             controller.add(list)
         }
 
-        // User scripts for this URL.
-        if settings.preferences.userScriptsEnabled, tab.privacyMode != .private,
-           let url = URL(string: tab.url) {
-            let installed = (try? userScripts.enabledScripts()) ?? []
-            let matching = UserScriptMatcher.matchingScripts(in: installed, url: url)
-            if !matching.isEmpty {
-                var values: [String: [String: String]] = [:]
-                for script in matching {
-                    values[script.id] = (try? userScripts.allValues(scriptId: script.id)) ?? [:]
-                }
-                let built = UserScriptInjector.makeUserScripts(
-                    for: matching,
-                    url: url,
-                    valuesByScriptId: values
-                )
-                for script in built.scripts {
-                    controller.addUserScript(script)
-                }
-            }
-        }
+        // User scripts are attached per navigation by `refreshUserScripts`,
+        // not here. Choosing them once, from the URL the tab had when this
+        // configuration was built, is what made a script installed afterwards
+        // never run and a script that matched the first page keep running on
+        // every page after it.
 
         if overlays.isElementPickerArmed {
             controller.addUserScript(
@@ -792,6 +830,10 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         guard navigationAction.targetFrame?.isMainFrame != false else {
             return .allow
         }
+
+        // The scripts belong to this page, so they are chosen here, for this
+        // URL, before WebKit starts the document.
+        refreshUserScripts(webView: webView, tab: tab, url: url)
 
         // 4. A tapped universal link on a registered app-link domain is
         //    rewritten onto the web page instead of into the installed app —
@@ -1030,6 +1072,14 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         let serial = nextNavigationSerial
         nextNavigationSerial += 1
         let url = webView.url?.absoluteString ?? tab.pendingUrl
+
+        // The policy callback attaches the scripts; attaching again here, at
+        // the start of the load itself, is the belt to that suspenders — a
+        // navigation that reached WebKit from a path without a policy pass
+        // still gets the page's scripts before its document is built.
+        if let target = URL(string: url) {
+            refreshUserScripts(webView: webView, tab: tab, url: target)
+        }
         traces[ObjectIdentifier(webView)] = NavigationTrace(
             webView: webView,
             navigation: navigation,

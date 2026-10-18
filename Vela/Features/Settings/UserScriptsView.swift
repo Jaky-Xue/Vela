@@ -130,13 +130,6 @@ struct UserScriptsView: View {
         .sheet(isPresented: $showingInstall) {
             installSheet
         }
-        .fileImporter(
-            isPresented: $showingFilePicker,
-            allowedContentTypes: [.javaScript, .plainText, .data],
-            allowsMultipleSelection: false
-        ) { result in
-            handleFileImport(result)
-        }
     }
 
     // MARK: - Install
@@ -207,6 +200,16 @@ struct UserScriptsView: View {
             }
             .navigationTitle("安装用户脚本")
             .navigationBarTitleDisplayMode(.inline)
+            // The picker is presented from the sheet, not from the list
+            // behind it: a presentation asked for by a covered view does not
+            // appear, which is why choosing a file did nothing at all.
+            .fileImporter(
+                isPresented: $showingFilePicker,
+                allowedContentTypes: [.javaScript, .plainText, .data],
+                allowsMultipleSelection: false
+            ) { result in
+                handleFileImport(result)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") {
@@ -304,7 +307,16 @@ struct UserScriptsView: View {
             let needsScope = url.startAccessingSecurityScopedResource()
             defer { if needsScope { url.stopAccessingSecurityScopedResource() } }
             do {
-                let text = try String(contentsOf: url, encoding: .utf8)
+                // Files arrive as bytes, not text: a script saved by an editor
+                // as UTF-16 or with a byte-order mark used to fail here as if
+                // the file were unreadable.
+                let data = try Data(contentsOf: url)
+                guard let text = String(data: data, encoding: .utf8)
+                    ?? String(data: data, encoding: .utf16)
+                    ?? String(data: data, encoding: .isoLatin1) else {
+                    installError = "无法读取文件：编码不受支持。"
+                    return
+                }
                 install(text: text, source: .file, sourceUrl: url.absoluteString)
             } catch {
                 installError = "无法读取文件：\(error.localizedDescription)"
