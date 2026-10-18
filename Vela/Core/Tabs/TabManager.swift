@@ -107,19 +107,15 @@ public final class TabManager {
         tabs.filter { $0.privacyMode == .private }
     }
 
-    /// The number of tabs the surfaces present.
+    /// The number of tabs one mode presents — what the overview's mode
+    /// segment and the bar's tab button both show.
     ///
     /// Home tabs are the strip's filler, not its content — the overview does
-    /// not list one while real tabs exist — so the count a badge shows is the
-    /// count of real tabs, or one when only a home tab remains, which is the
-    /// one card the overview does show.
-    public var displayedTabCount: Int {
-        let realTabs = tabs.filter { !$0.isHome }
-        return realTabs.isEmpty ? (tabs.isEmpty ? 0 : 1) : realTabs.count
-    }
-
-    /// The same count, for one privacy mode — what the overview's mode
-    /// segment for that mode shows.
+    /// not list one while real tabs exist — so the count is the count of real
+    /// tabs, or one when only a home tab remains, which is the one card the
+    /// overview does show. There is deliberately no all-modes total: the
+    /// regular and private strips are separate surfaces, and a number summing
+    /// them matches none of them.
     public func displayedTabCount(privacyMode: BrowserSessionPrivacyMode) -> Int {
         let modeTabs = privacyMode == .private ? privateTabs : regularTabs
         let realTabs = modeTabs.filter { !$0.isHome }

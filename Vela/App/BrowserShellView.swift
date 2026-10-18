@@ -919,6 +919,18 @@ struct BrowserShellView: View {
         }
     }
 
+    /// The tab count the bar button carries: the active mode's own strip.
+    ///
+    /// The regular and private strips are two collections, each with its own
+    /// home, and the overview presents one of them at a time. A badge summing
+    /// both would show a number the overview it opens cannot match — 普通 16
+    /// beside 无痕 3 is never 19.
+    private var tabCountForActiveMode: Int {
+        let mode = activeTab?.privacyMode
+            ?? ((env.settings.preferences.privateBrowsingMode ?? false) ? .private : .regular)
+        return tabManager.displayedTabCount(privacyMode: mode)
+    }
+
     /// The tab switcher button: a page outline carrying the count inside it —
     /// the number is what the user reads, so it is the drawing's subject, not
     /// a footnote under a glyph.
@@ -933,7 +945,7 @@ struct BrowserShellView: View {
                     .strokeBorder(barForeground, lineWidth: 1.6)
                     .frame(width: 21, height: 21)
 
-                Text("\(min(tabManager.displayedTabCount, 99))")
+                Text("\(min(tabCountForActiveMode, 99))")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(barForeground)
@@ -943,7 +955,7 @@ struct BrowserShellView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(ChromeButtonStyle())
-        .accessibilityLabel("标签页，\(tabManager.displayedTabCount) 个")
+        .accessibilityLabel("标签页，\(tabCountForActiveMode) 个")
     }
 
     /// The find bar and the server-status notice, pinned under the chrome.

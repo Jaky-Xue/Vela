@@ -517,19 +517,6 @@ struct TabsOverviewView: View {
             // pins it to its top: no bounce, no offset, nothing for a
             // rotation to leave parked above the header.
             .scrollBounceBehavior(.basedOnSize)
-            // TEMPORARY diagnostic: one line of the grid's own live numbers,
-            // drawn where the next screenshot of a misbehaviour carries them
-            // out. It goes away once the rotation reports are closed.
-            .overlay(alignment: .topTrailing) {
-                Text("w\(Int(geo.size.width)) h\(Int(geo.size.height)) c\(count) a\(bucket)")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 3)
-                    .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
-                    .padding(.trailing, 4)
-                    .allowsHitTesting(false)
-            }
         }
     }
 
