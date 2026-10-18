@@ -407,6 +407,10 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// absent key, which decodes to the same — means the palette surface.
     /// The image itself lives on disk (`HomeBackgroundStore`), not in here.
     public var homeBackgroundStamp: Double?
+    /// 无痕模式的路由开关：开启后，所有没有指名隐私模式的新页面都以无痕
+    /// 打开。Optional for the same decode reason as the two fields above —
+    /// an absent key decodes to the default, which is off.
+    public var privateBrowsingMode: Bool?
     /// 全局顶部保护：页面内容只从系统状态栏下方开始，不滚动到时钟底下。
     ///
     /// Optional for the same reason `homeBackgroundStamp` is — the preferences
@@ -437,7 +441,8 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         homepageUrl: String = "about:home",
         themePaletteId: String = "default",
         homeBackgroundStamp: Double? = nil,
-        topProtection: Bool? = true
+        topProtection: Bool? = true,
+        privateBrowsingMode: Bool? = false
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -461,6 +466,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.themePaletteId = themePaletteId
         self.homeBackgroundStamp = homeBackgroundStamp
         self.topProtection = topProtection
+        self.privateBrowsingMode = privateBrowsingMode
     }
 
     /// The resolved switch: protection is on unless explicitly turned off.

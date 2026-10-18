@@ -145,6 +145,11 @@ public final class AppEnvironment {
 
         Task { await refreshAdBlockRules() }
 
+        // Before the first tab exists: 无痕模式's routing decides what the
+        // first launch's home surface is, and a restore's records carry their
+        // own modes regardless of it.
+        syncPrivateBrowsingRouting()
+
         if settings.preferences.restoreTabsOnLaunch,
            let snapshot = try? tabSessions.loadSession() {
             tabManager.restoreSession(snapshot)
@@ -153,6 +158,31 @@ public final class AppEnvironment {
             // First launch, or a restore that produced nothing.
             let tab = tabManager.createTab()
             tabManager.activateTab(id: tab.id)
+        }
+    }
+
+    /// Mirrors 无痕模式's preference onto the manager's new-page routing.
+    ///
+    /// The routing lives on the tab manager because that is where every
+    /// creation entry point already lands; the preference lives in settings
+    /// because that is where every toggle already lands. This one write is
+    /// the bridge, called at startup and on every change of the switch.
+    private func syncPrivateBrowsingRouting() {
+        tabManager.newPagePrivacyMode = settings.preferences.privateBrowsingMode ?? false
+            ? .private
+            : .regular
+    }
+
+    /// Turns 无痕模式 on or off: the routing flips, and the browser moves to
+    /// the surface the mode names — the private home on the way in, the
+    /// regular home on the way out of a private page.
+    public func setPrivateBrowsingMode(_ on: Bool) {
+        settings.update { $0.privateBrowsingMode = on }
+        syncPrivateBrowsingRouting()
+        if on {
+            tabManager.enterPrivateBrowsing()
+        } else if tabManager.activeTab?.privacyMode == .private {
+            tabManager.exitPrivateBrowsing()
         }
     }
 

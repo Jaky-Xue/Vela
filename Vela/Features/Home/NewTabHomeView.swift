@@ -58,6 +58,11 @@ struct NewTabHomeView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
+    /// Whether this surface is the private mode's home — the ordinary home
+    /// and the private one are the same view, and the badge is what tells
+    /// them apart on screen.
+    var isPrivate: Bool = false
+
     var onNavigate: (URL) -> Void
     /// The surface's scroll offset, normalized to the document top, reported
     /// the same way the web view reports its — the command bar's hide-on-scroll
@@ -78,6 +83,19 @@ struct NewTabHomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrowserSpacing.loose) {
+                if isPrivate {
+                    HStack(spacing: 6) {
+                        Image(systemName: "eyeglasses")
+                        Text("无痕模式")
+                    }
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(palette.secondaryText)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(palette.controlFill.opacity(0.6)))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 2)
+                }
                 if bookmarkNodes.isEmpty {
                     // No bookmarks yet: the dashed add tile alone. A header
                     // over an empty grid is furniture for a collection that
@@ -285,7 +303,6 @@ struct NewTabHomeView: View {
                 guard let url = BrowserUrlResolver.storedUrl(node.url) else { return }
                 env.tabManager.openTab(
                     url: url,
-                    privacyMode: .regular,
                     openSource: .shortcut,
                     activate: false
                 )
@@ -342,9 +359,10 @@ struct NewTabHomeView: View {
                 ForEach(Array(recentlyClosed.prefix(5).enumerated()), id: \.element.id) { index, record in
                     Button {
                         if let url = URL(string: record.url) {
+                            // The mode routes the restore: a page opened from
+                            // the home is a new page like any other.
                             env.tabManager.openTab(
                                 url: url,
-                                privacyMode: record.privacyMode,
                                 openSource: .restore
                             )
                         }

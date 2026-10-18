@@ -115,7 +115,6 @@ struct VelaApp: App {
         // rather than replacing what the user was reading.
         environment.tabManager.openTab(
             url: url,
-            privacyMode: .regular,
             openSource: .externalShare
         )
     }

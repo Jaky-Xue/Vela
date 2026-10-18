@@ -305,6 +305,7 @@ struct BrowserShellView: View {
             MenuPanelView(
                 canActOnPage: canActOnPage,
                 isPrivateMode: activeTab?.privacyMode == .private,
+                isPrivateBrowsingOn: env.settings.preferences.privateBrowsingMode ?? false,
                 adBlockEnabled: env.settings.adBlockSettings.preferences.enabled,
                 pageTitle: menuPanelTitle,
                 onPerform: handleMenuAction
@@ -498,6 +499,7 @@ struct BrowserShellView: View {
             Group {
                 if tab.isHome {
                     NewTabHomeView(
+                        isPrivate: tab.privacyMode == .private,
                         onNavigate: { url in navigate(to: url, in: tab) },
                         onScroll: { offset in handleScroll(offset: offset) }
                     )
@@ -1253,7 +1255,11 @@ struct BrowserShellView: View {
             case .history: showHistory = true
             case .downloads: showDownloads = true
             case .settings: showSettings = true
-            case .privateTab: tabManager.createTab(privacyMode: .private, openSource: .user)
+            case .privateTab:
+                // No tab on screen does not make the switch a tab factory:
+                // turning 无痕模式 on here materialises the private home it
+                // routes to, which is exactly what an empty browser needs.
+                env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
             case .leavePrivate: break
             default: break
             }
@@ -1290,7 +1296,12 @@ struct BrowserShellView: View {
         case .downloads:
             showDownloads = true
         case .privateTab:
-            tabManager.createTab(privacyMode: .private, openSource: .user)
+            // The tile is 无痕模式's switch: on, everything new routes private
+            // and the browser lands on the private home; off, routing returns
+            // to regular and a private page yields the screen to the regular
+            // home. The private tabs themselves stay either way — ending the
+            // session is the 离开无痕模式 action, not this one.
+            env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
         case .leavePrivate:
             Task { await env.endPrivateSession() }
         case .adBlock:

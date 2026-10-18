@@ -756,9 +756,16 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             let privacyMode = tab.privacyMode
             let activate = !settings.preferences.openNewTabsInBackground
             Task { @MainActor in
+                // A private opener's popups stay private — the mode's store
+                // is where their page lives. A regular opener's follow
+                // 无痕模式's routing, like every other new page.
+                let resolvedPrivacy: BrowserSessionPrivacyMode =
+                    privacyMode == .private
+                        ? .private
+                        : (tabManager?.newPagePrivacyMode ?? privacyMode)
                 tabManager?.openTab(
                     url: url,
-                    privacyMode: privacyMode,
+                    privacyMode: resolvedPrivacy,
                     openerTabId: sourceTabId,
                     openSource: .webTargetBlank,
                     activate: activate
@@ -1496,9 +1503,13 @@ extension BrowserWebCoordinator: WKUIDelegate {
             // which is what normally turns one into a tab. This hook is the other
             // way WebKit asks for a window — a page calling `window.open` — and it
             // lands in the same place so the two cannot diverge.
+            let resolvedPrivacy: BrowserSessionPrivacyMode =
+                tab.privacyMode == .private
+                    ? .private
+                    : (self.tabManager?.newPagePrivacyMode ?? tab.privacyMode)
             self.tabManager?.openTab(
                 url: url,
-                privacyMode: tab.privacyMode,
+                privacyMode: resolvedPrivacy,
                 openerTabId: tab.id,
                 openSource: .webWindowOpen,
                 activate: !self.settings.preferences.openNewTabsInBackground

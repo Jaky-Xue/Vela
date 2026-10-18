@@ -265,7 +265,6 @@ struct HistoryView: View {
         guard let url = URL(string: entry.url) else { return }
         env.tabManager.openTab(
             url: url,
-            privacyMode: .regular,
             openSource: .history,
             activate: false
         )

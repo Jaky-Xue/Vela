@@ -264,7 +264,6 @@ struct BookmarksView: View {
                     guard let url = Self.resolvedUrl(node.url) else { return }
                     env.tabManager.openTab(
                         url: url,
-                        privacyMode: .regular,
                         openSource: .bookmark,
                         activate: false
                     )
@@ -293,8 +292,16 @@ struct BookmarksView: View {
     }
 
     private func deleteItems(at offsets: IndexSet) {
-        for index in offsets {
-            bookmarks.removeNode(id: currentItems[index].node.id)
+        // The offsets are row positions the list snapshotted; `currentItems`
+        // is recomputed on every access, and a search that landed between the
+        // swipe and the callback would answer those positions with different
+        // rows. Resolving against the list as it stands and dropping any
+        // offset it no longer answers keeps the delete on the row the user
+        // swiped — an unguarded index here is both a wrong-row deletion and
+        // an out-of-range crash waiting on a fast typist.
+        let items = currentItems
+        for index in offsets where items.indices.contains(index) {
+            bookmarks.removeNode(id: items[index].node.id)
         }
     }
 

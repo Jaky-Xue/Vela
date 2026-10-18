@@ -88,6 +88,13 @@ public final class TabManager {
 
     // MARK: - Queries
 
+    /// The privacy mode a new page opens in when its caller does not name
+    /// one — 无痕模式's routing, mirrored here by the shell. Enforcing it at
+    /// the two creation entry points is what makes the mode's promise
+    /// ("everything new is private") hold at every button, menu tile and
+    /// inbound URL at once, instead of wherever a caller remembered it.
+    public var newPagePrivacyMode: BrowserSessionPrivacyMode = .regular
+
     public var activeTab: BrowserTabState? {
         tabs.first { $0.id == activeTabId }
     }
@@ -147,12 +154,15 @@ public final class TabManager {
     /// a page and leave the strip without one.
     @discardableResult
     public func createTab(
-        privacyMode: BrowserSessionPrivacyMode = .regular,
+        privacyMode: BrowserSessionPrivacyMode? = nil,
         openerTabId: String = "",
         openSource: BrowserTabOpenSource = .user,
         activate: Bool = true
     ) -> BrowserTabState {
-        if let existing = tabs.first(where: { $0.isHome && $0.privacyMode == privacyMode }) {
+        // A caller that names a mode asked for that mode; one that does not
+        // gets 无痕模式's routing.
+        let resolvedMode = privacyMode ?? newPagePrivacyMode
+        if let existing = tabs.first(where: { $0.isHome && $0.privacyMode == resolvedMode }) {
             if activate {
                 activateTab(id: existing.id)
             }
@@ -160,7 +170,7 @@ public final class TabManager {
         }
 
         let tab = appendHomeTab(
-            privacyMode: privacyMode,
+            privacyMode: resolvedMode,
             openerTabId: openerTabId,
             openSource: openSource
         )
@@ -215,15 +225,16 @@ public final class TabManager {
     @discardableResult
     public func openTab(
         url: URL,
-        privacyMode: BrowserSessionPrivacyMode = .regular,
+        privacyMode: BrowserSessionPrivacyMode? = nil,
         openerTabId: String = "",
         openSource: BrowserTabOpenSource = .user,
         activate: Bool = true
     ) -> BrowserTabState {
         // Always a fresh tab, never the reused home one: loading into the
         // filler would turn it into a page and leave the mode without one.
+        // The mode resolves the same way createTab's does.
         let tab = appendHomeTab(
-            privacyMode: privacyMode,
+            privacyMode: privacyMode ?? newPagePrivacyMode,
             openerTabId: openerTabId,
             openSource: openSource
         )
@@ -775,8 +786,20 @@ public final class TabManager {
         try? sessionRepository.saveSession(snapshot)
     }
 
+    /// Enters 无痕模式's browsing surface: the private home tab, created when
+    /// the mode has none. The visible half of turning the mode on.
+    public func enterPrivateBrowsing() {
+        activateTab(id: availableHomeTab(privacyMode: .private).id)
+    }
+
+    /// Leaves 无痕模式 for the regular surface. The mode's exit is a routing
+    /// change, not the wipe `endPrivateSession` performs — the private tabs
+    /// stay until their own rule ends the session.
+    public func exitPrivateBrowsing() {
+        activateTab(id: availableHomeTab(privacyMode: .regular).id)
+    }
+
     /// Clears private tabs and their records at the end of a private session.
-    ///
     public func endPrivateSession() {
         closeAllTabs(privacyMode: .private, fillingWithHomeTab: false)
         recentlyClosed.removeAll { $0.privacyMode == .private }

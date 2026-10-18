@@ -47,7 +47,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable {
         case .bookmarks: return "书签"
         case .history: return "历史记录"
         case .downloads: return "下载管理"
-        case .privateTab: return "无痕标签页"
+        case .privateTab: return "无痕模式"
         case .adBlock: return "广告过滤"
         case .reload: return "重新载入"
         case .settings: return "设置"
@@ -99,6 +99,8 @@ struct MenuPanelView: View {
     /// Whether the browser is in private mode, which adds the private-session
     /// exit to the private-tab tile's long-press menu.
     var isPrivateMode: Bool
+    /// Whether 无痕模式 is on — the tile is a switch, and this is its state.
+    var isPrivateBrowsingOn: Bool
     /// Shown so the ad-block tile can reflect the current state.
     var adBlockEnabled: Bool
     /// What the panel is acting on — the page's title, or "菜单" on a
@@ -162,6 +164,10 @@ struct MenuPanelView: View {
 
     private func menuItem(_ action: VelaMenuAction) -> some View {
         let enabled = canActOnPage || !action.requiresPage
+        // The private-mode tile is the one switch in the grid, so its state
+        // is drawn on it: the accent wash and the corner badge read as "on"
+        // the way a checkmarked row would in a list menu.
+        let isModeOn = action == .privateTab && isPrivateBrowsingOn
         return Button {
             guard enabled else { return }
             onPerform(action)
@@ -169,10 +175,21 @@ struct MenuPanelView: View {
             VStack(spacing: BrowserSpacing.tight) {
                 Image(systemName: action.symbolName)
                     .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(isModeOn ? palette.accent : palette.primaryText)
                     .frame(width: 52, height: 52)
-                    .background(palette.controlFill.opacity(0.75), in:
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .background(
+                        isModeOn ? palette.accent.opacity(0.18) : palette.controlFill.opacity(0.75),
+                        in: RoundedRectangle(cornerRadius: 15, style: .continuous)
                     )
+                    .overlay(alignment: .topTrailing) {
+                        if isModeOn {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(palette.onAccent)
+                                .background(palette.accent, in: Circle())
+                                .offset(x: 5, y: -5)
+                        }
+                    }
                     .overlay {
                         RoundedRectangle(cornerRadius: 15, style: .continuous)
                             .strokeBorder(
