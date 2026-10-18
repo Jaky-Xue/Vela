@@ -575,6 +575,101 @@ public enum WebPageScripts {
     })();
     """
 
+    // MARK: - Video quality
+
+    /// Puts a floor under YouTube's automatic quality.
+    ///
+    /// The player on this device is handed a phone identifier — deliberately,
+    /// because the iPad identifier lands YouTube's desktop site and its bot
+    /// wall — and the phone-shaped player opens at the lowest rendition the
+    /// connection allows and can stay there. The player's own range control
+    /// (`setPlaybackQualityRange`, the undocumented method on the movie
+    /// player) keeps the choice automatic while raising the floor to 720p, so
+    /// a good connection still climbs to the best available rendition and a
+    /// weak one cannot drop below HD. It is applied a few times per source
+    /// while the player settles, never continuously, so a quality the user
+    /// picks by hand is left alone afterwards.
+    public static let youtubeQualityScript = """
+    (function () {
+      if (window.__velaYouTubeQualityInstalled === true) { return; }
+      window.__velaYouTubeQualityInstalled = true;
+
+      var floor = 'hd720';
+      var ceiling = 'highres';
+      var sourceKey = null;
+      var attempts = 0;
+      var lastAttemptAt = 0;
+
+      // Seed the player's own stored quality preference when the site has not
+      // recorded one. The range call below handles the current source; this is
+      // what makes the next video open at HD too, and it is written only when
+      // nothing is stored, so a quality the user picks by hand stays picked.
+      try {
+        var stored = null;
+        try { stored = JSON.parse(localStorage.getItem('yt-player-quality') || 'null'); } catch (error) {}
+        if (!stored || !stored.data) {
+          localStorage.setItem('yt-player-quality', JSON.stringify({
+            data: floor,
+            creation: Date.now(),
+            expiration: Date.now() + 31536000000
+          }));
+        }
+      } catch (error) {}
+
+      function currentPlayer() {
+        var candidates = [
+          document.getElementById('movie_player'),
+          document.querySelector('.html5-video-player')
+        ];
+        for (var i = 0; i < candidates.length; i++) {
+          var player = candidates[i];
+          if (!player) { continue; }
+          if (typeof player.setPlaybackQualityRange === 'function') { return player; }
+          if (typeof player.setPlaybackQuality === 'function') { return player; }
+        }
+        return null;
+      }
+
+      function tick() {
+        var player = currentPlayer();
+        if (!player) { return; }
+        var video = player.querySelector('video');
+        if (!video) { return; }
+        var key = video.currentSrc || video.src || '';
+        if (!key) { return; }
+        if (key !== sourceKey) {
+          sourceKey = key;
+          attempts = 0;
+          lastAttemptAt = 0;
+        }
+        if (attempts >= 5) { return; }
+        var now = Date.now();
+        if (now - lastAttemptAt < 1200) { return; }
+        attempts += 1;
+        lastAttemptAt = now;
+        try {
+          if (typeof player.setPlaybackQualityRange === 'function') {
+            player.setPlaybackQualityRange(floor, ceiling);
+          } else if (typeof player.setPlaybackQuality === 'function') {
+            player.setPlaybackQuality(floor);
+          }
+        } catch (error) {}
+      }
+
+      setInterval(tick, 700);
+
+      // A new watch page reuses the player element but a different source; the
+      // source key already notices that, and the navigation event only makes
+      // the first attempt immediate.
+      document.addEventListener('yt-navigate-finish', function () {
+        sourceKey = null;
+        attempts = 0;
+        lastAttemptAt = 0;
+        tick();
+      }, true);
+    })();
+    """
+
     // MARK: - Inline video tap
 
     /// Taps the picture to show the controls rather than to pause.
