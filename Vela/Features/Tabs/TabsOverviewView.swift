@@ -695,11 +695,17 @@ private struct TabCard: View {
         VStack(spacing: BrowserSpacing.tight) {
             ZStack(alignment: .topTrailing) {
                 cardFace
+                    // The blur is the card's picture and nothing else — the
+                    // scope 无痕模糊 is given: a blurred page, with the control
+                    // on it still findable. Riding the blur on the whole stack
+                    // blurred the close button with the page; the × is the one
+                    // thing on a blurred card the user must be able to read
+                    // and press.
+                    .blur(radius: blurPreview ? 5 : 0)
 
                 closeButton
             }
             .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
-            .blur(radius: blurPreview ? 5 : 0)
 
             HStack(spacing: 5) {
                 // The start page has no site to identify, so its title stands
@@ -717,7 +723,6 @@ private struct TabCard: View {
                     .foregroundStyle(palette.primaryText)
             }
             .frame(maxWidth: .infinity)
-            .blur(radius: blurPreview ? 3 : 0)
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
