@@ -350,7 +350,11 @@ enum BrowserChrome {
     /// raised the field away from the hand.
     static let barGap: CGFloat = 2
     /// The command bar's own height.
-    static let barHeight: CGFloat = 40
+    ///
+    /// Forty-six rather than forty: at forty the field inside the glass read
+    /// thinner than the capsule around it and the address sat on a sliver.
+    /// The omnibox radius was drawn for this height.
+    static let barHeight: CGFloat = 46
     /// The chrome's total height measured below the status bar, from the top of
     /// the safe area to where the page begins. This is the number the web
     /// view's top content inset is set to, and the number every surface that

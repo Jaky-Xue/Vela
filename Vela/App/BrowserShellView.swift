@@ -655,12 +655,11 @@ struct BrowserShellView: View {
     }
 
     /// How far the bar travels when it hides: its own height, the gap under
-    /// it, and the safe-area inset — the inset counted twice, because the
-    /// bottom-aligned overlay already sits inside the safe area and the bar
-    /// pads itself by the inset again. An offset short of the full distance
-    /// is what left a sliver of the bar on screen after a hide.
+    /// it, and the safe-area inset. The overlay already holds the bar above
+    /// the inset, so this is the whole distance from its resting edge to the
+    /// bottom of the screen, plus a little slack.
     private var hiddenChromeOffset: CGFloat {
-        BrowserChrome.barHeight + BrowserChrome.barGap + 2 * safeBottom + 16
+        BrowserChrome.barHeight + BrowserChrome.barGap + safeBottom + 16
     }
 
     /// The bar's glass shapes riding one coordinated layer, with the movement
@@ -686,7 +685,10 @@ struct BrowserShellView: View {
             }
         }
         .padding(.horizontal, BrowserChrome.sideInset)
-        .padding(.bottom, BrowserChrome.barGap + safeBottom)
+        // The bottom-aligned overlay already lays the bar out above the
+        // home-indicator inset; adding the inset again here lifted the bar a
+        // whole safe area off the edge. The gap is all this padding owes.
+        .padding(.bottom, BrowserChrome.barGap)
         // Sliding fully out — past the bottom edge — with a fade reads as the
         // bar dissolving into the page rather than parking behind the home
         // indicator. Mid-drag the bar follows the finger downward and fades
@@ -1006,9 +1008,12 @@ struct BrowserShellView: View {
         // the keyboard: a keyboard raised by the page's own fields moves
         // nothing the user is not reading, while one raised by the find field
         // carries the find bar with it.
+        // The overlay holds these above the home-indicator inset already, so
+        // they clear the bar by the bar's own height and gap, not by the
+        // inset as well.
         .padding(
             .bottom,
-            safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap + 6
+            BrowserChrome.barHeight + BrowserChrome.barGap + 6
                 + (showFindBar ? keyboardHeight : 0)
         )
         .animation(Self.chromeAnimation, value: showFindBar)
