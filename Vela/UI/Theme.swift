@@ -336,11 +336,19 @@ enum BrowserSpacing {
 /// rather than to the spacing rhythm inside the panels.
 enum BrowserChrome {
     /// How far the chrome sits from the side edges.
-    static let sideInset: CGFloat = 12
+    ///
+    /// Six points, not twelve: the bottom bar is the search surface, and the
+    /// wider it reads the more of the address the field shows. Safari's own
+    /// iPad bar holds roughly this margin.
+    static let sideInset: CGFloat = 6
     /// How far the command bar sits below the safe area.
     static let topInset: CGFloat = 4
     /// The gap between the command bar and the page below it.
-    static let barGap: CGFloat = 8
+    ///
+    /// Two points: the bar is the thumb's business and the home indicator
+    /// already owns the space beneath it, so a wide strip under the bar only
+    /// raised the field away from the hand.
+    static let barGap: CGFloat = 2
     /// The command bar's own height.
     static let barHeight: CGFloat = 40
     /// The chrome's total height measured below the status bar, from the top of

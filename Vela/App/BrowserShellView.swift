@@ -749,7 +749,10 @@ struct BrowserShellView: View {
     }
 
     private var commandBarContent: some View {
-        HStack(spacing: 8) {
+        // Six points between the three pieces rather than eight, and four of
+        // padding inside each side cluster: the field is the bar's subject,
+        // and every point the clusters give back is a point of address.
+        HStack(spacing: 6) {
             HStack(spacing: 2) {
                 chromeButton(symbol: "chevron.left", isEnabled: canGoBack) {
                     goBack()
@@ -760,7 +763,7 @@ struct BrowserShellView: View {
                 // no history in that direction.
                 .contextMenu { backHistoryMenu }
             }
-            .padding(.horizontal, 5)
+            .padding(.horizontal, 4)
             .frame(height: BrowserChrome.barHeight)
             .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
 
@@ -784,7 +787,7 @@ struct BrowserShellView: View {
                     showMenu = true
                 }
             }
-            .padding(.horizontal, 5)
+            .padding(.horizontal, 4)
             .frame(height: BrowserChrome.barHeight)
             .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
         }
