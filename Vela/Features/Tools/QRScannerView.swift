@@ -57,7 +57,7 @@ private struct CameraScanner: UIViewControllerRepresentable {
         func dataScanner(_ dataScanner: DataScannerViewController, didAdd items: [RecognizedItem]) {
             for item in items {
                 if case .barcode(let barcode) = item,
-                   let payload = String(data: barcode.payload, encoding: .utf8),
+                   let payload = barcode.payloadString(withEncoding: .utf8),
                    payload != lastPayload {
                     lastPayload = payload
                     onRecognize(payload)
@@ -68,7 +68,7 @@ private struct CameraScanner: UIViewControllerRepresentable {
         func dataScanner(_ dataScanner: DataScannerViewController, didRemove items: [RecognizedItem]) {
             for item in items {
                 if case .barcode(let barcode) = item,
-                   let payload = String(data: barcode.payload, encoding: .utf8),
+                   let payload = barcode.payloadString(withEncoding: .utf8),
                    payload == lastPayload {
                     lastPayload = nil
                 }

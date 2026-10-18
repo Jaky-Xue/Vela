@@ -197,7 +197,9 @@ struct HomeSettingsView: View {
                 Slider(
                     value: Binding(
                         get: { env.settings.preferences.homeTileIconSize ?? 40 },
-                        set: { env.settings.update { $0.homeTileIconSize = Double($0) } }
+                        set: { newValue in
+                            env.settings.update { $0.homeTileIconSize = newValue }
+                        }
                     ),
                     in: 28...64,
                     step: 2
@@ -205,7 +207,9 @@ struct HomeSettingsView: View {
 
                 Picker("形状", selection: Binding(
                     get: { env.settings.preferences.homeTileShape ?? "rounded" },
-                    set: { env.settings.update { $0.homeTileShape = $0 } }
+                    set: { newValue in
+                        env.settings.update { $0.homeTileShape = newValue }
+                    }
                 )) {
                     Text("圆角").tag("rounded")
                     Text("圆形").tag("circle")
@@ -223,7 +227,9 @@ struct HomeSettingsView: View {
                 Slider(
                     value: Binding(
                         get: { env.settings.preferences.homeTileSpacing ?? 12 },
-                        set: { env.settings.update { $0.homeTileSpacing = Double($0) } }
+                        set: { newValue in
+                            env.settings.update { $0.homeTileSpacing = newValue }
+                        }
                     ),
                     in: 8...28,
                     step: 2

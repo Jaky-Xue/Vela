@@ -302,7 +302,7 @@ struct NewTabHomeView: View {
                 )
                 .overlay {
                     tileShape
-                        .strokeBorder(
+                        .stroke(
                             LinearGradient(
                                 colors: [.white.opacity(0.14), .white.opacity(0.03)],
                                 startPoint: .top,
@@ -351,7 +351,7 @@ struct NewTabHomeView: View {
                 )
                 .overlay {
                     tileShape
-                        .strokeBorder(
+                        .stroke(
                             palette.secondaryText.opacity(0.35),
                             style: StrokeStyle(lineWidth: 1, dash: [4, 3])
                         )
