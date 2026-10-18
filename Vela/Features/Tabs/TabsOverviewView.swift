@@ -44,6 +44,25 @@ struct TabsOverviewView: View {
     /// its own intermediate sizes back, which is how a portrait-sized grid
     /// survived inside a landscape window with its header scrolled away.
     @State private var containerSize: CGSize = .zero
+    /// The shape the grid's identity is keyed on: the size as it stands once
+    /// the geometry has stopped moving. A rotation animates the container
+    /// through a handful of intermediate sizes, and re-keying on each of them
+    /// tears the grid down and rebuilds it several times inside one rotation —
+    /// the mid-flight churn that reads as cards being cut apart, and the more
+    /// cards there are, the more of them are rebuilt each time. The key moves
+    /// only when the size has held still for a beat, which lands exactly once
+    /// per rotation, after it has finished.
+    @State private var settledShape: CGSize = .zero
+    @State private var settleTask: Task<Void, Never>?
+    /// Prints taken this presentation, keyed by tab. A re-key rebuilds every
+    /// card on screen, and without this each of them would re-ask its web view
+    /// for a picture — the storm that made a rotation of a full grid crawl and
+    /// a mode switch show placeholders where pictures had just been. The cache
+    /// bounds itself to roughly a viewport of cards and dies with the
+    /// overview, which is the lifetime a web view's print is trustworthy for
+    /// anyway.
+    @State private var snapshotCache: [String: UIImage] = [:]
+    @State private var snapshotCacheOrder: [String] = []
     @FocusState private var searchFieldFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -102,9 +121,22 @@ struct TabsOverviewView: View {
         .background {
             GeometryReader { geo in
                 Color.clear
-                    .onAppear { containerSize = geo.size }
+                    .onAppear {
+                        containerSize = geo.size
+                        settledShape = geo.size
+                    }
                     .onChange(of: geo.size) { _, size in
                         containerSize = size
+                        // A re-key is scheduled for when the size holds still.
+                        // Every intermediate size cancels the previous wait,
+                        // so a rotation that animates through several shapes
+                        // pays for exactly one rebuild — the one that matters.
+                        settleTask?.cancel()
+                        settleTask = Task {
+                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            guard !Task.isCancelled else { return }
+                            settledShape = size
+                        }
                     }
             }
         }
@@ -453,17 +485,31 @@ struct TabsOverviewView: View {
     /// The card's shape, from the screen's own shape and clamped: wide cards
     /// in landscape, upright ones in portrait. The ceiling sits where Safari's
     /// landscape cards do — past it a wide card stops reading as a page and
-    /// starts reading as a letterbox.
+    /// starts reading as a letterbox. Read from the live container size, so a
+    /// card tracks the rotation as it animates instead of jumping at its end.
     private var gridAspect: CGFloat {
         min(1.5, max(0.72, containerSize.width / max(containerSize.height, 1)))
     }
 
-    /// The bucket the aspect rounds to, in hundredths. It is what tells the
-    /// cards to retake their prints when the shape they are drawn at changes —
-    /// a print taken for a portrait card cover-cropped into a landscape one
-    /// reads as the wrong page.
-    private var aspectBucket: Int {
-        Int((gridAspect * 100).rounded())
+    /// The bucket the *settled* shape rounds to, in hundredths. It is the one
+    /// part of the grid's identity that moves with the device's shape: a lazy
+    /// grid that survives a rotation keeps the cell geometry it laid out for
+    /// the old shape, and the rows it has already materialised stay parked
+    /// past the screen's edge. Re-keying rebuilds it at the new shape — but
+    /// only here, once, after the geometry has stopped, never per
+    /// intermediate size.
+    private var shapeBucket: Int {
+        Int((min(1.5, max(0.72, settledShape.width / max(settledShape.height, 1))) * 100).rounded())
+    }
+
+    /// What the scroll view's identity is keyed on: the width class, the mode
+    /// on screen, and the settled shape. The mode is part of it because a mode
+    /// switch swaps the grid's entire contents at once, and an animated swap
+    /// through a lazy grid's diffing is the same torn-rows failure a rotation
+    /// produces — a fresh identity gives the new mode a fresh layout instead
+    /// of a repair of the old one.
+    private var gridIdentity: String {
+        "\(horizontalSizeClass == .regular ? "regular" : "compact")-\(showPrivateTabs ? "private" : "regular")-\(shapeBucket)"
     }
 
     private var grid: some View {
@@ -473,7 +519,8 @@ struct TabsOverviewView: View {
                     TabCard(
                         tab: tab,
                         aspect: gridAspect,
-                        snapshotSeed: aspectBucket,
+                        cachedSnapshot: { snapshotCache[tab.id] },
+                        storeSnapshot: { cacheSnapshot($0, for: tab.id) },
                         isActive: tab.id == tabManager.activeTabId,
                         blurPreview: tab.privacyMode == .private && env.settings.preferences.blurPrivateTabPreviews,
                         onSelect: { activate(tab) },
@@ -492,17 +539,15 @@ struct TabsOverviewView: View {
             .padding(.top, BrowserSpacing.regular - 6)
             .padding(.bottom, BrowserSpacing.loose)
         }
-        // Rotation re-keys the scroll view. A lazy grid that survives a
-        // rotation keeps the cell geometry it laid out for the old shape: the
-        // rows it has already materialised stay where the old width put them,
-        // and the more cards there are, the more of them are left parked past
-        // the screen's edge when it lands. A new identity forces a fresh
-        // layout pass at the new shape instead of a repair of the old one.
-        //
-        // The key is the aspect bucket measured at the screen level — not a
-        // reader inside this hierarchy, whose intermediate sizes are what a
-        // repair pass would be fed — so it moves only when the shape the
-        // cards are actually drawn at does.
+        // Rotation and mode switches re-key the scroll view — see
+        // `gridIdentity`. A lazy grid that survives either keeps the cell
+        // geometry it laid out for the old shape, with its already-materialised
+        // rows parked wherever the old width left them; a new identity forces
+        // a fresh layout pass at the new shape instead of a repair of the old
+        // one. The identity moves once per rotation (at the settled shape) and
+        // once per mode switch, never per intermediate size — re-keying on
+        // every size the rotation animates through is what read as the cards
+        // being cut apart mid-turn.
         .id(gridIdentity)
         // A grid shorter than the screen has nothing to scroll, and this pins
         // it to its top: no bounce, no offset, nothing for a rotation to leave
@@ -510,10 +555,18 @@ struct TabsOverviewView: View {
         .scrollBounceBehavior(.basedOnSize)
     }
 
-    /// What the scroll view's identity is keyed on: the width class and the
-    /// hundredth-of-an-aspect bucket the cards are drawn at.
-    private var gridIdentity: String {
-        "\(horizontalSizeClass == .regular ? "regular" : "compact")-\(aspectBucket)"
+    /// Files a print in the presentation's cache, evicting the oldest entry
+    /// past a viewport's worth — a cache of every tab's print is the overview
+    /// holding several hundred megabytes of decoded page in memory for tabs
+    /// nobody is looking at.
+    private func cacheSnapshot(_ image: UIImage, for tabId: String) {
+        snapshotCacheOrder.removeAll { $0 == tabId }
+        snapshotCacheOrder.append(tabId)
+        snapshotCache[tabId] = image
+        if snapshotCacheOrder.count > 16, let evicted = snapshotCacheOrder.first {
+            snapshotCacheOrder.removeFirst()
+            snapshotCache[evicted] = nil
+        }
     }
 
     private var emptyState: some View {
@@ -615,11 +668,13 @@ private struct TabCard: View {
 
     var tab: BrowserTabState
     var aspect: CGFloat
-    /// The shape bucket the print is taken for. When it moves — the device
-    /// rotated — the task re-runs and the print is taken again, so the
-    /// picture matches the card it sits in rather than the orientation it was
-    /// shot in.
-    var snapshotSeed: Int
+    /// The presentation's print cache: what this tab's card showed last time
+    /// it was on screen. A re-key rebuilds every card, and reading the cache
+    /// instead of re-asking the web view is what keeps that rebuild instant —
+    /// the print is the same page either way, and the card's frame cover-crops
+    /// it to whatever shape it is drawn at.
+    var cachedSnapshot: () -> UIImage?
+    var storeSnapshot: (UIImage) -> Void
     var isActive: Bool
     var blurPreview: Bool
     var onSelect: () -> Void
@@ -627,8 +682,9 @@ private struct TabCard: View {
     var onPin: () -> Void
 
     /// The page's picture, taken once per card appearance from the live web
-    /// view. A cold tab has no web view to ask and keeps its placeholder
-    /// until it has been opened once; the overview's lifetime bounds the cache.
+    /// view, or restored from the presentation's cache when one exists. A cold
+    /// tab has no web view to ask and keeps its placeholder until it has been
+    /// opened once.
     @State private var snapshot: UIImage?
 
     var body: some View {
@@ -665,9 +721,15 @@ private struct TabCard: View {
             Button(tab.pinned ? "取消固定" : "固定标签页", systemImage: tab.pinned ? "pin.slash" : "pin", action: onPin)
             Button("关闭标签页", systemImage: "xmark", role: .destructive, action: onClose)
         }
-        .task(id: snapshotSeed) {
+        .task {
             guard !tab.isHome else { return }
-            snapshot = await takeSnapshot()
+            if let cached = cachedSnapshot() {
+                snapshot = cached
+                return
+            }
+            guard let fresh = await takeSnapshot() else { return }
+            snapshot = fresh
+            storeSnapshot(fresh)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tab.displayTitle)

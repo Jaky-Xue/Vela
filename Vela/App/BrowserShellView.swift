@@ -38,6 +38,7 @@ struct BrowserShellView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
 
     /// The omnibox session. Created here rather than inside the view body
     /// because it is long-lived: it survives every tab switch, and rebuilding it
@@ -236,6 +237,19 @@ struct BrowserShellView: View {
         }
         .onChange(of: colorScheme) { _, _ in
             updateChromeForeground()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Ending a private session is VelaApp's rule for backgrounding, and
+            // it destroys every private tab and web view. The overview must not
+            // still be presenting them when that runs: dismissing the cover
+            // here, synchronously in the same update the cleanup task is
+            // scheduled in, is what keeps a full-screen cover from showing a
+            // tab strip and an active tab that are deleted from underneath it
+            // before the app is even back on screen.
+            guard phase == .background, showTabsOverview else { return }
+            if !tabManager.privateTabs.isEmpty || tabManager.activeTab == nil {
+                showTabsOverview = false
+            }
         }
     }
 
