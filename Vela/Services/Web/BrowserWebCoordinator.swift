@@ -1148,6 +1148,12 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                 duration: self.elapsedMilliseconds(for: webView),
                 finalUrl: webView.url?.absoluteString
             )
+            // A finished page is worth a card. The overview draws every tab,
+            // and the cold ones — the tabs the live pool has let go — have no
+            // view to ask for a picture. This is the one moment the page is
+            // certainly loaded and laid out, so the print is taken here and
+            // kept for the overview to find later.
+            self.tabManager?.capturePreview(for: tab.id)
             self.tabManager?.persistSession()
         }
     }

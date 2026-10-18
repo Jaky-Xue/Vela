@@ -14,6 +14,7 @@
 //
 
 import Foundation
+import UIKit
 import WebKit
 import Observation
 
@@ -128,6 +129,41 @@ public final class TabManager {
 
     public func webView(for tabId: String) -> WKWebView? {
         webViews[tabId]
+    }
+
+    /// The last picture each tab's page showed, for the overview's cards.
+    ///
+    /// The live pool keeps eight pages; the rest are cold and have no view to
+    /// ask for a picture. Without one the overview can only draw the site icon
+    /// for those cards, which reads as previews never having been implemented
+    /// for every tab past the eighth. A picture is taken when a page finishes
+    /// loading — the moment the view is certainly live and laid out — and kept
+    /// on disk as well, so a restored session's cold tabs show the page they
+    /// were left on.
+    private let previews = TabPreviewStore()
+
+    public func preview(for tabId: String) -> UIImage? {
+        previews.image(for: tabId)
+    }
+
+    /// Keeps a page picture for the overview, downscaled to card size.
+    public func storePreview(_ image: UIImage, for tabId: String) {
+        previews.store(image, for: tabId)
+    }
+
+    /// Takes a picture of a live tab's page and keeps it for the overview.
+    ///
+    /// Only a web view in a window can be asked: an off-screen view answers
+    /// with a blank frame on this WebKit, and a stored blank would be worse
+    /// than the icon placeholder it replaced.
+    public func capturePreview(for tabId: String) {
+        guard let webView = webViews[tabId], webView.window != nil else { return }
+        webView.takeSnapshot(with: nil) { [weak self] image, _ in
+            guard let image else { return }
+            Task { @MainActor in
+                self?.previews.store(image, for: tabId)
+            }
+        }
     }
 
     public var liveWebViewCount: Int { webViews.count }
@@ -296,6 +332,12 @@ public final class TabManager {
     /// behind it would replace a page the user can read with a spinner.
     public func activateTab(id: String) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        // The page being left is the one the user was looking at, and this is
+        // the last moment its view is in a window — the moment its card
+        // picture can be taken.
+        if activeTabId != id {
+            capturePreview(for: activeTabId)
+        }
         activeTabId = id
         let tab = tabs[index]
         tab.lastActiveAt = Date()
@@ -388,6 +430,7 @@ public final class TabManager {
             try? sessionRepository?.recordClosed(record)
         }
 
+        previews.remove(id)
         destroyWebView(for: id)
         tabs.remove(at: index)
 
@@ -420,6 +463,7 @@ public final class TabManager {
     ) {
         let doomed = tabs.filter { $0.privacyMode == privacyMode }.map(\.id)
         for id in doomed {
+            previews.remove(id)
             destroyWebView(for: id)
         }
         tabs.removeAll { $0.privacyMode == privacyMode }
@@ -979,5 +1023,111 @@ public enum BrowserUserAgent {
         }
 
         return text
+    }
+}
+
+/// The last picture each tab's page showed, for the overview's cards.
+///
+/// Kept in memory for the cards on screen and on disk so a restored session's
+/// cold tabs still show the page they were left on — a tab whose web view the
+/// live pool has let go has no view to ask. The picture is stored downscaled:
+/// a card is a few hundred points wide, and a full-resolution print per tab is
+/// tens of megabytes of decoded bitmap for a strip nobody is looking at.
+@MainActor
+final class TabPreviewStore {
+    /// The long edge kept. A card at its widest is a few hundred points; 720
+    /// pixels covers it even at 3x with room for the cover-crop.
+    private static let maximumEdge: CGFloat = 720
+    /// How many pictures the folder keeps across sessions. Closed tabs delete
+    /// theirs; this is the bound for tabs that vanished without a close.
+    private static let maximumFiles = 80
+
+    private let cache = NSCache<NSString, UIImage>()
+    private let directory: URL?
+
+    init() {
+        cache.countLimit = 32
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        if let base {
+            let folder = base.appendingPathComponent("Vela/TabPreviews", isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            directory = folder
+        } else {
+            directory = nil
+        }
+        pruneIfNeeded()
+    }
+
+    func image(for tabId: String) -> UIImage? {
+        if let cached = cache.object(forKey: tabId as NSString) { return cached }
+        guard let directory else { return nil }
+        let url = directory.appendingPathComponent(Self.fileName(for: tabId))
+        guard let image = UIImage(contentsOfFile: url.path) else { return nil }
+        cache.setObject(image, forKey: tabId as NSString)
+        return image
+    }
+
+    func store(_ image: UIImage, for tabId: String) {
+        let prepared = Self.downscaled(image)
+        cache.setObject(prepared, forKey: tabId as NSString)
+        guard let directory,
+              let data = prepared.jpegData(compressionQuality: 0.72) else { return }
+        let url = directory.appendingPathComponent(Self.fileName(for: tabId))
+        Task.detached(priority: .utility) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    func remove(_ tabId: String) {
+        cache.removeObject(forKey: tabId as NSString)
+        guard let directory else { return }
+        let url = directory.appendingPathComponent(Self.fileName(for: tabId))
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Keeps the folder from growing without bound across sessions. The newest
+    /// files are the ones a restored session is most likely to name.
+    private func pruneIfNeeded() {
+        guard let directory,
+              let files = try? FileManager.default.contentsOfDirectory(
+                  at: directory,
+                  includingPropertiesForKeys: [.contentModificationDateKey],
+                  options: [.skipsHiddenFiles]
+              ),
+              files.count > Self.maximumFiles else { return }
+        let ordered = files.sorted { left, right in
+            let leftDate = (try? left.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+            let rightDate = (try? right.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+            return leftDate > rightDate
+        }
+        for url in ordered.dropFirst(Self.maximumFiles) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    /// Tab ids are UUID strings; anything else is rewritten so an id can never
+    /// escape the folder.
+    private static func fileName(for tabId: String) -> String {
+        let safe = tabId.map { character -> Character in
+            character.isLetter || character.isNumber || character == "-" || character == "_"
+                ? character
+                : "_"
+        }
+        return String(safe) + ".jpg"
+    }
+
+    private static func downscaled(_ image: UIImage) -> UIImage {
+        let longEdge = max(image.size.width, image.size.height)
+        guard longEdge > maximumEdge, longEdge > 0 else { return image }
+        let scale = maximumEdge / longEdge
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
     }
 }

@@ -674,6 +674,11 @@ private struct TabCard: View {
         }
         .task(id: aspectBucket) {
             guard !tab.isHome else { return }
+            // The last kept picture paints first, so a live tab does not
+            // flash its icon while the fresh print is being taken.
+            if snapshot == nil {
+                snapshot = env.tabManager.preview(for: tab.id)
+            }
             snapshot = await takeSnapshot()
         }
         .accessibilityElement(children: .ignore)
@@ -741,14 +746,29 @@ private struct TabCard: View {
     /// — the same information a colour swatch would carry.
     static let previewBlurRadius: CGFloat = 30
 
-    /// The live page's own picture.
+    /// The live page's own picture, or the one kept for it when the tab is
+    /// cold — a tab past the live-view cap, or one whose view is not the one
+    /// in the window, has no view this can honestly ask.
+    ///
+    /// Only the hosted view is snapshotted: the pool's background web views
+    /// are out of the window, and this WebKit answers an off-screen view with
+    /// a blank frame — which the card would then show in place of a picture
+    /// it already had.
     private func takeSnapshot() async -> UIImage? {
-        guard let webView = env.tabManager.webView(for: tab.id) else { return nil }
-        return await withCheckedContinuation { continuation in
+        guard let webView = env.tabManager.webView(for: tab.id),
+              webView.window != nil else {
+            return env.tabManager.preview(for: tab.id)
+        }
+        let fresh: UIImage? = await withCheckedContinuation { continuation in
             webView.takeSnapshot(with: nil) { image, _ in
                 continuation.resume(returning: image)
             }
         }
+        if let fresh {
+            env.tabManager.storePreview(fresh, for: tab.id)
+            return fresh
+        }
+        return env.tabManager.preview(for: tab.id)
     }
 
     private var closeButton: some View {
