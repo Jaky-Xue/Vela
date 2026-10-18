@@ -183,6 +183,7 @@ public enum WebPageScripts {
             var node = nodes[i];
             if (!includeHidden && (!node.getClientRects || node.getClientRects().length === 0)) { continue; }
             var text = node.innerText || node.textContent || '';
+            text = String(text).replace(/\\u200B|\\u200C|\\u200D|\\uFEFF/g, '');
             text = String(text).replace(/\\s+/g, ' ').trim();
             if (text && parts.indexOf(text) === -1) { parts.push(text); }
           }
@@ -284,16 +285,21 @@ public enum WebPageScripts {
           // or not it is painted. Inline it has to be visible: a player keeps
           // hidden copies of its cue elements, and those are not captions.
           var text = paintedCaptionText(mode && mode !== 'inline');
-          if (text === painted) { return; }
-          painted = text;
-          clearMirrorCues(track);
-          if (!text) { return; }
-          hideRealCaptionTracks(video, track);
-          try {
-            var cue = new VTTCue(Math.max(0, video.currentTime - 0.3), video.currentTime + 600, text);
-            cue.line = 'auto';
-            track.addCue(cue);
-          } catch (error) {}
+          if (text !== painted) {
+            painted = text;
+            clearMirrorCues(track);
+            if (text) {
+              try {
+                var cue = new VTTCue(Math.max(0, video.currentTime - 0.3), video.currentTime + 600, text);
+                cue.line = 'auto';
+                track.addCue(cue);
+              } catch (error) {}
+            }
+          }
+          // Repeated every tick: a player can switch a track on at any time
+          // (its addtrack listener, the native menu), and the mirror has to
+          // stay the only caption layer while it is carrying the sentence.
+          if (painted) { hideRealCaptionTracks(video, track); }
         }
 
         sync();
@@ -613,6 +619,11 @@ public enum WebPageScripts {
       var startX = 0;
       var startY = 0;
       var startAt = 0;
+      var startPlayer = null;
+      var startHidden = false;
+      var tapVideo = null;
+      var tapWasPlaying = false;
+      var guardUntil = 0;
       var tracking = false;
       var handledAt = 0;
 
@@ -624,8 +635,8 @@ public enum WebPageScripts {
         return player;
       }
 
-      function toggleControls(player) {
-        if (player.classList.contains('ytp-autohide')) {
+      function setControls(player, visible) {
+        if (visible) {
           player.classList.remove('ytp-autohide');
           player.classList.remove('ytp-hide-controls');
         } else {
@@ -634,7 +645,12 @@ public enum WebPageScripts {
       }
 
       // Claims one tap. The same tap reaches several events; only the first
-      // one toggles and the rest are swallowed, so the controls move once.
+      // one acts and the rest are swallowed, so the controls move once.
+      //
+      // The direction comes from the state read at the START of the gesture,
+      // not from the state reached now: a player may reveal its controls on
+      // touchstart, and reading the class at touchend would then see them
+      // already visible and hide the very layer the tap was asking for.
       function claimTap(event) {
         var player = playerForPicture(event.target);
         if (!player) { return false; }
@@ -643,16 +659,34 @@ public enum WebPageScripts {
         var now = Date.now();
         if (now - handledAt > 350) {
           handledAt = now;
-          try { toggleControls(player); } catch (error) {}
+          var show = startPlayer === player
+            ? startHidden
+            : player.classList.contains('ytp-autohide');
+          try { setControls(player, show); } catch (error) {}
+          // A player that answers the picture tap with play/pause — whatever
+          // event it listens to — is put back the way it was for the length
+          // of this gesture; only the play button may change the state.
+          guardUntil = now + 400;
         }
         return true;
       }
 
-      function recordStart(x, y) {
+      function recordStart(node, x, y) {
         startX = x;
         startY = y;
         startAt = Date.now();
+        startPlayer = playerForPicture(node);
+        startHidden = startPlayer ? startPlayer.classList.contains('ytp-autohide') : false;
+        tapVideo = startPlayer ? startPlayer.querySelector('video') : null;
+        tapWasPlaying = tapVideo ? !tapVideo.paused : false;
+        guardUntil = tapVideo ? Date.now() + 650 : 0;
         tracking = true;
+      }
+
+      function cancelTap() {
+        tracking = false;
+        guardUntil = 0;
+        tapVideo = null;
       }
 
       function isStillTap(x, y) {
@@ -662,12 +696,27 @@ public enum WebPageScripts {
       }
 
       window.addEventListener('pointerdown', function (event) {
-        recordStart(event.clientX, event.clientY);
+        recordStart(event.target, event.clientX, event.clientY);
       }, true);
 
       window.addEventListener('touchstart', function (event) {
         var touch = event.touches && event.touches[0];
-        if (touch) { recordStart(touch.clientX, touch.clientY); }
+        if (touch) { recordStart(event.target, touch.clientX, touch.clientY); }
+      }, true);
+
+      window.addEventListener('pointermove', function (event) {
+        if (!tracking) { return; }
+        if (Math.abs(event.clientX - startX) > 12 || Math.abs(event.clientY - startY) > 12) {
+          cancelTap();
+        }
+      }, true);
+
+      window.addEventListener('touchmove', function (event) {
+        var touch = event.touches && event.touches[0];
+        if (!tracking || !touch) { return; }
+        if (Math.abs(touch.clientX - startX) > 12 || Math.abs(touch.clientY - startY) > 12) {
+          cancelTap();
+        }
       }, true);
 
       window.addEventListener('pointerup', function (event) {
@@ -684,7 +733,21 @@ public enum WebPageScripts {
       }, true);
 
       window.addEventListener('touchcancel', function () {
-        tracking = false;
+        cancelTap();
+      }, true);
+
+      // The safety net for the player's own pause/play path: the gesture's
+      // state is restored if the player changed it inside the tap window.
+      document.addEventListener('pause', function (event) {
+        if (event.target !== tapVideo || Date.now() > guardUntil) { return; }
+        if (!tapWasPlaying) { return; }
+        try { tapVideo.play(); } catch (error) {}
+      }, true);
+
+      document.addEventListener('play', function (event) {
+        if (event.target !== tapVideo || Date.now() > guardUntil) { return; }
+        if (tapWasPlaying) { return; }
+        try { tapVideo.pause(); } catch (error) {}
       }, true);
 
       // A mouse click, a keyboard activation, or a path that delivered only a
