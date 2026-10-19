@@ -37,11 +37,44 @@ struct OmniboxView: View {
     /// `nil` keeps the palette's own colours, which is what every surface that
     /// owns its backdrop wants.
     var foregroundOverride: Color? = nil
+    /// Whether the field draws its own glass pill.
+    ///
+    /// The phone bar gives the omnibox its own capsule between two button
+    /// clusters. The iPad top bar is already one glass surface, and stacking
+    /// a second glass pill inside it is what made the field look doubled and
+    /// crowded; there the field is text on the bar's own glass.
+    var usesOwnChrome: Bool = true
 
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        chrome
+            .animation(.easeOut(duration: 0.18), value: viewModel.isEditing)
+            .animation(.easeOut(duration: 0.15), value: viewModel.text.isEmpty)
+    }
+
+    @ViewBuilder
+    private var chrome: some View {
+        if usesOwnChrome {
+            fieldContent
+                .browserFloatingChrome(
+                    radius: BrowserRadius.omnibox,
+                    material: .regularMaterial,
+                    tintStrength: 0.6,
+                    elevation: .card
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
+                        .strokeBorder(isEditingStroke, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+        } else {
+            fieldContent
+        }
+    }
+
+    private var fieldContent: some View {
         HStack(spacing: BrowserSpacing.tight) {
             securityBadge
 
@@ -80,22 +113,6 @@ struct OmniboxView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous))
         }
-        // The omnibox pill inside the command bar. The tint under the material
-        // is heavier here than on the flanking buttons because a URL has to
-        // stay legible over whatever the page behind it happens to be.
-        .browserFloatingChrome(
-            radius: BrowserRadius.omnibox,
-            material: .regularMaterial,
-            tintStrength: 0.6,
-            elevation: .card
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
-                .strokeBorder(isEditingStroke, lineWidth: 1)
-                .allowsHitTesting(false)
-        }
-        .animation(.easeOut(duration: 0.18), value: viewModel.isEditing)
-        .animation(.easeOut(duration: 0.15), value: viewModel.text.isEmpty)
     }
 
     /// The ring drawn around the field while it is open.

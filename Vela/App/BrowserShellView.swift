@@ -723,7 +723,8 @@ struct BrowserShellView: View {
                     guard let tab = activeTab else { return }
                     tabManager.stopLoading(tab: tab)
                 },
-                foregroundOverride: padInk
+                foregroundOverride: padInk,
+                usesOwnChrome: false
             )
             .frame(maxWidth: .infinity)
 

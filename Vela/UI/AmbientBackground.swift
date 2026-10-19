@@ -126,6 +126,17 @@ struct AmbientBackgroundView: View {
                         blob(specs[index], in: size)
                     }
 
+                    // A frosted pane over the colour. The blobs underneath are
+                    // the light; this layer is the glass the light is seen
+                    // through, which is what keeps the field from reading as a
+                    // flat painted gradient.
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .opacity(colorScheme == .dark ? 0.24 : 0.18)
+                        .allowsHitTesting(false)
+
+                    specular(in: size)
+
                     AmbientGrain()
                         .opacity(colorScheme == .dark ? 0.35 : 0.28)
                         .blendMode(.overlay)
@@ -158,6 +169,41 @@ struct AmbientBackgroundView: View {
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
+    }
+
+    /// Two faint diagonal highlights: the reflection a pane of glass gives
+    /// when it sits in front of a lit field. Static, like everything else here.
+    private func specular(in size: CGSize) -> some View {
+        let longEdge = max(size.width, size.height)
+        return ZStack {
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [.clear, .white.opacity(colorScheme == .dark ? 0.13 : 0.20), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: longEdge * 1.5, height: 3)
+                .blur(radius: 6)
+                .rotationEffect(.degrees(-24))
+                .position(x: size.width * 0.32, y: size.height * 0.20)
+
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [.clear, .white.opacity(colorScheme == .dark ? 0.07 : 0.12), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: longEdge * 1.2, height: 2)
+                .blur(radius: 4)
+                .rotationEffect(.degrees(-24))
+                .position(x: size.width * 0.58, y: size.height * 0.64)
+        }
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
     }
 
     /// The style's own base, with the palette surface mixed back in lightly so
@@ -194,38 +240,38 @@ struct AmbientBackgroundView: View {
         case .aurora:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.043, green: 0.055, blue: 0.078),
-                    Color(red: 0.051, green: 0.067, blue: 0.098),
-                    Color(red: 0.055, green: 0.063, blue: 0.090)
+                    Color(red: 0.082, green: 0.102, blue: 0.153),
+                    Color(red: 0.067, green: 0.090, blue: 0.141),
+                    Color(red: 0.086, green: 0.075, blue: 0.145)
                 ]
                 : [
-                    Color(red: 0.973, green: 0.984, blue: 1.000),
-                    Color(red: 0.953, green: 0.965, blue: 0.988),
-                    Color(red: 0.984, green: 0.969, blue: 0.996)
+                    Color(red: 0.969, green: 0.984, blue: 1.000),
+                    Color(red: 0.933, green: 0.953, blue: 1.000),
+                    Color(red: 0.976, green: 0.957, blue: 1.000)
                 ]
         case .dawn:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.082, green: 0.071, blue: 0.063),
-                    Color(red: 0.090, green: 0.075, blue: 0.067),
-                    Color(red: 0.082, green: 0.067, blue: 0.078)
+                    Color(red: 0.106, green: 0.086, blue: 0.075),
+                    Color(red: 0.118, green: 0.094, blue: 0.082),
+                    Color(red: 0.102, green: 0.075, blue: 0.098)
                 ]
                 : [
-                    Color(red: 0.996, green: 0.980, blue: 0.961),
-                    Color(red: 0.984, green: 0.953, blue: 0.941),
-                    Color(red: 0.976, green: 0.961, blue: 0.980)
+                    Color(red: 1.000, green: 0.980, blue: 0.957),
+                    Color(red: 1.000, green: 0.945, blue: 0.925),
+                    Color(red: 0.984, green: 0.961, blue: 0.988)
                 ]
         case .midnight:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.031, green: 0.039, blue: 0.067),
-                    Color(red: 0.039, green: 0.051, blue: 0.086),
-                    Color(red: 0.047, green: 0.043, blue: 0.078)
+                    Color(red: 0.063, green: 0.090, blue: 0.145),
+                    Color(red: 0.055, green: 0.082, blue: 0.141),
+                    Color(red: 0.078, green: 0.075, blue: 0.153)
                 ]
                 : [
-                    Color(red: 0.965, green: 0.976, blue: 0.996),
-                    Color(red: 0.945, green: 0.961, blue: 0.984),
-                    Color(red: 0.973, green: 0.961, blue: 0.996)
+                    Color(red: 0.957, green: 0.973, blue: 1.000),
+                    Color(red: 0.929, green: 0.949, blue: 0.988),
+                    Color(red: 0.973, green: 0.957, blue: 1.000)
                 ]
         }
     }
@@ -266,22 +312,22 @@ struct AmbientBackgroundView: View {
                 AmbientBlobSpec(
                     light: Color(red: 0.66, green: 0.93, blue: 0.85),
                     dark: Color(red: 0.20, green: 0.72, blue: 0.66),
-                    x: 0.14, y: 0.12, diameter: 1.20, opacity: colorScheme == .dark ? 0.16 : 0.26
+                    x: 0.14, y: 0.12, diameter: 1.20, opacity: colorScheme == .dark ? 0.22 : 0.28
                 ),
                 AmbientBlobSpec(
                     light: Color(red: 0.72, green: 0.83, blue: 1.00),
                     dark: Color(red: 0.34, green: 0.46, blue: 0.90),
-                    x: 0.86, y: 0.26, diameter: 1.10, opacity: colorScheme == .dark ? 0.17 : 0.24
+                    x: 0.86, y: 0.26, diameter: 1.10, opacity: colorScheme == .dark ? 0.22 : 0.26
                 ),
                 AmbientBlobSpec(
                     light: Color(red: 0.84, green: 0.73, blue: 1.00),
                     dark: Color(red: 0.55, green: 0.38, blue: 0.88),
-                    x: 0.76, y: 0.86, diameter: 1.15, opacity: colorScheme == .dark ? 0.15 : 0.20
+                    x: 0.76, y: 0.86, diameter: 1.15, opacity: colorScheme == .dark ? 0.20 : 0.22
                 ),
                 AmbientBlobSpec(
                     light: Color(red: 1.00, green: 0.83, blue: 0.90),
                     dark: Color(red: 0.75, green: 0.36, blue: 0.58),
-                    x: 0.10, y: 0.88, diameter: 0.80, opacity: colorScheme == .dark ? 0.09 : 0.14
+                    x: 0.10, y: 0.88, diameter: 0.80, opacity: colorScheme == .dark ? 0.12 : 0.15
                 )
             ]
         case .dawn:
@@ -289,22 +335,22 @@ struct AmbientBackgroundView: View {
                 AmbientBlobSpec(
                     light: Color(red: 1.00, green: 0.87, blue: 0.74),
                     dark: Color(red: 0.80, green: 0.62, blue: 0.42),
-                    x: 0.14, y: 0.12, diameter: 1.20, opacity: colorScheme == .dark ? 0.12 : 0.28
+                    x: 0.14, y: 0.12, diameter: 1.20, opacity: colorScheme == .dark ? 0.16 : 0.30
                 ),
                 AmbientBlobSpec(
                     light: Color(red: 1.00, green: 0.82, blue: 0.84),
                     dark: Color(red: 0.80, green: 0.52, blue: 0.54),
-                    x: 0.86, y: 0.28, diameter: 1.10, opacity: colorScheme == .dark ? 0.10 : 0.22
+                    x: 0.86, y: 0.28, diameter: 1.10, opacity: colorScheme == .dark ? 0.14 : 0.24
                 ),
                 AmbientBlobSpec(
                     light: Color(red: 1.00, green: 0.95, blue: 0.80),
                     dark: Color(red: 0.76, green: 0.66, blue: 0.44),
-                    x: 0.74, y: 0.86, diameter: 1.15, opacity: colorScheme == .dark ? 0.08 : 0.20
+                    x: 0.74, y: 0.86, diameter: 1.15, opacity: colorScheme == .dark ? 0.11 : 0.22
                 ),
                 AmbientBlobSpec(
                     light: Color(red: 0.90, green: 0.84, blue: 1.00),
                     dark: Color(red: 0.58, green: 0.44, blue: 0.58),
-                    x: 0.10, y: 0.86, diameter: 0.80, opacity: colorScheme == .dark ? 0.07 : 0.12
+                    x: 0.10, y: 0.86, diameter: 0.80, opacity: colorScheme == .dark ? 0.09 : 0.14
                 )
             ]
         case .midnight:
@@ -312,22 +358,22 @@ struct AmbientBackgroundView: View {
                 AmbientBlobSpec(
                     light: Color(red: 0.74, green: 0.82, blue: 1.00),
                     dark: Color(red: 0.26, green: 0.46, blue: 0.84),
-                    x: 0.14, y: 0.14, diameter: 1.20, opacity: colorScheme == .dark ? 0.17 : 0.26
+                    x: 0.14, y: 0.14, diameter: 1.20, opacity: colorScheme == .dark ? 0.22 : 0.28
                 ),
                 AmbientBlobSpec(
                     light: Color(red: 0.72, green: 0.92, blue: 0.92),
                     dark: Color(red: 0.20, green: 0.66, blue: 0.72),
-                    x: 0.86, y: 0.30, diameter: 1.05, opacity: colorScheme == .dark ? 0.11 : 0.20
+                    x: 0.86, y: 0.30, diameter: 1.05, opacity: colorScheme == .dark ? 0.20 : 0.24
                 ),
                 AmbientBlobSpec(
                     light: Color(red: 0.84, green: 0.77, blue: 1.00),
                     dark: Color(red: 0.50, green: 0.36, blue: 0.80),
-                    x: 0.74, y: 0.86, diameter: 1.15, opacity: colorScheme == .dark ? 0.15 : 0.22
+                    x: 0.74, y: 0.86, diameter: 1.15, opacity: colorScheme == .dark ? 0.20 : 0.24
                 ),
                 AmbientBlobSpec(
                     light: Color(red: 1.00, green: 0.82, blue: 0.90),
                     dark: Color(red: 0.68, green: 0.30, blue: 0.52),
-                    x: 0.10, y: 0.86, diameter: 0.80, opacity: colorScheme == .dark ? 0.08 : 0.12
+                    x: 0.10, y: 0.86, diameter: 0.80, opacity: colorScheme == .dark ? 0.10 : 0.14
                 )
             ]
         }
