@@ -362,7 +362,8 @@ struct BrowserShellView: View {
             }
         }
         .onChange(of: tabManager.activeTabId) { _, _ in
-            isReaderActive = false            readerArticle = nil
+            isReaderActive = false
+            readerArticle = nil
             showFindBar = false
             findQuery = ""
             chromeHidden = false
