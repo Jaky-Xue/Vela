@@ -157,6 +157,8 @@ struct BrowserShellView: View {
     private var activeTab: BrowserTabState? { tabManager.activeTab }
 
     private static let padSidebarWidth: CGFloat = 286
+    /// The top bar's laid-out height: 50 for the glass row plus its 8/6 gaps.
+    private static let padTopBarHeight: CGFloat = 64
 
     /// Whether the shell draws the iPad layout.
     ///
@@ -641,6 +643,10 @@ struct BrowserShellView: View {
             // place would put two address fields on screen.
             if !omnibox.isEditing {
                 padTopBar
+                    .frame(height: chromeHidden ? 0 : Self.padTopBarHeight, alignment: .top)
+                    .clipped()
+                    .opacity(chromeHidden ? 0 : 1)
+                    .allowsHitTesting(!chromeHidden)
                     .zIndex(2)
             }
 
@@ -651,7 +657,8 @@ struct BrowserShellView: View {
                             onNavigate: { url in
                                 navigate(to: url, in: submissionTab)
                             },
-                            onOpenManager: { showBookmarks = true }
+                            onOpenManager: { showBookmarks = true },
+                            isHidden: chromeHidden
                         )
                     }
                     contentSurface
@@ -766,23 +773,7 @@ struct BrowserShellView: View {
                 .onTapGesture { showPadSidebar = false }
 
             BrowserSidebarView(
-                onClose: { showPadSidebar = false },
-                onOpenBookmarks: {
-                    showPadSidebar = false
-                    showBookmarks = true
-                },
-                onOpenHistory: {
-                    showPadSidebar = false
-                    showHistory = true
-                },
-                onOpenDownloads: {
-                    showPadSidebar = false
-                    showDownloads = true
-                },
-                onOpenSettings: {
-                    showPadSidebar = false
-                    showSettings = true
-                }
+                onClose: { showPadSidebar = false }
             )
             .frame(width: Self.padSidebarWidth)
             .frame(maxHeight: .infinity)

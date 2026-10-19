@@ -18,6 +18,9 @@ struct BookmarksBarView: View {
 
     var onNavigate: (URL) -> Void
     var onOpenManager: () -> Void
+    /// The iPad top bar collapses on a downward scroll; the bookmarks strip
+    /// collapses with it, so the page takes the space back.
+    var isHidden: Bool = false
 
     private var bookmarks: [BookmarkNode] {
         guard let rootId = env.bookmarks.rootNodeId(for: .toolbar) else { return [] }
@@ -42,6 +45,10 @@ struct BookmarksBarView: View {
             EmptyView()
         } else {
             bar
+                .frame(height: isHidden ? 0 : 36)
+                .clipped()
+                .opacity(isHidden ? 0 : 1)
+                .allowsHitTesting(!isHidden)
         }
     }
 

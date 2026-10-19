@@ -17,10 +17,6 @@ struct BrowserSidebarView: View {
     @Environment(\.browserPalette) private var palette
 
     var onClose: (() -> Void)? = nil
-    var onOpenBookmarks: () -> Void
-    var onOpenHistory: () -> Void
-    var onOpenDownloads: () -> Void
-    var onOpenSettings: () -> Void
 
     @State private var mode: BrowserSessionPrivacyMode = .regular
 
@@ -33,8 +29,6 @@ struct BrowserSidebarView: View {
             header
             Rectangle().fill(palette.separator).frame(height: 0.5)
             tabList
-            Rectangle().fill(palette.separator).frame(height: 0.5)
-            footer
         }
         .background {
             ZStack {
@@ -185,34 +179,5 @@ struct BrowserSidebarView: View {
         if !tab.title.isEmpty { return tab.title }
         if !tab.displayHost.isEmpty { return tab.displayHost }
         return "标签页"
-    }
-
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack(spacing: 0) {
-            footerButton("书签", symbol: "book", action: onOpenBookmarks)
-            footerButton("历史", symbol: "clock.arrow.circlepath", action: onOpenHistory)
-            footerButton("下载", symbol: "arrow.down.circle", action: onOpenDownloads)
-            footerButton("设置", symbol: "gearshape", action: onOpenSettings)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
-    }
-
-    private func footerButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: symbol)
-                    .font(.system(size: 15, weight: .medium))
-                Text(title)
-                    .font(.system(size: 9, weight: .medium))
-            }
-            .foregroundStyle(palette.secondaryText)
-            .frame(maxWidth: .infinity, minHeight: 40)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
     }
 }
