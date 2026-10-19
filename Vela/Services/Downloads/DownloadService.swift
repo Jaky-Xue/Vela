@@ -297,7 +297,9 @@ public final class DownloadService: NSObject {
         }
 
         var plan: SegmentedDownloadManifest?
-        if let existing = item.manifest, existing.url == (prepared.url?.absoluteString ?? url.absoluteString) {
+        if let existing = item.manifest {
+            // A resume continues the exact plan on disk; the parts belong to
+            // these ranges and this destination.
             plan = existing
         } else if settings.downloadSettings.usesSegmentedDownloads {
             let probe = await SegmentedDownloadSession.probe(request: prepared)
@@ -615,6 +617,11 @@ public final class DownloadService: NSObject {
         if task.totalBytes == 0 {
             task.totalBytes = task.receivedBytes
         }
+        // Progress is persisted on a throttle; a finished file is complete by
+        // definition, so the record must not show a byte short of it.
+        if task.totalBytes > 0 {
+            task.receivedBytes = task.totalBytes
+        }
         task.writtenBytes = task.receivedBytes
         try? repository.upsert(task)
         releaseTracking(guid: guid)
@@ -804,7 +811,16 @@ public final class DownloadService: NSObject {
 
         let manifest = ManifestStore.load(guid: guid)
         if manifest != nil || (try? repository.resumeData(guid: guid)) == nil {
-            guard let url = URL(string: task.requestUrl) else { return }
+            let urlString = manifest.map { $0.url.isEmpty ? task.requestUrl : $0.url } ?? task.requestUrl
+            guard let url = URL(string: urlString) else { return }
+            // A record written before the destination was chosen has no path;
+            // resolve one now, or the parts and the merge would have nowhere
+            // to go.
+            if task.destinationPath.isEmpty {
+                let destination = resolveDestination(suggestedFileName: task.suggestedFileName)
+                task.resolvedFileName = destination.lastPathComponent
+                task.destinationPath = destination.path
+            }
             task.status = .pending
             task.failure = nil
             task.updatedAt = Date()
