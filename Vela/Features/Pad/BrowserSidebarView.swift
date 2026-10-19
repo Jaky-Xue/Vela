@@ -35,7 +35,7 @@ struct BrowserSidebarView: View {
             // separate panel: the ambient field shows through a light glass.
             ZStack {
                 AmbientBackgroundView()
-                Rectangle().fill(.ultraThinMaterial).opacity(0.16)
+                Rectangle().fill(.ultraThinMaterial).opacity(0.22)
             }
             .ignoresSafeArea()
         }
