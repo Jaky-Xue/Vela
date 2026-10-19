@@ -35,6 +35,13 @@ struct NovelReaderView: View {
     @State private var isLoading = false
     @State private var statusMessage: String?
     @State private var progress: Double = 0
+    /// The exact scroll fraction, kept out of view state.
+    ///
+    /// A scroll message arrives every frame. Storing the fraction in `@State`
+    /// would rebuild the reader — including its whole chapter HTML — on each
+    /// one, so the box holds the number and only the rounded percentage below
+    /// is published.
+    @State private var progressBox: NovelProgressBox
     @State private var lastSavedAt = Date.distantPast
     @State private var fontSize: Double = 19
     @State private var appearance: NovelReadingAppearance = .system
@@ -51,6 +58,7 @@ struct NovelReaderView: View {
         _currentBook = State(initialValue: book)
         _chapter = State(initialValue: initialChapter)
         _progress = State(initialValue: book.progress)
+        _progressBox = State(initialValue: NovelProgressBox(book.progress))
     }
 
     var body: some View {
@@ -65,7 +73,7 @@ struct NovelReaderView: View {
                     if let chapter {
                         NovelChapterWebView(
                             html: styledHtml(for: chapter),
-                            initialProgress: progress,
+                            initialProgress: progressBox.value,
                             onProgress: handleProgress
                         )
                         .id(chapter.url)
@@ -289,6 +297,7 @@ struct NovelReaderView: View {
 
         guard chapter == nil else {
             progress = currentBook.progress
+            progressBox.value = currentBook.progress
             saveNow()
             return
         }
@@ -296,6 +305,7 @@ struct NovelReaderView: View {
         if let cached = env.novels.cachedChapter(book: currentBook) {
             chapter = cached
             progress = currentBook.progress
+            progressBox.value = currentBook.progress
             saveNow()
             return
         }
@@ -313,6 +323,7 @@ struct NovelReaderView: View {
         if let cached = env.novels.chapter(bookId: currentBook.id, url: url) {
             chapter = cached
             progress = restoring
+            progressBox.value = restoring
             currentBook.currentChapterUrl = cached.url
             currentBook.currentChapterTitle = cached.title
             currentBook.chapterIndex = cached.index
@@ -342,6 +353,7 @@ struct NovelReaderView: View {
             )
 
         progress = 0
+        progressBox.value = 0
         chapter = stored
         currentBook.currentChapterUrl = stored.url
         currentBook.currentChapterTitle = stored.title
@@ -382,17 +394,27 @@ struct NovelReaderView: View {
     // MARK: - Position
 
     private func handleProgress(_ value: Double) {
-        progress = min(max(value, 0), 1)
+        let fraction = min(max(value, 0), 1)
+        progressBox.value = fraction
+
+        // Publish only the rounded percentage the bottom bar draws; the exact
+        // fraction stays in the box so a scroll message does not rebuild the
+        // chapter HTML on every frame.
+        if Int((fraction * 100).rounded()) != Int((progress * 100).rounded()) {
+            progress = fraction
+        }
+
         let now = Date()
         guard now.timeIntervalSince(lastSavedAt) > 2 else { return }
         lastSavedAt = now
-        env.novels.updateProgress(bookId: currentBook.id, progress: progress)
+        env.novels.updateProgress(bookId: currentBook.id, progress: fraction)
     }
 
     private func saveNow() {
         guard let chapter else { return }
-        env.novels.markPosition(bookId: currentBook.id, chapter: chapter, progress: progress)
-        currentBook.progress = progress
+        let fraction = progressBox.value
+        env.novels.markPosition(bookId: currentBook.id, chapter: chapter, progress: fraction)
+        currentBook.progress = fraction
         currentBook.currentChapterUrl = chapter.url
         currentBook.currentChapterTitle = chapter.title
         currentBook.chapterIndex = chapter.index
@@ -498,6 +520,21 @@ struct NovelReaderView: View {
         </body>
         </html>
         """
+    }
+}
+
+// MARK: - Progress box
+
+/// Holds the exact reading fraction without making it view state.
+///
+/// A reference box rather than a `@State` Double: the scroll reporter posts on
+/// every frame, and republishing the fraction would rebuild the whole reader —
+/// chapter HTML included — at that rate.
+private final class NovelProgressBox {
+    var value: Double
+
+    init(_ value: Double = 0) {
+        self.value = value
     }
 }
 
