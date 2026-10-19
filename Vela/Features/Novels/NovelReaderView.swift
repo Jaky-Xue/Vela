@@ -243,7 +243,7 @@ struct NovelReaderView: View {
             }
             .disabled(!(chapter?.hasPrevious ?? false) || isLoading)
 
-            Text(chapter.map { "第 \($0.index + 1) 章" } ?? "")
+            Text("\(Int((progress * 100).rounded()))%")
                 .font(.caption2)
                 .foregroundStyle(palette.secondaryText)
                 .monospacedDigit()
