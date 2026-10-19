@@ -449,6 +449,9 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var webRTCProtectionEnabled: Bool?
     /// 界面形态：跟随设备、手机布局或 iPad 布局。
     public var interfaceLayout: String?
+    /// iPad 顶部工具栏两侧的可自定义控件；侧边栏按钮和菜单是固定的。
+    public var padToolbarLeadingItems: [String]?
+    public var padToolbarTrailingItems: [String]?
 
     public init(
         searchEngine: SearchEngineSettings = .default,
@@ -488,7 +491,9 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         menuShortcuts: [MenuShortcut]? = nil,
         webRTCProtection: String? = nil,
         webRTCProtectionEnabled: Bool? = nil,
-        interfaceLayout: String? = nil
+        interfaceLayout: String? = nil,
+        padToolbarLeadingItems: [String]? = nil,
+        padToolbarTrailingItems: [String]? = nil
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -528,6 +533,8 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.webRTCProtection = webRTCProtection
         self.webRTCProtectionEnabled = webRTCProtectionEnabled
         self.interfaceLayout = interfaceLayout
+        self.padToolbarLeadingItems = padToolbarLeadingItems
+        self.padToolbarTrailingItems = padToolbarTrailingItems
     }
 
     /// The resolved switch: protection is on unless explicitly turned off.

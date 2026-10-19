@@ -119,6 +119,10 @@ struct ToolbarLayout: Equatable, Sendable {
 
     static let defaultLeading: [ToolbarControl] = [.back]
     static let defaultTrailing: [ToolbarControl] = [.tabs, .menu]
+    /// The iPad top bar keeps the sidebar toggle and menu fixed; these are the
+    /// user-controlled parts around the field.
+    static let defaultPadLeading: [ToolbarControl] = [.back]
+    static let defaultPadTrailing: [ToolbarControl] = [.share, .tabs]
 
     var leading: [ToolbarControl]
     var trailing: [ToolbarControl]
@@ -132,9 +136,14 @@ struct ToolbarLayout: Equatable, Sendable {
 
     /// Reads the two stored arrays, falling back to the shipped layout for a
     /// side that has never been written.
-    init(storedLeading: [String]?, storedTrailing: [String]?) {
-        let leadRaw = storedLeading ?? Self.defaultLeading.map(\.rawValue)
-        let trailRaw = storedTrailing ?? Self.defaultTrailing.map(\.rawValue)
+    init(
+        storedLeading: [String]?,
+        storedTrailing: [String]?,
+        defaultLeading: [ToolbarControl] = ToolbarLayout.defaultLeading,
+        defaultTrailing: [ToolbarControl] = ToolbarLayout.defaultTrailing
+    ) {
+        let leadRaw = storedLeading ?? defaultLeading.map(\.rawValue)
+        let trailRaw = storedTrailing ?? defaultTrailing.map(\.rawValue)
         self.init(
             leading: Self.decode(leadRaw),
             trailing: Self.decode(trailRaw)

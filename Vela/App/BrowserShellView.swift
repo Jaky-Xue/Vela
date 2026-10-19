@@ -157,8 +157,8 @@ struct BrowserShellView: View {
     private var activeTab: BrowserTabState? { tabManager.activeTab }
 
     private static let padSidebarWidth: CGFloat = 286
-    /// The top bar's laid-out height: 50 for the glass row plus its 8/6 gaps.
-    private static let padTopBarHeight: CGFloat = 64
+    /// The top bar's laid-out height: 46 for the glass row plus its 8/6 gaps.
+    private static let padTopBarHeight: CGFloat = 60
 
     /// Whether the shell draws the iPad layout.
     ///
@@ -509,6 +509,18 @@ struct BrowserShellView: View {
             .environment(env)
             .browserAmbientSheet()
         }
+        .sheet(item: Binding(
+            get: { env.overlays.elementPick },
+            set: { if $0 == nil { env.overlays.elementPick = nil } }
+        )) { pick in
+            ElementHideConfirmSheet(
+                pick: pick,
+                onHide: { applyElementHide(pick) },
+                onCancel: { env.overlays.elementPick = nil }
+            )
+            .environment(env)
+            .browserAmbientSheet()
+        }
         .alert(
             "无法打开该地址",
             isPresented: Binding(
@@ -690,28 +702,33 @@ struct BrowserShellView: View {
         }
     }
 
+    private var padToolbarLayout: ToolbarLayout { env.settings.padToolbarLayout }
+
+    /// Three glass pieces rather than one continuous strip: the fixed sidebar
+    /// surface plus the user's leading controls, the address field, and the
+    /// user's trailing controls plus the menu. The gaps are what divide the
+    /// bar that used to read as one long slab.
     private var padTopBarContent: some View {
-        HStack(spacing: 4) {
-            chromeButton(
-                symbol: "sidebar.left",
-                isEnabled: true,
-                label: showPadSidebar ? "收起标签页侧边栏" : "显示标签页侧边栏",
-                foreground: padInk
-            ) {
-                withAnimation(.snappy(duration: 0.26)) {
-                    showPadSidebar.toggle()
+        HStack(spacing: 6) {
+            HStack(spacing: 2) {
+                chromeButton(
+                    symbol: "sidebar.left",
+                    isEnabled: true,
+                    label: showPadSidebar ? "收起标签页侧边栏" : "显示标签页侧边栏",
+                    foreground: padInk
+                ) {
+                    withAnimation(.snappy(duration: 0.26)) {
+                        showPadSidebar.toggle()
+                    }
+                }
+
+                ForEach(padToolbarLayout.leading) { control in
+                    padToolbarControl(control)
                 }
             }
-
-            chromeButton(
-                symbol: "chevron.left",
-                isEnabled: canGoBack,
-                label: "后退",
-                foreground: padInk
-            ) {
-                goBack()
-            }
-            .contextMenu { backHistoryMenu }
+            .padding(.horizontal, 4)
+            .frame(height: BrowserChrome.barHeight)
+            .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
 
             OmniboxView(
                 viewModel: omnibox,
@@ -723,44 +740,57 @@ struct BrowserShellView: View {
                     guard let tab = activeTab else { return }
                     tabManager.stopLoading(tab: tab)
                 },
-                foregroundOverride: padInk,
-                usesOwnChrome: false
+                foregroundOverride: padInk
             )
             .frame(maxWidth: .infinity)
 
-            if canActOnPage {
+            HStack(spacing: 2) {
+                ForEach(padToolbarLayout.trailing) { control in
+                    padToolbarControl(control)
+                }
+
                 chromeButton(
-                    symbol: "square.and.arrow.up",
+                    symbol: "ellipsis",
                     isEnabled: true,
-                    label: "分享",
+                    label: "菜单",
                     foreground: padInk
                 ) {
-                    showShareSheet = true
+                    showMenu = true
                 }
             }
-
-            tabsButton(ink: padInk)
-
-            chromeButton(
-                symbol: "ellipsis",
-                isEnabled: true,
-                label: "菜单",
-                foreground: padInk
-            ) {
-                showMenu = true
-            }
+            .padding(.horizontal, 4)
+            .frame(height: BrowserChrome.barHeight)
+            .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
         }
-        .padding(.horizontal, 8)
-        .frame(height: 50)
-        .browserFloatingChrome(
-            radius: 25,
-            material: .regularMaterial,
-            tintStrength: 0.35,
-            elevation: .card
-        )
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 6)
+    }
+
+    @ViewBuilder
+    private func padToolbarControl(_ control: ToolbarControl) -> some View {
+        if control == .tabs {
+            tabsButton(ink: padInk)
+        } else if control == .back {
+            chromeButton(
+                symbol: control.symbolName,
+                isEnabled: toolbarControlEnabled(control),
+                label: control.title,
+                foreground: padInk
+            ) {
+                performToolbarControl(control)
+            }
+            .contextMenu { backHistoryMenu }
+        } else {
+            chromeButton(
+                symbol: control.symbolName,
+                isEnabled: toolbarControlEnabled(control),
+                label: control.title,
+                foreground: padInk
+            ) {
+                performToolbarControl(control)
+            }
+        }
     }
 
     /// The tab drawer. It sits over the content only (below the top bar), with
@@ -1368,6 +1398,13 @@ struct BrowserShellView: View {
     /// has to chase.
     private var floatingTools: some View {
         VStack(spacing: 8) {
+            if env.overlays.isElementPickerArmed {
+                ElementPickerBanner {
+                    env.webCoordinator.disarmElementPicker(in: activeWebView)
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             // An HTTP error status is reported here, over the page the server
             // sent, rather than replacing it.
             if let tab = activeTab, tab.serverStatus >= 400, !tab.isHome {
@@ -1684,6 +1721,22 @@ struct BrowserShellView: View {
         } else {
             UIPasteboard.general.string = text
             qrCopyNotice = text
+        }
+    }
+
+    /// The live web view of the active tab, when it has one.
+    private var activeWebView: WKWebView? {
+        guard let tab = activeTab else { return nil }
+        return tabManager.webView(for: tab.id)
+    }
+
+    /// Saves the picked selector for this host and reloads so the cosmetic
+    /// style that hides it is attached to a new document.
+    private func applyElementHide(_ pick: ElementPickResult) {
+        env.settings.addManualElementHide(selector: pick.selector, host: pick.host)
+        env.overlays.elementPick = nil
+        if let tab = activeTab, !tab.isHome {
+            _ = tabManager.reload(tab: tab)
         }
     }
 

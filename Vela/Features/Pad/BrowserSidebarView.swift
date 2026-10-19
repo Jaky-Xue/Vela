@@ -31,9 +31,11 @@ struct BrowserSidebarView: View {
             tabList
         }
         .background {
+            // The drawer is the same place as the rest of the app, not a
+            // separate panel: the ambient field shows through a light glass.
             ZStack {
-                palette.chromeBackground.opacity(0.80)
-                Rectangle().fill(.regularMaterial)
+                AmbientBackgroundView()
+                Rectangle().fill(.ultraThinMaterial).opacity(0.16)
             }
             .ignoresSafeArea()
         }
@@ -128,7 +130,16 @@ struct BrowserSidebarView: View {
                 onClose?()
             } label: {
                 HStack(spacing: 9) {
-                    SiteIconView(host: tab.displayHost, size: 20)
+                    if tab.isHome {
+                        // No host means no favicon; a question-mark placeholder
+                        // in front of 新标签页 read as an error.
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(palette.secondaryText)
+                            .frame(width: 20, height: 20)
+                    } else {
+                        SiteIconView(host: tab.displayHost, size: 20)
+                    }
                     VStack(alignment: .leading, spacing: 1) {
                         Text(tabTitle(tab))
                             .font(.system(size: 13, weight: isActive ? .semibold : .regular))

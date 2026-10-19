@@ -1242,6 +1242,9 @@ public enum WebPageScripts {
           }
         } catch (_error) {
         }
+        // A pick is one-shot. Leaving the listeners installed would keep
+        // swallowing the page's clicks while the confirmation is answered.
+        if (window.__velaElementPickerStop) { window.__velaElementPickerStop(); }
       }
 
       window.__velaElementPickerStop = function () {

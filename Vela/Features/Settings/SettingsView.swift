@@ -121,7 +121,7 @@ struct SettingsView: View {
                 NavigationLink {
                     ToolbarSettingsView()
                 } label: {
-                    settingsRow(icon: "dock.rectangle", tint: .teal, title: "底部工具栏")
+                    settingsRow(icon: "dock.rectangle", tint: .teal, title: "工具栏")
                 }
 
                 NavigationLink {

@@ -174,6 +174,29 @@ public final class SettingsService {
         set { update { $0.interfaceLayout = newValue.rawValue } }
     }
 
+    /// The iPad top bar's user-controlled clusters.
+    var padToolbarLayout: ToolbarLayout {
+        get {
+            var value = ToolbarLayout(
+                storedLeading: preferences.padToolbarLeadingItems,
+                storedTrailing: preferences.padToolbarTrailingItems,
+                defaultLeading: ToolbarLayout.defaultPadLeading,
+                defaultTrailing: ToolbarLayout.defaultPadTrailing
+            )
+            // The top bar draws the menu button itself; a stored copy would
+            // appear twice.
+            value.leading.removeAll { $0 == .menu }
+            value.trailing.removeAll { $0 == .menu }
+            return value
+        }
+        set {
+            update { preferences in
+                preferences.padToolbarLeadingItems = newValue.leading.map(\.rawValue)
+                preferences.padToolbarTrailingItems = newValue.trailing.map(\.rawValue)
+            }
+        }
+    }
+
     // MARK: - Menu panel
 
     /// The panel's order, hidden built-ins and custom shortcuts.

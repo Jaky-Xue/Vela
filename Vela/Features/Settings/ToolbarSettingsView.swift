@@ -12,16 +12,47 @@
 
 import SwiftUI
 
+/// The two toolbars the app draws: the phone layout's bottom bar and the iPad
+/// layout's top bar. They have separate control orders.
+private enum ToolbarPlacement: String, CaseIterable, Identifiable, Hashable {
+    case bottom
+    case pad
+
+    var id: String { rawValue }
+    var title: String { self == .bottom ? "底部工具栏" : "iPad 顶部工具栏" }
+}
+
 struct ToolbarSettingsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
-    private var layout: ToolbarLayout { env.settings.toolbarLayout }
+    @State private var placement: ToolbarPlacement = .bottom
 
-    private var availableControls: [ToolbarControl] { layout.availableControls }
+    private var layout: ToolbarLayout {
+        placement == .bottom ? env.settings.toolbarLayout : env.settings.padToolbarLayout
+    }
+
+    private var availableControls: [ToolbarControl] {
+        // The iPad top bar draws the menu button itself.
+        placement == .pad ? layout.availableControls.filter { $0 != .menu } : layout.availableControls
+    }
 
     var body: some View {
         List {
+            Section {
+                Picker("编辑", selection: $placement) {
+                    ForEach(ToolbarPlacement.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            } footer: {
+                Text(placement == .pad
+                     ? "iPad 顶部工具栏的侧边栏按钮和菜单是固定的，中间始终是地址栏；下面编辑两侧的其余控件。"
+                     : "手机布局的底部工具栏，地址栏固定在中间。")
+            }
+
             Section {
                 controls(for: .leading)
             } header: {
@@ -40,12 +71,19 @@ struct ToolbarSettingsView: View {
 
             Section {
                 Button("恢复默认布局", systemImage: "arrow.counterclockwise") {
-                    env.settings.toolbarLayout = ToolbarLayout()
+                    if placement == .bottom {
+                        env.settings.toolbarLayout = ToolbarLayout()
+                    } else {
+                        env.settings.padToolbarLayout = ToolbarLayout(
+                            leading: ToolbarLayout.defaultPadLeading,
+                            trailing: ToolbarLayout.defaultPadTrailing
+                        )
+                    }
                 }
                 .foregroundStyle(palette.accent)
             }
         }
-        .navigationTitle("底部工具栏")
+        .navigationTitle("工具栏")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             EditButton()
@@ -129,6 +167,11 @@ struct ToolbarSettingsView: View {
     }
 
     private func apply(_ items: [ToolbarControl], to side: ToolbarSide) {
-        env.settings.toolbarLayout = layout.replacing(side, with: items)
+        let updated = layout.replacing(side, with: items)
+        if placement == .bottom {
+            env.settings.toolbarLayout = updated
+        } else {
+            env.settings.padToolbarLayout = updated
+        }
     }
 }

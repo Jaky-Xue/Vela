@@ -122,17 +122,19 @@ struct AmbientBackgroundView: View {
                 base
 
                 if style.usesAmbient, size.width > 1, size.height > 1 {
-                    ForEach(specs.indices, id: \.self) { index in
-                        blob(specs[index], in: size)
+                    if #available(iOS 18.0, *) {
+                        meshField(in: size)
+                    } else {
+                        ForEach(specs.indices, id: \.self) { index in
+                            blob(specs[index], in: size)
+                        }
                     }
 
-                    // A frosted pane over the colour. The blobs underneath are
-                    // the light; this layer is the glass the light is seen
-                    // through, which is what keeps the field from reading as a
-                    // flat painted gradient.
+                    // A light frosted pane over the colour. It is the glass the
+                    // light is seen through; kept thin so the mesh stays vivid.
                     Rectangle()
                         .fill(.ultraThinMaterial)
-                        .opacity(colorScheme == .dark ? 0.24 : 0.18)
+                        .opacity(colorScheme == .dark ? 0.08 : 0.06)
                         .allowsHitTesting(false)
 
                     specular(in: size)
@@ -169,6 +171,107 @@ struct AmbientBackgroundView: View {
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
+    }
+
+    /// The Arc-style field: one mesh gradient carrying several saturated
+    /// colours through each other. A mesh is far richer than a handful of
+    /// radial blobs, and because it is a single static fill it costs nothing
+    /// while a page scrolls.
+    @available(iOS 18.0, *)
+    private func meshField(in size: CGSize) -> some View {
+        MeshGradient(
+            width: 3,
+            height: 3,
+            points: [
+                SIMD2<Float>(0, 0), SIMD2<Float>(0.5, 0), SIMD2<Float>(1, 0),
+                SIMD2<Float>(0, 0.5), SIMD2<Float>(0.5, 0.5), SIMD2<Float>(1, 0.5),
+                SIMD2<Float>(0, 1), SIMD2<Float>(0.5, 1), SIMD2<Float>(1, 1)
+            ],
+            colors: meshColors
+        )
+    }
+
+    /// Nine saturated stops, light and dark. The dark stops are deep enough
+    /// for the chrome's white ink but deliberately coloured, not black.
+    private var meshColors: [Color] {
+        let dark = colorScheme == .dark
+        switch style {
+        case .solid:
+            let surface = palette.tokens(for: colorScheme).surface
+            return Array(repeating: surface, count: 9)
+        case .aurora:
+            return dark
+                ? [
+                    Color(red: 0.024, green: 0.071, blue: 0.145),
+                    Color(red: 0.043, green: 0.227, blue: 0.510),
+                    Color(red: 0.039, green: 0.420, blue: 0.478),
+                    Color(red: 0.141, green: 0.102, blue: 0.439),
+                    Color(red: 0.145, green: 0.388, blue: 0.922),
+                    Color(red: 0.024, green: 0.714, blue: 0.831),
+                    Color(red: 0.357, green: 0.129, blue: 0.714),
+                    Color(red: 0.745, green: 0.094, blue: 0.365),
+                    Color(red: 0.067, green: 0.106, blue: 0.227)
+                ]
+                : [
+                    Color(red: 0.918, green: 0.973, blue: 1.000),
+                    Color(red: 0.655, green: 0.890, blue: 1.000),
+                    Color(red: 0.780, green: 0.722, blue: 1.000),
+                    Color(red: 0.788, green: 0.929, blue: 1.000),
+                    Color(red: 0.490, green: 0.827, blue: 0.988),
+                    Color(red: 0.655, green: 0.545, blue: 0.980),
+                    Color(red: 0.984, green: 0.812, blue: 0.910),
+                    Color(red: 0.941, green: 0.671, blue: 0.988),
+                    Color(red: 0.910, green: 0.894, blue: 1.000)
+                ]
+        case .dawn:
+            return dark
+                ? [
+                    Color(red: 0.165, green: 0.063, blue: 0.165),
+                    Color(red: 0.420, green: 0.114, blue: 0.114),
+                    Color(red: 0.725, green: 0.110, blue: 0.294),
+                    Color(red: 0.290, green: 0.114, blue: 0.420),
+                    Color(red: 0.918, green: 0.345, blue: 0.047),
+                    Color(red: 0.859, green: 0.153, blue: 0.467),
+                    Color(red: 0.486, green: 0.176, blue: 0.071),
+                    Color(red: 0.851, green: 0.467, blue: 0.024),
+                    Color(red: 0.231, green: 0.027, blue: 0.392)
+                ]
+                : [
+                    Color(red: 1.000, green: 0.965, blue: 0.918),
+                    Color(red: 1.000, green: 0.827, blue: 0.647),
+                    Color(red: 1.000, green: 0.694, blue: 0.600),
+                    Color(red: 1.000, green: 0.878, blue: 0.902),
+                    Color(red: 0.992, green: 0.729, blue: 0.455),
+                    Color(red: 0.957, green: 0.447, blue: 0.714),
+                    Color(red: 0.992, green: 0.902, blue: 0.541),
+                    Color(red: 0.976, green: 0.659, blue: 0.831),
+                    Color(red: 0.914, green: 0.835, blue: 1.000)
+                ]
+        case .midnight:
+            return dark
+                ? [
+                    Color(red: 0.008, green: 0.024, blue: 0.090),
+                    Color(red: 0.039, green: 0.165, blue: 0.420),
+                    Color(red: 0.055, green: 0.455, blue: 0.565),
+                    Color(red: 0.118, green: 0.106, blue: 0.294),
+                    Color(red: 0.145, green: 0.388, blue: 0.922),
+                    Color(red: 0.031, green: 0.569, blue: 0.698),
+                    Color(red: 0.298, green: 0.114, blue: 0.584),
+                    Color(red: 0.745, green: 0.094, blue: 0.365),
+                    Color(red: 0.043, green: 0.067, blue: 0.125)
+                ]
+                : [
+                    Color(red: 0.937, green: 0.973, blue: 1.000),
+                    Color(red: 0.749, green: 0.859, blue: 0.996),
+                    Color(red: 0.647, green: 0.953, blue: 0.988),
+                    Color(red: 0.878, green: 0.906, blue: 1.000),
+                    Color(red: 0.576, green: 0.773, blue: 0.992),
+                    Color(red: 0.404, green: 0.910, blue: 0.976),
+                    Color(red: 0.867, green: 0.839, blue: 0.996),
+                    Color(red: 0.984, green: 0.812, blue: 0.910),
+                    Color(red: 0.973, green: 0.980, blue: 0.988)
+                ]
+        }
     }
 
     /// Two faint diagonal highlights: the reflection a pane of glass gives
