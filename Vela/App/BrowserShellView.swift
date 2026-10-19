@@ -516,6 +516,7 @@ struct BrowserShellView: View {
                 PermissionPromptView(request: request) { allow, remember in
                     env.webCoordinator.resolvePermissionRequest(allow: allow, remember: remember)
                 }
+                .browserAmbientSheet()
             }
         }
         .fileImporter(
@@ -1199,6 +1200,9 @@ struct BrowserShellView: View {
     /// an error surface covering the web view, and the home surface with a
     /// page behind it.
     private var edgeSwipeBackEnabled: Bool {
+        // The novel reader is its own layer with its own gestures; an edge
+        // swipe there would pop reader mode or navigate the page underneath it.
+        guard novelSession == nil else { return false }
         guard !omnibox.isEditing, !showFindBar else { return false }
         guard let tab = activeTab else { return false }
         if isReaderActive { return true }
@@ -1209,6 +1213,7 @@ struct BrowserShellView: View {
     }
 
     private func handleEdgeSwipeBack() {
+        guard novelSession == nil else { return }
         guard !omnibox.isEditing, !showFindBar else { return }
         if isReaderActive {
             isReaderActive = false

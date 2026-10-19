@@ -59,7 +59,7 @@ struct NovelReaderView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                header
+                headerInGlassContainer
 
                 Group {
                     if let chapter {
@@ -91,7 +91,7 @@ struct NovelReaderView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .safeAreaInset(edge: .bottom) { bottomBar }
+        .safeAreaInset(edge: .bottom) { bottomBarInGlassContainer }
         .task { await prepare() }
         .onDisappear {
             saveNow()
@@ -204,8 +204,32 @@ struct NovelReaderView: View {
         .padding(.top, 6)
     }
 
-    private var bottomBar: some View {
-        HStack(spacing: BrowserSpacing.compact) {
+    /// The header's glass rides one coordinated layer, the same rule the
+    /// browser's command bar follows: a shape on its own system layer can be
+    /// left at its pre-rotation frame, which reads as a ghost bar after a turn.
+    @ViewBuilder
+    private var headerInGlassContainer: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: BrowserChrome.barGap) {
+                header
+            }
+        } else {
+            header
+        }
+    }
+
+    @ViewBuilder
+    private var bottomBarInGlassContainer: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: BrowserChrome.barGap) {
+                bottomBar
+            }
+        } else {
+            bottomBar
+        }
+    }
+
+    private var bottomBar: some View {        HStack(spacing: BrowserSpacing.compact) {
             Button {
                 goPrevious()
             } label: {

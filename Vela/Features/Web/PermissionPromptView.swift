@@ -63,7 +63,7 @@ struct PermissionPromptView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 28)
         }
-        .background(palette.surface)
+        .browserSurfaceBackground(opacity: 0.72)
         .presentationDetents([.height(380)])
         .presentationDragIndicator(.visible)
     }

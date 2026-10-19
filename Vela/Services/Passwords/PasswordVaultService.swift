@@ -94,7 +94,7 @@ public final class PasswordVaultService {
         } catch {
             // A user cancellation is not an error worth reporting twice; the
             // lock screen is its own answer.
-            if (error as NSError).code != LAError.userCancel.rawValue {
+            if (error as NSError).code != LAError.Code.userCancel.rawValue {
                 lastError = "未能验证身份"
             }
             return false
