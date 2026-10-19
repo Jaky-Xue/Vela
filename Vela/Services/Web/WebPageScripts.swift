@@ -1252,6 +1252,9 @@ public enum WebPageScripts {
         document.removeEventListener('click', onClick, true);
         if (highlighted) { highlighted.style.outline = previousOutline; }
         highlighted = null;
+        // Re-armable in the same document: without clearing this the next
+        // arm's installed-guard would return before adding the listeners.
+        window.__velaElementPickerInstalled = false;
       };
 
       document.addEventListener('mousemove', onMove, true);
