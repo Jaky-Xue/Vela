@@ -183,8 +183,9 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
         lock.unlock()
 
         session?.finishTasksAndInvalidate()
-        DispatchQueue.main.async { [onComplete] in
-            onComplete(result)
+        let completion = onComplete
+        DispatchQueue.main.async {
+            completion(result)
         }
     }
 
@@ -337,8 +338,9 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
         lock.unlock()
 
         session?.invalidateAndCancel()
-        DispatchQueue.main.async { [onFallback] in
-            onFallback(error)
+        let fallback = onFallback
+        DispatchQueue.main.async {
+            fallback(error)
         }
     }
 

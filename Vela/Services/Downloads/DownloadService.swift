@@ -288,6 +288,14 @@ public final class DownloadService: NSObject {
         let prepared = await preparedRequest(for: item)
         preparedRequests[guid] = prepared
 
+        // URLSession sits under full ATS while web content is allowed
+        // cleartext. A plain-http file would fail here, so hand it straight to
+        // WebKit, whose download shares the web view's exception.
+        if prepared.url?.scheme?.lowercased() != "https" {
+            fallbackToWebKit(guid: guid, error: SegmentedDownloadError.unexpectedStatus(0))
+            return
+        }
+
         var plan: SegmentedDownloadManifest?
         if let existing = item.manifest, existing.url == (prepared.url?.absoluteString ?? url.absoluteString) {
             plan = existing
@@ -500,11 +508,6 @@ public final class DownloadService: NSObject {
         webView.startDownload(using: request) { [weak self] download in
             Task { @MainActor in
                 guard let self else { return }
-                guard let download else {
-                    self.activeGuids.remove(guid)
-                    self.failSegmented(guid: guid, error: error)
-                    return
-                }
                 self.attachWebKitFallback(download: download, guid: guid)
             }
         }
