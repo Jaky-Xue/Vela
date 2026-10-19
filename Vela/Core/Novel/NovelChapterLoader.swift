@@ -79,7 +79,10 @@ final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var 
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard webView === self.webView else { return }
-        let url = targetUrl
+        // A chapter URL often redirects to the site's canonical form; the
+        // extraction and the shelf should both use the page that actually
+        // loaded, or a return visit would re-run the redirect every time.
+        let url = webView.url?.absoluteString ?? targetUrl
         Task { @MainActor [weak self] in
             let extraction = await NovelModeService.extract(from: webView, url: url)
             self?.finish(extraction)
