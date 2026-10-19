@@ -1177,8 +1177,8 @@ struct BrowserShellView: View {
     private func chromeButton(
         symbol: String,
         isEnabled: Bool,
-        foreground: Color? = nil,
         label: String? = nil,
+        foreground: Color? = nil,
         action: @escaping () -> Void
     ) -> some View {
         let ink = foreground ?? barForeground
