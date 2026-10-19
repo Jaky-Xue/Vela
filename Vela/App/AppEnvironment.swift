@@ -46,10 +46,6 @@ public final class AppEnvironment {
     /// reads it and the coordinator writes it, and neither should have to reach
     /// through the other to get at it. It holds nothing on disk.
     public let navigationLog: NavigationLog
-    /// The engines this build can host pages with. WebKit is the only one
-    /// registered today; a future kernel registers here and becomes active
-    /// before the first tab is created. See `BrowserKernel`.
-    public let kernels: BrowserKernelRegistry
     /// The keyboard commands' dispatch point. The shell registers a handler on
     /// appear; the app's `Commands` menu calls `perform`.
     public let commands: BrowserCommandCenter
@@ -113,9 +109,6 @@ public final class AppEnvironment {
         let navigationLog = NavigationLog(settings: settings.navigationDiagnostics)
         self.navigationLog = navigationLog
 
-        let kernelRegistry = BrowserKernelRegistry()
-        self.kernels = kernelRegistry
-
         let coordinator = BrowserWebCoordinator(
             overlays: overlays,
             settings: settings,
@@ -126,8 +119,7 @@ public final class AppEnvironment {
             userScripts: userScripts,
             searchHistory: searchHistory,
             sessionRepository: sessionRepository,
-            navigationLog: navigationLog,
-            kernel: kernelRegistry.active
+            navigationLog: navigationLog
         )
         self.webCoordinator = coordinator
 

@@ -36,7 +36,16 @@ struct BookmarksBarView: View {
         return result
     }
 
+    @ViewBuilder
     var body: some View {
+        if bookmarks.isEmpty {
+            EmptyView()
+        } else {
+            bar
+        }
+    }
+
+    private var bar: some View {
         HStack(spacing: 6) {
             Button(action: onOpenManager) {
                 Image(systemName: "book")
@@ -82,7 +91,10 @@ struct BookmarksBarView: View {
         .padding(.horizontal, 10)
         .frame(height: 36)
         .background {
-            AmbientSurfaceFill(opacity: 0.52)
+            ZStack {
+                palette.chromeBackground.opacity(0.78)
+                Rectangle().fill(.regularMaterial)
+            }
         }
         .overlay(alignment: .bottom) {
             Rectangle()

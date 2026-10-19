@@ -25,16 +25,6 @@ import Observation
 @MainActor
 public protocol BrowserWebViewConfigurationProviding: AnyObject {
     func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration
-    /// Creates the content view for a tab.
-    ///
-    /// Part of the provider rather than a direct `WKWebView(...)` in
-    /// `TabManager` so the engine seam (`BrowserKernel`) has one place to
-    /// stand. The default implementation in the coordinator is WebKit; a
-    /// kernel that wraps it can supply its own view without changing tabs.
-    func makeWebView(
-        for tab: BrowserTabState,
-        configuration: WKWebViewConfiguration
-    ) -> WKWebView
     /// How a tab should identify itself to sites.
     ///
     /// Part of this protocol rather than read off the settings service directly
@@ -550,7 +540,7 @@ public final class TabManager {
         }
 
         let configuration = configurationProvider.makeConfiguration(for: tab)
-        let webView = configurationProvider.makeWebView(for: tab, configuration: configuration)
+        let webView = WKWebView(frame: .zero, configuration: configuration)
 
         webView.customUserAgent = configurationProvider.webIdentity(for: tab).customUserAgent
 

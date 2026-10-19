@@ -56,6 +56,8 @@ struct BrowserShellView: View {
     @State private var showPasswords = false
     @State private var showBookshelf = false
     @State private var showMenu = false
+    /// Whether the iPad layout's sidebar drawer is open.
+    @State private var showPadSidebar = false
     @State private var showAddBookmarkChoice = false
     @State private var showShareSheet = false
     @State private var showFindBar = false
@@ -104,19 +106,13 @@ struct BrowserShellView: View {
         guard !omnibox.isEditing else { return false }
         return activeTab != nil
     }
-    /// The previous scroll offset, used to derive a direction.
+    /// Per-frame scroll bookkeeping, kept out of `@State`.
     ///
-    /// Kept here rather than read off the tab: the coordinator writes the tab's
-    /// offset on every scroll message, so comparing against it would always
-    /// compare the new value with itself and the chrome would never collapse.
-    @State private var lastScrollOffset: Double = 0
-    /// Scroll distance accumulated in the current direction.
-    ///
-    /// A threshold on accumulated distance — rather than on instantaneous
-    /// direction — is what stops a two-finger flick with a wobble at the end
-    /// from toggling the bar twice. Never read in `body`, so the per-frame
-    /// writes cost nothing; only the boolean transition below re-renders.
-    @State private var scrollAccumulation: CGFloat = 0
+    /// Writing `@State` on every scroll message invalidates the shell's body
+    /// each frame — exactly the layout work that shows up as dropped frames
+    /// while a page scrolls. The box changes without touching SwiftUI; only
+    /// the `chromeHidden` threshold transition re-renders.
+    @State private var scrollTracker = ShellScrollTracker()
 
     /// The keyboard's height while visible, from the frame-change notifications.
     ///
@@ -185,8 +181,10 @@ struct BrowserShellView: View {
     /// content column already ends at the safe area, and only the floating bar
     /// overlaps it.
     private var bottomChromeClearance: CGFloat {
+        // The iPad layout puts the navigation in a top bar, so the page can run
+        // to the bottom edge of its column.
         usesPadLayout
-            ? BrowserChrome.barHeight + BrowserChrome.barGap
+            ? 0
             : safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap
     }
 
@@ -208,9 +206,10 @@ struct BrowserShellView: View {
         }
         .overlay(alignment: .bottom) {
             // The novel reader owns the screen while it is open: its own
-            // header and chapter controls are the chrome, and the browser's
-            // bar would be a second one over the same glass.
-            if novelSession == nil {
+            // header and chapter controls are the chrome. The iPad layout has
+            // its navigation in the top bar, so the phone command bar is not
+            // drawn there at all.
+            if novelSession == nil && !usesPadLayout {
                 commandBar
             }
         }
@@ -368,7 +367,7 @@ struct BrowserShellView: View {
             showFindBar = false
             findQuery = ""
             chromeHidden = false
-            scrollAccumulation = 0
+            scrollTracker.accumulation = 0
             env.webCoordinator.clearFindInPage()
             omnibox.endEditing()
             // The tab's back/forward flags were written when it last finished
@@ -382,7 +381,7 @@ struct BrowserShellView: View {
         .onChange(of: activeTab?.url) { _, _ in
             // A new document is a fresh read: the chrome comes back for it.
             chromeHidden = false
-            scrollAccumulation = 0
+            scrollTracker.accumulation = 0
             syncAddressText()
             updateChromeForeground()
         }
@@ -625,28 +624,158 @@ struct BrowserShellView: View {
 
     // MARK: - Surfaces
 
-    /// The iPad chrome: a persistent tab sidebar, a bookmarks bar, and the page
-    /// in the remaining column.
+    /// The iPad chrome, after Safari's arrangement: one top bar spanning the
+    /// window, a bookmarks strip beneath it, and the page filling the rest.
+    /// The tab sidebar is a drawer over the page rather than a permanent
+    /// column, so the page keeps the whole width while reading.
     private var padRoot: some View {
-        HStack(spacing: 0) {
-            BrowserSidebarView(
-                onOpenBookmarks: { showBookmarks = true },
-                onOpenHistory: { showHistory = true },
-                onOpenDownloads: { showDownloads = true },
-                onOpenSettings: { showSettings = true }
-            )
-            .frame(width: Self.padSidebarWidth)
+        VStack(spacing: 0) {
+            padTopBar
+                .zIndex(2)
 
-            VStack(spacing: 0) {
-                BookmarksBarView(
-                    onNavigate: { url in
-                        navigate(to: url, in: submissionTab)
-                    },
-                    onOpenManager: { showBookmarks = true }
-                )
-                contentSurface
+            ZStack(alignment: .topLeading) {
+                VStack(spacing: 0) {
+                    BookmarksBarView(
+                        onNavigate: { url in
+                            navigate(to: url, in: submissionTab)
+                        },
+                        onOpenManager: { showBookmarks = true }
+                    )
+                    contentSurface
+                }
+
+                if showPadSidebar {
+                    padSidebarLayer
+                        .zIndex(3)
+                }
             }
         }
+        .animation(.snappy(duration: 0.26), value: showPadSidebar)
+    }
+
+    private var padInk: Color {
+        colorScheme == .dark ? .white : .black
+    }
+
+    /// The unified Safari-style top bar: sidebar, back, address, share, tabs,
+    /// menu — one glass surface instead of the phone layout's three clusters.
+    @ViewBuilder
+    private var padTopBar: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: BrowserChrome.barGap) {
+                padTopBarContent
+            }
+        } else {
+            padTopBarContent
+        }
+    }
+
+    private var padTopBarContent: some View {
+        HStack(spacing: 4) {
+            chromeButton(
+                symbol: "sidebar.left",
+                isEnabled: true,
+                label: showPadSidebar ? "收起标签页侧边栏" : "显示标签页侧边栏",
+                foreground: padInk
+            ) {
+                withAnimation(.snappy(duration: 0.26)) {
+                    showPadSidebar.toggle()
+                }
+            }
+
+            chromeButton(
+                symbol: "chevron.left",
+                isEnabled: canGoBack,
+                label: "后退",
+                foreground: padInk
+            ) {
+                goBack()
+            }
+            .contextMenu { backHistoryMenu }
+
+            OmniboxView(
+                viewModel: omnibox,
+                isLoading: activeTab?.isLoading ?? false,
+                progress: activeTab?.estimatedProgress ?? 0,
+                placeholder: omniboxPlaceholder,
+                onReload: reloadActiveTab,
+                onStop: {
+                    guard let tab = activeTab else { return }
+                    tabManager.stopLoading(tab: tab)
+                },
+                foregroundOverride: padInk
+            )
+            .frame(maxWidth: .infinity)
+
+            if canActOnPage {
+                chromeButton(
+                    symbol: "square.and.arrow.up",
+                    isEnabled: true,
+                    label: "分享",
+                    foreground: padInk
+                ) {
+                    showShareSheet = true
+                }
+            }
+
+            tabsButton(ink: padInk)
+
+            chromeButton(
+                symbol: "ellipsis",
+                isEnabled: true,
+                label: "菜单",
+                foreground: padInk
+            ) {
+                showMenu = true
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 50)
+        .browserFloatingChrome(
+            radius: 25,
+            material: .regularMaterial,
+            tintStrength: 0.35,
+            elevation: .card
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+    }
+
+    /// The tab drawer. It sits over the content only (below the top bar), with
+    /// a scrim that closes it on a tap outside.
+    private var padSidebarLayer: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black
+                .opacity(colorScheme == .dark ? 0.30 : 0.14)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { showPadSidebar = false }
+
+            BrowserSidebarView(
+                onClose: { showPadSidebar = false },
+                onOpenBookmarks: {
+                    showPadSidebar = false
+                    showBookmarks = true
+                },
+                onOpenHistory: {
+                    showPadSidebar = false
+                    showHistory = true
+                },
+                onOpenDownloads: {
+                    showPadSidebar = false
+                    showDownloads = true
+                },
+                onOpenSettings: {
+                    showPadSidebar = false
+                    showSettings = true
+                }
+            )
+            .frame(width: Self.padSidebarWidth)
+            .frame(maxHeight: .infinity)
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.16), radius: 28, x: 10, y: 0)
+        }
+        .transition(.opacity.combined(with: .move(edge: .leading)))
     }
 
     /// The page, and whatever floats over it.
@@ -846,9 +975,6 @@ struct BrowserShellView: View {
                 commandBarContent
             }
         }
-        // In the iPad layout the bar belongs to the page column, not to the
-        // whole window; the sidebar keeps its full height.
-        .padding(.leading, usesPadLayout ? Self.padSidebarWidth : 0)
         .padding(.horizontal, BrowserChrome.sideInset)
         // The bottom-aligned overlay already lays the bar out above the
         // home-indicator inset; adding the inset again here lifted the bar a
@@ -1051,10 +1177,12 @@ struct BrowserShellView: View {
     private func chromeButton(
         symbol: String,
         isEnabled: Bool,
+        foreground: Color? = nil,
         label: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        let ink = foreground ?? barForeground
+        return Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 34, height: 34)
@@ -1062,7 +1190,7 @@ struct BrowserShellView: View {
         }
         .buttonStyle(ChromeButtonStyle())
         .foregroundStyle(
-            isEnabled ? barForeground : barForeground.opacity(0.35)
+            isEnabled ? ink : ink.opacity(0.35)
         )
         .disabled(!isEnabled)
         .accessibilityLabel(label ?? (symbol == "chevron.left" ? "后退" : "菜单"))
@@ -1200,6 +1328,10 @@ struct BrowserShellView: View {
     /// the number is what the user reads, so it is the drawing's subject, not
     /// a footnote under a glyph.
     private var tabsButton: some View {
+        tabsButton(ink: barForeground)
+    }
+
+    private func tabsButton(ink: Color) -> some View {
         Button {
             withAnimation(.snappy(duration: 0.3)) {
                 showTabsOverview = true
@@ -1207,13 +1339,13 @@ struct BrowserShellView: View {
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 6.5, style: .continuous)
-                    .strokeBorder(barForeground, lineWidth: 1.6)
+                    .strokeBorder(ink, lineWidth: 1.6)
                     .frame(width: 21, height: 21)
 
                 Text("\(min(tabCountForActiveMode, 99))")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(barForeground)
+                    .foregroundStyle(ink)
                     .offset(y: 0.5)
             }
             .frame(width: 34, height: 34)
@@ -1254,7 +1386,6 @@ struct BrowserShellView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .padding(.leading, usesPadLayout ? Self.padSidebarWidth : 0)
         .padding(.horizontal, BrowserChrome.sideInset)
         // The shell ignores the keyboard at its root, so the bar it floats
         // above no longer rises — and the find bar lifts by the keyboard's own
@@ -1395,14 +1526,14 @@ struct BrowserShellView: View {
         // working in it, and sliding it away mid-sentence would be hostile.
         guard !omnibox.isEditing, !showFindBar else { return }
 
-        let previous = lastScrollOffset
-        lastScrollOffset = offset
+        let previous = scrollTracker.lastOffset
+        scrollTracker.lastOffset = offset
         let delta = offset - previous
 
         // At the top of the document the bar is always back; there is nothing
         // above the page start to hide it for.
         if offset <= 2 {
-            scrollAccumulation = 0
+            scrollTracker.accumulation = 0
             setChromeHidden(false)
             return
         }
@@ -1410,15 +1541,15 @@ struct BrowserShellView: View {
         guard abs(delta) > 0.25 else { return }
 
         if delta > 0 {
-            scrollAccumulation = max(0, scrollAccumulation + delta)
-            if scrollAccumulation > 48 {
-                scrollAccumulation = 0
+            scrollTracker.accumulation = max(0, scrollTracker.accumulation + delta)
+            if scrollTracker.accumulation > 48 {
+                scrollTracker.accumulation = 0
                 setChromeHidden(true)
             }
         } else {
-            scrollAccumulation = min(0, scrollAccumulation + delta)
-            if scrollAccumulation < -8 {
-                scrollAccumulation = 0
+            scrollTracker.accumulation = min(0, scrollTracker.accumulation + delta)
+            if scrollTracker.accumulation < -8 {
+                scrollTracker.accumulation = 0
                 setChromeHidden(false)
             }
         }
@@ -1496,8 +1627,8 @@ struct BrowserShellView: View {
         tab.isLoading = false
         tab.estimatedProgress = 0
         chromeHidden = false
-        lastScrollOffset = 0
-        scrollAccumulation = 0
+        scrollTracker.lastOffset = 0
+        scrollTracker.accumulation = 0
         tabManager.persistSession()
         syncAddressText()
     }
@@ -1893,7 +2024,7 @@ struct BrowserShellView: View {
         // that decides whether to create the tab's web view yet. It also clears
         // the home flag and writes the URL onto the tab.
         chromeHidden = false
-        scrollAccumulation = 0
+        scrollTracker.accumulation = 0
         tabManager.load(url: url, in: tab)
         // The transition is recorded by the navigation delegate, which is the
         // only place that sees the navigation type.
@@ -1949,6 +2080,13 @@ struct BrowserShellView: View {
             navigate(to: url, in: submissionTab)
         }
     }
+}
+
+/// Mutable scroll bookkeeping for the shell. A reference box so per-frame
+/// writes do not invalidate the view tree.
+private final class ShellScrollTracker {
+    var lastOffset: Double = 0
+    var accumulation: CGFloat = 0
 }
 
 // MARK: - Novel session

@@ -39,9 +39,6 @@ public final class BrowserWebCoordinator: NSObject {
     private let userScripts: UserScriptRepository
     private let searchHistory: SearchHistoryRepository
     private let sessionRepository: TabSessionRepository
-    /// The engine the tab's content views are built by. WebKit today; see
-    /// `BrowserKernel`.
-    private let kernel: any BrowserKernel
     private weak var tabManager: TabManager?
 
     /// The structured record of what happened to each navigation. In memory
@@ -99,8 +96,7 @@ public final class BrowserWebCoordinator: NSObject {
         userScripts: UserScriptRepository,
         searchHistory: SearchHistoryRepository,
         sessionRepository: TabSessionRepository,
-        navigationLog: NavigationLog,
-        kernel: any BrowserKernel
+        navigationLog: NavigationLog
     ) {
         self.overlays = overlays
         self.settings = settings
@@ -112,7 +108,6 @@ public final class BrowserWebCoordinator: NSObject {
         self.searchHistory = searchHistory
         self.sessionRepository = sessionRepository
         self.navigationLog = navigationLog
-        self.kernel = kernel
         super.init()
     }
 
@@ -495,18 +490,6 @@ public final class BrowserWebCoordinator: NSObject {
 // MARK: - Configuration providing
 
 extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
-    /// Asks the active kernel for the content view and lets it install its own
-    /// bridges. The coordinator still owns every delegate and script the
-    /// browser itself needs; the kernel only adds what belongs to the engine.
-    public func makeWebView(
-        for tab: BrowserTabState,
-        configuration: WKWebViewConfiguration
-    ) -> WKWebView {
-        let webView = kernel.makeWebView(for: tab, configuration: configuration)
-        kernel.prepare(webView, for: tab)
-        return webView
-    }
-
     /// Attaches every page script a navigation needs: the browser's own
     /// bridges, the cosmetic filter for this host, and the user scripts that
     /// match this URL.

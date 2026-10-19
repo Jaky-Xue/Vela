@@ -345,8 +345,7 @@ final class BrowserHarness {
             userScripts: userScripts,
             searchHistory: searchHistory,
             sessionRepository: sessions,
-            navigationLog: navigationLog,
-            kernel: WebKitKernel()
+            navigationLog: navigationLog
         )
         self.coordinator = coordinator
 

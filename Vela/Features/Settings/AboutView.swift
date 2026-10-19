@@ -27,23 +27,9 @@ struct AboutView: View {
         forInfoDictionaryKey: "CFBundleVersion"
     ) as? String ?? "?"
 
-    /// What the active kernel says it can do, in the user's terms. The engine
-    /// seam advertises capabilities rather than promising behaviour, so this
-    /// row is the honest summary of the build's engine.
-    private var kernelCapabilityText: String {
-        let capabilities = env.kernels.active.descriptor.capabilities
-        var names: [String] = []
-        if capabilities.contains(.scriptInjection) { names.append("脚本注入") }
-        if capabilities.contains(.contentBlocking) { names.append("内容过滤") }
-        if capabilities.contains(.mediaCapture) { names.append("媒体采集") }
-        if capabilities.contains(.webRTCLeakProtection) { names.append("WebRTC 防泄露") }
-        if capabilities.contains(.webRTCControl) { names.append("WebRTC 控制") }
-        if capabilities.contains(.pageSnapshot) { names.append("页面快照") }
-        return names.isEmpty ? "—" : names.joined(separator: " · ")
-    }
-
     var body: some View {
-        List {            Section {
+        List {
+            Section {
                 VStack(spacing: 10) {
                     // The icon as installed — the same asset the home screen
                     // shows — rather than a glyph standing in for it.
@@ -72,13 +58,8 @@ struct AboutView: View {
                     Text("\(env.adBlock.ruleCount)")
                         .monospacedDigit()
                 }
-                LabeledContent("渲染引擎", value: env.kernels.active.descriptor.engineDescription)
-                LabeledContent("内核能力", value: kernelCapabilityText)
-                    .font(.footnote)
             } header: {
                 Text("状态")
-            } footer: {
-                Text("Vela 通过内核接口取得页面内容视图。当前构建注册的是 WebKit 内核；后续内核可在同一接口下注册并启用。")
             }
 
             Section {

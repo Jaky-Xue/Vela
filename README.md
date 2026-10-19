@@ -65,7 +65,7 @@ iOS 不允许安装没有签名的应用，所以 `.ipa` 需要用自己的 Appl
 - 全局背景：纯净、极光、晨曦、星夜四种；后三种是缓慢流动的光场，主页、设置、书架和浮层都透出同一片背景，玻璃工具栏会折射它
 - 底部工具栏：地址栏位置固定，两侧控件可以增删和拖动排序，顺序保存在本地
 - 菜单面板：内置项可以隐藏、拖动排序并加回来；还可以添加自己的网址快捷方式，选图标、命名、一键打开
-- iPad 布局：可在跟随设备 / 手机布局 / iPad 布局之间切换；iPad 布局有标签侧边栏、书签栏、双栏页面和硬件键盘快捷键（⌘T、⌘W、⌘L、⌘R、⌘F、⌘⇧T 等）
+- iPad 布局：可在跟随设备 / 手机布局 / iPad 布局之间切换；参考 Safari，iPad 布局使用一条顶部工具栏、可收起的标签侧边栏和书签栏，不再在底部重复一套工具栏。硬件键盘快捷键（⌘T、⌘W、⌘L、⌘R、⌘F、⌘⇧T 等）同样可用
 - 窗口管理：支持 iPad Split View / Slide Over / Stage Manager，自动模式按窗口宽度在双栏与单栏之间切换
 - 外观模式与配色：浅色 / 深色 / 跟随系统，四套配色在运行时切换
 
@@ -90,7 +90,6 @@ iOS 不允许安装没有签名的应用，所以 `.ipa` 需要用自己的 Appl
 | 用户脚本 | `WKUserScript`，注入点固定为文档开始和文档结束。需要特权的 `GM_xmlhttpRequest`、`GM_download`、`GM_cookie` 用不了，申请了这些权限的脚本仍可安装，详情页会标注 |
 | 下载 | 浏览器自己的传输层：https 文件用 URLSession 做 Range 分片、并发上限、暂停/续段；服务器不支持 Range 时自动单连接。URLSession 无法忠实完成的情况（明文 http、登录/挑战页、blob）回退到 WebKit 的 `WKDownload`，后者只支持单连接 |
 | 拦截统计 | WebKit 不报告哪条规则命中、命中多少次，所以 Vela 不编造一个「已拦截 N 条」的数字。页面上显示的是规则条数，以及实际隐藏掉的元素数——那个是自己做的，能精确计数 |
-| 渲染内核 | iOS 不允许 App 自带第三方网页内容引擎；Chromium for iOS 的网页内容同样由 WKWebView 承载，没有可直接嵌入的 Blink。Vela 定义了 `BrowserKernel` 接口和注册表，但本构建只内置 WebKit；接入自有内核需要随包提供实现，并先把内容视图从 `WKWebView` 抽象出来 |
 
 ---
 
@@ -158,7 +157,6 @@ Vela/
     Reader/     正文提取
     Novel/      章节提取与离屏加载
     Passwords/  钥匙串封装
-    Kernel/     渲染引擎接口（当前实现：WebKit）
   Data/
     SQLite/     轻量 SQLite 封装
     Repositories/  书签、历史、搜索记录、下载、用户脚本、会话、小说书架
@@ -172,7 +170,7 @@ VelaTests/      单元测试
 
 `AppEnvironment` 是组合根：所有服务在这里构造一次，再通过 SwiftUI 环境注入。状态用 Observation 框架的 `@Observable`，视图读取哪个属性就追踪哪个属性，跨层级有效。
 
-分层规则、文件职责和"接入新内核"的步骤见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+分层规则与文件职责见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 ---
 

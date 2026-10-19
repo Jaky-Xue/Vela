@@ -2,22 +2,16 @@
 //  AmbientBackground.swift
 //  Vela
 //
-//  The app-wide background: a palette surface, or a luminous field of colour
+//  The app-wide background: a palette surface, or a soft field of colour
 //  behind it.
 //
-//  The old surface was a literal white or black rectangle, which is correct for
-//  a document but reads as an empty application wherever the page is not the
-//  subject — the home screen, settings, the shelves, the search page. The
-//  ambient styles put a slow field of light under those surfaces, so the glass
-//  the chrome already draws has something to refract and the app reads as one
-//  designed place rather than a page with controls bolted to it.
-//
-//  The field is built from four things: a style-tinted base gradient, a blurred
-//  colour ribbon that gives the light a direction, a handful of radial blobs
-//  that are already soft at their rims, and a fine grain that keeps the large
-//  gradients from banding. On a dark surface the blobs are drawn with
-//  `plusLighter`, which is what turns them into light rather than paint.
-//  `Reduce Motion` freezes the drift.
+//  The field is deliberately static. An earlier version drifted the light
+//  sources with a repeating animation; every frame re-evaluated five enormous
+//  blurred layers, and the cost showed up as dropped frames while a page
+//  scrolled. The light here is fixed, with the palette surface mixed in and a
+//  fine grain to keep the large gradients from banding. Surfaces above it are
+//  translucent, which is what makes the colour read as light through glass
+//  rather than as a saturated wall.
 //
 
 import SwiftUI
@@ -32,11 +26,11 @@ import UIKit
 public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Identifiable {
     /// The palette surface, unchanged: pure white in light, pure black in dark.
     case solid
-    /// Cool aurora: mint, sky and violet drifting over the surface.
+    /// Cool aurora: mint, sky and violet, kept pale.
     case aurora
-    /// Warm morning light: peach, rose and a little gold.
+    /// Warm morning light: peach, rose and a little cream.
     case dawn
-    /// Night sky: deep blue with cyan and violet light.
+    /// Night sky: deep blue with muted cyan and violet.
     case midnight
 
     public var id: String { rawValue }
@@ -53,8 +47,8 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
     public var summary: String {
         switch self {
         case .solid: return "纯白与纯黑，来自配色"
-        case .aurora: return "冷色流光，通透安静"
-        case .dawn: return "暖色晨光，柔和明朗"
+        case .aurora: return "冷色微光，通透安静"
+        case .dawn: return "暖色晨雾，柔和明朗"
         case .midnight: return "深蓝夜色，冷光流动"
         }
     }
@@ -72,10 +66,6 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
     public var usesAmbient: Bool { self != .solid }
 
     /// Resolves a stored raw value, falling back to the shipped default.
-    ///
-    /// The shipped default is 极光 rather than 纯净: the ambient field is the
-    /// reason the setting exists, and an upgrade that left every existing
-    /// install on a flat white surface would look like nothing changed.
     public static func resolve(_ rawValue: String?) -> BrowserBackgroundStyle {
         guard let rawValue, let style = BrowserBackgroundStyle(rawValue: rawValue) else {
             return .aurora
@@ -102,7 +92,7 @@ extension EnvironmentValues {
 
 // MARK: - The field
 
-/// One drifting light source.
+/// One light source.
 private struct AmbientBlobSpec {
     var light: Color
     var dark: Color
@@ -112,8 +102,6 @@ private struct AmbientBlobSpec {
     /// Diameter as a fraction of the container's longer edge.
     var diameter: CGFloat
     var opacity: Double
-    /// How far the blob drifts, in points, at the far end of its animation.
-    var drift: CGSize
 }
 
 /// The global background surface.
@@ -125,10 +113,7 @@ private struct AmbientBlobSpec {
 struct AmbientBackgroundView: View {
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.browserBackgroundStyle) private var style
-
-    @State private var driftPhase: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -137,24 +122,21 @@ struct AmbientBackgroundView: View {
                 base
 
                 if style.usesAmbient, size.width > 1, size.height > 1 {
-                    ribbon(in: size)
-
                     ForEach(specs.indices, id: \.self) { index in
-                        blob(specs[index], index: index, in: size)
+                        blob(specs[index], in: size)
                     }
 
                     AmbientGrain()
-                        .opacity(colorScheme == .dark ? 0.55 : 0.38)
+                        .opacity(colorScheme == .dark ? 0.35 : 0.28)
                         .blendMode(.overlay)
                         .allowsHitTesting(false)
 
                     // A soft top sheen and a bottom vignette: the two touches
-                    // that make a field of colour read as lit from above
-                    // rather than as a printed gradient.
+                    // that make a field of colour read as lit from above.
                     LinearGradient(
                         stops: [
-                            .init(color: .white.opacity(colorScheme == .dark ? 0.07 : 0.30), location: 0),
-                            .init(color: .clear, location: 0.46)
+                            .init(color: .white.opacity(colorScheme == .dark ? 0.05 : 0.20), location: 0),
+                            .init(color: .clear, location: 0.48)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -163,10 +145,10 @@ struct AmbientBackgroundView: View {
                     .allowsHitTesting(false)
 
                     RadialGradient(
-                        colors: [.clear, .black.opacity(colorScheme == .dark ? 0.34 : 0.06)],
+                        colors: [.clear, .black.opacity(colorScheme == .dark ? 0.20 : 0.04)],
                         center: .center,
-                        startRadius: max(size.width, size.height) * 0.30,
-                        endRadius: max(size.width, size.height) * 0.82
+                        startRadius: max(size.width, size.height) * 0.34,
+                        endRadius: max(size.width, size.height) * 0.84
                     )
                     .allowsHitTesting(false)
                 }
@@ -175,11 +157,6 @@ struct AmbientBackgroundView: View {
             .clipped()
         }
         .ignoresSafeArea()
-        .task { startDrifting() }
-        .onChange(of: style) { _, _ in
-            driftPhase = 0
-            startDrifting()
-        }
         .accessibilityHidden(true)
     }
 
@@ -199,12 +176,16 @@ struct AmbientBackgroundView: View {
                 endPoint: .bottomTrailing
             )
             if style.usesAmbient {
-                tokens.surface.opacity(colorScheme == .dark ? 0.12 : 0.18)
+                tokens.surface.opacity(colorScheme == .dark ? 0.10 : 0.14)
             }
         }
     }
 
     /// The base gradient stops for the active style and appearance.
+    ///
+    /// The dark stops are lifted neutrals rather than saturated inks. A near
+    /// black base makes every colour blob read as a dark stain; a lifted
+    /// charcoal lets the same colours read as translucent light.
     private var baseColors: [Color] {
         switch style {
         case .solid:
@@ -213,146 +194,53 @@ struct AmbientBackgroundView: View {
         case .aurora:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.016, green: 0.027, blue: 0.059),
-                    Color(red: 0.031, green: 0.063, blue: 0.125),
-                    Color(red: 0.055, green: 0.035, blue: 0.110)
+                    Color(red: 0.043, green: 0.055, blue: 0.078),
+                    Color(red: 0.051, green: 0.067, blue: 0.098),
+                    Color(red: 0.055, green: 0.063, blue: 0.090)
                 ]
                 : [
-                    Color(red: 0.961, green: 0.984, blue: 1.000),
-                    Color(red: 0.933, green: 0.949, blue: 1.000),
-                    Color(red: 0.976, green: 0.941, blue: 0.996)
+                    Color(red: 0.973, green: 0.984, blue: 1.000),
+                    Color(red: 0.953, green: 0.965, blue: 0.988),
+                    Color(red: 0.984, green: 0.969, blue: 0.996)
                 ]
         case .dawn:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.078, green: 0.039, blue: 0.043),
-                    Color(red: 0.110, green: 0.055, blue: 0.066),
-                    Color(red: 0.086, green: 0.039, blue: 0.078)
+                    Color(red: 0.082, green: 0.071, blue: 0.063),
+                    Color(red: 0.090, green: 0.075, blue: 0.067),
+                    Color(red: 0.082, green: 0.067, blue: 0.078)
                 ]
                 : [
-                    Color(red: 1.000, green: 0.973, blue: 0.941),
-                    Color(red: 1.000, green: 0.941, blue: 0.953),
-                    Color(red: 0.984, green: 0.949, blue: 1.000)
+                    Color(red: 0.996, green: 0.980, blue: 0.961),
+                    Color(red: 0.984, green: 0.953, blue: 0.941),
+                    Color(red: 0.976, green: 0.961, blue: 0.980)
                 ]
         case .midnight:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.008, green: 0.020, blue: 0.047),
-                    Color(red: 0.020, green: 0.039, blue: 0.090),
-                    Color(red: 0.031, green: 0.027, blue: 0.070)
+                    Color(red: 0.031, green: 0.039, blue: 0.067),
+                    Color(red: 0.039, green: 0.051, blue: 0.086),
+                    Color(red: 0.047, green: 0.043, blue: 0.078)
                 ]
                 : [
-                    Color(red: 0.949, green: 0.969, blue: 1.000),
-                    Color(red: 0.925, green: 0.945, blue: 1.000),
-                    Color(red: 0.969, green: 0.945, blue: 1.000)
+                    Color(red: 0.965, green: 0.976, blue: 0.996),
+                    Color(red: 0.945, green: 0.961, blue: 0.984),
+                    Color(red: 0.973, green: 0.961, blue: 0.996)
                 ]
         }
     }
 
-    /// A broad, soft band of colour under the blobs. It gives the field a
-    /// direction — the light comes from one side — which is what separates a
-    /// designed backdrop from a set of unrelated glows.
-    @ViewBuilder
-    private func ribbon(in size: CGSize) -> some View {
-        let width = max(size.width, size.height) * 1.7
-        let height = width * 0.20
-        let dx = (driftPhase * 2 - 1) * 26
-        let dy = (driftPhase * 2 - 1) * 14
-
-        Capsule()
-            .fill(
-                LinearGradient(
-                    stops: ribbonStops,
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .frame(width: width, height: height)
-            .blur(radius: height * 0.62)
-            .rotationEffect(.degrees(ribbonAngle))
-            .position(x: size.width * 0.50 + dx, y: size.height * 0.40 + dy)
-            .opacity(colorScheme == .dark ? 0.48 : 0.32)
-            .blendMode(colorScheme == .dark ? .plusLighter : .normal)
-            .allowsHitTesting(false)
-    }
-
-    private var ribbonAngle: Double {
-        switch style {
-        case .solid: return 0
-        case .aurora: return -24
-        case .dawn: return -12
-        case .midnight: return 22
-        }
-    }
-
-    private var ribbonStops: [Gradient.Stop] {
-        let colors: [Color]
-        switch style {
-        case .solid:
-            colors = []
-        case .aurora:
-            colors = colorScheme == .dark
-                ? [
-                    Color(red: 0.10, green: 0.82, blue: 0.78),
-                    Color(red: 0.24, green: 0.34, blue: 0.98),
-                    Color(red: 0.62, green: 0.24, blue: 0.96)
-                ]
-                : [
-                    Color(red: 0.62, green: 0.93, blue: 0.87),
-                    Color(red: 0.66, green: 0.78, blue: 1.00),
-                    Color(red: 0.85, green: 0.72, blue: 1.00)
-                ]
-        case .dawn:
-            colors = colorScheme == .dark
-                ? [
-                    Color(red: 0.92, green: 0.44, blue: 0.18),
-                    Color(red: 0.82, green: 0.20, blue: 0.38),
-                    Color(red: 0.58, green: 0.20, blue: 0.62)
-                ]
-                : [
-                    Color(red: 1.00, green: 0.83, blue: 0.64),
-                    Color(red: 1.00, green: 0.72, blue: 0.78),
-                    Color(red: 0.90, green: 0.76, blue: 1.00)
-                ]
-        case .midnight:
-            colors = colorScheme == .dark
-                ? [
-                    Color(red: 0.16, green: 0.42, blue: 1.00),
-                    Color(red: 0.10, green: 0.82, blue: 0.92),
-                    Color(red: 0.54, green: 0.22, blue: 0.98)
-                ]
-                : [
-                    Color(red: 0.74, green: 0.84, blue: 1.00),
-                    Color(red: 0.70, green: 0.95, blue: 1.00),
-                    Color(red: 0.86, green: 0.76, blue: 1.00)
-                ]
-        }
-        guard colors.count == 3 else { return [] }
-        return [
-            .init(color: colors[0].opacity(0), location: 0),
-            .init(color: colors[0].opacity(0.85), location: 0.18),
-            .init(color: colors[1].opacity(0.95), location: 0.5),
-            .init(color: colors[2].opacity(0.80), location: 0.82),
-            .init(color: colors[2].opacity(0), location: 1)
-        ]
-    }
-
-    private func blob(_ spec: AmbientBlobSpec, index: Int, in size: CGSize) -> some View {
+    private func blob(_ spec: AmbientBlobSpec, in size: CGSize) -> some View {
         let longEdge = max(size.width, size.height)
         let diameter = longEdge * spec.diameter
         let color = colorScheme == .dark ? spec.dark : spec.light
-        // Every other blob drifts in the opposite direction, so the field
-        // breathes instead of sliding as one sheet.
-        let sign: CGFloat = index.isMultiple(of: 2) ? 1 : -1
-        let dx = spec.drift.width * (driftPhase * 2 - 1) * sign
-        let dy = spec.drift.height * (driftPhase * 2 - 1) * sign
 
         return Circle()
             .fill(
                 RadialGradient(
                     colors: [
                         color.opacity(spec.opacity),
-                        color.opacity(spec.opacity * 0.42),
+                        color.opacity(spec.opacity * 0.35),
                         color.opacity(0)
                     ],
                     center: .center,
@@ -361,24 +249,14 @@ struct AmbientBackgroundView: View {
                 )
             )
             .frame(width: diameter, height: diameter)
-            .blur(radius: diameter * 0.12)
+            .blur(radius: diameter * 0.13)
             .blendMode(colorScheme == .dark ? .plusLighter : .normal)
-            .position(
-                x: size.width * spec.x + dx,
-                y: size.height * spec.y + dy
-            )
+            .position(x: size.width * spec.x, y: size.height * spec.y)
             .allowsHitTesting(false)
     }
 
-    private func startDrifting() {
-        guard style.usesAmbient, !reduceMotion else { return }
-        withAnimation(.easeInOut(duration: 20).repeatForever(autoreverses: true)) {
-            driftPhase = 1
-        }
-    }
-
-    /// The light sources for each style. The first blob is also the base
-    /// tint, so a style with no blobs is exactly the solid surface.
+    /// Four light sources. Fewer, larger and fainter than a saturated field:
+    /// the effect wanted here is light seen through glass, not a colour wash.
     private var specs: [AmbientBlobSpec] {
         switch style {
         case .solid:
@@ -386,100 +264,70 @@ struct AmbientBackgroundView: View {
         case .aurora:
             return [
                 AmbientBlobSpec(
-                    light: Color(red: 0.38, green: 0.90, blue: 0.78),
-                    dark: Color(red: 0.08, green: 0.84, blue: 0.78),
-                    x: 0.12, y: 0.10, diameter: 1.15, opacity: 0.50,
-                    drift: CGSize(width: 34, height: 24)
+                    light: Color(red: 0.66, green: 0.93, blue: 0.85),
+                    dark: Color(red: 0.20, green: 0.72, blue: 0.66),
+                    x: 0.14, y: 0.12, diameter: 1.20, opacity: colorScheme == .dark ? 0.16 : 0.26
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.46, green: 0.70, blue: 1.00),
-                    dark: Color(red: 0.18, green: 0.42, blue: 1.00),
-                    x: 0.88, y: 0.22, diameter: 1.00, opacity: 0.46,
-                    drift: CGSize(width: 26, height: 32)
+                    light: Color(red: 0.72, green: 0.83, blue: 1.00),
+                    dark: Color(red: 0.34, green: 0.46, blue: 0.90),
+                    x: 0.86, y: 0.26, diameter: 1.10, opacity: colorScheme == .dark ? 0.17 : 0.24
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.72, green: 0.55, blue: 1.00),
-                    dark: Color(red: 0.60, green: 0.20, blue: 1.00),
-                    x: 0.78, y: 0.82, diameter: 1.15, opacity: 0.42,
-                    drift: CGSize(width: 36, height: 26)
+                    light: Color(red: 0.84, green: 0.73, blue: 1.00),
+                    dark: Color(red: 0.55, green: 0.38, blue: 0.88),
+                    x: 0.76, y: 0.86, diameter: 1.15, opacity: colorScheme == .dark ? 0.15 : 0.20
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 1.00, green: 0.62, blue: 0.82),
-                    dark: Color(red: 0.95, green: 0.15, blue: 0.66),
-                    x: 0.08, y: 0.88, diameter: 0.80, opacity: 0.30,
-                    drift: CGSize(width: 22, height: 28)
-                ),
-                AmbientBlobSpec(
-                    light: Color(red: 0.66, green: 0.94, blue: 1.00),
-                    dark: Color(red: 0.16, green: 0.92, blue: 0.96),
-                    x: 0.50, y: 0.52, diameter: 0.90, opacity: 0.22,
-                    drift: CGSize(width: 18, height: 18)
+                    light: Color(red: 1.00, green: 0.83, blue: 0.90),
+                    dark: Color(red: 0.75, green: 0.36, blue: 0.58),
+                    x: 0.10, y: 0.88, diameter: 0.80, opacity: colorScheme == .dark ? 0.09 : 0.14
                 )
             ]
         case .dawn:
             return [
                 AmbientBlobSpec(
-                    light: Color(red: 1.00, green: 0.78, blue: 0.58),
-                    dark: Color(red: 0.98, green: 0.54, blue: 0.20),
-                    x: 0.14, y: 0.12, diameter: 1.10, opacity: 0.48,
-                    drift: CGSize(width: 28, height: 22)
+                    light: Color(red: 1.00, green: 0.87, blue: 0.74),
+                    dark: Color(red: 0.80, green: 0.62, blue: 0.42),
+                    x: 0.14, y: 0.12, diameter: 1.20, opacity: colorScheme == .dark ? 0.12 : 0.28
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 1.00, green: 0.66, blue: 0.72),
-                    dark: Color(red: 0.90, green: 0.24, blue: 0.42),
-                    x: 0.86, y: 0.28, diameter: 0.95, opacity: 0.42,
-                    drift: CGSize(width: 32, height: 28)
+                    light: Color(red: 1.00, green: 0.82, blue: 0.84),
+                    dark: Color(red: 0.80, green: 0.52, blue: 0.54),
+                    x: 0.86, y: 0.28, diameter: 1.10, opacity: colorScheme == .dark ? 0.10 : 0.22
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 1.00, green: 0.88, blue: 0.62),
-                    dark: Color(red: 0.84, green: 0.50, blue: 0.12),
-                    x: 0.72, y: 0.84, diameter: 1.05, opacity: 0.36,
-                    drift: CGSize(width: 24, height: 32)
+                    light: Color(red: 1.00, green: 0.95, blue: 0.80),
+                    dark: Color(red: 0.76, green: 0.66, blue: 0.44),
+                    x: 0.74, y: 0.86, diameter: 1.15, opacity: colorScheme == .dark ? 0.08 : 0.20
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.86, green: 0.72, blue: 1.00),
-                    dark: Color(red: 0.58, green: 0.24, blue: 0.72),
-                    x: 0.10, y: 0.82, diameter: 0.75, opacity: 0.26,
-                    drift: CGSize(width: 20, height: 24)
-                ),
-                AmbientBlobSpec(
-                    light: Color(red: 1.00, green: 0.62, blue: 0.55),
-                    dark: Color(red: 0.92, green: 0.32, blue: 0.24),
-                    x: 0.50, y: 0.50, diameter: 0.85, opacity: 0.20,
-                    drift: CGSize(width: 18, height: 18)
+                    light: Color(red: 0.90, green: 0.84, blue: 1.00),
+                    dark: Color(red: 0.58, green: 0.44, blue: 0.58),
+                    x: 0.10, y: 0.86, diameter: 0.80, opacity: colorScheme == .dark ? 0.07 : 0.12
                 )
             ]
         case .midnight:
             return [
                 AmbientBlobSpec(
-                    light: Color(red: 0.52, green: 0.74, blue: 1.00),
-                    dark: Color(red: 0.12, green: 0.46, blue: 1.00),
-                    x: 0.18, y: 0.16, diameter: 1.15, opacity: 0.50,
-                    drift: CGSize(width: 30, height: 26)
+                    light: Color(red: 0.74, green: 0.82, blue: 1.00),
+                    dark: Color(red: 0.26, green: 0.46, blue: 0.84),
+                    x: 0.14, y: 0.14, diameter: 1.20, opacity: colorScheme == .dark ? 0.17 : 0.26
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.48, green: 0.94, blue: 0.94),
-                    dark: Color(red: 0.08, green: 0.82, blue: 0.90),
-                    x: 0.86, y: 0.34, diameter: 0.90, opacity: 0.42,
-                    drift: CGSize(width: 26, height: 32)
+                    light: Color(red: 0.72, green: 0.92, blue: 0.92),
+                    dark: Color(red: 0.20, green: 0.66, blue: 0.72),
+                    x: 0.86, y: 0.30, diameter: 1.05, opacity: colorScheme == .dark ? 0.11 : 0.20
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.72, green: 0.60, blue: 1.00),
-                    dark: Color(red: 0.50, green: 0.20, blue: 0.98),
-                    x: 0.70, y: 0.86, diameter: 1.10, opacity: 0.46,
-                    drift: CGSize(width: 34, height: 24)
+                    light: Color(red: 0.84, green: 0.77, blue: 1.00),
+                    dark: Color(red: 0.50, green: 0.36, blue: 0.80),
+                    x: 0.74, y: 0.86, diameter: 1.15, opacity: colorScheme == .dark ? 0.15 : 0.22
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 1.00, green: 0.62, blue: 0.86),
-                    dark: Color(red: 0.82, green: 0.16, blue: 0.70),
-                    x: 0.08, y: 0.84, diameter: 0.70, opacity: 0.24,
-                    drift: CGSize(width: 20, height: 26)
-                ),
-                AmbientBlobSpec(
-                    light: Color(red: 0.60, green: 0.88, blue: 1.00),
-                    dark: Color(red: 0.20, green: 0.94, blue: 0.86),
-                    x: 0.48, y: 0.52, diameter: 0.88, opacity: 0.22,
-                    drift: CGSize(width: 16, height: 18)
+                    light: Color(red: 1.00, green: 0.82, blue: 0.90),
+                    dark: Color(red: 0.68, green: 0.30, blue: 0.52),
+                    x: 0.10, y: 0.86, diameter: 0.80, opacity: colorScheme == .dark ? 0.08 : 0.12
                 )
             ]
         }
@@ -492,8 +340,7 @@ struct AmbientBackgroundView: View {
 ///
 /// Large soft gradients band on an OLED panel; a fine grain at very low
 /// opacity breaks the bands up without reading as noise. The tile is rendered
-/// once into a small image and repeated — a Canvas here would redraw a
-/// thousand dots on every frame of the drift animation.
+/// once into a small image and repeated.
 private struct AmbientGrain: View {
     private static let tile: UIImage = {
         let side: CGFloat = 160
@@ -505,11 +352,11 @@ private struct AmbientGrain: View {
                 return CGFloat((seed >> 11) & 0xFFFF) / 65_535.0
             }
 
-            context.cgContext.setFillColor(UIColor.white.withAlphaComponent(0.07).cgColor)
-            for _ in 0..<420 {
+            context.cgContext.setFillColor(UIColor.white.withAlphaComponent(0.06).cgColor)
+            for _ in 0..<320 {
                 let x = next() * side
                 let y = next() * side
-                let radius = 0.35 + next() * 0.65
+                let radius = 0.35 + next() * 0.6
                 context.cgContext.fillEllipse(
                     in: CGRect(x: x, y: y, width: radius, height: radius)
                 )
@@ -530,9 +377,7 @@ private struct AmbientGrain: View {
 ///
 /// With an ambient style running, the fill is the palette surface at reduced
 /// opacity: it keeps the text on it legible while letting the field's light
-/// through, which is the whole difference between a designed backdrop and a
-/// gradient sitting behind an opaque sheet. `solid` returns the exact surface
-/// the app shipped with.
+/// through. `solid` returns the exact surface the app shipped with.
 struct AmbientSurfaceFill: View {
     @Environment(\.browserPalette) private var palette
     @Environment(\.browserBackgroundStyle) private var style

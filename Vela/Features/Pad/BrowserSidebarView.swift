@@ -16,6 +16,7 @@ struct BrowserSidebarView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
+    var onClose: (() -> Void)? = nil
     var onOpenBookmarks: () -> Void
     var onOpenHistory: () -> Void
     var onOpenDownloads: () -> Void
@@ -36,8 +37,11 @@ struct BrowserSidebarView: View {
             footer
         }
         .background {
-            AmbientSurfaceFill(opacity: 0.48)
-                .ignoresSafeArea()
+            ZStack {
+                palette.chromeBackground.opacity(0.80)
+                Rectangle().fill(.regularMaterial)
+            }
+            .ignoresSafeArea()
         }
         .overlay(alignment: .trailing) {
             Rectangle()
@@ -75,6 +79,18 @@ struct BrowserSidebarView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(palette.primaryText)
                 .accessibilityLabel("新建标签页")
+
+                if let onClose {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 32, height: 32)
+                            .background(palette.controlFill.opacity(0.7), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(palette.secondaryText)
+                    .accessibilityLabel("收起侧边栏")
+                }
             }
 
             Picker("标签模式", selection: $mode) {
@@ -115,6 +131,7 @@ struct BrowserSidebarView: View {
         return HStack(spacing: 8) {
             Button {
                 env.tabManager.activateTab(id: tab.id)
+                onClose?()
             } label: {
                 HStack(spacing: 9) {
                     SiteIconView(host: tab.displayHost, size: 20)

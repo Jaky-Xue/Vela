@@ -131,17 +131,6 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
-                    BrowserKernelSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "cpu",
-                        tint: .purple,
-                        title: "渲染内核",
-                        detail: env.kernels.active.descriptor.engineDescription
-                    )
-                }
-
-                NavigationLink {
                     DownloadSettingsView()
                 } label: {
                     settingsRow(

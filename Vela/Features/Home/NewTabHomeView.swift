@@ -108,6 +108,29 @@ struct NewTabHomeView: View {
                 if !recentlyClosed.isEmpty {
                     recentlyClosedBlock
                 }
+
+                if bookmarkNodes.isEmpty && recentlyClosed.isEmpty {
+                    // An empty home used to be a blank field, which reads as a
+                    // failed page rather than a start page. One quiet line is
+                    // enough to make the space intentional.
+                    VStack(spacing: 12) {
+                        Image(systemName: isPrivate ? "eyeglasses" : "safari")
+                            .font(.system(size: 38, weight: .light))
+                            .foregroundStyle(palette.secondaryText.opacity(0.55))
+                        Text(isPrivate ? "无痕浏览" : "开始浏览")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(palette.primaryText)
+                        Text(isPrivate
+                             ? "这个标签页的访问记录不会留下。"
+                             : "从地址栏输入网址；把常用网站加入收藏后会出现在这里。")
+                            .font(.footnote)
+                            .foregroundStyle(palette.secondaryText)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 64)
+                    .padding(.bottom, 40)
+                }
             }
             .padding(.horizontal, BrowserSpacing.regular)
             .padding(.top, BrowserSpacing.regular)
