@@ -362,8 +362,7 @@ struct BrowserShellView: View {
             }
         }
         .onChange(of: tabManager.activeTabId) { _, _ in
-            isReaderActive = false
-            readerArticle = nil
+            isReaderActive = false            readerArticle = nil
             showFindBar = false
             findQuery = ""
             chromeHidden = false
@@ -396,6 +395,13 @@ struct BrowserShellView: View {
         }
         .onChange(of: colorScheme) { _, _ in
             updateChromeForeground()
+        }
+        .onChange(of: omnibox.isEditing) { _, editing in
+            // The iPad top bar yields to the search page, and an open tab
+            // drawer must not sit over that page.
+            if editing {
+                showPadSidebar = false
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             // Ending a private session is VelaApp's rule for backgrounding, and
@@ -630,17 +636,23 @@ struct BrowserShellView: View {
     /// column, so the page keeps the whole width while reading.
     private var padRoot: some View {
         VStack(spacing: 0) {
-            padTopBar
-                .zIndex(2)
+            // The search page carries its own field; leaving the top bar in
+            // place would put two address fields on screen.
+            if !omnibox.isEditing {
+                padTopBar
+                    .zIndex(2)
+            }
 
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
-                    BookmarksBarView(
-                        onNavigate: { url in
-                            navigate(to: url, in: submissionTab)
-                        },
-                        onOpenManager: { showBookmarks = true }
-                    )
+                    if !omnibox.isEditing {
+                        BookmarksBarView(
+                            onNavigate: { url in
+                                navigate(to: url, in: submissionTab)
+                            },
+                            onOpenManager: { showBookmarks = true }
+                        )
+                    }
                     contentSurface
                 }
 
