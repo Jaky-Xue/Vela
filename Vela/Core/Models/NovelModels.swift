@@ -143,4 +143,12 @@ public struct NovelExtraction: Equatable, Sendable {
     public var isEmpty: Bool {
         contentHtml.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    /// The same identity a shelf entry matches on: the chapter's host plus the
+    /// book title. Used to decide whether a freshly opened page continues an
+    /// existing book rather than creating a second one.
+    public var matchKey: String {
+        let host = URL(string: chapterUrl)?.host?.lowercased() ?? ""
+        return "\(host)|\(bookTitle.trimmingCharacters(in: .whitespacesAndNewlines))"
+    }
 }

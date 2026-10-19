@@ -100,7 +100,7 @@ public final class BrowserWebCoordinator: NSObject {
         searchHistory: SearchHistoryRepository,
         sessionRepository: TabSessionRepository,
         navigationLog: NavigationLog,
-        kernel: any BrowserKernel = WebKitKernel()
+        kernel: any BrowserKernel
     ) {
         self.overlays = overlays
         self.settings = settings
