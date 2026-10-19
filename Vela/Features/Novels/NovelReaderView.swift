@@ -237,7 +237,8 @@ struct NovelReaderView: View {
         }
     }
 
-    private var bottomBar: some View {        HStack(spacing: BrowserSpacing.compact) {
+    private var bottomBar: some View {
+        HStack(spacing: BrowserSpacing.compact) {
             Button {
                 goPrevious()
             } label: {
