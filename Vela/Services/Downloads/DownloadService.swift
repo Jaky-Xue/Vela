@@ -2,17 +2,19 @@
 //  DownloadService.swift
 //  Vela
 //
-//  Download handling over `WKDownload`.
+//  Download handling: a queue, segmented transfers and a WebKit fallback.
 //
-//  WebKit moves the bytes. `WKNavigationDelegate` offers a `WKDownload` for any
-//  response it would otherwise render, `WKDownloadDelegate` chooses the
-//  destination, and cancelling hands back resume data — so this file drives the
-//  status machine and the UI, and lets WebKit own the transfer.
+//  A download WebKit identifies is taken over by `SegmentedDownloadSession`,
+//  which can split an https file into several range requests and writes the
+//  parts next to the destination. A queue limits how many files transfer at
+//  once. Requests that URLSession cannot serve faithfully — a plain-http file
+//  under ATS, or a site that answers with a login page instead of the file —
+//  fall back to WebKit's own `WKDownload`, which shares the web view's cookies
+//  and ATS exception. WebKit's resume blob is still the resume path for that
+//  fallback; segmented tasks resume from their manifest and part files.
 //
-//  What the user gives up for that: chunked multi-connection downloading, a
-//  per-task driver and queue model, and a bandwidth throttle have no iOS
-//  equivalent and are not implemented. Single-connection transfers with resume
-//  are.
+//  What this does not do: background URLSession transfers (the app must stay
+//  alive while the transfer runs), and bandwidth throttling.
 //
 
 import Foundation
@@ -24,7 +26,7 @@ import Observation
 public final class DownloadService: NSObject {
     public private(set) var tasks: [DownloadTask] = []
     public private(set) var activeCount: Int = 0
-    public var pendingPrompt: DownloadTask?
+    public private(set) var pendingPrompt: DownloadTask?
 
     private let repository: DownloadRepository
     private let settings: SettingsService
@@ -36,6 +38,51 @@ public final class DownloadService: NSObject {
     /// ways.
     private var guidByDownload: [ObjectIdentifier: String] = [:]
     private var progressObservations: [String: NSKeyValueObservation] = [:]
+
+    // MARK: Queue and segmented transfers
+
+    /// A download that has a request but no transfer yet.
+    private final class QueuedDownload {
+        var task: DownloadTask
+        var request: URLRequest
+        weak var webView: WKWebView?
+        /// A manifest loaded for a resume; when present the probe is skipped.
+        var manifest: SegmentedDownloadManifest?
+
+        init(
+            task: DownloadTask,
+            request: URLRequest,
+            webView: WKWebView?,
+            manifest: SegmentedDownloadManifest? = nil
+        ) {
+            self.task = task
+            self.request = request
+            self.webView = webView
+            self.manifest = manifest
+        }
+    }
+
+    /// Downloads waiting for a slot. Segmented transfers are fully driven here;
+    /// a WebKit fallback counts against the same slots but starts immediately,
+    /// because WebKit has no way to hold a transfer at the gate.
+    private var queued: [String: QueuedDownload] = [:]
+    /// Live segmented transfers.
+    private var segmentedSessions: [String: SegmentedDownloadSession] = [:]
+    /// Every transfer occupying a concurrency slot, whichever engine runs it.
+    private var activeGuids: Set<String> = []
+    /// The web view each task came from, kept weakly for the WebKit fallback.
+    private var sourceWebViews: [String: WeakWebView] = [:]
+    /// The confirmation sheet's payload.
+    private var pendingPromptPayload: QueuedDownload?
+    /// The enriched request each active transfer is using, for the WebKit fallback.
+    private var preparedRequests: [String: URLRequest] = [:]
+    /// Progress is written to SQLite at most this often per task.
+    private var lastProgressPersist: [String: Date] = [:]
+
+    private final class WeakWebView {
+        weak var view: WKWebView?
+        init(_ view: WKWebView?) { self.view = view }
+    }
 
     public init(repository: DownloadRepository, settings: SettingsService) {
         self.repository = repository
@@ -63,6 +110,9 @@ public final class DownloadService: NSObject {
             try? repository.upsert(task)
         }
         reload()
+        activeGuids.removeAll()
+        refreshActiveCount()
+        pumpQueue()
         return interrupted
     }
 
@@ -119,6 +169,364 @@ public final class DownloadService: NSObject {
         return result.isEmpty ? "download" : String(result.prefix(200))
     }
 
+    // MARK: - Web downloads and the queue
+
+    /// Accepts a download WebKit has identified, then drives it with the
+    /// browser's own transfer engine.
+    ///
+    /// The navigation is cancelled by the caller in favour of this path. The
+    /// request has already been built (cookie and referer enrichment happens
+    /// here), and the confirmation preference decides whether it is enqueued
+    /// now or offered first.
+    public func handleWebDownload(
+        request: URLRequest,
+        boundary: BrowserDataBoundary,
+        webView: WKWebView,
+        suggestedFileName: String,
+        mimeType: String,
+        totalBytes: Int64
+    ) {
+        let seeded = suggestedFileName.isEmpty
+            ? (request.url?.lastPathComponent ?? "download")
+            : suggestedFileName
+        let task = DownloadTask(
+            profileId: boundary.profileId,
+            privacyMode: boundary.privacyMode,
+            dataScope: boundary.dataScope,
+            requestUrl: request.url?.absoluteString ?? "",
+            suggestedFileName: seeded,
+            mimeType: mimeType,
+            status: .pending,
+            totalBytes: max(totalBytes, 0)
+        )
+        let item = QueuedDownload(task: task, request: request, webView: webView)
+
+        if settings.downloadSettings.confirmBeforeDownload {
+            pendingPrompt = task
+            pendingPromptPayload = item
+        } else {
+            enqueue(item)
+        }
+    }
+
+    public func confirmPendingPrompt() {
+        guard let item = pendingPromptPayload else {
+            pendingPrompt = nil
+            return
+        }
+        pendingPrompt = nil
+        pendingPromptPayload = nil
+        enqueue(item)
+    }
+
+    public func dismissPendingPrompt() {
+        pendingPrompt = nil
+        pendingPromptPayload = nil
+    }
+
+    private func enqueue(_ item: QueuedDownload) {
+        var task = item.task
+        if task.destinationPath.isEmpty {
+            let destination = resolveDestination(suggestedFileName: task.suggestedFileName)
+            task.resolvedFileName = destination.lastPathComponent
+            task.destinationPath = destination.path
+        }
+        task.status = .pending
+        task.failure = nil
+        task.updatedAt = Date()
+        item.task = task
+
+        try? repository.upsert(task)
+        queued[task.guid] = item
+        sourceWebViews[task.guid] = WeakWebView(item.webView)
+        reload(privacyMode: task.privacyMode)
+        pumpQueue()
+    }
+
+    /// Starts queued downloads up to the concurrency limit, oldest first.
+    private func pumpQueue() {
+        let limit = settings.downloadSettings.maxConcurrentDownloadCount
+        while activeGuids.count < limit {
+            let next = queued.values
+                .filter { $0.task.status == .pending }
+                .sorted { $0.task.createdAt < $1.task.createdAt }
+                .first
+            guard let next else { break }
+            queued.removeValue(forKey: next.task.guid)
+            activeGuids.insert(next.task.guid)
+            Task { @MainActor [weak self] in
+                await self?.startQueued(next)
+            }
+        }
+        refreshActiveCount()
+    }
+
+    private func refreshActiveCount() {
+        activeCount = activeGuids.count
+    }
+
+    private func startQueued(_ item: QueuedDownload) async {
+        let guid = item.task.guid
+        guard var task = try? repository.task(guid: guid),
+              let url = item.request.url else {
+            activeGuids.remove(guid)
+            sourceWebViews.removeValue(forKey: guid)
+            refreshActiveCount()
+            pumpQueue()
+            return
+        }
+
+        task.status = .running
+        task.failure = nil
+        task.updatedAt = Date()
+        item.task = task
+        try? repository.upsert(task)
+        updateTaskInMemory(task)
+        reload(privacyMode: task.privacyMode)
+        refreshActiveCount()
+
+        let prepared = await preparedRequest(for: item)
+        preparedRequests[guid] = prepared
+
+        var plan: SegmentedDownloadManifest?
+        if let existing = item.manifest, existing.url == (prepared.url?.absoluteString ?? url.absoluteString) {
+            plan = existing
+        } else if settings.downloadSettings.usesSegmentedDownloads {
+            let probe = await SegmentedDownloadSession.probe(request: prepared)
+            if probe.supportsRanges {
+                let total = probe.totalBytes > 0 ? probe.totalBytes : task.totalBytes
+                if total > 0 {
+                    plan = SegmentedDownloadManifest(
+                        guid: guid,
+                        url: prepared.url?.absoluteString ?? url.absoluteString,
+                        mimeType: task.mimeType,
+                        suggestedFileName: task.suggestedFileName,
+                        destinationPath: task.destinationPath,
+                        totalBytes: total,
+                        segments: SegmentedDownloadSession.makeSegments(
+                            totalBytes: total,
+                            count: settings.downloadSettings.segmentCount
+                        ),
+                        singleStream: false
+                    )
+                    task.totalBytes = total
+                }
+            }
+        }
+
+        if plan == nil {
+            plan = SegmentedDownloadManifest(
+                guid: guid,
+                url: prepared.url?.absoluteString ?? url.absoluteString,
+                mimeType: task.mimeType,
+                suggestedFileName: task.suggestedFileName,
+                destinationPath: task.destinationPath,
+                totalBytes: max(task.totalBytes, 0),
+                segments: SegmentedDownloadSession.makeSegments(
+                    totalBytes: max(task.totalBytes, 0),
+                    count: 1
+                ),
+                singleStream: true
+            )
+        }
+
+        guard let plan else {
+            activeGuids.remove(guid)
+            failSegmented(guid: guid, error: SegmentedDownloadError.missingBody)
+            return
+        }
+
+        try? repository.upsert(task)
+        updateTaskInMemory(task)
+        ManifestStore.save(plan)
+
+        let session = SegmentedDownloadSession(
+            manifest: plan,
+            request: prepared,
+            onProgress: { [weak self] received, total in
+                Task { @MainActor in
+                    self?.applyProgress(guid: guid, received: received, total: total)
+                }
+            },
+            onManifest: { snapshot in
+                ManifestStore.save(snapshot)
+            },
+            onComplete: { [weak self] result in
+                Task { @MainActor in
+                    self?.finishSegmented(guid: guid, result: result)
+                }
+            },
+            onFallback: { [weak self] error in
+                Task { @MainActor in
+                    self?.fallbackToWebKit(guid: guid, error: error)
+                }
+            }
+        )
+        segmentedSessions[guid] = session
+        session.start()
+    }
+
+    /// The request the transfer engine actually sends: the original method and
+    /// URL, plus the web view's cookies, referer and user agent. URLSession has
+    /// no session of its own, so everything the site needs to recognise the
+    /// request has to be copied into the headers.
+    private func preparedRequest(for item: QueuedDownload) async -> URLRequest {
+        var request = item.request
+        request.httpMethod = request.httpMethod ?? "GET"
+        // A compressed body cannot be range-sliced; ask for the identity encoding.
+        if request.value(forHTTPHeaderField: "Accept-Encoding") == nil {
+            request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        }
+
+        guard let webView = item.webView else { return request }
+
+        if let referer = webView.url?.absoluteString {
+            request.setValue(referer, forHTTPHeaderField: "Referer")
+        }
+        if let userAgent = (try? await webView.evaluateJavaScript("navigator.userAgent")) as? String,
+           !userAgent.isEmpty {
+            request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        }
+
+        let cookies = await cookies(from: webView.configuration.websiteDataStore)
+        let fields = HTTPCookie.requestHeaderFields(with: cookies)
+        for (key, value) in fields {
+            if let existing = request.value(forHTTPHeaderField: key) {
+                request.setValue(existing + "; " + value, forHTTPHeaderField: key)
+            } else {
+                request.setValue(value, forHTTPHeaderField: key)
+            }
+        }
+        return request
+    }
+
+    private func cookies(from store: WKWebsiteDataStore) async -> [HTTPCookie] {
+        await withCheckedContinuation { continuation in
+            store.httpCookieStore.getAllCookies { cookies in
+                continuation.resume(returning: cookies)
+            }
+        }
+    }
+
+    private func applyProgress(guid: String, received: Int64, total: Int64) {
+        var updated: DownloadTask?
+        if let index = tasks.firstIndex(where: { $0.guid == guid }) {
+            var task = tasks[index]
+            task.receivedBytes = max(received, task.receivedBytes)
+            if total > 0 { task.totalBytes = total }
+            task.updatedAt = Date()
+            tasks[index] = task
+            updated = task
+        } else if var task = try? repository.task(guid: guid) {
+            task.receivedBytes = max(received, task.receivedBytes)
+            if total > 0 { task.totalBytes = total }
+            task.updatedAt = Date()
+            updated = task
+            reload(privacyMode: task.privacyMode)
+        }
+
+        guard let task = updated else { return }
+        let now = Date()
+        if now.timeIntervalSince(lastProgressPersist[guid] ?? .distantPast) > 0.75 {
+            lastProgressPersist[guid] = now
+            try? repository.upsert(task)
+        }
+    }
+
+    private func updateTaskInMemory(_ task: DownloadTask) {
+        if let index = tasks.firstIndex(where: { $0.guid == task.guid }) {
+            tasks[index] = task
+        }
+    }
+
+    private func finishSegmented(guid: String, result: Result<URL, Error>) {
+        segmentedSessions.removeValue(forKey: guid)
+        activeGuids.remove(guid)
+        lastProgressPersist.removeValue(forKey: guid)
+        preparedRequests.removeValue(forKey: guid)
+        sourceWebViews.removeValue(forKey: guid)
+        refreshActiveCount()
+
+        switch result {
+        case let .success(url):
+            complete(guid: guid, destinationPath: url.path, resolvedFileName: url.lastPathComponent)
+        case let .failure(error):
+            failSegmented(guid: guid, error: error)
+        }
+        pumpQueue()
+    }
+
+    private func failSegmented(guid: String, error: Error) {
+        guard var task = try? repository.task(guid: guid) else { return }
+        activeGuids.remove(guid)
+        let manifest = ManifestStore.load(guid: guid)
+        let resumable = manifest != nil && !(manifest?.isComplete ?? false)
+        task.status = resumable ? .paused : .failed
+        task.failure = DownloadFailure(
+            reason: resumable ? "下载中断，可继续。" : error.localizedDescription,
+            errorCode: (error as NSError).code
+        )
+        task.updatedAt = Date()
+        try? repository.upsert(task)
+        updateTaskInMemory(task)
+        if !resumable, let manifest {
+            SegmentedDownloadSession.removeParts(manifest: manifest)
+        }
+        segmentedSessions.removeValue(forKey: guid)
+        preparedRequests.removeValue(forKey: guid)
+        sourceWebViews.removeValue(forKey: guid)
+        refreshActiveCount()
+        reload(privacyMode: task.privacyMode)
+        pumpQueue()
+    }
+
+    /// If the URLSession transfer failed before receiving any byte, let WebKit
+    /// retry the same request. WebKit may succeed where URLSession cannot when a
+    /// site depends on its own session state or auth challenge.
+    private func fallbackToWebKit(guid: String, error: Error) {
+        segmentedSessions.removeValue(forKey: guid)
+        if let manifest = ManifestStore.load(guid: guid) {
+            SegmentedDownloadSession.removeParts(manifest: manifest)
+        }
+        ManifestStore.remove(guid: guid)
+
+        guard let webView = sourceWebViews[guid]?.view,
+              let request = preparedRequests[guid] else {
+            activeGuids.remove(guid)
+            failSegmented(guid: guid, error: error)
+            return
+        }
+
+        webView.startDownload(using: request) { [weak self] download in
+            Task { @MainActor in
+                guard let self else { return }
+                guard let download else {
+                    self.activeGuids.remove(guid)
+                    self.failSegmented(guid: guid, error: error)
+                    return
+                }
+                self.attachWebKitFallback(download: download, guid: guid)
+            }
+        }
+    }
+
+    private func attachWebKitFallback(download: WKDownload, guid: String) {
+        download.delegate = self
+        downloads[guid] = download
+        guidByDownload[ObjectIdentifier(download)] = guid
+        observeProgress(download: download, guid: guid)
+
+        if var task = try? repository.task(guid: guid), task.status != .running {
+            task.status = .running
+            task.failure = nil
+            task.updatedAt = Date()
+            try? repository.upsert(task)
+            updateTaskInMemory(task)
+            reload(privacyMode: task.privacyMode)
+        }
+        refreshActiveCount()
+    }
+
     // MARK: - Starting
 
     /// Registers a transfer WebKit has already begun.
@@ -151,9 +559,11 @@ public final class DownloadService: NSObject {
 
         downloads[task.guid] = download
         guidByDownload[ObjectIdentifier(download)] = task.guid
+        activeGuids.insert(task.guid)
         try? repository.upsert(task)
         observeProgress(download: download, guid: task.guid)
         reload(privacyMode: task.privacyMode)
+        refreshActiveCount()
         return task
     }
 
@@ -205,7 +615,15 @@ public final class DownloadService: NSObject {
         task.writtenBytes = task.receivedBytes
         try? repository.upsert(task)
         releaseTracking(guid: guid)
+        segmentedSessions.removeValue(forKey: guid)
+        sourceWebViews.removeValue(forKey: guid)
+        preparedRequests.removeValue(forKey: guid)
+        lastProgressPersist.removeValue(forKey: guid)
+        activeGuids.remove(guid)
+        SegmentedDownloadSession.discardArtifacts(guid: guid, destinationPath: task.destinationPath)
+        refreshActiveCount()
         reload(privacyMode: task.privacyMode)
+        pumpQueue()
 
         if settings.downloadSettings.autoRemoveCompleted {
             // The file stays on disk; only the record goes.
@@ -230,11 +648,45 @@ public final class DownloadService: NSObject {
         try? repository.upsert(task)
         try? repository.storeResumeData(resumeData, guid: guid)
         releaseTracking(guid: guid)
+        segmentedSessions.removeValue(forKey: guid)
+        sourceWebViews.removeValue(forKey: guid)
+        preparedRequests.removeValue(forKey: guid)
+        lastProgressPersist.removeValue(forKey: guid)
+        activeGuids.remove(guid)
+        if resumeData == nil {
+            SegmentedDownloadSession.discardArtifacts(guid: guid, destinationPath: task.destinationPath)
+            ManifestStore.remove(guid: guid)
+        }
+        refreshActiveCount()
         reload(privacyMode: task.privacyMode)
+        pumpQueue()
     }
 
-    /// Cancels a transfer, storing resume data so it can be continued.
+    /// Cancels a transfer, storing resume data when the engine supplies it.
     public func cancel(guid: String) {
+        if let session = segmentedSessions.removeValue(forKey: guid) {
+            session.pause()
+            stopSegmented(guid: guid, status: .cancelled)
+            if let manifest = ManifestStore.load(guid: guid) {
+                SegmentedDownloadSession.removeParts(manifest: manifest)
+            }
+            ManifestStore.remove(guid: guid)
+            return
+        }
+
+        if let item = queued.removeValue(forKey: guid) {
+            var task = item.task
+            task.status = .cancelled
+            task.updatedAt = Date()
+            try? repository.upsert(task)
+            sourceWebViews.removeValue(forKey: guid)
+            activeGuids.remove(guid)
+            refreshActiveCount()
+            reload(privacyMode: task.privacyMode)
+            pumpQueue()
+            return
+        }
+
         guard let download = downloads[guid] else {
             // Not in flight: mark the record so the list stops showing it as
             // running.
@@ -242,7 +694,10 @@ public final class DownloadService: NSObject {
                 task.status = .cancelled
                 task.updatedAt = Date()
                 try? repository.upsert(task)
+                activeGuids.remove(guid)
+                refreshActiveCount()
                 reload(privacyMode: task.privacyMode)
+                pumpQueue()
             }
             return
         }
@@ -255,18 +710,116 @@ public final class DownloadService: NSObject {
                 try? self.repository.upsert(task)
                 try? self.repository.storeResumeData(resumeData, guid: guid)
                 self.releaseTracking(guid: guid)
+                self.activeGuids.remove(guid)
+                self.refreshActiveCount()
                 self.reload(privacyMode: task.privacyMode)
+                self.pumpQueue()
             }
         }
     }
 
-    /// Resumes a paused transfer from its stored blob.
+    /// Pauses a transfer without discarding its progress.
     ///
-    /// The only way back in is `WKWebView.resumeDownload(fromResumeData:)`, which
-    /// needs a web view to attach the transfer to, so the caller passes one.
-    public func resume(guid: String, in webView: WKWebView) async {
-        guard let data = try? repository.resumeData(guid: guid) else { return }
+    /// A segmented download keeps its completed parts and manifest; a paused
+    /// WebKit transfer keeps its resume blob; a queued task simply leaves the
+    /// queue. All three can be resumed later.
+    public func pause(guid: String) {
+        if let session = segmentedSessions.removeValue(forKey: guid) {
+            session.pause()
+            stopSegmented(guid: guid, status: .paused)
+            return
+        }
+
+        if let item = queued.removeValue(forKey: guid) {
+            var task = item.task
+            task.status = .paused
+            task.updatedAt = Date()
+            try? repository.upsert(task)
+            sourceWebViews.removeValue(forKey: guid)
+            activeGuids.remove(guid)
+            refreshActiveCount()
+            reload(privacyMode: task.privacyMode)
+            pumpQueue()
+            return
+        }
+
+        guard let download = downloads[guid] else {
+            if var task = try? repository.task(guid: guid) {
+                task.status = .paused
+                task.updatedAt = Date()
+                try? repository.upsert(task)
+                activeGuids.remove(guid)
+                refreshActiveCount()
+                reload(privacyMode: task.privacyMode)
+                pumpQueue()
+            }
+            return
+        }
+        download.cancel { [weak self] resumeData in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard var task = try? self.repository.task(guid: guid) else { return }
+                task.status = .paused
+                task.updatedAt = Date()
+                task.failure = DownloadFailure(reason: "已暂停，可继续。")
+                try? self.repository.upsert(task)
+                try? self.repository.storeResumeData(resumeData, guid: guid)
+                self.releaseTracking(guid: guid)
+                self.activeGuids.remove(guid)
+                self.refreshActiveCount()
+                self.reload(privacyMode: task.privacyMode)
+                self.pumpQueue()
+            }
+        }
+    }
+
+    /// Marks a segmented task stopped and releases its slot.
+    private func stopSegmented(guid: String, status: DownloadStatus) {
+        if var task = try? repository.task(guid: guid) {
+            task.status = status
+            task.updatedAt = Date()
+            try? repository.upsert(task)
+            reload(privacyMode: task.privacyMode)
+        }
+        segmentedSessions.removeValue(forKey: guid)
+        preparedRequests.removeValue(forKey: guid)
+        sourceWebViews.removeValue(forKey: guid)
+        lastProgressPersist.removeValue(forKey: guid)
+        activeGuids.remove(guid)
+        refreshActiveCount()
+        pumpQueue()
+    }
+
+    /// Resumes a paused transfer.
+    ///
+    /// A segmented manifest is resumed in place; a WebKit resume blob is handed
+    /// back to the web view; anything else is re-queued from its URL. The web
+    /// view is optional because a segmented resume can continue without one —
+    /// the manifest already has the URL and the parts.
+    public func resume(guid: String, in webView: WKWebView?) async {
         guard var task = try? repository.task(guid: guid) else { return }
+
+        let manifest = ManifestStore.load(guid: guid)
+        if manifest != nil || (try? repository.resumeData(guid: guid)) == nil {
+            guard let url = URL(string: task.requestUrl) else { return }
+            task.status = .pending
+            task.failure = nil
+            task.updatedAt = Date()
+            try? repository.upsert(task)
+            let item = QueuedDownload(
+                task: task,
+                request: URLRequest(url: url),
+                webView: webView,
+                manifest: manifest
+            )
+            queued[guid] = item
+            sourceWebViews[guid] = WeakWebView(webView)
+            reload(privacyMode: task.privacyMode)
+            pumpQueue()
+            return
+        }
+
+        guard let webView, let data = try? repository.resumeData(guid: guid) else { return }
 
         // WebKit only offers the completion-handler form of this call, which
         // Swift imports as async. The download it hands back is non-optional —
@@ -280,8 +833,10 @@ public final class DownloadService: NSObject {
 
         downloads[guid] = download
         guidByDownload[ObjectIdentifier(download)] = guid
+        activeGuids.insert(guid)
         observeProgress(download: download, guid: guid)
         reload(privacyMode: task.privacyMode)
+        refreshActiveCount()
     }
 
     private func releaseTracking(guid: String) {
@@ -295,9 +850,27 @@ public final class DownloadService: NSObject {
     // MARK: - Deleting
 
     public func remove(guid: String, deleteFile: Bool) {
-        if downloads[guid] != nil { cancel(guid: guid) }
+        if let session = segmentedSessions.removeValue(forKey: guid) {
+            session.pause()
+        }
+        if let download = downloads[guid] {
+            download.cancel(nil)
+            releaseTracking(guid: guid)
+        }
+        queued.removeValue(forKey: guid)
+        sourceWebViews.removeValue(forKey: guid)
+        preparedRequests.removeValue(forKey: guid)
+        lastProgressPersist.removeValue(forKey: guid)
+        activeGuids.remove(guid)
+        if let task = try? repository.task(guid: guid) {
+            SegmentedDownloadSession.discardArtifacts(guid: guid, destinationPath: task.destinationPath)
+        } else {
+            ManifestStore.remove(guid: guid)
+        }
+        refreshActiveCount()
         try? repository.remove(guid: guid, deleteFile: deleteFile)
         reload()
+        pumpQueue()
     }
 
     public func removeCompleted() {
@@ -307,13 +880,31 @@ public final class DownloadService: NSObject {
 
     /// Clears private download records at the end of a private session.
     public func clearPrivateRecords() {
-        for (guid, download) in downloads {
-            guard let task = try? repository.task(guid: guid), task.privacyMode == .private else { continue }
-            download.cancel(nil)
-            releaseTracking(guid: guid)
+        let privateTasks = (try? repository.tasks(privacyMode: .private)) ?? []
+
+        for task in privateTasks {
+            if let session = segmentedSessions.removeValue(forKey: task.guid) {
+                session.pause()
+            }
+            if let download = downloads[task.guid] {
+                download.cancel(nil)
+                releaseTracking(guid: task.guid)
+            }
+            queued.removeValue(forKey: task.guid)
+            sourceWebViews.removeValue(forKey: task.guid)
+            preparedRequests.removeValue(forKey: task.guid)
+            lastProgressPersist.removeValue(forKey: task.guid)
+            activeGuids.remove(task.guid)
+            SegmentedDownloadSession.discardArtifacts(
+                guid: task.guid,
+                destinationPath: task.destinationPath
+            )
         }
+
         try? repository.clearPrivateRecords()
+        refreshActiveCount()
         reload()
+        pumpQueue()
     }
 
     func guid(for download: WKDownload) -> String? {

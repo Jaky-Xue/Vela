@@ -92,7 +92,9 @@ struct SettingsView: View {
                         icon: "shield.lefthalf.filled",
                         tint: .indigo,
                         title: "WebRTC 泄露防护",
-                        detail: env.settings.webRTCProtection.displayName
+                        detail: env.settings.webRTCProtectionEnabled
+                            ? env.settings.webRTCProtectionSelection.displayName
+                            : "已关闭"
                     )
                 }
 

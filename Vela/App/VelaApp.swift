@@ -89,6 +89,9 @@ struct VelaApp: App {
                 break
             }
         }
+        .commands {
+            BrowserCommands(center: environment.commands)
+        }
     }
 
     /// The palette the user selected, or the shipped default when the stored id

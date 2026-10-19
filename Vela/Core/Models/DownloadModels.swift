@@ -214,18 +214,37 @@ public struct DownloadSettings: Codable, Equatable, Sendable {
     public var separatePrivateDownloads: Bool
     /// Clear the record automatically once a download completes.
     public var autoRemoveCompleted: Bool
+    /// Split a file into several range requests where the server supports it.
+    /// Optional so an install with the old document still decodes.
+    public var segmentedDownloadsEnabled: Bool?
+    /// How many parts one file is split into (clamped to 1...8).
+    public var segmentsPerDownload: Int?
+    /// How many files may transfer at once; further tasks wait in the queue
+    /// (clamped to 1...4).
+    public var maxConcurrentDownloads: Int?
 
     public init(
         directoryPreference: DownloadDirectoryPreference = .appDownloads,
         confirmBeforeDownload: Bool = true,
         separatePrivateDownloads: Bool = true,
-        autoRemoveCompleted: Bool = false
+        autoRemoveCompleted: Bool = false,
+        segmentedDownloadsEnabled: Bool? = nil,
+        segmentsPerDownload: Int? = nil,
+        maxConcurrentDownloads: Int? = nil
     ) {
         self.directoryPreference = directoryPreference
         self.confirmBeforeDownload = confirmBeforeDownload
         self.separatePrivateDownloads = separatePrivateDownloads
         self.autoRemoveCompleted = autoRemoveCompleted
+        self.segmentedDownloadsEnabled = segmentedDownloadsEnabled
+        self.segmentsPerDownload = segmentsPerDownload
+        self.maxConcurrentDownloads = maxConcurrentDownloads
     }
+
+    /// Resolved switches, so the downloader never has to repeat the defaults.
+    public var usesSegmentedDownloads: Bool { segmentedDownloadsEnabled ?? true }
+    public var segmentCount: Int { min(max(segmentsPerDownload ?? 4, 1), 8) }
+    public var maxConcurrentDownloadCount: Int { min(max(maxConcurrentDownloads ?? 2, 1), 4) }
 
     public static let `default` = DownloadSettings()
 }

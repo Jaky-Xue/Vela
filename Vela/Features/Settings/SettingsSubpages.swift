@@ -516,6 +516,42 @@ struct DownloadSettingsView: View {
             } footer: {
                 Text("只删除列表条目，文件保留。")
             }
+
+            Section {
+                Toggle("分片多连接下载", isOn: Binding(
+                    get: { env.settings.downloadSettings.usesSegmentedDownloads },
+                    set: { value in
+                        env.settings.updateDownloadSettings { $0.segmentedDownloadsEnabled = value }
+                    }
+                ))
+
+                Picker("每个文件的分片数", selection: Binding(
+                    get: { env.settings.downloadSettings.segmentCount },
+                    set: { value in
+                        env.settings.updateDownloadSettings { $0.segmentsPerDownload = value }
+                    }
+                )) {
+                    ForEach(1...8, id: \.self) { count in
+                        Text("\(count)").tag(count)
+                    }
+                }
+                .disabled(!env.settings.downloadSettings.usesSegmentedDownloads)
+
+                Picker("同时下载数量", selection: Binding(
+                    get: { env.settings.downloadSettings.maxConcurrentDownloadCount },
+                    set: { value in
+                        env.settings.updateDownloadSettings { $0.maxConcurrentDownloads = value }
+                    }
+                )) {
+                    ForEach(1...4, id: \.self) { count in
+                        Text("\(count)").tag(count)
+                    }
+                }
+            } header: {
+                Text("传输")
+            } footer: {
+                Text("分片下载需要服务器支持 Range；服务器不支持时会自动退回单连接。超出并发数量的任务会进入队列，按创建顺序开始。")
+            }
         }
         .navigationTitle("下载")
         .navigationBarTitleDisplayMode(.inline)

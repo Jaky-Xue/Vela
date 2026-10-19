@@ -4,10 +4,10 @@
 //
 //  The download list.
 //
-//  The actions map onto what `WKDownload` can actually do: pause and resume exist
-//  because WebKit hands back resume data, retry exists because a fresh request is
-//  always possible, and there is no queue reorder because WebKit has no transfer
-//  queue to reorder.
+//  The row actions map onto the transfer engine's state: pause keeps the
+//  segmented parts or WebKit's resume blob, resume continues from them, and a
+//  pending row is a queued download that will start when a concurrency slot
+//  frees. Deletion is the only action that discards partial data.
 //
 
 import SwiftUI
@@ -171,14 +171,14 @@ struct DownloadsView: View {
                 Button("在「文件」中显示", systemImage: "folder") { openDownloadsFolder() }
                 Divider()
             }
-            if task.status == .paused || task.status == .failed {
+            if task.status == .paused || task.status == .failed || task.status == .pending {
                 Button("继续下载", systemImage: "arrow.clockwise") {
-                    guard let webView = env.tabManager.webView(for: env.tabManager.activeTabId) else { return }
+                    let webView = env.tabManager.webView(for: env.tabManager.activeTabId)
                     Task { await downloads.resume(guid: task.guid, in: webView) }
                 }
             }
             if task.status == .running {
-                Button("暂停", systemImage: "pause") { downloads.cancel(guid: task.guid) }
+                Button("暂停", systemImage: "pause") { downloads.pause(guid: task.guid) }
             }
             Button("拷贝下载地址", systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = task.requestUrl
@@ -196,7 +196,7 @@ struct DownloadsView: View {
         switch task.status {
         case .running:
             Button {
-                downloads.cancel(guid: task.guid)
+                downloads.pause(guid: task.guid)
             } label: {
                 Image(systemName: "pause.circle.fill")
                     .font(.system(size: 20))
@@ -206,7 +206,7 @@ struct DownloadsView: View {
 
         case .paused, .failed:
             Button {
-                guard let webView = env.tabManager.webView(for: env.tabManager.activeTabId) else { return }
+                let webView = env.tabManager.webView(for: env.tabManager.activeTabId)
                 Task { await downloads.resume(guid: task.guid, in: webView) }
             } label: {
                 Image(systemName: "arrow.clockwise.circle.fill")
@@ -227,7 +227,18 @@ struct DownloadsView: View {
                 .buttonStyle(.plain)
             }
 
-        case .pending, .cancelled:
+        case .pending:
+            Button {
+                let webView = env.tabManager.webView(for: env.tabManager.activeTabId)
+                Task { await downloads.resume(guid: task.guid, in: webView) }
+            } label: {
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.tint)
+            }
+            .buttonStyle(.plain)
+
+        case .cancelled:
             EmptyView()
         }
     }

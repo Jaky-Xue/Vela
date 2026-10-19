@@ -960,24 +960,34 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                 return
             }
 
-            // A response WebKit cannot render is a download. This is the only
-            // signal iOS gives for "the user asked for a file": there is no
-            // separate download API to opt into.
+            // A response WebKit cannot render is a download. Vela takes the
+            // request over here instead of letting WebKit start a WKDownload:
+            // the browser's own transfer engine can queue it, split it into
+            // range requests and copy the web view's cookies into the request.
+            // The navigation is cancelled so the page behind it stays put.
             if !navigationResponse.canShowMIMEType {
-                if self.settings.downloadSettings.confirmBeforeDownload {
-                    let task = DownloadTask(
-                        profileId: tab.dataBoundary.profileId,
-                        privacyMode: tab.dataBoundary.privacyMode,
-                        dataScope: tab.dataBoundary.dataScope,
-                        requestUrl: navigationResponse.response.url?.absoluteString ?? tab.url,
-                        suggestedFileName: navigationResponse.response.suggestedFilename ?? "download",
-                        mimeType: navigationResponse.response.mimeType ?? "",
-                        status: .pending,
-                        totalBytes: navigationResponse.response.expectedContentLength
-                    )
-                    self.downloads.pendingPrompt = task
+                guard let url = navigationResponse.response.url,
+                      let scheme = url.scheme?.lowercased() else {
+                    decisionHandler(.download)
+                    return
                 }
-                decisionHandler(.download)
+                // Only web URLs are modelled here. A blob or data URL stays on
+                // WebKit's own path: URLSession cannot fetch it, and handing it
+                // to the queue would only turn a working download into a
+                // failed one.
+                guard scheme == "http" || scheme == "https" else {
+                    decisionHandler(.download)
+                    return
+                }
+                self.downloads.handleWebDownload(
+                    request: URLRequest(url: url),
+                    boundary: tab.dataBoundary,
+                    webView: webView,
+                    suggestedFileName: navigationResponse.response.suggestedFilename ?? "download",
+                    mimeType: navigationResponse.response.mimeType ?? "",
+                    totalBytes: navigationResponse.response.expectedContentLength
+                )
+                decisionHandler(.cancel)
                 return
             }
 

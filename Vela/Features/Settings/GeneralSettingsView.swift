@@ -62,6 +62,37 @@ struct GeneralSettingsView: View {
             }
 
             Section {
+                ForEach(InterfaceLayoutMode.allCases) { mode in
+                    Button {
+                        env.settings.interfaceLayout = mode
+                    } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: mode.symbolName)
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(width: 26)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(mode.displayName)
+                                    .foregroundStyle(.primary)
+                                Text(mode.detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                            if env.settings.interfaceLayout == mode {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                    }
+                }
+            } header: {
+                Text("界面布局")
+            } footer: {
+                Text("iPad 布局包含标签侧边栏、书签栏和双栏内容；系统 Split View / Stage Manager 调整窗口大小时，自动模式会按宽度切换。硬件键盘快捷键见菜单栏「浏览器」。")
+            }
+
+            Section {
                 Toggle("全局顶部保护", isOn: Binding(
                     get: { env.settings.preferences.topProtectionEnabled },
                     set: { value in env.settings.update { $0.topProtection = value } }

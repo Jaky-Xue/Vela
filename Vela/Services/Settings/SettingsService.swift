@@ -166,6 +166,14 @@ public final class SettingsService {
         }
     }
 
+    // MARK: - Interface
+
+    /// Which chrome the shell draws. `跟随设备` is the default.
+    public var interfaceLayout: InterfaceLayoutMode {
+        get { InterfaceLayoutMode.resolve(preferences.interfaceLayout) }
+        set { update { $0.interfaceLayout = newValue.rawValue } }
+    }
+
     // MARK: - Menu panel
 
     /// The panel's order, hidden built-ins and custom shortcuts.
@@ -188,10 +196,33 @@ public final class SettingsService {
 
     // MARK: - WebRTC
 
-    /// How the WebRTC guard treats peer connections. Defaults to 防泄露.
-    public var webRTCProtection: WebRTCProtectionMode {
+    /// Whether the WebRTC guard runs at all. Defaults to on.
+    public var webRTCProtectionEnabled: Bool {
+        get { preferences.webRTCProtectionEnabled ?? true }
+        set { update { $0.webRTCProtectionEnabled = newValue } }
+    }
+
+    /// The protection mode the user picked, regardless of the on/off switch.
+    /// Selecting a mode also turns protection on.
+    public var webRTCProtectionSelection: WebRTCProtectionMode {
         get { WebRTCProtectionMode.resolve(preferences.webRTCProtection) }
-        set { update { $0.webRTCProtection = newValue.rawValue } }
+        set {
+            update { preferences in
+                preferences.webRTCProtection = newValue.rawValue
+                preferences.webRTCProtectionEnabled = true
+            }
+        }
+    }
+
+    /// The mode in force for the page scripts: `允许` when the switch is off.
+    public var webRTCProtection: WebRTCProtectionMode {
+        get { webRTCProtectionEnabled ? webRTCProtectionSelection : .allow }
+        set {
+            update { preferences in
+                preferences.webRTCProtection = newValue.rawValue
+                preferences.webRTCProtectionEnabled = newValue != .allow
+            }
+        }
     }
 
     // MARK: - Reading

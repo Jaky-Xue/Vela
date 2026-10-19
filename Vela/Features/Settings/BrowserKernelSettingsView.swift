@@ -61,7 +61,12 @@ struct BrowserKernelSettingsView: View {
             }
 
             Section {
-                LabeledContent("WebRTC 策略", value: env.settings.webRTCProtection.displayName)
+                LabeledContent(
+                    "WebRTC 策略",
+                    value: env.settings.webRTCProtectionEnabled
+                        ? env.settings.webRTCProtectionSelection.displayName
+                        : "已关闭"
+                )
                     .foregroundStyle(palette.primaryText)
                 NavigationLink("WebRTC 泄露防护") {
                     WebRTCProtectionSettingsView()

@@ -114,6 +114,35 @@ iOS 没有可嵌入的 Blink：Chromium for iOS 的网页内容同样由 WKWebVi
 `BrowserWebViewConfigurationProviding.makeWebView` 的返回类型从 `WKWebView`
 抽象出去。设置 ▸ 渲染内核 会如实显示这一点，不会提供无法生效的开关。
 
+## 下载
+
+`Services/Downloads/DownloadService.swift` 是队列和状态机，
+`Core/Downloads/SegmentedDownloadSession.swift` 负责一次文件传输：
+
+- 队列：`activeGuids` 限制同时运行的任务数；等待中的任务以 `.pending`
+  持久化，槽位释放后按创建时间启动。
+- 分片：先 HEAD 探测 `Accept-Ranges`，再按 `segmentsPerDownload` 切成连续
+  字节区间，各区间的 `URLSessionDownloadTask` 并发运行。完成的分片留在目标
+  目录的隐藏 `.vela-<guid>-partN` 文件里，manifest 记录哪些分片已完成；
+  暂停或重启后只补未完成的分片，再按顺序合并。
+- 回退：URLSession 失败在首字节之前、或响应是登录/挑战 HTML 时，服务用
+  `WKWebView.startDownload` 重试同一请求。明文 http 也在 URLSession 的 ATS
+  之外，会走这条回退。WKDownload 的 resume data 继续作为它的续传方式。
+- 分片/队列只对 http(s) 文件生效；blob/data URL 交给 WebKit。
+
+## 界面形态与键盘
+
+- `InterfaceLayoutMode`（跟随设备 / 手机 / iPad）保存在偏好文档。
+  `BrowserShellView` 按 `UIDevice.idiom + horizontalSizeClass` 选择单栏或
+  双栏；iPad 布局由 `Features/Pad/BrowserSidebarView`（标签侧边栏）和
+  `BookmarksBarView`（书签栏）组成，底部工具栏只覆盖内容列。
+- `BrowserCommands` 是 SwiftUI 的 `Commands` 菜单；按钮调用
+  `BrowserCommandCenter.perform`，外壳在 `onAppear` 注册处理器。这样命令
+  不需要持有外壳状态。
+- `Info.plist` 不再声明 `UIRequiresFullScreen`，因此 Split View / Slide Over /
+  Stage Manager 可以调整窗口；`自动` 布局会按宽度切换。多个 Stage Manager
+  窗口仍共享同一份 `AppEnvironment` 会话。
+
 ## 验证
 
 本机没有 Swift 工具链。可编译性由 `.github/workflows/build-ios.yml` 在 macOS

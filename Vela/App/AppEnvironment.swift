@@ -50,6 +50,9 @@ public final class AppEnvironment {
     /// registered today; a future kernel registers here and becomes active
     /// before the first tab is created. See `BrowserKernel`.
     public let kernels: BrowserKernelRegistry
+    /// The keyboard commands' dispatch point. The shell registers a handler on
+    /// appear; the app's `Commands` menu calls `perform`.
+    public let commands: BrowserCommandCenter
 
     /// Set when the database could not be opened. The shell shows a read-only
     /// error surface rather than crashing, because a browser that cannot start
@@ -62,6 +65,7 @@ public final class AppEnvironment {
 
         let settings = SettingsService()
         self.settings = settings
+        self.commands = BrowserCommandCenter()
 
         // The database open is the one operation allowed to fail loudly: every
         // other service reads through it, so a failure has to be reported once

@@ -39,6 +39,7 @@ struct BrowserShellView: View {
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// The omnibox session. Created here rather than inside the view body
     /// because it is long-lived: it survives every tab switch, and rebuilding it
@@ -159,11 +160,45 @@ struct BrowserShellView: View {
 
     private var activeTab: BrowserTabState? { tabManager.activeTab }
 
+    private static let padSidebarWidth: CGFloat = 286
+
+    /// Whether the shell draws the iPad layout.
+    ///
+    /// 自动 follows the device and the window: an iPad in a regular-width
+    /// window gets the two-column chrome, a phone or a narrow iPad Split View
+    /// window keeps the single column.
+    private var usesPadLayout: Bool {
+        switch env.settings.interfaceLayout {
+        case .phone:
+            return false
+        case .pad:
+            return true
+        case .automatic:
+            return UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular
+        }
+    }
+
+    /// What the bottom chrome takes from a surface's tail.
+    ///
+    /// In the phone layout the web view runs edge to edge, so the home
+    /// indicator's inset is part of the clearance. In the iPad layout the
+    /// content column already ends at the safe area, and only the floating bar
+    /// overlaps it.
+    private var bottomChromeClearance: CGFloat {
+        usesPadLayout
+            ? BrowserChrome.barHeight + BrowserChrome.barGap
+            : safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap
+    }
+
     private var shellRoot: some View {
         ZStack {
             AmbientBackgroundView()
 
-            contentSurface
+            if usesPadLayout {
+                padRoot
+            } else {
+                contentSurface
+            }
         }
         .background { safeAreaReader }
         .background {
@@ -248,6 +283,19 @@ struct BrowserShellView: View {
             Text(message)
         }
         .alert(
+            "下载文件？",
+            isPresented: Binding(
+                get: { env.downloads.pendingPrompt != nil },
+                set: { if !$0 { env.downloads.dismissPendingPrompt() } }
+            ),
+            presenting: env.downloads.pendingPrompt
+        ) { _ in
+            Button("下载") { env.downloads.confirmPendingPrompt() }
+            Button("取消", role: .cancel) { env.downloads.dismissPendingPrompt() }
+        } message: { task in
+            Text("\(task.displayName)\n\(task.displaySize)")
+        }
+        .alert(
             "无法识别为网址",
             isPresented: Binding(
                 get: { qrCopyNotice != nil },
@@ -281,6 +329,14 @@ struct BrowserShellView: View {
             wireOmnibox()
             syncAddressText()
             updateChromeForeground()
+            // The hardware-keyboard menu is built by the app; this is the one
+            // handler it can call into.
+            env.commands.register { command in
+                handleBrowserCommand(command)
+            }
+        }
+        .onDisappear {
+            env.commands.unregister()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.keyboardWillChangeFrameNotification)) { note in
             let end = (note.userInfo?[UIApplication.keyboardFrameEndUserInfoKey] as? NSValue)?
@@ -569,6 +625,30 @@ struct BrowserShellView: View {
 
     // MARK: - Surfaces
 
+    /// The iPad chrome: a persistent tab sidebar, a bookmarks bar, and the page
+    /// in the remaining column.
+    private var padRoot: some View {
+        HStack(spacing: 0) {
+            BrowserSidebarView(
+                onOpenBookmarks: { showBookmarks = true },
+                onOpenHistory: { showHistory = true },
+                onOpenDownloads: { showDownloads = true },
+                onOpenSettings: { showSettings = true }
+            )
+            .frame(width: Self.padSidebarWidth)
+
+            VStack(spacing: 0) {
+                BookmarksBarView(
+                    onNavigate: { url in
+                        navigate(to: url, in: submissionTab)
+                    },
+                    onOpenManager: { showBookmarks = true }
+                )
+                contentSurface
+            }
+        }
+    }
+
     /// The page, and whatever floats over it.
     private var contentSurface: some View {
         ZStack(alignment: .bottom) {
@@ -618,7 +698,7 @@ struct BrowserShellView: View {
             .safeAreaInset(edge: .bottom) {
                 // The command bar floats over the surface's tail; the spacer
                 // keeps the article's last lines scrollable above it.
-                Color.clear.frame(height: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap)
+                Color.clear.frame(height: bottomChromeClearance)
             }
         } else if let tab = activeTab {
             // A stable identity per tab keeps SwiftUI from rebuilding the
@@ -641,7 +721,7 @@ struct BrowserShellView: View {
                     .safeAreaInset(edge: .bottom) {
                         // The command bar floats over the surface's tail; the
                         // spacer keeps the last tiles scrollable above it.
-                        Color.clear.frame(height: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap)
+                        Color.clear.frame(height: bottomChromeClearance)
                     }
                 } else if let failure = tab.lastFailure, tab.loadState.isFailure {
                     // A failed navigation shows the error surface *instead of*
@@ -659,7 +739,7 @@ struct BrowserShellView: View {
                     )
                     .id("error-\(tab.id)-\(tab.navigationSerial)")
                     .safeAreaInset(edge: .bottom) {
-                        Color.clear.frame(height: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap)
+                        Color.clear.frame(height: bottomChromeClearance)
                     }
                 } else if let webView = tabManager.webView(for: tab.id) {
                     // 全局顶部保护 decides how the status bar strip is kept.
@@ -676,9 +756,9 @@ struct BrowserShellView: View {
                         // clock — while still scrolling underneath, the way
                         // Safari's does. A reserved strip makes the page start
                         // at its own top, so the inset drops to zero there.
-                        topContentInset: protectsTop ? 0 : safeTop,
-                        topReservedInset: protectsTop ? safeTop : 0,
-                        bottomContentInset: safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap,
+                        topContentInset: usesPadLayout ? 0 : (protectsTop ? 0 : safeTop),
+                        topReservedInset: usesPadLayout ? 0 : (protectsTop ? safeTop : 0),
+                        bottomContentInset: bottomChromeClearance,
                         onScroll: { offset in
                             handleScroll(offset: offset)
                         },
@@ -687,12 +767,11 @@ struct BrowserShellView: View {
                         }
                     )
                     .id("web-\(tab.id)")
-                    // Every edge: the frame has to cover the whole screen, or
-                    // the safe-area strip at the bottom shows the bare surface
-                    // colour behind a page that believes it owns it. The scroll
-                    // view manages the chrome inset itself and takes none at
-                    // the bottom, so the document runs edge to edge.
-                    .ignoresSafeArea()
+                    // The phone layout runs the page edge to edge, so the
+                    // floating bar has safe-area content to refract. The iPad
+                    // layout keeps the page inside its column: expanding to the
+                    // window edges would put it under the sidebar.
+                    .ignoresSafeArea(edges: usesPadLayout ? [] : .all)
                 } else {
                     // A cold tab with no web view at all. Materialising happens
                     // in `onAppear` rather than here: creating a web view during
@@ -767,6 +846,9 @@ struct BrowserShellView: View {
                 commandBarContent
             }
         }
+        // In the iPad layout the bar belongs to the page column, not to the
+        // whole window; the sidebar keeps its full height.
+        .padding(.leading, usesPadLayout ? Self.padSidebarWidth : 0)
         .padding(.horizontal, BrowserChrome.sideInset)
         // The bottom-aligned overlay already lays the bar out above the
         // home-indicator inset; adding the inset again here lifted the bar a
@@ -1172,6 +1254,7 @@ struct BrowserShellView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        .padding(.leading, usesPadLayout ? Self.padSidebarWidth : 0)
         .padding(.horizontal, BrowserChrome.sideInset)
         // The shell ignores the keyboard at its root, so the bar it floats
         // above no longer rises — and the find bar lifts by the keyboard's own
@@ -1578,7 +1661,46 @@ struct BrowserShellView: View {
         navigate(to: url, in: submissionTab)
     }
 
-    private func toggleDesktopSite(for tab: BrowserTabState) {        let next = !env.settings.preferences.desktopSiteByDefault
+    /// Runs one hardware-keyboard command from the app's menu bar.
+    private func handleBrowserCommand(_ command: BrowserCommand) {
+        switch command {
+        case .newTab:
+            tabManager.createTab(openSource: .user)
+        case .closeTab:
+            if let tab = activeTab {
+                tabManager.closeTab(id: tab.id)
+            }
+        case .reopenClosedTab:
+            let mode = activeTab?.privacyMode ?? .regular
+            _ = tabManager.reopenLastClosedTab(privacyMode: mode)
+        case .focusAddressBar:
+            novelSession = nil
+            omnibox.beginEditing()
+        case .reload:
+            reloadActiveTab()
+        case .back:
+            goBack()
+        case .findInPage:
+            if canActOnPage { showFindBar = true }
+        case .togglePrivate:
+            env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
+        case .nextTab:
+            tabManager.switchTab(by: 1)
+        case .previousTab:
+            tabManager.switchTab(by: -1)
+        case .bookmarks:
+            showBookmarks = true
+        case .history:
+            showHistory = true
+        case .downloads:
+            showDownloads = true
+        case .settings:
+            showSettings = true
+        }
+    }
+
+    private func toggleDesktopSite(for tab: BrowserTabState) {
+        let next = !env.settings.preferences.desktopSiteByDefault
         // The menu item is an explicit choice between the two built-in
         // identifiers, so it clears a custom one. Leaving the custom string in
         // place would make this look like it did nothing.

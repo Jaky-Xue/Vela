@@ -445,6 +445,10 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var menuShortcuts: [MenuShortcut]?
     /// WebRTC 防泄露策略的原始值，见 `WebRTCProtectionMode`。
     public var webRTCProtection: String?
+    /// 是否启用 WebRTC 防护。`nil` 时视为启用，与旧的默认行为一致。
+    public var webRTCProtectionEnabled: Bool?
+    /// 界面形态：跟随设备、手机布局或 iPad 布局。
+    public var interfaceLayout: String?
 
     public init(
         searchEngine: SearchEngineSettings = .default,
@@ -482,7 +486,9 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         menuOrder: [String]? = nil,
         menuHiddenItems: [String]? = nil,
         menuShortcuts: [MenuShortcut]? = nil,
-        webRTCProtection: String? = nil
+        webRTCProtection: String? = nil,
+        webRTCProtectionEnabled: Bool? = nil,
+        interfaceLayout: String? = nil
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -520,6 +526,8 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.menuHiddenItems = menuHiddenItems
         self.menuShortcuts = menuShortcuts
         self.webRTCProtection = webRTCProtection
+        self.webRTCProtectionEnabled = webRTCProtectionEnabled
+        self.interfaceLayout = interfaceLayout
     }
 
     /// The resolved switch: protection is on unless explicitly turned off.
