@@ -189,6 +189,7 @@ struct AmbientBackgroundView: View {
             ],
             colors: meshColors
         )
+        .saturation(colorScheme == .dark ? 1.15 : 1.05)
     }
 
     /// Nine saturated stops, light and dark. The dark stops are deep enough

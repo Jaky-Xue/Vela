@@ -1797,11 +1797,10 @@ struct BrowserShellView: View {
         case .passwords:
             showPasswords = true
         case .hideElements:
-            guard tabManager.webView(for: tab.id) != nil else { return }
-            env.webCoordinator.armElementPicker()
-            // The picker script has to be in the page, and a configuration only
-            // applies to the next navigation, so the page is reloaded.
-            _ = tabManager.reload(tab: tab)
+            guard let webView = tabManager.webView(for: tab.id) else { return }
+            // The script goes into the current document; no reload, so the
+            // page and its scroll position stay put.
+            env.webCoordinator.armElementPicker(in: webView)
         case .desktopSite:
             toggleDesktopSite(for: tab)
         case .home:

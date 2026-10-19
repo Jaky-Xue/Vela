@@ -117,8 +117,16 @@ public final class BrowserWebCoordinator: NSObject {
 
     // MARK: - Element picker
 
-    public func armElementPicker() {
+    /// Arms the picker on the page already on screen.
+    ///
+    /// Evaluating the script here instead of reloading the page keeps the
+    /// user's scroll position and the document they were reading; the reload
+    /// was only ever a way to get the script injected, and a direct evaluation
+    /// does the same job. The script is also added to the next navigation's
+    /// configuration while the picker stays armed.
+    public func armElementPicker(in webView: WKWebView?) {
         overlays.isElementPickerArmed = true
+        webView?.evaluateJavaScript(WebPageScripts.elementPickerScript)
     }
 
     public func disarmElementPicker(in webView: WKWebView?) {
