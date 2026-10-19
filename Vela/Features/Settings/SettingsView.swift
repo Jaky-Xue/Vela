@@ -86,6 +86,17 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
+                    WebRTCProtectionSettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "shield.lefthalf.filled",
+                        tint: .indigo,
+                        title: "WebRTC 泄露防护",
+                        detail: env.settings.webRTCProtection.displayName
+                    )
+                }
+
+                NavigationLink {
                     ClearDataView()
                 } label: {
                     settingsRow(icon: "trash", tint: .red, title: "清除浏览数据")
@@ -109,6 +120,23 @@ struct SettingsView: View {
                     ToolbarSettingsView()
                 } label: {
                     settingsRow(icon: "dock.rectangle", tint: .teal, title: "底部工具栏")
+                }
+
+                NavigationLink {
+                    MenuSettingsView()
+                } label: {
+                    settingsRow(icon: "square.grid.2x2", tint: .orange, title: "菜单面板")
+                }
+
+                NavigationLink {
+                    BrowserKernelSettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "cpu",
+                        tint: .purple,
+                        title: "渲染内核",
+                        detail: env.kernels.active.descriptor.engineDescription
+                    )
                 }
 
                 NavigationLink {

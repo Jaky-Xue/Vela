@@ -36,6 +36,7 @@ struct AboutView: View {
         if capabilities.contains(.scriptInjection) { names.append("脚本注入") }
         if capabilities.contains(.contentBlocking) { names.append("内容过滤") }
         if capabilities.contains(.mediaCapture) { names.append("媒体采集") }
+        if capabilities.contains(.webRTCLeakProtection) { names.append("WebRTC 防泄露") }
         if capabilities.contains(.webRTCControl) { names.append("WebRTC 控制") }
         if capabilities.contains(.pageSnapshot) { names.append("页面快照") }
         return names.isEmpty ? "—" : names.joined(separator: " · ")

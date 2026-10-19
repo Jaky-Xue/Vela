@@ -425,12 +425,14 @@ struct BrowserShellView: View {
         }
         .sheet(isPresented: $showMenu) {
             MenuPanelView(
+                tiles: env.settings.menuLayout.visibleTiles,
                 canActOnPage: canActOnPage,
                 isPrivateMode: activeTab?.privacyMode == .private,
                 isPrivateBrowsingOn: env.settings.preferences.privateBrowsingMode ?? false,
                 adBlockEnabled: env.settings.adBlockSettings.preferences.enabled,
                 pageTitle: menuPanelTitle,
-                onPerform: handleMenuAction
+                onPerform: handleMenuAction,
+                onOpenShortcut: handleMenuShortcut
             )
             .environment(env)
             .browserAmbientSheet()
@@ -1557,8 +1559,26 @@ struct BrowserShellView: View {
         }
     }
 
-    private func toggleDesktopSite(for tab: BrowserTabState) {
-        let next = !env.settings.preferences.desktopSiteByDefault
+    /// Opens a user-defined URL shortcut from the menu panel.
+    ///
+    /// The shortcut's text is treated the way the omnibox treats a bare host:
+    /// a missing scheme becomes https, and anything that is not http(s) is
+    /// refused rather than handed to the system.
+    private func handleMenuShortcut(_ shortcut: MenuShortcut) {
+        showMenu = false
+        let raw = shortcut.url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+        let candidate = raw.contains("://") ? raw : "https://" + raw
+        guard let url = URL(string: candidate),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host != nil else {
+            return
+        }
+        navigate(to: url, in: submissionTab)
+    }
+
+    private func toggleDesktopSite(for tab: BrowserTabState) {        let next = !env.settings.preferences.desktopSiteByDefault
         // The menu item is an explicit choice between the two built-in
         // identifiers, so it clears a custom one. Leaving the custom string in
         // place would make this look like it did nothing.

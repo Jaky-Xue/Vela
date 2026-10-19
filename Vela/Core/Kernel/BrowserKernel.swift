@@ -45,6 +45,9 @@ public struct BrowserKernelCapabilities: OptionSet, Sendable {
     /// A bridge through which a page's media session can be observed and
     /// controlled — the extension point for WebRTC work.
     public static let webRTCControl = BrowserKernelCapabilities(rawValue: 1 << 3)
+    /// The ability to install a document-start policy over WebRTC. This is what
+    /// `WebRTCGuard` provides on the WebKit kernel.
+    public static let webRTCLeakProtection = BrowserKernelCapabilities(rawValue: 1 << 5)
     /// A snapshot of the rendered page, used by the tab overview.
     public static let pageSnapshot = BrowserKernelCapabilities(rawValue: 1 << 4)
 }
@@ -116,6 +119,7 @@ public final class WebKitKernel: BrowserKernel {
                 .scriptInjection,
                 .contentBlocking,
                 .mediaCapture,
+                .webRTCLeakProtection,
                 .pageSnapshot
             ]
         )

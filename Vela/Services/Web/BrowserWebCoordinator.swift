@@ -524,6 +524,20 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     ) {
         // Document-start scripts. Order matters: the history bridge has to be in
         // place before the page's own scripts can call pushState.
+        //
+        // The WebRTC guard goes first and into every frame. A page can open a
+        // peer connection from an iframe, so a main-frame-only guard would
+        // leave exactly the case an ad or tracking frame exploits covered.
+        if let rtcGuard = WebRTCGuard.script(for: settings.webRTCProtection) {
+            controller.addUserScript(
+                WKUserScript(
+                    source: rtcGuard,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: false
+                )
+            )
+        }
+
         let startScripts: [String] = [
             WebPageScripts.historyApiBridge,
             WebPageScripts.fullscreenBridge,

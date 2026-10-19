@@ -438,6 +438,13 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var readerAppearance: String?
     /// 保险箱是否要求面容/触控 ID（设备密码可作为回退）。默认开启。
     public var vaultRequireBiometrics: Bool?
+    /// 菜单面板的排列：全部条目 id、隐藏的 id、自定义网址快捷方式。
+    /// Optional for the same decode reason as every other new preference.
+    public var menuOrder: [String]?
+    public var menuHiddenItems: [String]?
+    public var menuShortcuts: [MenuShortcut]?
+    /// WebRTC 防泄露策略的原始值，见 `WebRTCProtectionMode`。
+    public var webRTCProtection: String?
 
     public init(
         searchEngine: SearchEngineSettings = .default,
@@ -471,7 +478,11 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         toolbarTrailingItems: [String]? = nil,
         readerFontSize: Double? = nil,
         readerAppearance: String? = nil,
-        vaultRequireBiometrics: Bool? = nil
+        vaultRequireBiometrics: Bool? = nil,
+        menuOrder: [String]? = nil,
+        menuHiddenItems: [String]? = nil,
+        menuShortcuts: [MenuShortcut]? = nil,
+        webRTCProtection: String? = nil
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -505,6 +516,10 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.readerFontSize = readerFontSize
         self.readerAppearance = readerAppearance
         self.vaultRequireBiometrics = vaultRequireBiometrics
+        self.menuOrder = menuOrder
+        self.menuHiddenItems = menuHiddenItems
+        self.menuShortcuts = menuShortcuts
+        self.webRTCProtection = webRTCProtection
     }
 
     /// The resolved switch: protection is on unless explicitly turned off.

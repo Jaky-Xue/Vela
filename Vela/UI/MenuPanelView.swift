@@ -5,106 +5,22 @@
 //  The panel the menu button opens.
 //
 //  A grid of icon tiles rather than the system's stacked text buttons: a
-//  browser's menu holds fifteen-odd destinations, and a sheet that lists them
-//  as rows either scrolls or truncates. The grid shows all of them at once,
-//  with the actions that need a page greyed out on the surfaces that have
-//  none — which is how the user learns what is available without tapping it.
+//  browser's menu holds twenty-odd destinations, and a sheet that lists them
+//  as rows either scrolls or truncates. The grid shows the user's arrangement
+//  at once, with the actions that need a page greyed out on the surfaces that
+//  have none — which is how the user learns what is available without tapping
+//  it. The tile set, its order, and the custom URL shortcuts all come from
+//  `MenuLayout`, edited in 设置 ▸ 菜单面板.
 //
 
 import SwiftUI
 
-/// One action the menu panel offers.
-enum VelaMenuAction: String, CaseIterable, Identifiable {
-    case addBookmark
-    case share
-    case findInPage
-    case reader
-    case novel
-    case bookshelf
-    case passwords
-    case hideElements
-    case desktopSite
-    case home
-    case bookmarks
-    case history
-    case downloads
-    case scanQRCode
-    case privateTab
-    case adBlock
-    case reload
-    case settings
-    /// Not a grid tile: offered on the private-tab tile's long-press menu when
-    /// the browser is in private mode, which is the one manual way out of it.
-    case leavePrivate
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .addBookmark: return "添加书签"
-        case .share: return "分享"
-        case .findInPage: return "查找网页"
-        case .reader: return "阅读模式"
-        case .novel: return "小说模式"
-        case .bookshelf: return "书架"
-        case .passwords: return "密码与保险箱"
-        case .hideElements: return "隐藏元素"
-        case .desktopSite: return "桌面网站"
-        case .home: return "主页"
-        case .bookmarks: return "书签"
-        case .history: return "历史记录"
-        case .downloads: return "下载管理"
-        case .scanQRCode: return "扫一扫"
-        case .privateTab: return "无痕模式"
-        case .adBlock: return "广告过滤"
-        case .reload: return "重新载入"
-        case .settings: return "设置"
-        case .leavePrivate: return "离开无痕模式"
-        }
-    }
-
-    var symbolName: String {
-        switch self {
-        case .addBookmark: return "bookmark"
-        case .share: return "square.and.arrow.up"
-        case .findInPage: return "magnifyingglass"
-        case .reader: return "doc.plaintext"
-        case .novel: return "text.book.closed"
-        case .bookshelf: return "books.vertical"
-        case .passwords: return "key.fill"
-        case .hideElements: return "eye.slash"
-        case .desktopSite: return "desktopcomputer"
-        case .home: return "house"
-        case .bookmarks: return "book"
-        case .history: return "clock.arrow.circlepath"
-        case .downloads: return "arrow.down.circle"
-        case .scanQRCode: return "qrcode.viewfinder"
-        case .privateTab: return "eyeglasses"
-        case .adBlock: return "shield.lefthalf.filled"
-        case .reload: return "arrow.clockwise"
-        case .settings: return "gearshape"
-        case .leavePrivate: return "eyeglasses.slash"
-        }
-    }
-
-    /// Actions that need a document to act on. On the home surface — or with no
-    /// tab at all — they are drawn dimmed and do nothing, the same way the
-    /// reference panels grey out what a page-less context cannot do.
-    var requiresPage: Bool {
-        switch self {
-        case .addBookmark, .share, .findInPage, .reader, .novel, .hideElements,
-             .desktopSite, .reload:
-            return true
-        default:
-            return false
-        }
-    }
-}
-
-/// The menu panel: a header row and the grid of actions.
+/// The menu panel: a header row and the grid of tiles.
 struct MenuPanelView: View {
     @Environment(\.browserPalette) private var palette
 
+    /// The tiles to draw, already filtered and ordered by `MenuLayout`.
+    var tiles: [MenuTile]
     /// Whether the panel's target is a loaded page — `false` greys out every
     /// action that needs one.
     var canActOnPage: Bool
@@ -119,6 +35,7 @@ struct MenuPanelView: View {
     /// page-less surface. Drawn in the header row.
     var pageTitle: String
     var onPerform: (VelaMenuAction) -> Void
+    var onOpenShortcut: (MenuShortcut) -> Void
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 5)
 
@@ -137,12 +54,20 @@ struct MenuPanelView: View {
             // pulling the panel taller reveals them — the content adapts to
             // the detent instead of leaving a lake under a short grid.
             ScrollView {
-                LazyVGrid(columns: columns, spacing: BrowserSpacing.regular + 2) {
-                    ForEach(VelaMenuAction.allCases.filter { $0 != .leavePrivate }) { action in
-                        menuItem(action)
+                if tiles.isEmpty {
+                    Text("菜单项已全部隐藏，可在 设置 ▸ 菜单面板 中恢复。")
+                        .font(.footnote)
+                        .foregroundStyle(palette.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrowserSpacing.loose)
+                } else {
+                    LazyVGrid(columns: columns, spacing: BrowserSpacing.regular + 2) {
+                        ForEach(tiles) { tile in
+                            menuItem(tile)
+                        }
                     }
+                    .padding(.bottom, BrowserSpacing.compact)
                 }
-                .padding(.bottom, BrowserSpacing.compact)
             }
             .padding(.horizontal, BrowserSpacing.regular)
         }
@@ -174,18 +99,23 @@ struct MenuPanelView: View {
         .padding(.horizontal, BrowserSpacing.regular)
     }
 
-    private func menuItem(_ action: VelaMenuAction) -> some View {
-        let enabled = canActOnPage || !action.requiresPage
+    private func menuItem(_ tile: MenuTile) -> some View {
+        let enabled = canActOnPage || !tile.requiresPage
         // The private-mode tile is the one switch in the grid, so its state
         // is drawn on it: the accent wash and the corner badge read as "on"
         // the way a checkmarked row would in a list menu.
-        let isModeOn = action == .privateTab && isPrivateBrowsingOn
+        let isModeOn = tile.action == .privateTab && isPrivateBrowsingOn
         return Button {
             guard enabled else { return }
-            onPerform(action)
+            switch tile {
+            case let .action(action):
+                onPerform(action)
+            case let .shortcut(shortcut):
+                onOpenShortcut(shortcut)
+            }
         } label: {
             VStack(spacing: BrowserSpacing.tight) {
-                Image(systemName: action.symbolName)
+                Image(systemName: tile.symbolName)
                     .font(.system(size: 19, weight: .medium))
                     .foregroundStyle(isModeOn ? palette.accent : palette.primaryText)
                     .frame(width: 52, height: 52)
@@ -215,7 +145,7 @@ struct MenuPanelView: View {
                             .allowsHitTesting(false)
                     }
 
-                Text(action.title)
+                Text(tile.title)
                     .font(.system(size: 11, weight: .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -228,13 +158,13 @@ struct MenuPanelView: View {
         .buttonStyle(MenuTileButtonStyle(enabled: enabled))
         .disabled(!enabled)
         .contextMenu {
-            if action == .privateTab && isPrivateMode {
+            if tile.action == .privateTab && isPrivateMode {
                 Button("离开无痕模式", systemImage: "eyeglasses.slash", role: .destructive) {
                     onPerform(.leavePrivate)
                 }
             }
         }
-        .accessibilityLabel(action.title)
+        .accessibilityLabel(tile.title)
         .accessibilityHint(enabled ? "" : "当前不可用")
     }
 }

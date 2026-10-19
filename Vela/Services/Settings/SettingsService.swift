@@ -166,6 +166,34 @@ public final class SettingsService {
         }
     }
 
+    // MARK: - Menu panel
+
+    /// The panel's order, hidden built-ins and custom shortcuts.
+    var menuLayout: MenuLayout {
+        get {
+            MenuLayout(
+                orderRaw: preferences.menuOrder,
+                hiddenRaw: preferences.menuHiddenItems,
+                shortcutsRaw: preferences.menuShortcuts
+            )
+        }
+        set {
+            update { preferences in
+                preferences.menuOrder = newValue.order
+                preferences.menuHiddenItems = newValue.hidden.sorted()
+                preferences.menuShortcuts = newValue.shortcuts
+            }
+        }
+    }
+
+    // MARK: - WebRTC
+
+    /// How the WebRTC guard treats peer connections. Defaults to 防泄露.
+    public var webRTCProtection: WebRTCProtectionMode {
+        get { WebRTCProtectionMode.resolve(preferences.webRTCProtection) }
+        set { update { $0.webRTCProtection = newValue.rawValue } }
+    }
+
     // MARK: - Reading
 
     /// The font size shared by reader mode and novel mode, in points.

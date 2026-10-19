@@ -34,7 +34,7 @@ struct OmniboxSearchPageView: View {
             Spacer(minLength: 0)
                 .frame(maxHeight: topGap)
 
-            fieldRow
+            fieldRowInGlassContainer
 
             OmniboxSuggestionListView(viewModel: viewModel, maxHeight: cardMaxHeight)
                 .padding(.horizontal, BrowserChrome.sideInset)
@@ -45,7 +45,24 @@ struct OmniboxSearchPageView: View {
         }
         .padding(.bottom, keyboardHeight)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background { AmbientSurfaceFill(opacity: 0.90).ignoresSafeArea() }
+        // The field is painted over whatever page happens to be behind the
+        // shell, so a veil over that page would just be the page's colour at
+        // 90% opacity. The search page draws the ambient field itself instead,
+        // which is what makes it match the rest of the app on every site.
+        .background { AmbientBackgroundView() }
+    }
+
+    /// The field's glass rides one coordinated layer, the same rotation rule
+    /// the command bar follows.
+    @ViewBuilder
+    private var fieldRowInGlassContainer: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: 0) {
+                fieldRow
+            }
+        } else {
+            fieldRow
+        }
     }
 
     /// The field, with the engine switcher on its leading edge and the way out
@@ -79,14 +96,15 @@ struct OmniboxSearchPageView: View {
         .padding(.leading, 14)
         .padding(.trailing, 14)
         .frame(height: 54)
-        .background(
-            RoundedRectangle(cornerRadius: 27, style: .continuous)
-                .fill(palette.controlFill.opacity(0.6))
+        // The same floating glass as the command bar, so the search field is
+        // the bar lifted off the page rather than a second kind of control.
+        .browserFloatingChrome(
+            radius: 27,
+            material: .regularMaterial,
+            tintStrength: 0.35,
+            elevation: .floating,
+            interactive: false
         )
-        .overlay {
-            RoundedRectangle(cornerRadius: 27, style: .continuous)
-                .strokeBorder(palette.cardStroke, lineWidth: 0.5)
-        }
         .padding(.horizontal, BrowserChrome.sideInset)
         .animation(.easeOut(duration: 0.15), value: viewModel.text.isEmpty)
     }

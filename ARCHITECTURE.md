@@ -89,6 +89,31 @@ protocol BrowserKernel {
   `BrowserPreferences.init` 的默认值。整个偏好文档是整体解码的，非可选新字段会
   让老安装的文档解码失败、设置全部重置。
 
+## WebRTC 防泄露
+
+`Core/Privacy/WebRTCGuard.swift` 生成一段 document-start 脚本，注入每个 frame，
+先于网页脚本安装。它做两件事：过滤带私有/环回/链路本地地址的 `host` 候选
+（防泄露），或把每个 `RTCPeerConnection` 的 `iceTransportPolicy` 改为 `relay`
+（仅中继）；完全禁用模式则替换构造器并拒绝采集 API。策略值在
+`BrowserPreferences.webRTCProtection`，默认防泄露，在
+设置 ▸ WebRTC 泄露防护 中修改。
+
+这层与内核无关：换成自有内核时，仍可以用同样的脚本注入点。
+
+## 菜单面板
+
+`Core/Models/MenuModels.swift` 定义 `VelaMenuAction`、`MenuShortcut`、
+`MenuTile` 和 `MenuLayout`。布局以原始字符串保存在偏好文档里（顺序、隐藏项、
+快捷方式），`MenuPanelView` 只负责画传给它的 tiles。设置 ▸ 菜单面板 负责编辑。
+
+## Chromium 现状
+
+iOS 没有可嵌入的 Blink：Chromium for iOS 的网页内容同样由 WKWebView 承载。
+因此本工程不能通过加一个 Swift Package 就得到 Chromium 内核。`BrowserKernel`
+是已经留好的接口；真正接入需要随包提供一个实现该协议的框架，并先把
+`BrowserWebViewConfigurationProviding.makeWebView` 的返回类型从 `WKWebView`
+抽象出去。设置 ▸ 渲染内核 会如实显示这一点，不会提供无法生效的开关。
+
 ## 验证
 
 本机没有 Swift 工具链。可编译性由 `.github/workflows/build-ios.yml` 在 macOS
