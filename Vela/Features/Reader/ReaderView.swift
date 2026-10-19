@@ -32,7 +32,7 @@ struct ReaderView: View {
             header
             ReaderWebView(html: styledHtml)
         }
-        .background(palette.surface)
+        .browserSurfaceBackground(opacity: 0.40)
     }
 
     private var header: some View {

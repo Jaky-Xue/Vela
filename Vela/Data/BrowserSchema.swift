@@ -31,7 +31,7 @@ public enum BrowserSchema {
 
     /// The first revision above the derived baseline. Introduces the iOS-native
     /// tables.
-    public static let velaSchemaVersion = 8
+    public static let velaSchemaVersion = 9
 
     public static let stateTable = "browser_schema_state"
     public static let bookmarksTable = "bookmarks"
@@ -49,6 +49,8 @@ public enum BrowserSchema {
     public static let userScriptsTable = "user_scripts"
     public static let userScriptValuesTable = "user_script_values"
     public static let adBlockSourcesTable = "adblock_rule_sources"
+    public static let novelBooksTable = "novel_books"
+    public static let novelChaptersTable = "novel_chapters"
 
     /// Every statement needed to bring an empty database to `velaSchemaVersion`.
     public static let creationStatements: [String] = [
@@ -422,6 +424,52 @@ public enum BrowserSchema {
         """
         CREATE INDEX IF NOT EXISTS idx_adblock_sources_enabled
         ON \(adBlockSourcesTable)(enabled, source_type)
+        """,
+
+        // MARK: Vela-native: the novel shelf
+
+        // Migration note: a book is the shelf's unit and a chapter is its
+        // content. Chapters are rows rather than files because the reader
+        // already asks for one by (book, url) and SQLite's row cache makes a
+        // revisited chapter instant; the shelf prunes old chapters per book.
+        """
+        CREATE TABLE IF NOT EXISTS \(novelBooksTable) (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          author TEXT NOT NULL DEFAULT '',
+          source_url TEXT NOT NULL DEFAULT '',
+          current_chapter_url TEXT NOT NULL DEFAULT '',
+          current_chapter_title TEXT NOT NULL DEFAULT '',
+          chapter_index INTEGER NOT NULL DEFAULT 0,
+          progress REAL NOT NULL DEFAULT 0,
+          added_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          last_read_at INTEGER NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_novel_books_last_read
+        ON \(novelBooksTable)(last_read_at DESC)
+        """,
+
+        // A chapter is identified by its book and its source URL: the same
+        // URL reached twice is the same chapter, whatever the index says.
+        """
+        CREATE TABLE IF NOT EXISTS \(novelChaptersTable) (
+          book_id TEXT NOT NULL,
+          url TEXT NOT NULL,
+          chapter_index INTEGER NOT NULL DEFAULT 0,
+          title TEXT NOT NULL DEFAULT '',
+          content_html TEXT NOT NULL,
+          previous_url TEXT NOT NULL DEFAULT '',
+          next_url TEXT NOT NULL DEFAULT '',
+          fetched_at INTEGER NOT NULL,
+          PRIMARY KEY (book_id, url)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_novel_chapters_book_index
+        ON \(novelChaptersTable)(book_id, chapter_index)
         """
     ]
 }

@@ -30,6 +30,11 @@ public final class AppEnvironment {
     public let searchHistory: SearchHistoryRepository
     public let userScripts: UserScriptRepository
     public let tabSessions: TabSessionRepository
+    /// The novel shelf: books, cached chapters and reading positions.
+    public let novels: NovelLibraryService
+    /// The password vault. Credentials live in the Keychain, not in the
+    /// database; this service owns the lock and the page scripts.
+    public let passwords: PasswordVaultService
     /// The page overlays the shell renders: dialogs, prompts, the file picker,
     /// the find bar. Exposed here rather than through the web engine so a view
     /// showing a dialog depends on the dialog's state alone.
@@ -41,6 +46,10 @@ public final class AppEnvironment {
     /// reads it and the coordinator writes it, and neither should have to reach
     /// through the other to get at it. It holds nothing on disk.
     public let navigationLog: NavigationLog
+    /// The engines this build can host pages with. WebKit is the only one
+    /// registered today; a future kernel registers here and becomes active
+    /// before the first tab is created. See `BrowserKernel`.
+    public let kernels: BrowserKernelRegistry
 
     /// Set when the database could not be opened. The shell shows a read-only
     /// error surface rather than crashing, because a browser that cannot start
@@ -90,11 +99,18 @@ public final class AppEnvironment {
         let sessionRepository = TabSessionRepository(database: safeConnection)
         self.tabSessions = sessionRepository
 
+        let novelRepository = NovelRepository(database: safeConnection)
+        self.novels = NovelLibraryService(repository: novelRepository)
+        self.passwords = PasswordVaultService(settings: settings)
+
         let overlays = WebPageOverlays()
         self.overlays = overlays
 
         let navigationLog = NavigationLog(settings: settings.navigationDiagnostics)
         self.navigationLog = navigationLog
+
+        let kernelRegistry = BrowserKernelRegistry()
+        self.kernels = kernelRegistry
 
         let coordinator = BrowserWebCoordinator(
             overlays: overlays,
@@ -106,7 +122,8 @@ public final class AppEnvironment {
             userScripts: userScripts,
             searchHistory: searchHistory,
             sessionRepository: sessionRepository,
-            navigationLog: navigationLog
+            navigationLog: navigationLog,
+            kernel: kernelRegistry.active
         )
         self.webCoordinator = coordinator
 

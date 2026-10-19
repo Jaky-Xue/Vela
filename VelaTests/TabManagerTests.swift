@@ -28,6 +28,13 @@ private final class StubConfigurationProvider: BrowserWebViewConfigurationProvid
         WKWebViewConfiguration()
     }
 
+    func makeWebView(
+        for tab: BrowserTabState,
+        configuration: WKWebViewConfiguration
+    ) -> WKWebView {
+        WKWebView(frame: .zero, configuration: configuration)
+    }
+
     func webIdentity(for tab: BrowserTabState) -> BrowserWebIdentity {
         BrowserWebIdentity(applicationNameForUserAgent: "VelaTests/1.0")
     }

@@ -157,7 +157,10 @@ struct NewTabHomeView: View {
                 .scaledToFill()
                 .ignoresSafeArea()
         } else {
-            palette.surface
+            // The shell's ambient background is the home's backdrop; a second
+            // opaque surface here would cover exactly the light the background
+            // style exists to show.
+            Color.clear
                 .ignoresSafeArea()
         }
     }

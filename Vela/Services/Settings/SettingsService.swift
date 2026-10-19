@@ -142,6 +142,43 @@ public final class SettingsService {
         appearanceMode = mode
     }
 
+    /// The global background style, resolved from its stored raw value.
+    public var backgroundStyle: BrowserBackgroundStyle {
+        get { BrowserBackgroundStyle.resolve(preferences.backgroundStyle) }
+        set { update { $0.backgroundStyle = newValue.rawValue } }
+    }
+
+    // MARK: - Bottom toolbar
+
+    /// The order of the two clusters around the omnibox.
+    var toolbarLayout: ToolbarLayout {
+        get {
+            ToolbarLayout(
+                storedLeading: preferences.toolbarLeadingItems,
+                storedTrailing: preferences.toolbarTrailingItems
+            )
+        }
+        set {
+            update { preferences in
+                preferences.toolbarLeadingItems = newValue.leading.map(\.rawValue)
+                preferences.toolbarTrailingItems = newValue.trailing.map(\.rawValue)
+            }
+        }
+    }
+
+    // MARK: - Reading
+
+    /// The font size shared by reader mode and novel mode, in points.
+    public var readingFontSize: Double {
+        get {
+            guard let stored = preferences.readerFontSize, stored >= 12, stored <= 40 else {
+                return 19
+            }
+            return stored
+        }
+        set { update { $0.readerFontSize = newValue } }
+    }
+
     // MARK: - Search
 
     public var searchEngineSettings: SearchEngineSettings {

@@ -129,5 +129,11 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Vela 需要使用相机扫描二维码。</string>
+
+	<!-- The password vault unlocks with Face ID (or Touch ID / the device
+	     passcode). Without this key the system refuses the Face ID prompt and
+	     the vault can only be opened with the passcode. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Vela 使用面容 ID 解锁密码与保险箱。</string>
 </dict>
 </plist>

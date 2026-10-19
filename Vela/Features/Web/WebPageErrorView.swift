@@ -128,7 +128,7 @@ struct WebPageErrorView: View {
             .padding(.bottom, BrowserSpacing.loose)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(palette.surface)
+        .browserSurfaceBackground(opacity: 0.52)
     }
 
     private func copyAddress() {

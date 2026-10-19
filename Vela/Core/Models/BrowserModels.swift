@@ -423,6 +423,21 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// install's document would fail the decode and reset every setting with
     /// it. `nil` decodes to the default, which is protection on.
     public var topProtection: Bool?
+    /// 全局背景样式：纯净、极光、晨曦、星夜。`nil` 是纯净。
+    public var backgroundStyle: String?
+    /// 底部工具栏两侧的控件，按用户拖拽的顺序保存。
+    ///
+    /// The omnibox stays in the middle and is not part of either list; only the
+    /// clusters around it are user-ordered. `nil` means the shipped layout —
+    /// back on the left, tabs and menu on the right.
+    public var toolbarLeadingItems: [String]?
+    public var toolbarTrailingItems: [String]?
+    /// 阅读模式与小说模式共用的字号与外观偏好。Optional for the decode reason
+    /// above: an absent key must not reset the rest of the document.
+    public var readerFontSize: Double?
+    public var readerAppearance: String?
+    /// 保险箱是否要求面容/触控 ID（设备密码可作为回退）。默认开启。
+    public var vaultRequireBiometrics: Bool?
 
     public init(
         searchEngine: SearchEngineSettings = .default,
@@ -450,7 +465,13 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         privateBrowsingMode: Bool? = false,
         homeTileIconSize: Double? = nil,
         homeTileShape: String? = nil,
-        homeTileSpacing: Double? = nil
+        homeTileSpacing: Double? = nil,
+        backgroundStyle: String? = nil,
+        toolbarLeadingItems: [String]? = nil,
+        toolbarTrailingItems: [String]? = nil,
+        readerFontSize: Double? = nil,
+        readerAppearance: String? = nil,
+        vaultRequireBiometrics: Bool? = nil
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -478,6 +499,12 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.homeTileIconSize = homeTileIconSize
         self.homeTileShape = homeTileShape
         self.homeTileSpacing = homeTileSpacing
+        self.backgroundStyle = backgroundStyle
+        self.toolbarLeadingItems = toolbarLeadingItems
+        self.toolbarTrailingItems = toolbarTrailingItems
+        self.readerFontSize = readerFontSize
+        self.readerAppearance = readerAppearance
+        self.vaultRequireBiometrics = vaultRequireBiometrics
     }
 
     /// The resolved switch: protection is on unless explicitly turned off.

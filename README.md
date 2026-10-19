@@ -1,6 +1,6 @@
 # Vela
 
-**一个 iOS 原生浏览器。** 标签页、广告过滤、用户脚本、阅读模式、无痕浏览都在，而且全都跑在这台设备上。
+**一个 iOS 原生浏览器。** 标签页、广告过滤、用户脚本、阅读模式、小说模式与书架、密码与保险箱、无痕浏览都在，而且全都跑在这台设备上。
 
 [![最新版本](https://img.shields.io/github/v/release/Jaky-Xue/Vela?label=%E4%B8%8B%E8%BD%BD&color=blue)](https://github.com/Jaky-Xue/Vela/releases/latest)
 [![许可证](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
@@ -55,7 +55,15 @@ iOS 不允许安装没有签名的应用，所以 `.ipa` 需要用自己的 Appl
 - 手动隐藏页面元素：元素选择器会生成稳定的 CSS 选择器，跳过 `css-1x2y3z` 这种每次发版都变的类名
 - 用户脚本：元数据块解析、`@match` 与 `@include` 双语法匹配、`GM_*` 值存储、菜单命令、元数据编辑；支持从文件安装，按当前页面的 URL 逐次重算匹配结果
 - 阅读模式：按可读性评分提取正文，用原生阅读界面呈现
+- 小说模式与书架：从章节页提取书名、作者、正文和上一章/下一章链接，加入书架并记住阅读进度；章节正文缓存，可离线继续
+- 密码与保险箱：条目只写入 iOS 钥匙串（`ThisDeviceOnly`），面容 ID / 触控 ID / 设备密码解锁，可一键填充当前网页的登录表单
 - 网页标识：桌面版、手机版或自定义 User-Agent
+
+**外观**
+
+- 全局背景：纯净、极光、晨曦、星夜四种；后三种是缓慢流动的光场，主页、设置、书架和浮层都透出同一片背景，玻璃工具栏会折射它
+- 底部工具栏：地址栏位置固定，两侧控件可以增删和拖动排序，顺序保存在本地
+- 外观模式与配色：浅色 / 深色 / 跟随系统，四套配色在运行时切换
 
 **数据**
 
@@ -91,12 +99,9 @@ iOS 不允许安装没有签名的应用，所以 `.ipa` 需要用自己的 Appl
 | 网页翻译 | 正文提取脚本在，翻译服务商配置与调用没接 |
 | 离线页面保存 | 表结构在，保存与查看没做 |
 | 自定义主页（换成你自己的 HTML） | 新标签页是原生的 |
-| 小说模式与书架 | 未移植 |
 | 视频接管与增强 | 未移植 |
-| 密码保险箱 | 未移植——iOS 上更该直接用系统钥匙串 |
 | 应用内代理 | 未移植——iOS 上要走 `NetworkExtension`，是独立的工程与签名流程 |
 | iPad 形态（双栏、键盘快捷键、书签栏、窗口管理） | 只有手机布局 |
-| 底部工具栏自定义排序 | 动作目录和默认顺序在，排序界面没做 |
 | 标签页回收后的滚动位置 | 回收时会把位置写进标签页，重新载入时还没有读回来，所以回到的是文档顶部 |
 
 纯 HTTP 站点可以正常打开。网页内容通过 `NSAllowsArbitraryLoadsInWebContent` 放行明文请求，这是浏览器的必要能力——用户在地址栏里输入什么地址是事先不知道的，而 Safari 同样会打开 HTTP 页面并标注"不安全"。这个开关只作用于 `WKWebView` 的内容；应用自身的网络请求（下载、订阅列表、搜索引擎探测）仍然受完整的 ATS 约束。证书校验没有放宽，Vela 不会接受任何本该被拒绝的证书。
@@ -146,18 +151,23 @@ Vela/
     AdBlock/    规则编译器与引擎
     UserScripts/解析、匹配、注入、GM_ 桥
     Reader/     正文提取
+    Novel/      章节提取与离屏加载
+    Passwords/  钥匙串封装
+    Kernel/     渲染引擎接口（当前实现：WebKit）
   Data/
     SQLite/     轻量 SQLite 封装
-    Repositories/  书签、历史、搜索记录、下载、用户脚本、会话
+    Repositories/  书签、历史、搜索记录、下载、用户脚本、会话、小说书架
   Services/
     Web/        配置装配、导航委托、页面脚本、web view 宿主
-    Bookmarks/ History/ Downloads/ Settings/
-  Features/     各功能界面
-  UI/           主题、地址栏、工具栏
+    Bookmarks/ History/ Downloads/ Settings/ Novels/ Passwords/
+  Features/     各功能界面（设置、小说、密码等按子页拆文件）
+  UI/           设计令牌与配色、表面材质、共享组件、图标
 VelaTests/      单元测试
 ```
 
 `AppEnvironment` 是组合根：所有服务在这里构造一次，再通过 SwiftUI 环境注入。状态用 Observation 框架的 `@Observable`，视图读取哪个属性就追踪哪个属性，跨层级有效。
+
+分层规则、文件职责和"接入新内核"的步骤见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 ---
 

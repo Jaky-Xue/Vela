@@ -19,6 +19,9 @@ enum VelaMenuAction: String, CaseIterable, Identifiable {
     case share
     case findInPage
     case reader
+    case novel
+    case bookshelf
+    case passwords
     case hideElements
     case desktopSite
     case home
@@ -42,6 +45,9 @@ enum VelaMenuAction: String, CaseIterable, Identifiable {
         case .share: return "分享"
         case .findInPage: return "查找网页"
         case .reader: return "阅读模式"
+        case .novel: return "小说模式"
+        case .bookshelf: return "书架"
+        case .passwords: return "密码与保险箱"
         case .hideElements: return "隐藏元素"
         case .desktopSite: return "桌面网站"
         case .home: return "主页"
@@ -63,6 +69,9 @@ enum VelaMenuAction: String, CaseIterable, Identifiable {
         case .share: return "square.and.arrow.up"
         case .findInPage: return "magnifyingglass"
         case .reader: return "doc.plaintext"
+        case .novel: return "text.book.closed"
+        case .bookshelf: return "books.vertical"
+        case .passwords: return "key.fill"
         case .hideElements: return "eye.slash"
         case .desktopSite: return "desktopcomputer"
         case .home: return "house"
@@ -83,7 +92,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable {
     /// reference panels grey out what a page-less context cannot do.
     var requiresPage: Bool {
         switch self {
-        case .addBookmark, .share, .findInPage, .reader, .hideElements,
+        case .addBookmark, .share, .findInPage, .reader, .novel, .hideElements,
              .desktopSite, .reload:
             return true
         default:
@@ -138,7 +147,7 @@ struct MenuPanelView: View {
             .padding(.horizontal, BrowserSpacing.regular)
         }
         .frame(maxWidth: .infinity)
-        .background(palette.surface)
+        .browserSurfaceBackground(opacity: 0.72)
         .presentationDetents([.height(330), .large])
         .presentationDragIndicator(.hidden)
     }

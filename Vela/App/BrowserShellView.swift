@@ -52,6 +52,8 @@ struct BrowserShellView: View {
     @State private var showHistory = false
     @State private var showDownloads = false
     @State private var showSettings = false
+    @State private var showPasswords = false
+    @State private var showBookshelf = false
     @State private var showMenu = false
     @State private var showAddBookmarkChoice = false
     @State private var showShareSheet = false
@@ -60,6 +62,15 @@ struct BrowserShellView: View {
 
     @State private var isReaderActive = false
     @State private var readerArticle: ReaderArticle?
+
+    /// The novel reader's layer, when one is open.
+    ///
+    /// It is a value rather than two optionals so opening a different book or
+    /// chapter is one assignment; the reader itself owns the loading that
+    /// follows.
+    @State private var novelSession: NovelSession?
+    /// Why 小说模式 could not open the page.
+    @State private var novelNotice: String?
 
     /// Set when an omnibox submission was refused, so the shell can say why
     /// instead of closing the field as if nothing had happened.
@@ -150,7 +161,7 @@ struct BrowserShellView: View {
 
     private var shellRoot: some View {
         ZStack {
-            palette.surface.ignoresSafeArea()
+            AmbientBackgroundView()
 
             contentSurface
         }
@@ -160,8 +171,19 @@ struct BrowserShellView: View {
                 handleEdgeSwipeBack()
             }
         }
-        .overlay(alignment: .bottom) { commandBar }
-        .overlay(alignment: .bottom) { floatingToolsInGlassContainer }
+        .overlay(alignment: .bottom) {
+            // The novel reader owns the screen while it is open: its own
+            // header and chapter controls are the chrome, and the browser's
+            // bar would be a second one over the same glass.
+            if novelSession == nil {
+                commandBar
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if novelSession == nil {
+                floatingToolsInGlassContainer
+            }
+        }
         .overlay {
             // The overview is a layer of this hierarchy, not a presented
             // controller. A full-screen cover's geometry can survive a
@@ -194,6 +216,37 @@ struct BrowserShellView: View {
             }
         }
         .animation(.snappy(duration: 0.2), value: showQRScanner)
+        .overlay {
+            // The novel reader is a layer for the same rotation reason the
+            // overview is: the chapter must keep its own geometry when the
+            // window turns.
+            if let session = novelSession {
+                NovelReaderView(
+                    book: session.book,
+                    initialChapter: session.chapter,
+                    onClose: { novelSession = nil },
+                    onOpenInBrowser: { url in
+                        novelSession = nil
+                        openInBrowser(url)
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(40)
+            }
+        }
+        .animation(.snappy(duration: 0.24), value: novelSession?.id)
+        .alert(
+            "无法进入小说模式",
+            isPresented: Binding(
+                get: { novelNotice != nil },
+                set: { if !$0 { novelNotice = nil } }
+            ),
+            presenting: novelNotice
+        ) { _ in
+            Button("好", role: .cancel) { novelNotice = nil }
+        } message: { message in
+            Text(message)
+        }
         .alert(
             "无法识别为网址",
             isPresented: Binding(
@@ -321,6 +374,7 @@ struct BrowserShellView: View {
         .sheet(isPresented: $showBookmarks) {
             NavigationStack { BookmarksView() }
                 .environment(env)
+                .browserAmbientSheet()
         }
         .sheet(isPresented: $showHistory) {
             NavigationStack { HistoryView() }
@@ -329,16 +383,40 @@ struct BrowserShellView: View {
                 // screenshot — the day groups, an entry's detail sheet — shares
                 // the palette without each one restating it.
                 .browserListSurface()
+                .browserAmbientSheet()
         }
         .sheet(isPresented: $showDownloads) {
             NavigationStack { DownloadsView() }
                 .environment(env)
                 .browserListSurface()
+                .browserAmbientSheet()
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack { SettingsView() }
                 .environment(env)
                 .browserListSurface()
+                .browserAmbientSheet()
+        }
+        .sheet(isPresented: $showPasswords) {
+            NavigationStack {
+                PasswordVaultView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showPasswords = false }
+                        }
+                    }
+            }
+            .environment(env)
+            .browserAmbientSheet()
+        }
+        .sheet(isPresented: $showBookshelf) {
+            NovelBookshelfView { book in
+                showBookshelf = false
+                // A resumed book that still has its chapter cached opens
+                // instantly; otherwise the reader loads it itself.
+                openNovel(book, chapter: env.novels.cachedChapter(book: book))
+            }
+            .environment(env)
         }
         .sheet(isPresented: $showShareSheet) {
             if let tab = activeTab, let url = URL(string: tab.url) {
@@ -355,6 +433,7 @@ struct BrowserShellView: View {
                 onPerform: handleMenuAction
             )
             .environment(env)
+            .browserAmbientSheet()
         }
         .sheet(isPresented: $showAddBookmarkChoice) {
             AddBookmarkChoiceSheet(
@@ -362,6 +441,7 @@ struct BrowserShellView: View {
                 title: activeTab?.title ?? ""
             )
             .environment(env)
+            .browserAmbientSheet()
         }
         .alert(
             "无法打开该地址",
@@ -750,24 +830,16 @@ struct BrowserShellView: View {
         }
     }
 
+    private var toolbarLayout: ToolbarLayout { env.settings.toolbarLayout }
+
     private var commandBarContent: some View {
-        // Six points between the three pieces rather than eight, and four of
-        // padding inside each side cluster: the field is the bar's subject,
-        // and every point the clusters give back is a point of address.
+        // Six points between the pieces rather than eight, and four of padding
+        // inside each cluster: the field is the bar's subject, and every point
+        // the clusters give back is a point of address.
         HStack(spacing: 6) {
-            HStack(spacing: 2) {
-                chromeButton(symbol: "chevron.left", isEnabled: canGoBack) {
-                    goBack()
-                }
-                // Long-press lists the pages behind the current one — the
-                // standard way to jump several entries at once. The menu is
-                // inert on a disabled button, which is exactly the state with
-                // no history in that direction.
-                .contextMenu { backHistoryMenu }
+            if !toolbarLayout.leading.isEmpty {
+                toolbarCluster(toolbarLayout.leading)
             }
-            .padding(.horizontal, 4)
-            .frame(height: BrowserChrome.barHeight)
-            .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
 
             OmniboxView(
                 viewModel: omnibox,
@@ -783,15 +855,110 @@ struct BrowserShellView: View {
             )
             .frame(maxWidth: .infinity)
 
-            HStack(spacing: 2) {
-                tabsButton
-                chromeButton(symbol: "ellipsis", isEnabled: true) {
-                    showMenu = true
-                }
+            if !toolbarLayout.trailing.isEmpty {
+                toolbarCluster(toolbarLayout.trailing)
             }
-            .padding(.horizontal, 4)
-            .frame(height: BrowserChrome.barHeight)
-            .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
+        }
+    }
+
+    /// One side of the omnibox, as the user arranged it.
+    private func toolbarCluster(_ controls: [ToolbarControl]) -> some View {
+        HStack(spacing: 2) {
+            ForEach(controls) { control in
+                toolbarButton(control)
+            }
+        }
+        .padding(.horizontal, 4)
+        .frame(height: BrowserChrome.barHeight)
+        .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
+    }
+
+    /// One control in the bar. Back keeps its long-press history, and the tab
+    /// control keeps its count badge wherever the user puts it.
+    @ViewBuilder
+    private func toolbarButton(_ control: ToolbarControl) -> some View {
+        if control == .tabs {
+            tabsButton
+        } else if control == .back {
+            chromeButton(
+                symbol: control.symbolName,
+                isEnabled: toolbarControlEnabled(control),
+                label: control.title
+            ) {
+                performToolbarControl(control)
+            }
+            .contextMenu { backHistoryMenu }
+        } else {
+            chromeButton(
+                symbol: control.symbolName,
+                isEnabled: toolbarControlEnabled(control),
+                label: control.title
+            ) {
+                performToolbarControl(control)
+            }
+        }
+    }
+
+    private func toolbarControlEnabled(_ control: ToolbarControl) -> Bool {
+        switch control {
+        case .back:
+            return canGoBack
+        case .home:
+            return activeTab != nil
+        case .reader:
+            return canActOnPage && env.settings.preferences.readerModeAvailable
+        case .share, .novel, .find, .reload:
+            return canActOnPage
+        default:
+            return true
+        }
+    }
+
+    private func performToolbarControl(_ control: ToolbarControl) {
+        switch control {
+        case .back:
+            goBack()
+        case .home:
+            openHomeTab()
+        case .tabs:
+            withAnimation(.snappy(duration: 0.3)) {
+                showTabsOverview = true
+            }
+        case .menu:
+            showMenu = true
+        case .bookmarks:
+            showBookmarks = true
+        case .history:
+            showHistory = true
+        case .downloads:
+            showDownloads = true
+        case .reader:
+            guard env.settings.preferences.readerModeAvailable else { return }
+            activateReaderMode()
+        case .novel:
+            activateNovelMode()
+        case .bookshelf:
+            showBookshelf = true
+        case .passwords:
+            showPasswords = true
+        case .share:
+            showShareSheet = true
+        case .reload:
+            reloadActiveTab()
+        case .find:
+            if showFindBar {
+                showFindBar = false
+                findQuery = ""
+                env.webCoordinator.clearFindInPage()
+            } else {
+                showFindBar = true
+            }
+        case .settings:
+            showSettings = true
+        case .adBlock:
+            toggleAdBlock()
+        case .privateMode:
+            env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
         }
     }
 
@@ -799,6 +966,7 @@ struct BrowserShellView: View {
     private func chromeButton(
         symbol: String,
         isEnabled: Bool,
+        label: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -812,7 +980,7 @@ struct BrowserShellView: View {
             isEnabled ? barForeground : barForeground.opacity(0.35)
         )
         .disabled(!isEnabled)
-        .accessibilityLabel(symbol == "chevron.left" ? "后退" : "菜单")
+        .accessibilityLabel(label ?? (symbol == "chevron.left" ? "后退" : "菜单"))
     }
 
     // MARK: - Chrome backdrop sampling
@@ -1314,6 +1482,8 @@ struct BrowserShellView: View {
             case .history: showHistory = true
             case .downloads: showDownloads = true
             case .settings: showSettings = true
+            case .bookshelf: showBookshelf = true
+            case .passwords: showPasswords = true
             case .scanQRCode:
                 showQRScanner = true
             case .privateTab:
@@ -1340,6 +1510,12 @@ struct BrowserShellView: View {
             // user asked the browser not to offer.
             guard env.settings.preferences.readerModeAvailable else { break }
             activateReaderMode()
+        case .novel:
+            activateNovelMode()
+        case .bookshelf:
+            showBookshelf = true
+        case .passwords:
+            showPasswords = true
         case .hideElements:
             guard tabManager.webView(for: tab.id) != nil else { return }
             env.webCoordinator.armElementPicker()
@@ -1427,6 +1603,51 @@ struct BrowserShellView: View {
     private func reloadActiveTab() {
         guard let tab = activeTab else { return }
         _ = tabManager.reload(tab: tab)
+    }
+
+    // MARK: - Novel mode
+
+    /// Extracts the page as a novel chapter and opens it on the shelf.
+    ///
+    /// A page that does not yield a chapter is reported rather than silently
+    /// ignored: the user pressed a button and is owed an answer. Extraction
+    /// runs on the live web view, so the chapter it opens is the page that is
+    /// actually on screen.
+    private func activateNovelMode() {
+        guard NovelModeService.isLikelyNovel(activeTab?.url ?? ""),
+              let tab = activeTab, !tab.isHome,
+              let webView = tabManager.webView(for: tab.id) else {
+            novelNotice = "这个页面看起来不是小说章节。打开一本小说的正文页后再试。"
+            return
+        }
+
+        Task { @MainActor in
+            guard let extraction = await NovelModeService.extract(from: webView, url: tab.url) else {
+                novelNotice = "没能从这一页提取出正文。它可能不是章节页，或正文由脚本动态加载。"
+                return
+            }
+            guard let opened = env.novels.open(extraction) else {
+                novelNotice = "这一章无法加入书架，请稍后再试。"
+                return
+            }
+            openNovel(opened.book, chapter: opened.chapter)
+        }
+    }
+
+    private func openNovel(_ book: NovelBook, chapter: NovelChapter?) {
+        novelSession = NovelSession(book: book, chapter: chapter)
+    }
+
+    /// Opens a chapter in the active tab and leaves the reader. Used from the
+    /// reader's own "在浏览器中打开" action, where the chapter is a page the
+    /// user may need the original site to render.
+    private func openInBrowser(_ url: URL) {
+        if let tab = activeTab {
+            navigate(to: url, in: tab)
+        } else {
+            let tab = tabManager.createTab(openSource: .user)
+            navigate(to: url, in: tab)
+        }
     }
 
     /// Runs the failed navigation again.
@@ -1583,273 +1804,16 @@ struct BrowserShellView: View {
     }
 }
 
-// MARK: - Chrome button style
+// MARK: - Novel session
 
-/// The press feedback for a chrome glyph.
+/// What the shell's novel layer is showing.
 ///
-/// A row of controls that do not respond to a touch reads as a screenshot. The
-/// scale is small enough to stay inside the glyph's own frame, so pressing one
-/// does not shift the ones beside it.
-struct ChromeButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.86 : 1)
-            .opacity(configuration.isPressed ? 0.6 : 1)
-            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
-    }
-}
-
-// MARK: - Find bar
-
-struct FindBar: View {
-    @Binding var query: String
-    var result: FindResult
-    var onNext: () -> Void
-    var onPrevious: () -> Void
-    var onClose: () -> Void
-
-    @Environment(\.browserPalette) private var palette
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        HStack(spacing: BrowserSpacing.compact) {
-            HStack(spacing: BrowserSpacing.tight) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13))
-                    .foregroundStyle(palette.secondaryText)
-                TextField("在页面中查找", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.subheadline)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .focused($isFocused)
-                    .onSubmit(onNext)
-                if !query.isEmpty {
-                    Text(result.displayText)
-                        .font(.caption)
-                        .foregroundStyle(palette.secondaryText)
-                        .monospacedDigit()
-                }
-            }
-            .padding(.horizontal, BrowserSpacing.compact)
-            .frame(height: 38)
-            .background(palette.controlFill.opacity(0.7), in: Capsule())
-
-            Button(action: onPrevious) {
-                Image(systemName: "chevron.up")
-            }
-            .buttonStyle(ChromeButtonStyle())
-            .disabled(result.count == 0)
-
-            Button(action: onNext) {
-                Image(systemName: "chevron.down")
-            }
-            .buttonStyle(ChromeButtonStyle())
-            .disabled(result.count == 0)
-
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(ChromeButtonStyle())
-        }
-        .foregroundStyle(palette.primaryText)
-        .padding(.horizontal, BrowserSpacing.compact + 2)
-        .padding(.vertical, BrowserSpacing.tight)
-        // The same floating glass as the command bar above it, so opening the
-        // find bar reads as one more control arriving in the chrome rather than
-        // as a second kind of surface.
-        .browserFloatingChrome(
-            radius: BrowserRadius.omnibox,
-            material: .regularMaterial,
-            tintStrength: 0.55,
-            elevation: .card
-        )
-        .onAppear { isFocused = true }
-    }
-}
-
-// MARK: - Permission prompt
-
-struct PermissionPromptView: View {
-    @Environment(\.browserPalette) private var palette
-
-    var request: SitePermissionRequest
-    var onDecision: (Bool, Bool) -> Void
-
-    @State private var remember = false
-
-    var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: iconName)
-                .font(.system(size: 30))
-                .foregroundStyle(palette.accent)
-                .frame(width: 62, height: 62)
-                .background(palette.accent.opacity(0.12), in: Circle())
-                .padding(.top, 28)
-
-            VStack(spacing: 6) {
-                Text("允许「\(request.origin)」使用\(request.kind.displayName)？")
-                    .font(.headline)
-                    .foregroundStyle(palette.primaryText)
-                    .multilineTextAlignment(.center)
-                Text("该网站请求访问你的\(request.kind.displayName)。")
-                    .font(.subheadline)
-                    .foregroundStyle(palette.secondaryText)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 24)
-
-            Toggle("以后对这个网站都这样", isOn: $remember)
-                .tint(palette.accent)
-                .padding(.horizontal, 24)
-
-            Spacer()
-
-            VStack(spacing: 10) {
-                Button {
-                    onDecision(true, remember)
-                } label: {
-                    Text("允许").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    onDecision(false, remember)
-                } label: {
-                    Text("不允许").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 28)
-        }
-        .background(palette.surface)
-        .presentationDetents([.height(380)])
-        .presentationDragIndicator(.visible)
-    }
-
-    private var iconName: String {
-        switch request.kind {
-        case .camera: return "camera"
-        case .microphone: return "mic"
-        case .location: return "location"
-        case .sensor: return "gyroscope"
-        case .clipboard: return "doc.on.clipboard"
-        }
-    }
-}
-
-// MARK: - Share sheet
-
-/// A `UIActivityViewController` wrapper.
-///
-/// Shared links go out through the system sheet rather than a hand-built list,
-/// which is what gives Vela the same set of destinations as every other app
-/// without maintaining a target list.
-struct ShareSheet: UIViewControllerRepresentable {
-    var items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
-}
-
-// MARK: - Screen-edge swipe back
-
-/// The screen-edge swipe that goes back, bridged to UIKit.
-///
-/// SwiftUI has no edge-pan gesture, and a SwiftUI strip along the edge is
-/// not the answer either: it would sit above the page and intercept its
-/// touches, leaving a dead band down the left side of every document. So the
-/// recognizer is a `UIScreenEdgePanGestureRecognizer` installed on the view
-/// directly below the window — an ancestor whose recognizer sees touches
-/// delivered anywhere inside it, the web view included, without a
-/// hit-testing view of its own. Presented sheets live in their own
-/// container, so a swipe inside one never reaches it.
-///
-/// Whether the gesture is allowed is the shell's decision (`isEnabled`): it
-/// stands down wherever WebKit's own interactive back gesture is the right
-/// responder, and acts through `onBack` where that gesture cannot — see
-/// `BrowserShellView.edgeSwipeBackEnabled`.
-struct EdgeSwipeBackBridge: UIViewRepresentable {
-    var isEnabled: Bool
-    var onBack: () -> Void
-
-    func makeUIView(context: Context) -> EdgeSwipeBridgeView {
-        let view = EdgeSwipeBridgeView()
-        view.backgroundColor = .clear
-        // The bridge has no touch role of its own: the recognizer it installs
-        // lives on an ancestor, and this view must never become a hit-test
-        // target standing above the page.
-        view.isUserInteractionEnabled = false
-        let coordinator = context.coordinator
-        view.onMoveToWindow = { coordinator.attach(from: view) }
-        coordinator.parent = self
-        return view
-    }
-
-    func updateUIView(_ view: EdgeSwipeBridgeView, context: Context) {
-        context.coordinator.parent = self
-        context.coordinator.recognizer?.isEnabled = isEnabled
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var parent: EdgeSwipeBackBridge?
-        var recognizer: UIScreenEdgePanGestureRecognizer?
-
-        /// Installs the recognizer on the view directly below the window, and
-        /// re-runs on every move to a window: SwiftUI can rebuild the bridge,
-        /// and the recognizer has to follow the hierarchy it ends up in.
-        func attach(from bridgeView: UIView) {
-            if recognizer == nil {
-                let edge = UIScreenEdgePanGestureRecognizer(
-                    target: self,
-                    action: #selector(edgePanned(_:))
-                )
-                edge.edges = .left
-                edge.delegate = self
-                recognizer = edge
-            }
-            guard let recognizer else { return }
-
-            var root = bridgeView
-            while let superview = root.superview, !(superview is UIWindow) {
-                root = superview
-            }
-            if recognizer.view !== root {
-                recognizer.view?.removeGestureRecognizer(recognizer)
-                root.addGestureRecognizer(recognizer)
-            }
-            recognizer.isEnabled = parent?.isEnabled ?? false
-        }
-
-        @objc private func edgePanned(_ sender: UIScreenEdgePanGestureRecognizer) {
-            guard sender.state == .ended else { return }
-            parent?.onBack()
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
-        ) -> Bool {
-            false
-        }
-    }
-}
-
-/// The bridge's view: nothing but a ride into the hierarchy and a signal
-/// that it has landed somewhere with a window.
-final class EdgeSwipeBridgeView: UIView {
-    var onMoveToWindow: (() -> Void)?
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        if window != nil { onMoveToWindow?() }
-    }
+/// The chapter is optional because a book opened from the shelf may have had
+/// its cached chapter pruned; the reader then loads `book.currentChapterUrl`
+/// itself. The identity is the session's, not the book's, so opening the same
+/// book again after a position change still rebuilds the layer.
+private struct NovelSession: Identifiable, Equatable {
+    let id = UUID()
+    var book: NovelBook
+    var chapter: NovelChapter?
 }

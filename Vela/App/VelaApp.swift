@@ -27,6 +27,11 @@ struct VelaApp: App {
                 // in both appearances; that is why the tint is read from the
                 // palette rather than from a fixed constant.
                 .tint(activePalette.accent)
+                // The palette is injected here, once, rather than defaulted in
+                // the environment: every chrome and list reads it, and a
+                // selected 配色 has to reach all of them without a relaunch.
+                .environment(\.browserPalette, activePalette)
+                .environment(\.browserBackgroundStyle, environment.settings.backgroundStyle)
                 // nil means "follow the system", which is the whole of the
                 // 跟随系统 mode. Applied at the root so the sheet, the alert and
                 // every `UIColor` dynamic provider resolve against it.
@@ -67,6 +72,9 @@ struct VelaApp: App {
             switch phase {
             case .background:
                 environment.tabManager.persistSession()
+                // The vault does not stay open behind a backgrounded app:
+                // unlocking again is the whole point of the lock.
+                environment.passwords.lock()
                 // A backgrounded app that still holds private tabs is the case
                 // the cleanup exists for: the user has moved on, and the
                 // ephemeral store must not be the thing that survives.

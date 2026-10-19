@@ -45,7 +45,7 @@ struct OmniboxSearchPageView: View {
         }
         .padding(.bottom, keyboardHeight)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(palette.surface.ignoresSafeArea())
+        .background { AmbientSurfaceFill(opacity: 0.90).ignoresSafeArea() }
     }
 
     /// The field, with the engine switcher on its leading edge and the way out

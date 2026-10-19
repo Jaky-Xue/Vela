@@ -158,11 +158,10 @@ struct TabsOverviewView: View {
                         .scaleEffect(1.2)
                         .clipped()
                 } else {
-                    LinearGradient(
-                        colors: [palette.chromeBackground, palette.surface],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                    // No page to print: the app's own background is the
+                    // backdrop, so the overview reads as the same place pulled
+                    // back rather than as a flat sheet of colour.
+                    AmbientBackgroundView()
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)

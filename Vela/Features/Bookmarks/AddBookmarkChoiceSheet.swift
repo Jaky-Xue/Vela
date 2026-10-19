@@ -97,7 +97,7 @@ struct AddBookmarkChoiceSheet: View {
             .padding(.bottom, BrowserSpacing.regular)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(palette.surface)
+        .browserSurfaceBackground(opacity: 0.72)
         .presentationDetents([.height(400)])
         .presentationDragIndicator(.hidden)
     }
