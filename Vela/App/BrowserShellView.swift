@@ -898,9 +898,10 @@ struct BrowserShellView: View {
                     .id("web-\(tab.id)")
                     // The phone layout runs the page edge to edge, so the
                     // floating bar has safe-area content to refract. The iPad
-                    // layout keeps the page inside its column: expanding to the
-                    // window edges would put it under the sidebar.
-                    .ignoresSafeArea(edges: usesPadLayout ? [] : .all)
+                    // layout keeps the page inside its column and below the top
+                    // bar, but still lets it run under the home indicator so no
+                    // strip of background shows beneath the document.
+                    .ignoresSafeArea(edges: usesPadLayout ? .bottom : .all)
                 } else {
                     // A cold tab with no web view at all. Materialising happens
                     // in `onAppear` rather than here: creating a web view during
