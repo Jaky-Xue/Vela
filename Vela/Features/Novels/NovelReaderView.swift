@@ -468,7 +468,10 @@ struct NovelReaderView: View {
           <style>
             html, body { background: transparent; }
             body {
-              margin: 8px 12px 18px 12px;
+              max-width: 680px;
+              width: calc(100% - 24px);
+              box-sizing: border-box;
+              margin: 8px auto 18px auto;
               padding: 22px 22px 56px 22px;
               border-radius: 24px;
               background: \(paper);
