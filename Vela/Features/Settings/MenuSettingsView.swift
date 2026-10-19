@@ -43,7 +43,7 @@ struct MenuSettingsView: View {
             }
 
             if !layout.hiddenTiles.isEmpty {
-                Section("已隐藏") {
+                Section {
                     ForEach(layout.hiddenTiles) { tile in
                         Button {
                             env.settings.menuLayout = layout.settingVisible(true, id: tile.id)
@@ -62,6 +62,8 @@ struct MenuSettingsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                } header: {
+                    Text("已隐藏")
                 } footer: {
                     Text("点一下即可重新显示在菜单中。")
                 }
