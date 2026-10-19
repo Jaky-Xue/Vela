@@ -72,6 +72,12 @@ public final class HistoryService {
         boundary: BrowserDataBoundary,
         transition: HistoryTransition
     ) {
+        // A user who has asked not to keep history gets no rows and no visit
+        // chain; the previous chain is dropped with it.
+        guard !(settings.preferences.historyNotRetained ?? false) else {
+            currentVisitByTab[tabId] = nil
+            return
+        }
         let previousVisitId = currentVisitByTab[tabId]
         do {
             guard let entry = try repository.recordVisit(
@@ -109,6 +115,7 @@ public final class HistoryService {
     /// title column — routing this through `recordVisit` would increment the
     /// visit count a second time for a single page view.
     public func updateTitle(url: URL, title: String, tabId: String, boundary: BrowserDataBoundary) {
+        guard !(settings.preferences.historyNotRetained ?? false) else { return }
         guard boundary.persists else { return }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

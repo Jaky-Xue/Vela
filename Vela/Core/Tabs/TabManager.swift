@@ -96,6 +96,11 @@ public final class TabManager {
     /// inbound URL at once, instead of wherever a caller remembered it.
     public var newPagePrivacyMode: BrowserSessionPrivacyMode = .regular
 
+    /// Whether closing/backgrounding writes the tab strip to disk. Set by the
+    /// environment from 不保留标签页; when false, the last saved session is
+    /// cleared and no new one is written.
+    public var persistsSession = true
+
     public var activeTab: BrowserTabState? {
         tabs.first { $0.id == activeTabId }
     }
@@ -817,7 +822,7 @@ public final class TabManager {
     /// The write is
     /// fire-and-forget: a session save must never block a navigation.
     public func persistSession() {
-        guard let sessionRepository else { return }
+        guard persistsSession, let sessionRepository else { return }
         let snapshot = BrowserSessionSnapshot(
             tabs: tabs.map(\.record),
             activeTabId: activeTabId,

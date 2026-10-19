@@ -45,7 +45,12 @@ struct NovelReaderView: View {
     @State private var lastSavedAt = Date.distantPast
     @State private var fontSize: Double = 19
     @State private var appearance: NovelReadingAppearance = .system
+    @State private var pageMode: NovelPageMode = .scroll
     @State private var loader = NovelChapterLoader()
+    @State private var tocLoader = NovelTOCLoader()
+    @State private var tocEntries: [NovelTOCEntry] = []
+    @State private var isLoadingTOC = false
+    @State private var showTOC = false
 
     init(
         book: NovelBook,
@@ -74,6 +79,7 @@ struct NovelReaderView: View {
                         NovelChapterWebView(
                             html: styledHtml(for: chapter),
                             initialProgress: progressBox.value,
+                            isPaged: pageMode == .paged,
                             onProgress: handleProgress
                         )
                         .id(chapter.url)
@@ -121,6 +127,28 @@ struct NovelReaderView: View {
             Button("好") { statusMessage = nil }
         } message: {
             Text(statusMessage ?? "")
+        }
+        .onChange(of: showTOC) { _, shown in
+            if shown {
+                Task { await loadTOCIfNeeded(force: true) }
+            }
+        }
+        .sheet(isPresented: $showTOC) {
+            NovelTOCSheet(
+                entries: $tocEntries,
+                currentUrl: chapter?.url ?? "",
+                isLoading: $isLoadingTOC,
+                onSelect: { entry in
+                    showTOC = false
+                    let index = tocEntries.firstIndex(where: { $0.url == entry.url }) ?? 0
+                    Task { @MainActor in
+                        await load(url: entry.url, index: index)
+                    }
+                },
+                onClose: { showTOC = false }
+            )
+            .environment(env)
+            .browserAmbientSheet()
         }
     }
 
@@ -179,6 +207,20 @@ struct NovelReaderView: View {
                             env.settings.update { $0.readerAppearance = option.rawValue }
                         } label: {
                             if appearance == option {
+                                Label(option.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(option.displayName)
+                            }
+                        }
+                    }
+                }
+                Section("翻页") {
+                    ForEach(NovelPageMode.allCases) { option in
+                        Button {
+                            pageMode = option
+                            env.settings.update { $0.novelPageMode = option.rawValue }
+                        } label: {
+                            if pageMode == option {
                                 Label(option.displayName, systemImage: "checkmark")
                             } else {
                                 Text(option.displayName)
@@ -250,13 +292,24 @@ struct NovelReaderView: View {
                 .frame(maxWidth: .infinity, minHeight: 36)
                 .contentShape(Rectangle())
             }
-            .disabled(!(chapter?.hasPrevious ?? false) || isLoading)
+            .disabled(resolvedPreviousUrl.isEmpty || isLoading)
 
-            Text("\(Int((progress * 100).rounded()))%")
-                .font(.caption2)
-                .foregroundStyle(palette.secondaryText)
-                .monospacedDigit()
-                .lineLimit(1)
+            Button {
+                showTOC = true
+            } label: {
+                VStack(spacing: 1) {
+                    Text("目录")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("\(Int((progress * 100).rounded()))%")
+                        .font(.system(size: 9))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(palette.primaryText)
+                .frame(minWidth: 52, minHeight: 36)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("目录")
 
             Button {
                 goNext()
@@ -269,7 +322,7 @@ struct NovelReaderView: View {
                 .frame(maxWidth: .infinity, minHeight: 36)
                 .contentShape(Rectangle())
             }
-            .disabled(!(chapter?.hasNext ?? false) || isLoading)
+            .disabled(resolvedNextUrl.isEmpty || isLoading)
         }
         .foregroundStyle(palette.primaryText)
         .buttonStyle(ChromeButtonStyle())
@@ -295,27 +348,45 @@ struct NovelReaderView: View {
            let stored = NovelReadingAppearance(rawValue: raw) {
             appearance = stored
         }
+        pageMode = NovelPageMode.resolve(env.settings.preferences.novelPageMode)
+        tocEntries = env.novels.tocEntries(bookId: currentBook.id)
 
-        guard chapter == nil else {
+        if chapter != nil {
             progress = currentBook.progress
             progressBox.value = currentBook.progress
             saveNow()
-            return
-        }
-
-        if let cached = env.novels.cachedChapter(book: currentBook) {
+        } else if let cached = env.novels.cachedChapter(book: currentBook) {
             chapter = cached
             progress = currentBook.progress
             progressBox.value = currentBook.progress
             saveNow()
-            return
+        } else {
+            await load(
+                url: currentBook.currentChapterUrl,
+                index: currentBook.chapterIndex,
+                restoring: currentBook.progress
+            )
         }
 
-        await load(
-            url: currentBook.currentChapterUrl,
-            index: currentBook.chapterIndex,
-            restoring: currentBook.progress
-        )
+        await loadTOCIfNeeded()
+    }
+
+    /// Loads the cached TOC, or fetches it from the book's TOC page once.
+    private func loadTOCIfNeeded(force: Bool = false) async {
+        if force {
+            tocEntries = env.novels.tocEntries(bookId: currentBook.id)
+        }
+        guard tocEntries.isEmpty, !isLoadingTOC else { return }
+        guard let source = env.novels.tocSource(bookId: currentBook.id),
+              !source.isEmpty else { return }
+
+        isLoadingTOC = true
+        let entries = await tocLoader.load(urlString: source)
+        isLoadingTOC = false
+        if let entries, !entries.isEmpty {
+            tocEntries = entries
+            env.novels.saveTOC(bookId: currentBook.id, entries: entries)
+        }
     }
 
     private func load(url: String, index: Int, restoring: Double = 0) async {
@@ -364,19 +435,57 @@ struct NovelReaderView: View {
 
     // MARK: - Navigation
 
+    /// The next chapter, from the page's own link or the cached TOC.
+    ///
+    /// Plenty of chapter pages ship only one of those; falling back to the TOC
+    /// is what keeps the bar usable on sites whose "next" link is a script.
+    private var resolvedNextUrl: String {
+        if let next = chapter?.nextUrl, !next.isEmpty { return next }
+        guard let chapter else { return "" }
+        return env.novels.tocNeighbor(bookId: currentBook.id, url: chapter.url, offset: 1)?.entry.url ?? ""
+    }
+
+    private var resolvedPreviousUrl: String {
+        if let previous = chapter?.previousUrl, !previous.isEmpty { return previous }
+        guard let chapter else { return "" }
+        return env.novels.tocNeighbor(bookId: currentBook.id, url: chapter.url, offset: -1)?.entry.url ?? ""
+    }
+
     private func goNext() {
-        guard let chapter, chapter.hasNext, !isLoading else { return }
+        guard let chapter, !isLoading else { return }
         saveNow()
-        Task { @MainActor in
-            await load(url: chapter.nextUrl, index: chapter.index + 1)
+        if !chapter.nextUrl.isEmpty {
+            Task { @MainActor in
+                await load(url: chapter.nextUrl, index: chapter.index + 1)
+            }
+        } else if let neighbor = env.novels.tocNeighbor(
+            bookId: currentBook.id,
+            url: chapter.url,
+            offset: 1
+        ) {
+            let index = neighbor.index
+            Task { @MainActor in
+                await load(url: neighbor.entry.url, index: index)
+            }
         }
     }
 
     private func goPrevious() {
-        guard let chapter, chapter.hasPrevious, !isLoading else { return }
+        guard let chapter, !isLoading else { return }
         saveNow()
-        Task { @MainActor in
-            await load(url: chapter.previousUrl, index: max(0, chapter.index - 1))
+        if !chapter.previousUrl.isEmpty {
+            Task { @MainActor in
+                await load(url: chapter.previousUrl, index: max(0, chapter.index - 1))
+            }
+        } else if let neighbor = env.novels.tocNeighbor(
+            bookId: currentBook.id,
+            url: chapter.url,
+            offset: -1
+        ) {
+            let index = neighbor.index
+            Task { @MainActor in
+                await load(url: neighbor.entry.url, index: index)
+            }
         }
     }
 
@@ -577,6 +686,7 @@ private enum NovelReadingAppearance: String, CaseIterable, Identifiable {
 private struct NovelChapterWebView: UIViewRepresentable {
     var html: String
     var initialProgress: Double
+    var isPaged: Bool
     var onProgress: (Double) -> Void
 
     func makeUIView(context: Context) -> WKWebView {
@@ -603,6 +713,7 @@ private struct NovelChapterWebView: UIViewRepresentable {
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.isPagingEnabled = isPaged
         webView.allowsBackForwardNavigationGestures = false
 
         context.coordinator.webView = webView
@@ -614,6 +725,7 @@ private struct NovelChapterWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.initialProgress = initialProgress
+        webView.scrollView.isPagingEnabled = isPaged
         guard context.coordinator.loadedHtml != html else { return }
         context.coordinator.loadedHtml = html
         context.coordinator.restoredProgress = false

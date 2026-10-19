@@ -33,11 +33,22 @@ struct GeneralSettingsView: View {
                     get: { env.settings.preferences.openNewTabsInBackground },
                     set: { value in env.settings.update { $0.openNewTabsInBackground = value } }
                 ))
+                Toggle("不保留标签页", isOn: Binding(
+                    get: { env.settings.preferences.tabsNotRetained ?? false },
+                    set: { value in env.setTabsNotRetained(value) }
+                ))
             } header: {
                 Text("启动与标签页")
+            } footer: {
+                Text("开启「不保留标签页」后，退出应用不会保存当前标签页，下次启动从新标签页开始。")
             }
 
             Section {
+                Toggle("不保留历史记录", isOn: Binding(
+                    get: { env.settings.preferences.historyNotRetained ?? false },
+                    set: { value in env.settings.update { $0.historyNotRetained = value } }
+                ))
+
                 Picker("保留时长", selection: Binding(
                     get: { env.settings.preferences.historyRetentionDays },
                     set: { value in env.settings.update { $0.historyRetentionDays = value } }
@@ -46,10 +57,11 @@ struct GeneralSettingsView: View {
                         Text(choice.0).tag(choice.1)
                     }
                 }
+                .disabled(env.settings.preferences.historyNotRetained ?? false)
             } header: {
                 Text("历史记录保留")
             } footer: {
-                Text("超过保留期的记录会在下次访问时清理。")
+                Text("开启「不保留历史记录」后，新的访问和搜索不再写入历史；已有记录不会自动删除，可在「清除浏览数据」中清理。")
             }
 
             Section {

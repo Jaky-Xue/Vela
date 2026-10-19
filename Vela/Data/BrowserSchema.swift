@@ -31,7 +31,7 @@ public enum BrowserSchema {
 
     /// The first revision above the derived baseline. Introduces the iOS-native
     /// tables.
-    public static let velaSchemaVersion = 9
+    public static let velaSchemaVersion = 10
 
     public static let stateTable = "browser_schema_state"
     public static let bookmarksTable = "bookmarks"
@@ -51,6 +51,8 @@ public enum BrowserSchema {
     public static let adBlockSourcesTable = "adblock_rule_sources"
     public static let novelBooksTable = "novel_books"
     public static let novelChaptersTable = "novel_chapters"
+    public static let novelTOCEntriesTable = "novel_toc_entries"
+    public static let novelTOCSourcesTable = "novel_toc_sources"
 
     /// Every statement needed to bring an empty database to `velaSchemaVersion`.
     public static let creationStatements: [String] = [
@@ -470,6 +472,30 @@ public enum BrowserSchema {
         """
         CREATE INDEX IF NOT EXISTS idx_novel_chapters_book_index
         ON \(novelChaptersTable)(book_id, chapter_index)
+        """,
+
+        // The table of contents is its own pair of tables: the entries are
+        // replaced when a TOC page is re-read, and the source row remembers
+        // where to read it from without changing the book record.
+        """
+        CREATE TABLE IF NOT EXISTS \(novelTOCEntriesTable) (
+          book_id TEXT NOT NULL,
+          url TEXT NOT NULL,
+          title TEXT NOT NULL,
+          position INTEGER NOT NULL,
+          PRIMARY KEY (book_id, url)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_novel_toc_entries_book_position
+        ON \(novelTOCEntriesTable)(book_id, position)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS \(novelTOCSourcesTable) (
+          book_id TEXT PRIMARY KEY,
+          toc_url TEXT NOT NULL,
+          fetched_at INTEGER NOT NULL
+        )
         """
     ]
 }

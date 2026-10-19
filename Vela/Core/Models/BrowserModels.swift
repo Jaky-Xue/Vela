@@ -452,6 +452,12 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// iPad 顶部工具栏两侧的可自定义控件；侧边栏按钮和菜单是固定的。
     public var padToolbarLeadingItems: [String]?
     public var padToolbarTrailingItems: [String]?
+    /// 不保留历史记录：开启后新的访问不再写入历史。
+    public var historyNotRetained: Bool?
+    /// 不保留标签页：开启后退出应用不保存当前标签页，下次启动从新标签页开始。
+    public var tabsNotRetained: Bool?
+    /// 小说阅读的翻页方式：scroll 或 paged。
+    public var novelPageMode: String?
 
     public init(
         searchEngine: SearchEngineSettings = .default,
@@ -493,7 +499,10 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         webRTCProtectionEnabled: Bool? = nil,
         interfaceLayout: String? = nil,
         padToolbarLeadingItems: [String]? = nil,
-        padToolbarTrailingItems: [String]? = nil
+        padToolbarTrailingItems: [String]? = nil,
+        historyNotRetained: Bool? = nil,
+        tabsNotRetained: Bool? = nil,
+        novelPageMode: String? = nil
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -535,6 +544,9 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.interfaceLayout = interfaceLayout
         self.padToolbarLeadingItems = padToolbarLeadingItems
         self.padToolbarTrailingItems = padToolbarTrailingItems
+        self.historyNotRetained = historyNotRetained
+        self.tabsNotRetained = tabsNotRetained
+        self.novelPageMode = novelPageMode
     }
 
     /// The resolved switch: protection is on unless explicitly turned off.

@@ -108,6 +108,20 @@ public struct NovelChapter: Identifiable, Equatable, Sendable {
     public var hasNext: Bool { !nextUrl.isEmpty }
 }
 
+/// One entry in a book's table of contents.
+public struct NovelTOCEntry: Identifiable, Codable, Equatable, Sendable {
+    public var title: String
+    public var url: String
+
+    /// A chapter URL is unique within a book's contents.
+    public var id: String { url }
+
+    public init(title: String, url: String) {
+        self.title = title
+        self.url = url
+    }
+}
+
 /// What the extraction script returns for one chapter page.
 public struct NovelExtraction: Equatable, Sendable {
     public var bookTitle: String
@@ -144,11 +158,29 @@ public struct NovelExtraction: Equatable, Sendable {
         contentHtml.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+
     /// The same identity a shelf entry matches on: the chapter's host plus the
     /// book title. Used to decide whether a freshly opened page continues an
     /// existing book rather than creating a second one.
     public var matchKey: String {
         let host = URL(string: chapterUrl)?.host?.lowercased() ?? ""
         return "\(host)|\(bookTitle.trimmingCharacters(in: .whitespacesAndNewlines))"
+    }
+}
+
+// MARK: - Page mode
+
+/// The reading flow the user chose.
+public enum NovelPageMode: String, CaseIterable, Identifiable, Sendable {
+    case scroll
+    case paged
+
+    public var id: String { rawValue }
+    public var displayName: String { self == .scroll ? "上下滚动" : "整屏翻页" }
+    public var symbolName: String { self == .scroll ? "arrow.up.and.down" : "rectangle.portrait.and.arrow.right" }
+
+    public static func resolve(_ raw: String?) -> NovelPageMode {
+        guard let raw, let mode = NovelPageMode(rawValue: raw) else { return .scroll }
+        return mode
     }
 }

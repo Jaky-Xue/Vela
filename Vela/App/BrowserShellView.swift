@@ -653,7 +653,7 @@ struct BrowserShellView: View {
         VStack(spacing: 0) {
             // The search page carries its own field; leaving the top bar in
             // place would put two address fields on screen.
-            if !omnibox.isEditing {
+            if !omnibox.isEditing, novelSession == nil {
                 padTopBar
                     .frame(height: chromeHidden ? 0 : Self.padTopBarHeight, alignment: .top)
                     .clipped()
@@ -664,7 +664,7 @@ struct BrowserShellView: View {
 
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
-                    if !omnibox.isEditing {
+                    if !omnibox.isEditing, novelSession == nil {
                         BookmarksBarView(
                             onNavigate: { url in
                                 navigate(to: url, in: submissionTab)
@@ -765,6 +765,21 @@ struct BrowserShellView: View {
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 6)
+        // Safari-like gestures on the bar itself: an upward flick tucks the
+        // top bar (and the bookmarks strip) away; a downward flick returns to
+        // the home surface.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 16)
+                .onEnded { value in
+                    let vertical = value.translation.height
+                    guard abs(vertical) > abs(value.translation.width) else { return }
+                    if vertical < -48 {
+                        setChromeHidden(true)
+                    } else if vertical > 48 {
+                        openHomeTab()
+                    }
+                }
+        )
     }
 
     @ViewBuilder
@@ -2008,6 +2023,21 @@ struct BrowserShellView: View {
         activeTab ?? tabManager.createTab(openSource: .user)
     }
 
+        /// Writes a search query into the suggestion history unless the user has
+    /// asked the browser not to keep history at all.
+    private func recordSearchQuery(
+        _ query: String,
+        engineId: SearchEngineId,
+        boundary: BrowserDataBoundary
+    ) {
+        guard !(env.settings.preferences.historyNotRetained ?? false) else { return }
+        try? env.searchHistory.record(
+            query: query,
+            searchEngineId: engineId,
+            boundary: boundary
+        )
+    }
+
     private func submitAddressBar(_ input: String) {
         let tab = submissionTab
         let engine = env.settings.preferences.searchEngine.activeEngine
@@ -2026,11 +2056,7 @@ struct BrowserShellView: View {
             UIApplication.shared.open(url)
 
         case let .search(url):
-            try? env.searchHistory.record(
-                query: input,
-                searchEngineId: engine.id,
-                boundary: tab.dataBoundary
-            )
+            recordSearchQuery(input, engineId: engine.id, boundary: tab.dataBoundary)
             omnibox.endEditing()
             navigate(to: url, in: tab)
 
@@ -2061,11 +2087,7 @@ struct BrowserShellView: View {
         let tab = submissionTab
         let engine = env.settings.preferences.searchEngine.activeEngine
         guard let url = engine.searchUrl(for: input) else { return }
-        try? env.searchHistory.record(
-            query: input,
-            searchEngineId: engine.id,
-            boundary: tab.dataBoundary
-        )
+        recordSearchQuery(input, engineId: engine.id, boundary: tab.dataBoundary)
         navigate(to: url, in: tab)
     }
 
@@ -2105,9 +2127,9 @@ struct BrowserShellView: View {
                 omnibox.endEditing()
                 return
             }
-            try? env.searchHistory.record(
-                query: suggestion.title,
-                searchEngineId: engine.id,
+            recordSearchQuery(
+                suggestion.title,
+                engineId: engine.id,
                 boundary: activeTab?.dataBoundary ?? .persistent
             )
             omnibox.endEditing()
@@ -2121,9 +2143,9 @@ struct BrowserShellView: View {
                 omnibox.endEditing()
                 return
             }
-            try? env.searchHistory.record(
-                query: suggestion.completion,
-                searchEngineId: engine.id,
+            recordSearchQuery(
+                suggestion.completion,
+                engineId: engine.id,
                 boundary: activeTab?.dataBoundary ?? .persistent
             )
             omnibox.endEditing()

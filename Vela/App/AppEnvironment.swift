@@ -163,7 +163,9 @@ public final class AppEnvironment {
         // own modes regardless of it.
         syncPrivateBrowsingRouting()
 
-        if settings.preferences.restoreTabsOnLaunch,
+        tabManager.persistsSession = !(settings.preferences.tabsNotRetained ?? false)
+        if tabManager.persistsSession,
+           settings.preferences.restoreTabsOnLaunch,
            let snapshot = try? tabSessions.loadSession() {
             tabManager.restoreSession(snapshot)
         }
@@ -189,6 +191,17 @@ public final class AppEnvironment {
     /// Turns 无痕模式 on or off: the routing flips, and the browser moves to
     /// the surface the mode names — the private home on the way in, the
     /// regular home on the way out of a private page.
+    /// Turns 不保留标签页 on or off. Enabling it clears the session already on
+    /// disk so a later relaunch cannot resurrect tabs from before the choice;
+    /// the open tabs stay on screen until the app is closed.
+    public func setTabsNotRetained(_ notRetained: Bool) {
+        settings.update { $0.tabsNotRetained = notRetained }
+        tabManager.persistsSession = !notRetained
+        if notRetained {
+            try? tabSessions.removeSession()
+        }
+    }
+
     public func setPrivateBrowsingMode(_ on: Bool) {
         settings.update { $0.privateBrowsingMode = on }
         syncPrivateBrowsingRouting()

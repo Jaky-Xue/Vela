@@ -66,6 +66,36 @@ enum NovelModeService {
         )
     }
 
+    /// Extracts a table of contents from a TOC page.
+    static func extractTOC(from webView: WKWebView) async -> [NovelTOCEntry]? {
+        do {
+            let result = try await webView.evaluateJavaScript(tocExtractionScript)
+            return decodeTOC(result)
+        } catch {
+            return nil
+        }
+    }
+
+    static func decodeTOC(_ result: Any?) -> [NovelTOCEntry]? {
+        guard let json = result as? String,
+              let data = json.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawEntries = payload["entries"] as? [[String: Any]] else {
+            return nil
+        }
+        var seen = Set<String>()
+        var entries: [NovelTOCEntry] = []
+        for raw in rawEntries {
+            guard let title = raw["title"] as? String,
+                  let url = raw["url"] as? String,
+                  !title.isEmpty, !url.isEmpty,
+                  !seen.contains(url) else { continue }
+            seen.insert(url)
+            entries.append(NovelTOCEntry(title: title, url: url))
+        }
+        return entries.isEmpty ? nil : entries
+    }
+
     /// A cheap pre-check so 小说模式 on an obviously non-novel page fails
     /// instantly rather than after a script round-trip.
     ///
@@ -231,8 +261,10 @@ enum NovelModeService {
         var anchors = document.querySelectorAll('a');
         for (var i = 0; i < anchors.length; i++) {
           var anchor = anchors[i];
-          var label = textOf(anchor).replace(/\\s+/g, '');
-          if (!label || label.length > 12) { continue; }
+          var label = (textOf(anchor) + ' ' + (anchor.getAttribute('title') || '') +
+                       ' ' + (anchor.getAttribute('aria-label') || ''))
+            .replace(/[\\s»‹›«<>→←]+/g, '');
+          if (!label || label.length > 20) { continue; }
           if (!pattern.test(label)) { continue; }
           var href = absolute(anchor.getAttribute('href'));
           if (href && href !== String(location.href)) { return href; }
@@ -245,11 +277,11 @@ enum NovelModeService {
         return anchor ? absolute(anchor.getAttribute('href')) : '';
       }
 
-      var nextUrl = linkFor(/^(下一[章节页]|下章|下一页|下一張|next(\\s*chapter)?)$/i) ||
-                    relLink('next');
-      var previousUrl = linkFor(/^(上一[章节页]|上章|上一页|上一張|prev(ious)?(\\s*chapter)?)$/i) ||
-                        relLink('prev');
-      var tocUrl = linkFor(/^(目录|章节目录|返回目录|全部章节|章节列表|index|contents)$/i);
+      var nextUrl = relLink('next') ||
+                    linkFor(/下一[章页节節張张回]|下章|next/i);
+      var previousUrl = relLink('prev') ||
+                        linkFor(/上一[章页节節張张回]|上章|prev/i);
+      var tocUrl = linkFor(/目录|目錄|章节目录|返回目录|章节列表|全部章节|目录页|index|contents/i);
 
       // MARK: Titles
 
@@ -308,6 +340,88 @@ enum NovelModeService {
       });
     })();
     """
+
+    /// The table-of-contents extractor.
+    ///
+    /// A TOC page is a list of chapter links, often in a container whose class
+    /// mentions "list", "catalog" or "chapter". The script scores those
+    /// containers by the number of chapter-shaped anchors they hold, then falls
+    /// back to the whole document when no container is marked up usefully.
+    static let tocExtractionScript = """
+    (function () {
+      function textOf(element) {
+        return ((element && element.textContent) || '').replace(/\\s+/g, ' ').trim();
+      }
+
+      function absolute(href) {
+        if (!href) { return ''; }
+        try {
+          var url = new URL(href, document.baseURI);
+          if (url.protocol !== 'http:' && url.protocol !== 'https:') { return ''; }
+          if (url.host !== location.host) { return ''; }
+          return url.href;
+        } catch (error) {
+          return '';
+        }
+      }
+
+      function isNavigation(label) {
+        return /^(上一[章页节節]|下一[章页节節]|上章|下章|目录|目錄|首页|首頁|书架|書架|加入书架|登录|登錄|注册|推薦|推荐|返回|目录页)/.test(label);
+      }
+
+      function looksLikeChapter(title) {
+        if (!title || title.length > 80) { return false; }
+        if (/第?\\s*[0-9一二三四五六七八九十百千万零两〇]+\\s*[章节回卷集篇]/.test(title)) { return true; }
+        if (/[章节回卷集篇]/.test(title) && title.length <= 60) { return true; }
+        return false;
+      }
+
+      function collect(container, requireChapterShape) {
+        var entries = [];
+        var seen = Object.create(null);
+        var anchors = container.querySelectorAll('a');
+        for (var i = 0; i < anchors.length; i++) {
+          var anchor = anchors[i];
+          var title = textOf(anchor);
+          if (!title || title.length > 80) { continue; }
+          var label = title.replace(/\\s+/g, '');
+          if (isNavigation(label)) { continue; }
+          if (requireChapterShape && !looksLikeChapter(title)) { continue; }
+          var href = absolute(anchor.getAttribute('href'));
+          if (!href || seen[href]) { continue; }
+          if (href === String(location.href)) { continue; }
+          seen[href] = true;
+          entries.push({ title: title, url: href });
+        }
+        return entries;
+      }
+
+      var selectors = [
+        '#list', '#chapterlist', '#chapter-list', '#chapterList', '#dirlist',
+        '.listmain', '.chapter-list', '.chapterlist', '.chapterList',
+        '.catalog', '.catalog-list', '.book_list', '.booklist', '.book-list',
+        '.volume-wrap', '.dirlist', '.directory', '.read-list', '.list',
+        '[class*="catalog"]', '[class*="chapter-list"]', '[class*="chapterlist"]'
+      ];
+
+      var best = [];
+      for (var s = 0; s < selectors.length; s++) {
+        var containers = document.querySelectorAll(selectors[s]);
+        for (var c = 0; c < containers.length; c++) {
+          var entries = collect(containers[c], false);
+          if (entries.length > best.length) { best = entries; }
+        }
+      }
+
+      if (best.length < 3) {
+        var fallback = collect(document.body || document.documentElement, true);
+        if (fallback.length > best.length) { best = fallback; }
+      }
+
+      return JSON.stringify({ entries: best.slice(0, 5000) });
+    })();
+    """
+
 }
 
 private extension String {

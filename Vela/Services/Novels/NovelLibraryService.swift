@@ -23,6 +23,9 @@ public final class NovelLibraryService {
     private let repository: NovelRepository
     /// How many chapter bodies one book keeps.
     private let chapterCacheLimit = 60
+    /// TOC lists are read on every reader body evaluation, so they are kept
+    /// here rather than queried from SQLite each time.
+    private var tocCache: [String: [NovelTOCEntry]] = [:]
 
     public init(repository: NovelRepository) {
         self.repository = repository
@@ -101,6 +104,9 @@ public final class NovelLibraryService {
             try repository.upsertChapter(chapter)
             try repository.upsert(book)
             try repository.pruneChapters(bookId: bookId, keep: chapterCacheLimit)
+            if !extraction.tocUrl.isEmpty {
+                try repository.saveTOCSource(bookId: bookId, tocUrl: extraction.tocUrl)
+            }
             reload()
             return (book, chapter)
         } catch {
@@ -142,6 +148,9 @@ public final class NovelLibraryService {
         do {
             try repository.upsertChapter(chapter)
             try repository.pruneChapters(bookId: bookId, keep: chapterCacheLimit)
+            if !extraction.tocUrl.isEmpty {
+                try repository.saveTOCSource(bookId: bookId, tocUrl: extraction.tocUrl)
+            }
             return chapter
         } catch {
             lastError = error.localizedDescription
@@ -174,6 +183,7 @@ public final class NovelLibraryService {
     public func delete(bookId: String) {
         do {
             try repository.remove(id: bookId)
+            tocCache.removeValue(forKey: bookId)
             reload()
         } catch {
             lastError = error.localizedDescription
@@ -196,3 +206,40 @@ public final class NovelLibraryService {
         }
     }
 }
+
+    // MARK: - Table of contents
+
+    public func tocEntries(bookId: String) -> [NovelTOCEntry] {
+        if let cached = tocCache[bookId] {
+            return cached
+        }
+        let entries = repository.toc(bookId: bookId)
+        tocCache[bookId] = entries
+        return entries
+    }
+
+    public func tocSource(bookId: String) -> String? {
+        repository.tocSource(bookId: bookId)
+    }
+
+    public func saveTOC(bookId: String, entries: [NovelTOCEntry]) {
+        guard !entries.isEmpty else { return }
+        try? repository.replaceTOC(bookId: bookId, entries: entries)
+        tocCache[bookId] = entries
+    }
+
+    /// The TOC entry before or after a chapter URL, when a TOC is cached.
+    ///
+    /// This is what keeps the reader's previous/next controls alive on a
+    /// chapter page that does not itself carry those links.
+    public func tocNeighbor(
+        bookId: String,
+        url: String,
+        offset: Int
+    ) -> (entry: NovelTOCEntry, index: Int)? {
+        let entries = tocEntries(bookId: bookId)
+        guard let index = entries.firstIndex(where: { $0.url == url }) else { return nil }
+        let target = index + offset
+        guard entries.indices.contains(target) else { return nil }
+        return (entries[target], target)
+    }

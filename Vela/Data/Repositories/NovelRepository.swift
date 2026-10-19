@@ -107,6 +107,14 @@ public final class NovelRepository: @unchecked Sendable {
                 [.text(id)]
             )
             try database.execute(
+                "DELETE FROM \(BrowserSchema.novelTOCEntriesTable) WHERE book_id = ?",
+                [.text(id)]
+            )
+            try database.execute(
+                "DELETE FROM \(BrowserSchema.novelTOCSourcesTable) WHERE book_id = ?",
+                [.text(id)]
+            )
+            try database.execute(
                 "DELETE FROM \(BrowserSchema.novelBooksTable) WHERE id = ?",
                 [.text(id)]
             )
@@ -186,5 +194,58 @@ public final class NovelRepository: @unchecked Sendable {
             """,
             [.text(bookId), .text(bookId), .integer(Int64(keep))]
         )
+    }
+}
+
+// MARK: - Table of contents
+
+extension NovelRepository {
+    /// Remembers where this book's TOC page lives.
+    public func saveTOCSource(bookId: String, tocUrl: String) throws {
+        guard !tocUrl.isEmpty else { return }
+        try database.execute(
+            """
+            INSERT OR REPLACE INTO \(BrowserSchema.novelTOCSourcesTable)
+            (book_id, toc_url, fetched_at) VALUES (?, ?, ?)
+            """,
+            [.text(bookId), .text(tocUrl), .integer(Date().milliseconds)]
+        )
+    }
+
+    public func tocSource(bookId: String) -> String? {
+        try? database.query(
+            "SELECT toc_url FROM \(BrowserSchema.novelTOCSourcesTable) WHERE book_id = ?",
+            [.text(bookId)]
+        ) { $0.string(at: 0) }.first
+    }
+
+    /// Replaces a book's TOC in one transaction; a re-read must not leave a
+    /// mix of old and new positions.
+    public func replaceTOC(bookId: String, entries: [NovelTOCEntry]) throws {
+        try database.transaction {
+            try database.execute(
+                "DELETE FROM \(BrowserSchema.novelTOCEntriesTable) WHERE book_id = ?",
+                [.text(bookId)]
+            )
+            for (position, entry) in entries.enumerated() {
+                try database.execute(
+                    """
+                    INSERT OR REPLACE INTO \(BrowserSchema.novelTOCEntriesTable)
+                    (book_id, url, title, position) VALUES (?, ?, ?, ?)
+                    """,
+                    [.text(bookId), .text(entry.url), .text(entry.title), .integer(Int64(position))]
+                )
+            }
+        }
+    }
+
+    public func toc(bookId: String) -> [NovelTOCEntry] {
+        (try? database.query(
+            """
+            SELECT title, url FROM \(BrowserSchema.novelTOCEntriesTable)
+            WHERE book_id = ? ORDER BY position ASC
+            """,
+            [.text(bookId)]
+        ) { NovelTOCEntry(title: $0.string(at: 0), url: $0.string(at: 1)) }) ?? []
     }
 }
