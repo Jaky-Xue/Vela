@@ -423,7 +423,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// install's document would fail the decode and reset every setting with
     /// it. `nil` decodes to the default, which is protection on.
     public var topProtection: Bool?
-    /// 全局背景样式：纯净、暖阳、晚霞、琥珀。`nil` 是暖阳。
+    /// 全局背景样式：纯净、暖阳、晚霞、青柠、极光、冰川、紫雾。`nil` 是暖阳。
     public var backgroundStyle: String?
     /// 底部工具栏两侧的控件，按用户拖拽的顺序保存。
     ///

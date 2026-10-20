@@ -84,18 +84,19 @@ final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var 
         // loaded, or a return visit would re-run the redirect every time.
         let url = webView.url?.absoluteString ?? targetUrl
         Task { @MainActor [weak self] in
-            // Hash-routed sites render their chapter after the navigation's
-            // didFinish; give the route a beat, then retry once before giving
-            // up on the page.
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            guard !Task.isCancelled else { return }
-            var extraction = await NovelModeService.extract(from: webView, url: url)
-            if extraction == nil {
-                try? await Task.sleep(nanoseconds: 700_000_000)
+            // Hash-routed sites paint the chapter after didFinish — and some
+            // paint it behind two or three network round-trips. Poll for the
+            // extraction instead of trusting a single delay.
+            let delays: [UInt64] = [700_000_000, 900_000_000, 1_200_000_000]
+            for delay in delays {
+                try? await Task.sleep(nanoseconds: delay)
                 guard !Task.isCancelled else { return }
-                extraction = await NovelModeService.extract(from: webView, url: url)
+                if let extraction = await NovelModeService.extract(from: webView, url: url) {
+                    self?.finish(extraction)
+                    return
+                }
             }
-            self?.finish(extraction)
+            self?.finish(nil)
         }
     }
 

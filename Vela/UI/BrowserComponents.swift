@@ -148,6 +148,9 @@ struct CollapsibleSectionHeader: View {
     var title: String
     var systemImage: String?
     var count: Int?
+    /// An ink override for a header drawn on something other than a palette
+    /// surface — the home's custom picture.
+    var tint: Color?
     var isExpanded: Bool
     var onToggle: () -> Void
 
@@ -157,12 +160,14 @@ struct CollapsibleSectionHeader: View {
         title: String,
         systemImage: String? = nil,
         count: Int? = nil,
+        tint: Color? = nil,
         isExpanded: Bool,
         onToggle: @escaping () -> Void
     ) {
         self.title = title
         self.systemImage = systemImage
         self.count = count
+        self.tint = tint
         self.isExpanded = isExpanded
         self.onToggle = onToggle
     }
@@ -194,7 +199,7 @@ struct CollapsibleSectionHeader: View {
                     .font(.system(size: 11, weight: .bold))
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
             }
-            .foregroundStyle(palette.secondaryText)
+            .foregroundStyle(tint ?? palette.secondaryText)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -209,6 +214,7 @@ struct CollapsibleSection<Content: View>: View {
     var title: String
     var systemImage: String?
     var count: Int?
+    var tint: Color?
     @Binding var isExpanded: Bool
     var content: () -> Content
 
@@ -216,12 +222,14 @@ struct CollapsibleSection<Content: View>: View {
         title: String,
         systemImage: String? = nil,
         count: Int? = nil,
+        tint: Color? = nil,
         isExpanded: Binding<Bool>,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.systemImage = systemImage
         self.count = count
+        self.tint = tint
         self._isExpanded = isExpanded
         self.content = content
     }
@@ -232,6 +240,7 @@ struct CollapsibleSection<Content: View>: View {
                 title: title,
                 systemImage: systemImage,
                 count: count,
+                tint: tint,
                 isExpanded: isExpanded,
                 onToggle: {
                     withAnimation(.snappy(duration: 0.25)) { isExpanded.toggle() }

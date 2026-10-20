@@ -104,8 +104,9 @@ public final class NovelLibraryService {
             try repository.upsertChapter(chapter)
             try repository.upsert(book)
             try repository.pruneChapters(bookId: bookId, keep: chapterCacheLimit)
-            if !extraction.tocUrl.isEmpty {
-                try repository.saveTOCSource(bookId: bookId, tocUrl: extraction.tocUrl)
+            let tocSource = Self.tocSource(for: extraction)
+            if !tocSource.isEmpty {
+                try repository.saveTOCSource(bookId: bookId, tocUrl: tocSource)
             }
             reload()
             return (book, chapter)
@@ -148,8 +149,9 @@ public final class NovelLibraryService {
         do {
             try repository.upsertChapter(chapter)
             try repository.pruneChapters(bookId: bookId, keep: chapterCacheLimit)
-            if !extraction.tocUrl.isEmpty {
-                try repository.saveTOCSource(bookId: bookId, tocUrl: extraction.tocUrl)
+            let tocSource = Self.tocSource(for: extraction)
+            if !tocSource.isEmpty {
+                try repository.saveTOCSource(bookId: bookId, tocUrl: tocSource)
             }
             return chapter
         } catch {
@@ -237,9 +239,46 @@ public final class NovelLibraryService {
         offset: Int
     ) -> (entry: NovelTOCEntry, index: Int)? {
         let entries = tocEntries(bookId: bookId)
-        guard let index = entries.firstIndex(where: { $0.url == url }) else { return nil }
+        guard !entries.isEmpty else { return nil }
+
+        // The live URL and the catalog's spelling can differ by a trailing
+        // slash, a redirect or the subdomain the catalog was fetched from.
+        // Fall back to a normalized key, then to the chapter number itself.
+        var index = entries.firstIndex(where: { $0.url == url })
+        if index == nil {
+            let key = Self.normalizedURLKey(url)
+            index = entries.firstIndex(where: { Self.normalizedURLKey($0.url) == key })
+        }
+        if index == nil, let number = NovelURLRoute.chapterNumber(for: url) {
+            index = entries.firstIndex(where: { NovelURLRoute.chapterNumber(for: $0.url) == number })
+        }
+        guard let index else { return nil }
+
         let target = index + offset
         guard entries.indices.contains(target) else { return nil }
         return (entries[target], target)
+    }
+
+    /// Records where the catalog lives, including a route-derived guess when
+    /// the chapter page had no usable link for it.
+    public func saveTOCSource(bookId: String, url: String) {
+        guard !url.isEmpty else { return }
+        try? repository.saveTOCSource(bookId: bookId, tocUrl: url)
+    }
+
+    private static func tocSource(for extraction: NovelExtraction) -> String {
+        if !extraction.tocUrl.isEmpty { return extraction.tocUrl }
+        return NovelURLRoute.catalogURL(for: extraction.chapterUrl) ?? ""
+    }
+
+    private static func normalizedURLKey(_ urlString: String) -> String {
+        guard let url = URL(string: urlString), let host = url.host?.lowercased() else {
+            return urlString
+        }
+        let scheme = (url.scheme ?? "").lowercased()
+        var path = url.path
+        if path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        let fragment = url.fragment.map { "#" + $0 } ?? ""
+        return "\(scheme)://\(host)\(path)\(fragment)"
     }
 }

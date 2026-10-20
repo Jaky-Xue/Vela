@@ -54,15 +54,22 @@ enum NovelModeService {
         let bookTitle = (payload["bookTitle"] as? String)?.trimmed ?? ""
         let author = (payload["author"] as? String)?.trimmed ?? ""
 
+        // Script-driven navigation leaves no href to read. The route still
+        // numbers its chapters, so derive the neighbours when the page gives
+        // none; the catalog is the book's directory above the chapter.
+        let previous = (payload["previousUrl"] as? String)?.trimmed ?? ""
+        let next = (payload["nextUrl"] as? String)?.trimmed ?? ""
+        let toc = (payload["tocUrl"] as? String)?.trimmed ?? ""
+
         return NovelExtraction(
             bookTitle: bookTitle.isEmpty ? chapterTitle : bookTitle,
             author: author,
             chapterTitle: chapterTitle.isEmpty ? "正文" : chapterTitle,
             contentHtml: contentHtml,
             chapterUrl: url,
-            previousUrl: (payload["previousUrl"] as? String)?.trimmed ?? "",
-            nextUrl: (payload["nextUrl"] as? String)?.trimmed ?? "",
-            tocUrl: (payload["tocUrl"] as? String)?.trimmed ?? ""
+            previousUrl: previous.isEmpty ? (NovelURLRoute.shifted(url, by: -1) ?? "") : previous,
+            nextUrl: next.isEmpty ? (NovelURLRoute.shifted(url, by: 1) ?? "") : next,
+            tocUrl: toc.isEmpty ? (NovelURLRoute.catalogURL(for: url) ?? "") : toc
         )
     }
 
@@ -283,6 +290,24 @@ enum NovelModeService {
 
       // MARK: Chapter navigation
 
+      // A navigational anchor does not always carry the target in `href`.
+      // Script-driven sites put it in a data attribute or inside an onclick
+      // string instead, so look in all three places before giving up.
+      function routeOf(anchor) {
+        var href = absolute(anchor.getAttribute('href'));
+        if (href) { return href; }
+        href = absolute(
+          anchor.getAttribute('data-href') ||
+          anchor.getAttribute('data-url') ||
+          anchor.getAttribute('data-target') || ''
+        );
+        if (href) { return href; }
+        var onclick = anchor.getAttribute('onclick') || '';
+        var quoted = onclick.match(/['"]([^'"]*(?:#\/|\/book\/|\.html?)[^'"]*)['"]/);
+        if (quoted) { return absolute(quoted[1]); }
+        return '';
+      }
+
       function linkFor(pattern) {
         var anchors = document.querySelectorAll('a');
         for (var i = 0; i < anchors.length; i++) {
@@ -292,7 +317,7 @@ enum NovelModeService {
             .replace(/[\\s»‹›«<>→←]+/g, '');
           if (!label || label.length > 20) { continue; }
           if (!pattern.test(label)) { continue; }
-          var href = absolute(anchor.getAttribute('href'));
+          var href = routeOf(anchor);
           if (href && href !== String(location.href)) { return href; }
         }
         return '';

@@ -288,11 +288,29 @@ private struct BackgroundStyleSwatch: View {
                 Color(red: 1.00, green: 0.71, blue: 0.71),
                 Color(red: 1.00, green: 0.64, blue: 0.66)
             ]
-        case .amber:
+        case .lime:
             return [
-                Color(red: 1.00, green: 0.95, blue: 0.83),
-                Color(red: 1.00, green: 0.84, blue: 0.56),
-                Color(red: 1.00, green: 0.80, blue: 0.45)
+                Color(red: 0.90, green: 0.96, blue: 0.79),
+                Color(red: 0.73, green: 0.87, blue: 0.53),
+                Color(red: 0.66, green: 0.83, blue: 0.43)
+            ]
+        case .aurora:
+            return [
+                Color(red: 0.79, green: 0.95, blue: 0.91),
+                Color(red: 0.52, green: 0.84, blue: 0.75),
+                Color(red: 0.40, green: 0.78, blue: 0.69)
+            ]
+        case .glacier:
+            return [
+                Color(red: 0.78, green: 0.89, blue: 0.97),
+                Color(red: 0.50, green: 0.71, blue: 0.91),
+                Color(red: 0.37, green: 0.62, blue: 0.87)
+            ]
+        case .violet:
+            return [
+                Color(red: 0.85, green: 0.80, blue: 0.97),
+                Color(red: 0.67, green: 0.57, blue: 0.92),
+                Color(red: 0.58, green: 0.48, blue: 0.88)
             ]
         }
     }

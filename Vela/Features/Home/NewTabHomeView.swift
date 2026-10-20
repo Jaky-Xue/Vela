@@ -77,6 +77,8 @@ struct NewTabHomeView: View {
     /// moves — which happens the moment a picture is saved or cleared behind
     /// the settings sheet, so the change is live without leaving the screen.
     @State private var backgroundImage: UIImage?
+    /// Whether the custom picture is bright enough to need dark text.
+    @State private var backgroundIsLight = true
 
     @AppStorage("org.vela.browser.home-bookmarks-expanded") private var bookmarksExpanded = true
     @AppStorage("org.vela.browser.home-recently-closed-expanded") private var recentlyClosedExpanded = false
@@ -90,7 +92,7 @@ struct NewTabHomeView: View {
                         Text("无痕模式")
                     }
                     .font(.footnote.weight(.medium))
-                    .foregroundStyle(palette.secondaryText)
+                    .foregroundStyle(homeSecondaryText)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(Capsule().fill(palette.controlFill.opacity(0.6)))
@@ -116,17 +118,18 @@ struct NewTabHomeView: View {
                     VStack(spacing: 12) {
                         Image(systemName: isPrivate ? "eyeglasses" : "safari")
                             .font(.system(size: 38, weight: .light))
-                            .foregroundStyle(palette.secondaryText.opacity(0.55))
+                            .foregroundStyle(homeSecondaryText.opacity(0.65))
                         Text(isPrivate ? "无痕浏览" : "开始浏览")
                             .font(.title3.weight(.semibold))
-                            .foregroundStyle(palette.primaryText)
+                            .foregroundStyle(homePrimaryText)
                         Text(isPrivate
                              ? "这个标签页的访问记录不会留下。"
                              : "从地址栏输入网址；把常用网站加入收藏后会出现在这里。")
                             .font(.footnote)
-                            .foregroundStyle(palette.secondaryText)
+                            .foregroundStyle(homeSecondaryText)
                             .multilineTextAlignment(.center)
                     }
+                    .shadow(color: homeTextShadow, radius: 8, y: 1)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 64)
                     .padding(.bottom, 40)
@@ -167,33 +170,53 @@ struct NewTabHomeView: View {
 
     // MARK: - Background
 
-    /// The custom background picture, or the plain palette surface when none
-    /// is set. The photo is drawn as it is — no veil over it; the tiles and
-    /// the recently-closed card carry their own fills, and the command bar is
-    /// glass. The stamp is the reload key — `save` and `clear` both move it,
-    /// which is what makes a change made in settings appear here immediately.
-    @ViewBuilder
+    /// The home has no backdrop of its own.
+    ///
+    /// The shell draws the custom picture full-bleed, behind the top bar as
+    /// well as the home, and the ambient field when there is no picture. A
+    /// second copy here would be scaled to a different rectangle and leave a
+    /// seam under the chrome, so the home stays clear.
     private var homeBackground: some View {
-        if let backgroundImage {
-            Image(uiImage: backgroundImage)
-                .resizable()
-                .scaledToFill()
-                .ignoresSafeArea()
-        } else {
-            // The shell's ambient background is the home's backdrop; a second
-            // opaque surface here would cover exactly the light the background
-            // style exists to show.
-            Color.clear
-                .ignoresSafeArea()
-        }
+        Color.clear
+            .ignoresSafeArea()
+    }
+
+    /// Text that sits directly on the picture gets its ink from the picture.
+    ///
+    /// The palette's ink is a reliable contrast against the palette surface,
+    /// but not against a photograph: dark-mode white text over a bright sky
+    /// disappears. The mean luminance picks black or white, and a soft shadow
+    /// in the opposite tone keeps the edge readable across clouds.
+    private var homePrimaryText: Color {
+        guard backgroundImage != nil else { return palette.primaryText }
+        return backgroundIsLight ? Color(white: 0.08) : .white
+    }
+
+    private var homeSecondaryText: Color {
+        guard backgroundImage != nil else { return palette.secondaryText }
+        return backgroundIsLight ? Color(white: 0.26) : .white.opacity(0.86)
+    }
+
+    private var homeTextShadow: Color {
+        guard backgroundImage != nil else { return .clear }
+        return backgroundIsLight ? .white.opacity(0.45) : .black.opacity(0.45)
+    }
+
+    /// Section headers draw on the picture too; the cards keep their own
+    /// palette ink because they carry their own surface.
+    private var homeSectionTint: Color? {
+        backgroundImage == nil ? nil : homeSecondaryText
     }
 
     private func reloadBackgroundImage() {
-        guard let stamp = env.settings.preferences.homeBackgroundStamp else {
+        guard let stamp = env.settings.preferences.homeBackgroundStamp,
+              let image = HomeBackgroundStore.load(stamp: stamp) else {
             backgroundImage = nil
+            backgroundIsLight = true
             return
         }
-        backgroundImage = HomeBackgroundStore.load(stamp: stamp)
+        backgroundImage = image
+        backgroundIsLight = ChromeBackdrop.isLight(image) ?? true
     }
 
     // MARK: - Bookmarks
@@ -233,6 +256,7 @@ struct NewTabHomeView: View {
             title: "收藏",
             systemImage: nil,
             count: nil,
+            tint: homeSectionTint,
             isExpanded: $bookmarksExpanded
         ) {
             // Laid out in eager rows rather than a lazy grid. A lazy grid that
@@ -338,6 +362,7 @@ struct NewTabHomeView: View {
             title: "最近关闭",
             systemImage: "arrow.up.left",
             count: recentlyClosed.count,
+            tint: homeSectionTint,
             isExpanded: $recentlyClosedExpanded
         ) {
             VStack(spacing: 0) {

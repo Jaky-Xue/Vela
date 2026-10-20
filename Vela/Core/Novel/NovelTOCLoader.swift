@@ -69,15 +69,19 @@ final class NovelTOCLoader: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard webView === self.webView else { return }
         Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            guard !Task.isCancelled else { return }
-            var entries = await NovelModeService.extractTOC(from: webView)
-            if entries == nil {
-                try? await Task.sleep(nanoseconds: 700_000_000)
+            // A catalog on a hash-routed site is usually built from an API
+            // response after the shell loads. Poll, and give the list time to
+            // populate, rather than reading an empty `#app` once.
+            let delays: [UInt64] = [800_000_000, 1_200_000_000, 1_600_000_000]
+            for delay in delays {
+                try? await Task.sleep(nanoseconds: delay)
                 guard !Task.isCancelled else { return }
-                entries = await NovelModeService.extractTOC(from: webView)
+                if let entries = await NovelModeService.extractTOC(from: webView), !entries.isEmpty {
+                    self?.finish(entries)
+                    return
+                }
             }
-            self?.finish(entries)
+            self?.finish(nil)
         }
     }
 

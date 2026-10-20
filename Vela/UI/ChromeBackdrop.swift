@@ -62,6 +62,36 @@ enum ChromeBackdrop {
         return total / Double(max(samples, 1)) > lightThreshold
     }
 
+    /// The mean luminance of the whole picture against `lightThreshold`.
+    ///
+    /// Chrome sampling asks about the strip it floats over; home text sits
+    /// across the whole surface, so it asks about the whole picture.
+    static func isLight(_ image: UIImage) -> Bool? {
+        guard let cgImage = image.cgImage else { return nil }
+        let edge = 24
+        var pixels = [UInt8](repeating: 0, count: edge * edge * 4)
+        let context = CGContext(
+            data: &pixels,
+            width: edge,
+            height: edge,
+            bitsPerComponent: 8,
+            bytesPerRow: edge * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+        guard let context else { return nil }
+        context.interpolationQuality = .low
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: edge, height: edge))
+
+        var total = 0.0
+        for offset in stride(from: 0, to: pixels.count, by: 4) {
+            total += 0.2126 * Double(pixels[offset]) / 255
+                + 0.7152 * Double(pixels[offset + 1]) / 255
+                + 0.0722 * Double(pixels[offset + 2]) / 255
+        }
+        return total / Double(edge * edge) > lightThreshold
+    }
+
     /// A palette colour's own lightness, resolved for one appearance.
     ///
     /// The palette's colours are dynamic — they re-resolve when the appearance

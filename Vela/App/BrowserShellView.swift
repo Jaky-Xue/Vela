@@ -199,14 +199,27 @@ struct BrowserShellView: View {
     /// their own.
     private var showsAmbientRootBackground: Bool {
         if novelSession != nil { return false }
+        if showsHomePictureAtRoot { return false }
         guard let tab = activeTab else { return true }
         if tab.isHome || isReaderActive || tab.loadState.isFailure { return true }
         return tabManager.webView(for: tab.id) == nil
     }
 
+    /// Whether the home's own picture is the shell's backdrop.
+    ///
+    /// The picture belongs behind the top bar as well as the home; drawing it
+    /// only inside the home left the bar over the ambient field, which read as
+    /// a coloured band that had nothing to do with the wallpaper.
+    private var showsHomePictureAtRoot: Bool {
+        guard activeTab?.isHome == true else { return false }
+        return env.settings.preferences.homeBackgroundStamp != nil
+    }
+
     private var shellRoot: some View {
         ZStack {
-            if showsAmbientRootBackground {
+            if showsHomePictureAtRoot, let stamp = env.settings.preferences.homeBackgroundStamp {
+                HomePictureBackdrop(stamp: stamp)
+            } else if showsAmbientRootBackground {
                 AmbientBackgroundView()
             } else {
                 palette.surface.ignoresSafeArea()
@@ -2214,4 +2227,36 @@ private struct NovelSession: Identifiable, Equatable {
     let id = UUID()
     var book: NovelBook
     var chapter: NovelChapter?
+}
+
+// MARK: - Home picture backdrop
+
+/// The custom home picture, drawn behind the whole shell rather than only
+/// inside the home's rectangle.
+///
+/// The top bar is a sibling of the home. A picture that stopped at the home's
+/// top edge left the bar sampling the ambient field — a warm band over a blue
+/// sky — so the picture now runs full-bleed behind the chrome, and the home
+/// itself stays clear. It is scaled once, continuously, from the status strip
+/// to the bottom edge.
+private struct HomePictureBackdrop: View {
+    var stamp: Double
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Color(uiColor: .systemBackground)
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            }
+        }
+        .ignoresSafeArea()
+        .clipped()
+        .task(id: stamp) {
+            image = HomeBackgroundStore.load(stamp: stamp)
+        }
+        .accessibilityHidden(true)
+    }
 }

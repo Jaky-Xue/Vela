@@ -51,6 +51,10 @@ struct NovelReaderView: View {
     @State private var tocEntries: [NovelTOCEntry] = []
     @State private var isLoadingTOC = false
     @State private var showTOC = false
+    /// Whether the header and chapter controls are on screen. They retreat
+    /// after the reader settles so the chapter is the only thing visible; a
+    /// tap in the middle of the page brings them back.
+    @State private var chromeVisible = true
 
     init(
         book: NovelBook,
@@ -72,7 +76,10 @@ struct NovelReaderView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                headerInGlassContainer
+                if chromeVisible {
+                    headerInGlassContainer
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
 
                 Group {
                     if let chapter {
@@ -80,7 +87,8 @@ struct NovelReaderView: View {
                             html: styledHtml(for: chapter),
                             initialProgress: progressBox.value,
                             isPaged: pageMode == .paged,
-                            onProgress: handleProgress
+                            onProgress: handleProgress,
+                            onCenterTap: toggleChrome
                         )
                         .id(chapter.url)
                     } else if isLoading {
@@ -105,8 +113,23 @@ struct NovelReaderView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .safeAreaInset(edge: .bottom) { bottomBarInGlassContainer }
-        .task { await prepare() }
+        .safeAreaInset(edge: .bottom) {
+            if chromeVisible {
+                bottomBarInGlassContainer
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.22), value: chromeVisible)
+        .task {
+            await prepare()
+            // The controls introduce the reader, then get out of the reading
+            // surface's way. A tap in the middle brings them back.
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            guard !Task.isCancelled else { return }
+            if chromeVisible {
+                withAnimation(.easeInOut(duration: 0.24)) { chromeVisible = false }
+            }
+        }
         .onDisappear {
             saveNow()
             loader.cancel()
@@ -180,6 +203,12 @@ struct NovelReaderView: View {
             }
 
             Spacer(minLength: 0)
+
+            Text(progressLabel)
+                .font(.system(size: 10, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(palette.secondaryText)
+                .accessibilityHidden(true)
 
             if isLoading {
                 ProgressView()
@@ -280,7 +309,12 @@ struct NovelReaderView: View {
     }
 
     private var bottomBar: some View {
-        HStack(spacing: BrowserSpacing.compact) {
+        VStack(spacing: 0) {
+            NovelReadingProgressBar(progress: progress)
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+
+            HStack(spacing: BrowserSpacing.compact) {
             Button {
                 goPrevious()
             } label: {
@@ -297,16 +331,11 @@ struct NovelReaderView: View {
             Button {
                 showTOC = true
             } label: {
-                VStack(spacing: 1) {
-                    Text("目录")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("\(Int((progress * 100).rounded()))%")
-                        .font(.system(size: 9))
-                        .monospacedDigit()
-                }
-                .foregroundStyle(palette.primaryText)
-                .frame(minWidth: 52, minHeight: 36)
-                .contentShape(Rectangle())
+                Text("目录")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(palette.primaryText)
+                    .frame(minWidth: 52, minHeight: 36)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("目录")
@@ -323,11 +352,12 @@ struct NovelReaderView: View {
                 .contentShape(Rectangle())
             }
             .disabled(resolvedNextUrl.isEmpty || isLoading)
+            }
+            .foregroundStyle(palette.primaryText)
+            .buttonStyle(ChromeButtonStyle())
+            .padding(.horizontal, 10)
+            .frame(height: 44)
         }
-        .foregroundStyle(palette.primaryText)
-        .buttonStyle(ChromeButtonStyle())
-        .padding(.horizontal, 10)
-        .frame(height: 44)
         .browserFloatingChrome(
             radius: BrowserRadius.card,
             material: .regularMaterial,
@@ -377,13 +407,32 @@ struct NovelReaderView: View {
             tocEntries = env.novels.tocEntries(bookId: currentBook.id)
         }
         guard tocEntries.isEmpty, !isLoadingTOC else { return }
-        guard let source = env.novels.tocSource(bookId: currentBook.id),
-              !source.isEmpty else { return }
+
+        // A catalog link is not always on the chapter page: on script-driven
+        // sites it is a `javascript:` call with no URL to read. The chapter
+        // route still points at the book's directory, so derive it and keep
+        // it — the next visit does not have to guess again.
+        let chapterURL = chapter?.url ?? currentBook.currentChapterUrl
+        var source = env.novels.tocSource(bookId: currentBook.id) ?? ""
+        if source.isEmpty, let derived = NovelURLRoute.catalogURL(for: chapterURL) {
+            source = derived
+            env.novels.saveTOCSource(bookId: currentBook.id, url: derived)
+        }
+        guard !source.isEmpty else { return }
 
         isLoadingTOC = true
-        let entries = await tocLoader.load(urlString: source)
+        var result = await tocLoader.load(urlString: source)
+        if result == nil || result?.isEmpty == true,
+           let derived = NovelURLRoute.catalogURL(for: chapterURL),
+           derived != source {
+            result = await tocLoader.load(urlString: derived)
+            if let entries = result, !entries.isEmpty {
+                env.novels.saveTOCSource(bookId: currentBook.id, url: derived)
+            }
+        }
         isLoadingTOC = false
-        if let entries, !entries.isEmpty {
+
+        if let entries = result, !entries.isEmpty {
             tocEntries = entries
             env.novels.saveTOC(bookId: currentBook.id, entries: entries)
         }
@@ -435,63 +484,72 @@ struct NovelReaderView: View {
 
     // MARK: - Navigation
 
-    /// The next chapter, from the page's own link or the cached TOC.
+    /// The chapter a step in either direction opens.
     ///
-    /// Plenty of chapter pages ship only one of those; falling back to the TOC
-    /// is what keeps the bar usable on sites whose "next" link is a script.
+    /// Three sources, in order of trust: the page's own link, the catalog's
+    /// neighbour, and the route itself. The last one is what keeps the
+    /// buttons alive on single-page sites whose navigation is a
+    /// `javascript:` call — there is no URL on the page, but the route is
+    /// numbered, and `NovelURLRoute` can take the step.
+    private func neighborTarget(offset: Int) -> (url: String, index: Int)? {
+        guard let chapter else { return nil }
+        if offset > 0, !chapter.nextUrl.isEmpty {
+            return (chapter.nextUrl, chapter.index + 1)
+        }
+        if offset < 0, !chapter.previousUrl.isEmpty {
+            return (chapter.previousUrl, max(0, chapter.index - 1))
+        }
+        if let neighbor = env.novels.tocNeighbor(
+            bookId: currentBook.id,
+            url: chapter.url,
+            offset: offset
+        ) {
+            return (neighbor.entry.url, neighbor.index)
+        }
+        guard let derived = NovelURLRoute.shifted(chapter.url, by: offset) else { return nil }
+        return (derived, max(0, chapter.index + offset))
+    }
+
     private var resolvedNextUrl: String {
-        if let next = chapter?.nextUrl, !next.isEmpty { return next }
-        guard let chapter else { return "" }
-        return env.novels.tocNeighbor(bookId: currentBook.id, url: chapter.url, offset: 1)?.entry.url ?? ""
+        neighborTarget(offset: 1)?.url ?? ""
     }
 
     private var resolvedPreviousUrl: String {
-        if let previous = chapter?.previousUrl, !previous.isEmpty { return previous }
-        guard let chapter else { return "" }
-        return env.novels.tocNeighbor(bookId: currentBook.id, url: chapter.url, offset: -1)?.entry.url ?? ""
+        neighborTarget(offset: -1)?.url ?? ""
     }
 
     private func goNext() {
-        guard let chapter, !isLoading else { return }
+        guard !isLoading, let target = neighborTarget(offset: 1) else { return }
         saveNow()
-        if !chapter.nextUrl.isEmpty {
-            Task { @MainActor in
-                await load(url: chapter.nextUrl, index: chapter.index + 1)
-            }
-        } else if let neighbor = env.novels.tocNeighbor(
-            bookId: currentBook.id,
-            url: chapter.url,
-            offset: 1
-        ) {
-            let index = neighbor.index
-            Task { @MainActor in
-                await load(url: neighbor.entry.url, index: index)
-            }
+        Task { @MainActor in
+            await load(url: target.url, index: target.index)
         }
     }
 
     private func goPrevious() {
-        guard let chapter, !isLoading else { return }
+        guard !isLoading, let target = neighborTarget(offset: -1) else { return }
         saveNow()
-        if !chapter.previousUrl.isEmpty {
-            Task { @MainActor in
-                await load(url: chapter.previousUrl, index: max(0, chapter.index - 1))
-            }
-        } else if let neighbor = env.novels.tocNeighbor(
-            bookId: currentBook.id,
-            url: chapter.url,
-            offset: -1
-        ) {
-            let index = neighbor.index
-            Task { @MainActor in
-                await load(url: neighbor.entry.url, index: index)
-            }
+        Task { @MainActor in
+            await load(url: target.url, index: target.index)
         }
     }
 
     private func close() {
         saveNow()
         onClose()
+    }
+
+    /// Shows or yields the header and chapter controls. The target is the
+    /// middle of the chapter, so taps meant for text selection elsewhere do
+    /// not move the chrome.
+    private func toggleChrome() {
+        withAnimation(.easeInOut(duration: 0.22)) {
+            chromeVisible.toggle()
+        }
+    }
+
+    private var progressLabel: String {
+        "\(Int((progress * 100).rounded()))%"
     }
 
     private func openCurrentInBrowser() {
@@ -636,6 +694,31 @@ struct NovelReaderView: View {
     }
 }
 
+// MARK: - Progress bar
+
+/// The chapter's read fraction, drawn along the top of the chapter controls.
+/// It used to be a percentage tucked under the catalog button, which read as
+/// part of that button; the bar states the same thing in its natural place.
+private struct NovelReadingProgressBar: View {
+    @Environment(\.browserPalette) private var palette
+    var progress: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(palette.primaryText.opacity(0.10))
+                Capsule()
+                    .fill(palette.accent)
+                    .frame(width: CGFloat(max(0, min(1, progress))) * geo.size.width)
+            }
+        }
+        .frame(height: 2)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Progress box
 
 /// Holds the exact reading fraction without making it view state.
@@ -688,6 +771,7 @@ private struct NovelChapterWebView: UIViewRepresentable {
     var initialProgress: Double
     var isPaged: Bool
     var onProgress: (Double) -> Void
+    var onCenterTap: () -> Void
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -716,15 +800,28 @@ private struct NovelChapterWebView: UIViewRepresentable {
         webView.scrollView.isPagingEnabled = isPaged
         webView.allowsBackForwardNavigationGestures = false
 
+        // One tap recognizer for the reading surface. It does not cancel
+        // touches, so selecting text or following the copy's own links still
+        // works; the coordinate check in the handler keeps taps near the
+        // edges from moving the chrome.
+        let centerTap = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleCenterTap(_:))
+        )
+        centerTap.cancelsTouchesInView = false
+        webView.addGestureRecognizer(centerTap)
+
         context.coordinator.webView = webView
         context.coordinator.initialProgress = initialProgress
         context.coordinator.loadedHtml = html
+        context.coordinator.onCenterTap = onCenterTap
         webView.loadHTMLString(html, baseURL: nil)
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.initialProgress = initialProgress
+        context.coordinator.onCenterTap = onCenterTap
         webView.scrollView.isPagingEnabled = isPaged
         guard context.coordinator.loadedHtml != html else { return }
         context.coordinator.loadedHtml = html
@@ -733,7 +830,7 @@ private struct NovelChapterWebView: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onProgress: onProgress)
+        Coordinator(onProgress: onProgress, onCenterTap: onCenterTap)
     }
 
     static let scrollHandler = "velaNovelScroll"
@@ -772,13 +869,30 @@ private struct NovelChapterWebView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let onProgress: (Double) -> Void
+        var onCenterTap: () -> Void
         weak var webView: WKWebView?
         var loadedHtml: String?
         var initialProgress: Double = 0
         var restoredProgress = false
 
-        init(onProgress: @escaping (Double) -> Void) {
+        init(onProgress: @escaping (Double) -> Void, onCenterTap: @escaping () -> Void) {
             self.onProgress = onProgress
+            self.onCenterTap = onCenterTap
+        }
+
+        /// Toggles the chrome only for taps in the middle of the page: the
+        /// edges are where links and selection handles live.
+        @objc func handleCenterTap(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended, let view = recognizer.view else { return }
+            let point = recognizer.location(in: view)
+            let bounds = view.bounds
+            guard bounds.width > 0, bounds.height > 0 else { return }
+            let inMiddleHorizontally = point.x >= bounds.width * 0.25
+                && point.x <= bounds.width * 0.75
+            let inMiddleVertically = point.y >= bounds.height * 0.2
+                && point.y <= bounds.height * 0.8
+            guard inMiddleHorizontally && inMiddleVertically else { return }
+            onCenterTap()
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
