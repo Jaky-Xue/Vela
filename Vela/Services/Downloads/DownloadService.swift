@@ -175,7 +175,12 @@ public final class DownloadService: NSObject {
 
     /// Reconnects a background session named by UIKit.
     private func reattachBackgroundSession(identifier: String) {
-        guard let guid = SegmentedDownloadSession.guid(fromIdentifier: identifier) else { return }
+        guard let guid = SegmentedDownloadSession.guid(fromIdentifier: identifier) else {
+            // Not a session this service owns. The system is still waiting on
+            // the handler, so it is released even though there is no work.
+            BackgroundDownloadRegistry.shared.complete(identifier: identifier)
+            return
+        }
 
         if let existing = segmentedSessions[guid] {
             existing.reattach(identifier: identifier)
