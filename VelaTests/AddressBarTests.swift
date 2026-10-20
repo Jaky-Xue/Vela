@@ -523,10 +523,10 @@ final class HistoryUrlNormalizerTests: XCTestCase {
 /// screen. It is derived from the identifier string itself so it cannot drift
 /// from the string it describes; these pin the derivations.
 final class PresetSummaryTests: XCTestCase {
-    func testTheDefaultPresetSaysItIsGeneratedLive() {
+    func testTheDefaultPresetDescribesDeviceFollowing() {
         XCTAssertEqual(
             BrowserUserAgentPreset.all[0].claimedSummary,
-            "由系统的 WebKit 现场生成，随 iOS 保持最新"
+            "按当前设备自动选择：iPhone 手机版、iPad 平板版、Mac 桌面版"
         )
     }
 
