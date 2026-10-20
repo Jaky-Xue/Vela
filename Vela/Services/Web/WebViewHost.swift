@@ -148,6 +148,7 @@ struct WebViewHost: UIViewRepresentable {
 
         private var zoomedWebView: WKWebView?
         private var appliedGestureZoom: Bool?
+        private var zoomedUrl: String?
         /// The scroll view's own limits before 强制缩放 changed them, so
         /// turning the switch off restores what the page asked for.
         private var originalZoomRange: (min: CGFloat, max: CGFloat)?
@@ -158,6 +159,7 @@ struct WebViewHost: UIViewRepresentable {
             // A different web view has its own scroll view and its own zoom.
             zoomedWebView = nil
             appliedGestureZoom = nil
+            zoomedUrl = nil
             originalZoomRange = nil
 
             if let onScroll {
@@ -180,8 +182,15 @@ struct WebViewHost: UIViewRepresentable {
                 // `initial` so a tab that is already mid-load when it becomes
                 // visible reports where it actually is rather than waiting for
                 // the next change.
-                progressObservation = webView.observe(\.estimatedProgress, options: [.new, .initial]) { webView, _ in
+                progressObservation = webView.observe(\.estimatedProgress, options: [.new, .initial]) { [weak self] webView, _ in
                     let progress = webView.estimatedProgress
+                    // A new load resets WebKit's scroll view limits; drop the
+                    // cache so the next update re-establishes them.
+                    if progress <= 0.01 {
+                        self?.zoomedWebView = nil
+                        self?.appliedGestureZoom = nil
+                        self?.zoomedUrl = nil
+                    }
                     Task { @MainActor in
                         onProgress(progress)
                     }
@@ -195,7 +204,10 @@ struct WebViewHost: UIViewRepresentable {
         /// raising the keyboard re-runs the host, and touching the scroll
         /// view's zoom on each of those was what made input focus unstable.
         func applyGestureZoomIfNeeded(_ webView: WKWebView, enabled: Bool) {
-            if zoomedWebView === webView, appliedGestureZoom == enabled {
+            let url = webView.url?.absoluteString ?? ""
+            if zoomedWebView === webView,
+               appliedGestureZoom == enabled,
+               zoomedUrl == url {
                 return
             }
             let scrollView = webView.scrollView
@@ -221,6 +233,7 @@ struct WebViewHost: UIViewRepresentable {
             }
             zoomedWebView = webView
             appliedGestureZoom = enabled
+            zoomedUrl = url
         }
 
         func stopObserving() {
@@ -231,6 +244,7 @@ struct WebViewHost: UIViewRepresentable {
             observedWebView = nil
             zoomedWebView = nil
             appliedGestureZoom = nil
+            zoomedUrl = nil
             originalZoomRange = nil
             originalZoomRange = nil
         }

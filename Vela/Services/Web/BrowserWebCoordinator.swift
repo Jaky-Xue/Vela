@@ -760,25 +760,12 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     /// scroll view's limits are configured by the host when the page is
     /// displayed; this only updates the document, for a live toggle.
     public func applyForcedZoom(to webView: WKWebView) {
-        let enabled = settings.preferences.forcedZoomEnabled ?? false
-        let scrollView = webView.scrollView
-        // Re-established per document: WebKit resets the scroll view's zoom
-        // limits when the next page loads.
-        if webView.window != nil, scrollView.bounds.width > 0 {
-            if enabled {
-                scrollView.minimumZoomScale = 0.5
-                scrollView.maximumZoomScale = 3.0
-                scrollView.pinchGestureRecognizer?.isEnabled = true
-            } else {
-                if abs(scrollView.zoomScale - 1) > 0.001 {
-                    scrollView.setZoomScale(1, animated: false)
-                }
-                scrollView.minimumZoomScale = 1
-                scrollView.maximumZoomScale = 1
-            }
-        }
+        // The document side only: the host owns the scroll view's limits and
+        // re-establishes them when the page changes.
         webView.evaluateJavaScript(
-            WebPageScripts.gestureZoomViewportScript(enabled: enabled),
+            WebPageScripts.gestureZoomViewportScript(
+                enabled: settings.preferences.forcedZoomEnabled ?? false
+            ),
             completionHandler: nil
         )
     }
