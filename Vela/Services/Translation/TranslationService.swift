@@ -802,7 +802,7 @@ public final class TranslationService {
 
     private func formEncode(_ value: String) -> String {
         var allowed = CharacterSet.urlQueryAllowed
-        allowed.remove(charactersIn: "&+=?#")
+        allowed.remove(charactersIn: "%&+=?#;")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
     }
 
