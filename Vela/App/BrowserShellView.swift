@@ -1096,6 +1096,9 @@ struct BrowserShellView: View {
                         topContentInset: usesPadLayout ? 0 : (protectsTop ? 0 : safeTop),
                         topReservedInset: usesPadLayout ? 0 : (protectsTop ? safeTop : 0),
                         bottomContentInset: bottomChromeClearance,
+                        // Applied when the view is actually attached: an
+                        // off-screen web view has no zoomable geometry.
+                        zoomScale: env.settings.pageZoomScale,
                         onScroll: { offset in
                             handleScroll(offset: offset)
                         },

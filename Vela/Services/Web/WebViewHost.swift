@@ -66,6 +66,10 @@ struct WebViewHost: UIViewRepresentable {
     /// The bottom content inset: the command bar's height plus the safe area,
     /// so the page's last lines stay scrollable clear of the bar.
     let bottomContentInset: CGFloat
+    /// The forced page zoom. Applied only once the web view is attached to a
+    /// window — an off-screen scroll view has no zoomable geometry, and
+    /// setting it there was both pointless and a source of layout churn.
+    let zoomScale: Double
     /// Reports scroll offset changes so the toolbar can react without a message
     /// round-trip on every frame.
     let onScroll: ((Double) -> Void)?
@@ -108,6 +112,27 @@ struct WebViewHost: UIViewRepresentable {
         if scrollView.contentInset.bottom != bottomContentInset {
             scrollView.contentInset.bottom = bottomContentInset
             scrollView.verticalScrollIndicatorInsets.bottom = bottomContentInset
+        }
+
+        applyZoom(to: scrollView)
+    }
+
+    /// Locks the scroll view to the chosen scale.
+    ///
+    /// Both limits are set to the same value: the setting is a forced zoom,
+    /// and leaving room above it lets WebKit's automatic focus zoom move the
+    /// page again when a text field is tapped.
+    private func applyZoom(to scrollView: UIScrollView) {
+        let target = CGFloat(min(max(zoomScale, 0.5), 2.0))
+        // Raise the maximum before the minimum; a transient min > max trips an
+        // assertion inside UIScrollView.
+        if scrollView.maximumZoomScale < target {
+            scrollView.maximumZoomScale = target
+        }
+        scrollView.minimumZoomScale = target
+        scrollView.maximumZoomScale = target
+        if abs(scrollView.zoomScale - target) > 0.001 {
+            scrollView.setZoomScale(target, animated: false)
         }
     }
 

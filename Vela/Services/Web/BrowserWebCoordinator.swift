@@ -1261,12 +1261,18 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     /// is why the setting used to work on desktop pages and not on mobile
     /// ones. The visual zoom scales the rendered page uniformly on both.
     public func applyForcedZoom(to webView: WKWebView) {
-        let scale = CGFloat(settings.pageZoomScale)
+        // The host applies the zoom once the view is attached; an off-screen
+        // scroll view has no zoomable geometry.
+        guard webView.window != nil else { return }
+        let target = CGFloat(min(max(settings.pageZoomScale, 0.5), 2.0))
         let scrollView = webView.scrollView
-        scrollView.minimumZoomScale = min(0.5, scale)
-        scrollView.maximumZoomScale = max(2.0, scale)
-        if abs(scrollView.zoomScale - scale) > 0.001 {
-            scrollView.setZoomScale(scale, animated: false)
+        if scrollView.maximumZoomScale < target {
+            scrollView.maximumZoomScale = target
+        }
+        scrollView.minimumZoomScale = target
+        scrollView.maximumZoomScale = target
+        if abs(scrollView.zoomScale - target) > 0.001 {
+            scrollView.setZoomScale(target, animated: false)
         }
     }
 

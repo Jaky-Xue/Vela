@@ -368,7 +368,6 @@ public final class TabManager {
         // opened, so the ephemeral store's lifetime tracks real use.
         if !tab.isHome {
             let webView = ensureWebView(for: tab)
-            configurationProvider.applyForcedZoom(to: webView)
             if shouldFetchPage(for: tab, webView: webView) {
                 if let url = URL(string: tab.url) {
                     load(url: url, in: tab)
