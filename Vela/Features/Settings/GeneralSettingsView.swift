@@ -105,6 +105,37 @@ struct GeneralSettingsView: View {
             }
 
             Section {
+                HStack {
+                    Text("页面缩放")
+                    Spacer()
+                    Text("\(Int((env.settings.pageZoomScale * 100).rounded()))%")
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Slider(
+                    value: Binding(
+                        get: { env.settings.pageZoomScale },
+                        set: { value in
+                            env.settings.pageZoomScale = value
+                            env.tabManager.applyPageZoomToAllWebViews()
+                        }
+                    ),
+                    in: 0.5...2.0,
+                    step: 0.05
+                )
+                if env.settings.pageZoomScale != 1 {
+                    Button("恢复 100%") {
+                        env.settings.pageZoomScale = 1
+                        env.tabManager.applyPageZoomToAllWebViews()
+                    }
+                }
+            } header: {
+                Text("网页缩放")
+            } footer: {
+                Text("强制页面按所选倍率显示，不受网站自身缩放设置的影响；改动对已打开的页面立即生效，无需刷新。")
+            }
+
+            Section {
                 Toggle("全局顶部保护", isOn: Binding(
                     get: { env.settings.preferences.topProtectionEnabled },
                     set: { value in env.settings.update { $0.topProtection = value } }

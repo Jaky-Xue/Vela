@@ -32,6 +32,8 @@ private final class StubConfigurationProvider: BrowserWebViewConfigurationProvid
         BrowserWebIdentity(applicationNameForUserAgent: "VelaTests/1.0")
     }
 
+    var pageZoomScale: Double { 1 }
+
     var navigationDelegate: WKNavigationDelegate? { nil }
     var uiDelegate: WKUIDelegate? { nil }
 }

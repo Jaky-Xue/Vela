@@ -423,7 +423,8 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// install's document would fail the decode and reset every setting with
     /// it. `nil` decodes to the default, which is protection on.
     public var topProtection: Bool?
-    /// 全局背景样式：纯净、暖阳、晚霞、青柠、极光、冰川、紫雾。`nil` 是暖阳。
+    /// 全局背景样式：纯净、暖阳、晚霞、青柠、极光、冰川、紫雾、缤纷。
+    /// `nil` 是纯净。
     public var backgroundStyle: String?
     /// 底部工具栏两侧的控件，按用户拖拽的顺序保存。
     ///
@@ -458,6 +459,11 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var tabsNotRetained: Bool?
     /// 小说阅读的翻页方式：scroll 或 paged。
     public var novelPageMode: String?
+    /// 强制页面缩放：页面按这个倍率绘制，忽略网站自己的缩放设定。
+    ///
+    /// Optional for the decode reason every other new preference carries: an
+    /// absent key must not reset the rest of the document. `nil` is 100%.
+    public var pageZoomScale: Double?
 
     public init(
         searchEngine: SearchEngineSettings = .default,
@@ -502,7 +508,8 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         padToolbarTrailingItems: [String]? = nil,
         historyNotRetained: Bool? = nil,
         tabsNotRetained: Bool? = nil,
-        novelPageMode: String? = nil
+        novelPageMode: String? = nil,
+        pageZoomScale: Double? = nil
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -547,6 +554,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.historyNotRetained = historyNotRetained
         self.tabsNotRetained = tabsNotRetained
         self.novelPageMode = novelPageMode
+        self.pageZoomScale = pageZoomScale
     }
 
     /// The resolved switch: protection is on unless explicitly turned off.

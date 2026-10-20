@@ -754,73 +754,86 @@ struct BrowserShellView: View {
     /// surface plus the user's leading controls, the address field, and the
     /// user's trailing controls plus the menu. The gaps are what divide the
     /// bar that used to read as one long slab.
+    ///
+    /// The field's width is stated here rather than left to an `HStack`. The
+    /// field is a bridged `UITextField`, and a text field answers a size query
+    /// with a width of its own — after the home picture loads, the ink update
+    /// re-measures the bar, and the answer was a width close to the whole
+    /// bar. Taken at face value, the row grew wider than the screen: the
+    /// sidebar and back buttons were pushed off the leading edge and the menu
+    /// off the trailing one, with the field filling everything between, and in
+    /// portrait the whole row was clipped down to a band of empty glass. A
+    /// width this layout computes cannot drift.
     private var padTopBarContent: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 2) {
-                chromeButton(
-                    symbol: "sidebar.left",
-                    isEnabled: true,
-                    label: showPadSidebar ? "收起标签页侧边栏" : "显示标签页侧边栏",
-                    foreground: padInk
-                ) {
-                    withAnimation(.snappy(duration: 0.26)) {
-                        showPadSidebar.toggle()
+        GeometryReader { geo in
+            let leadingWidth = Self.padClusterWidth(controlCount: padToolbarLayout.leading.count + 1)
+            let trailingWidth = Self.padClusterWidth(controlCount: padToolbarLayout.trailing.count + 1)
+            // The bar's own 12-point margins and the two 6-point gaps between
+            // its pieces come out first; whatever is left is the field's.
+            let fieldWidth = max(
+                64,
+                geo.size.width - 24 - leadingWidth - trailingWidth - 12
+            )
+
+            HStack(spacing: 6) {
+                HStack(spacing: 2) {
+                    chromeButton(
+                        symbol: "sidebar.left",
+                        isEnabled: true,
+                        label: showPadSidebar ? "收起标签页侧边栏" : "显示标签页侧边栏",
+                        foreground: padInk
+                    ) {
+                        withAnimation(.snappy(duration: 0.26)) {
+                            showPadSidebar.toggle()
+                        }
+                    }
+
+                    ForEach(padToolbarLayout.leading) { control in
+                        padToolbarControl(control)
                     }
                 }
+                .padding(.horizontal, 4)
+                .frame(height: BrowserChrome.barHeight)
+                .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
 
-                ForEach(padToolbarLayout.leading) { control in
-                    padToolbarControl(control)
+                OmniboxView(
+                    viewModel: omnibox,
+                    isLoading: activeTab?.isLoading ?? false,
+                    progress: activeTab?.estimatedProgress ?? 0,
+                    placeholder: omniboxPlaceholder,
+                    onReload: reloadActiveTab,
+                    onStop: {
+                        guard let tab = activeTab else { return }
+                        tabManager.stopLoading(tab: tab)
+                    },
+                    foregroundOverride: padInk
+                )
+                .frame(width: fieldWidth)
+
+                HStack(spacing: 2) {
+                    ForEach(padToolbarLayout.trailing) { control in
+                        padToolbarControl(control)
+                    }
+
+                    chromeButton(
+                        symbol: "ellipsis",
+                        isEnabled: true,
+                        label: "菜单",
+                        foreground: padInk
+                    ) {
+                        showMenu = true
+                    }
                 }
+                .padding(.horizontal, 4)
+                .frame(height: BrowserChrome.barHeight)
+                .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
             }
-            .padding(.horizontal, 4)
-            .frame(height: BrowserChrome.barHeight)
-            .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
-            // The two clusters are fixed-size; only the field is
-            // flexible. Without the priority the field can take the
-            // width before the clusters are asked for theirs, which
-            // pushes them off the edges of the bar.
-            .layoutPriority(1)
-
-            OmniboxView(
-                viewModel: omnibox,
-                isLoading: activeTab?.isLoading ?? false,
-                progress: activeTab?.estimatedProgress ?? 0,
-                placeholder: omniboxPlaceholder,
-                onReload: reloadActiveTab,
-                onStop: {
-                    guard let tab = activeTab else { return }
-                    tabManager.stopLoading(tab: tab)
-                },
-                foregroundOverride: padInk
-            )
-            .frame(maxWidth: .infinity)
-
-            HStack(spacing: 2) {
-                ForEach(padToolbarLayout.trailing) { control in
-                    padToolbarControl(control)
-                }
-
-                chromeButton(
-                    symbol: "ellipsis",
-                    isEnabled: true,
-                    label: "菜单",
-                    foreground: padInk
-                ) {
-                    showMenu = true
-                }
-            }
-            .padding(.horizontal, 4)
-            .frame(height: BrowserChrome.barHeight)
-            .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
-            // The two clusters are fixed-size; only the field is
-            // flexible. Without the priority the field can take the
-            // width before the clusters are asked for theirs, which
-            // pushes them off the edges of the bar.
-            .layoutPriority(1)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+            .frame(width: geo.size.width, height: Self.padTopBarHeight, alignment: .top)
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
+        .frame(height: Self.padTopBarHeight)
         // Safari-like gestures on the bar itself: an upward flick tucks the
         // top bar (and the bookmarks strip) away; a downward flick returns to
         // the home surface.
@@ -836,6 +849,15 @@ struct BrowserShellView: View {
                     }
                 }
         )
+    }
+
+    /// The width one of the iPad bar's fixed clusters takes: four points of
+    /// padding either side, a 34-point button per control, and two points
+    /// between them. Every control in both clusters is drawn at 34 points, so
+    /// the number is exact rather than an estimate.
+    private static func padClusterWidth(controlCount: Int) -> CGFloat {
+        let count = max(controlCount, 1)
+        return 8 + CGFloat(count) * 34 + CGFloat(count - 1) * 2
     }
 
     @ViewBuilder

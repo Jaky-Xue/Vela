@@ -35,6 +35,8 @@ public protocol BrowserWebViewConfigurationProviding: AnyObject {
     /// appends it to its own, and the override is set on the web view; that split
     /// is why this returns a recipe rather than one string.
     func webIdentity(for tab: BrowserTabState) -> BrowserWebIdentity
+    /// The factor every page is drawn at, forced by 网页缩放.
+    var pageZoomScale: Double { get }
     /// The delegates a tab's web view reports to.
     ///
     /// WebKit holds both weakly, so whatever this returns has to be owned
@@ -548,6 +550,7 @@ public final class TabManager {
         let webView = WKWebView(frame: .zero, configuration: configuration)
 
         webView.customUserAgent = configurationProvider.webIdentity(for: tab).customUserAgent
+        webView.pageZoom = CGFloat(configurationProvider.pageZoomScale)
 
         // Without these the web view reports nothing: no `didFinish`, so back
         // and forward never become available; no title, URL or progress; no
@@ -635,6 +638,22 @@ public final class TabManager {
         }
         tab.isLoading = false
         tab.pendingUrl = ""
+    }
+
+    /// Re-applies the forced page zoom to every live web view.
+    ///
+    /// `pageZoom` belongs to the web view rather than to the document, so a
+    /// view that is open keeps the factor across navigations. Setting it here
+    /// makes a change visible on the page in front of the user without a
+    /// reload, and on backgrounded tabs before they are switched back to.
+    public func applyPageZoomToAllWebViews() {
+        let scale = CGFloat(configurationProvider.pageZoomScale)
+        for tab in tabs {
+            guard let webView = webViews[tab.id] else { continue }
+            if abs(webView.pageZoom - scale) > 0.001 {
+                webView.pageZoom = scale
+            }
+        }
     }
 
     /// Re-applies the `User-Agent` to every live web view.

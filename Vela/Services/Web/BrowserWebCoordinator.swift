@@ -733,6 +733,10 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         )
     }
 
+    /// The forced page zoom, read from the preference so a new web view and a
+    /// live one cannot disagree about the factor.
+    public var pageZoomScale: Double { settings.pageZoomScale }
+
     /// The coordinator is both of these; WebKit holds them weakly, and the app
     /// environment is what keeps it alive.
     public var navigationDelegate: WKNavigationDelegate? { self }
