@@ -48,6 +48,11 @@ public final class WebPageOverlays {
     /// Element picker mode. Armed by the shell, consumed on the next pick.
     public var isElementPickerArmed = false
 
+    /// Commands the active page's user scripts registered with
+    /// `GM_registerMenuCommand`. The menu panel lists them; they are cleared
+    /// when the page navigates, because the functions live in that document.
+    public var userScriptMenuCommands: [UserScriptMenuCommand] = []
+
     /// `alert` / `confirm` / `prompt` completion handlers.
     ///
     /// WebKit blocks the page on these, so the handler is held until the user

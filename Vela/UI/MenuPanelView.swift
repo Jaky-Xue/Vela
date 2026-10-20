@@ -36,6 +36,10 @@ struct MenuPanelView: View {
     var pageTitle: String
     var onPerform: (VelaMenuAction) -> Void
     var onOpenShortcut: (MenuShortcut) -> Void
+    /// Commands the active page's user scripts registered with
+    /// `GM_registerMenuCommand`.
+    var scriptCommands: [UserScriptMenuCommand] = []
+    var onRunScriptCommand: (UserScriptMenuCommand) -> Void = { _ in }
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 5)
 
@@ -54,19 +58,26 @@ struct MenuPanelView: View {
             // pulling the panel taller reveals them — the content adapts to
             // the detent instead of leaving a lake under a short grid.
             ScrollView {
-                if tiles.isEmpty {
-                    Text("菜单项已全部隐藏，可在 设置 ▸ 菜单面板 中恢复。")
-                        .font(.footnote)
-                        .foregroundStyle(palette.secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, BrowserSpacing.loose)
-                } else {
-                    LazyVGrid(columns: columns, spacing: BrowserSpacing.regular + 2) {
-                        ForEach(tiles) { tile in
-                            menuItem(tile)
+                VStack(alignment: .leading, spacing: 0) {
+                    if tiles.isEmpty {
+                        Text("菜单项已全部隐藏，可在 设置 ▸ 菜单面板 中恢复。")
+                            .font(.footnote)
+                            .foregroundStyle(palette.secondaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, BrowserSpacing.loose)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: BrowserSpacing.regular + 2) {
+                            ForEach(tiles) { tile in
+                                menuItem(tile)
+                            }
                         }
+                        .padding(.bottom, BrowserSpacing.compact)
                     }
-                    .padding(.bottom, BrowserSpacing.compact)
+
+                    if !scriptCommands.isEmpty {
+                        scriptCommandList
+                            .padding(.bottom, BrowserSpacing.compact)
+                    }
                 }
             }
             .padding(.horizontal, BrowserSpacing.regular)
@@ -75,6 +86,44 @@ struct MenuPanelView: View {
         .browserSurfaceBackground(opacity: 0.72)
         .presentationDetents([.height(330), .large])
         .presentationDragIndicator(.hidden)
+    }
+
+    private var scriptCommandList: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("用户脚本")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(palette.secondaryText)
+
+            ForEach(scriptCommands) { command in
+                Button {
+                    onRunScriptCommand(command)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "curlybraces")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(palette.accent)
+                        Text(command.name)
+                            .font(.footnote)
+                            .foregroundStyle(palette.primaryText)
+                            .lineLimit(1)
+                        Spacer(minLength: 6)
+                        if !command.scriptName.isEmpty {
+                            Text(command.scriptName)
+                                .font(.caption2)
+                                .foregroundStyle(palette.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(
+                        palette.controlFill.opacity(0.65),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var headerRow: some View {

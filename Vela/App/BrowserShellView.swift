@@ -576,7 +576,12 @@ struct BrowserShellView: View {
                 adBlockEnabled: env.settings.adBlockSettings.preferences.enabled,
                 pageTitle: menuPanelTitle,
                 onPerform: handleMenuAction,
-                onOpenShortcut: handleMenuShortcut
+                onOpenShortcut: handleMenuShortcut,
+                scriptCommands: activeUserScriptCommands,
+                onRunScriptCommand: { command in
+                    showMenu = false
+                    env.webCoordinator.runUserScriptMenuCommand(command)
+                }
             )
             .environment(env)
             .browserAmbientSheet()
@@ -2089,6 +2094,12 @@ struct BrowserShellView: View {
     private var canActOnPage: Bool {
         guard let tab = activeTab, !tab.isHome else { return false }
         return tabManager.webView(for: tab.id) != nil
+    }
+
+    /// Commands the active page's scripts registered, for the menu panel.
+    private var activeUserScriptCommands: [UserScriptMenuCommand] {
+        guard let tab = activeTab else { return [] }
+        return env.overlays.userScriptMenuCommands.filter { $0.tabId == tab.id }
     }
 
     /// What the menu panel's header names as its subject.

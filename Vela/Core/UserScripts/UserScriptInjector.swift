@@ -12,6 +12,13 @@
 //  the same tick therefore sees its own write, which is the behaviour scripts
 //  actually depend on.
 //
+//  Asynchronous grants — GM_xmlhttpRequest, GM_fetch, GM_cookie, GM_openInTab,
+//  GM_download and the per-tab store — keep a resolver in
+//  `window.__velaUserScriptBridge.resolvers`, keyed by script and request id.
+//  The host evaluates `__velaUserScriptBridge.resolve(scriptId, requestId,
+//  payload)` when the native side has an answer. The bridge is shared by every
+//  script on the page; each script gets its own resolver table.
+//
 
 import Foundation
 import WebKit
@@ -27,12 +34,15 @@ public enum UserScriptInjector {
     /// Builds the `WKUserScript` set for one navigation.
     ///
     /// - Parameter valuesByScriptId: the GM_ store snapshot per script id.
+    /// - Parameter tabId: the tab the page belongs to, used by the per-tab
+    ///   `GM_getTab` / `GM_saveTab` store.
     /// - Returns: scripts ready to attach to a `WKUserContentController`, plus a
     ///   summary of what was injected.
     public static func makeUserScripts(
         for scripts: [InstalledUserScriptState],
         url: URL,
-        valuesByScriptId: [String: [String: String]]
+        valuesByScriptId: [String: [String: String]],
+        tabId: String = ""
     ) -> (scripts: [WKUserScript], summary: UserScriptInjectionSummary) {
         var built: [WKUserScript] = []
         var failed: [String] = []
@@ -43,7 +53,8 @@ public enum UserScriptInjector {
             let values = valuesByScriptId[script.id] ?? [:]
             let source = bootstrapSource(
                 for: script,
-                valuesJSON: encodeValues(values)
+                valuesJSON: encodeValues(values),
+                tabId: tabId
             )
 
             let injectionTime: WKUserScriptInjectionTime =
@@ -77,7 +88,7 @@ public enum UserScriptInjector {
         return (built, summary)
     }
 
-    /// The metadata snapshot the injected `GM_info` reports.
+    /// The value snapshot the injected `GM_info` reports.
     private static func encodeValues(_ values: [String: String]) -> String {
         // Values are stored as JSON strings; the snapshot re-parses them so the
         // page receives real objects rather than double-encoded strings.
@@ -98,40 +109,91 @@ public enum UserScriptInjector {
     }
 
     /// Wraps a script body in the GM bridge.
-    private static func bootstrapSource(for script: InstalledUserScriptState, valuesJSON: String) -> String {
+    private static func bootstrapSource(
+        for script: InstalledUserScriptState,
+        valuesJSON: String,
+        tabId: String
+    ) -> String {
         let supportedGrants = script.grants
             .filter { $0.isSupportedByVela && $0 != .none }
             .map(\.rawValue)
-        let grantsJSON = (try? JSONSerialization.data(withJSONObject: supportedGrants))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        let grantsJSON = jsonObject(supportedGrants)
 
-        let resourcesJSON: String = {
-            var map: [String: String] = [:]
-            for resource in script.resources {
+        let resourcesJSON = jsonObject(
+            script.resources.reduce(into: [String: String]()) { map, resource in
                 map[resource.name] = resource.text
             }
-            guard let data = try? JSONSerialization.data(withJSONObject: map),
-                  let json = String(data: data, encoding: .utf8) else { return "{}" }
-            return json
-        }()
+        )
+        let resourceURLsJSON = jsonObject(
+            script.resources.reduce(into: [String: String]()) { map, resource in
+                if let base64 = resource.contentBase64, !base64.isEmpty {
+                    map[resource.name] = "data:\(resource.mimeType);base64,\(base64)"
+                } else {
+                    let mime = resource.mimeType.isEmpty ? "text/plain" : resource.mimeType
+                    let base64 = Data(resource.text.utf8).base64EncodedString()
+                    map[resource.name] = "data:\(mime);base64,\(base64)"
+                }
+            }
+        )
+        let requireURLsJSON = jsonObject(script.requireUrls)
+        let requiresBlock = script.requireSources.enumerated().map { index, source in
+            """
+            try {
+            \(source)
+            } catch (requireError) {
+              api.GM_log('@require \(index + 1) 执行出错：' + requireError);
+            }
+            """
+        }.joined(separator: "\n")
 
         return """
         (function () {
-          'use strict';
-
           var SCRIPT_ID = \(jsonString(script.id));
+          var TAB_ID = \(jsonString(tabId));
           var SCRIPT_NAME = \(jsonString(script.displayName));
           var SCRIPT_VERSION = \(jsonString(script.version));
           var SCRIPT_NAMESPACE = \(jsonString(script.namespace));
           var SCRIPT_DESCRIPTION = \(jsonString(script.description));
+          var SCRIPT_UPDATE_URL = \(jsonString(script.updateUrl));
+          var SCRIPT_DOWNLOAD_URL = \(jsonString(script.downloadUrl));
+          var SCRIPT_RUN_AT = \(jsonString(script.runAt.rawValue));
           var GRANTS = \(grantsJSON);
           var RESOURCES = \(resourcesJSON);
+          var RESOURCE_URLS = \(resourceURLsJSON);
+          var REQUIRE_URLS = \(requireURLsJSON);
 
-          // The value snapshot. Reads are local; writes go through the bridge
-          // and also update the local copy so a read-after-write in the same
-          // tick returns what the script just set.
           var valueStore = \(valuesJSON);
           var valueListeners = {};
+
+          // Every script on the page shares this object. Each script has its
+          // own resolver table, so an answer is delivered to the script that
+          // asked even when several scripts use GM_xmlhttpRequest at once.
+          window.\(bridgeGlobalName) = window.\(bridgeGlobalName) || {};
+          var bridge = window.\(bridgeGlobalName);
+          bridge.resolvers = bridge.resolvers || {};
+          bridge.resolvers[SCRIPT_ID] = bridge.resolvers[SCRIPT_ID] || {};
+          bridge.menuCommands = bridge.menuCommands || {};
+          if (typeof bridge.resolve !== 'function') {
+            bridge.resolve = function (scriptId, requestId, payload) {
+              var table = bridge.resolvers[scriptId] || {};
+              var resolver = table[requestId];
+              if (!resolver) { return; }
+              delete table[requestId];
+              try {
+                resolver(payload || {});
+              } catch (_error) {
+              }
+            };
+          }
+
+          function newRequestId(prefix) {
+            return prefix + '-' + Date.now().toString(36) + '-' +
+              Math.random().toString(36).slice(2);
+          }
+
+          function expectResolution(requestId, resolver) {
+            bridge.resolvers[SCRIPT_ID][requestId] = resolver;
+          }
 
           function post(message) {
             try {
@@ -165,6 +227,68 @@ public enum UserScriptInjector {
             }
           }
 
+          function parseResponseHeaders(raw) {
+            var result = {};
+            var lines = String(raw || '').split(/\\r?\\n/);
+            for (var i = 0; i < lines.length; i++) {
+              var line = lines[i];
+              if (!line) { continue; }
+              var separator = line.indexOf(':');
+              if (separator <= 0) { continue; }
+              result[line.slice(0, separator).trim()] = line.slice(separator + 1).trim();
+            }
+            return result;
+          }
+
+          function bytesFromBase64(base64) {
+            try {
+              var binary = atob(base64 || '');
+              var bytes = new Uint8Array(binary.length);
+              for (var i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+              }
+              return bytes;
+            } catch (_error) {
+              return new Uint8Array(0);
+            }
+          }
+
+          function responseValue(details, payload) {
+            var type = details.responseType || '';
+            var text = payload.responseText || '';
+            var bytes = payload.responseBase64 ? bytesFromBase64(payload.responseBase64) : null;
+            if (type === 'arraybuffer') {
+              var buffer = bytes
+                ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+                : new ArrayBuffer(0);
+              return { response: buffer, responseText: '' };
+            }
+            if (type === 'blob') {
+              return {
+                response: new Blob([bytes || new Uint8Array(0)], { type: payload.mimeType || '' }),
+                responseText: ''
+              };
+            }
+            if (type === 'json') {
+              try {
+                return { response: JSON.parse(text), responseText: text };
+              } catch (_error) {
+                return { response: null, responseText: text };
+              }
+            }
+            if (type === 'document') {
+              try {
+                return {
+                  response: new DOMParser().parseFromString(text, payload.mimeType || 'text/html'),
+                  responseText: text
+                };
+              } catch (_error) {
+                return { response: null, responseText: text };
+              }
+            }
+            return { response: text, responseText: text };
+          }
+
           var api = {};
 
           api.GM_info = {
@@ -174,10 +298,15 @@ public enum UserScriptInjector {
               version: SCRIPT_VERSION,
               description: SCRIPT_DESCRIPTION,
               matches: \(jsonString(script.matches.joined(separator: ","))).split(',').filter(Boolean),
-              grant: GRANTS
+              grant: GRANTS,
+              require: REQUIRE_URLS,
+              resources: Object.keys(RESOURCES),
+              updateURL: SCRIPT_UPDATE_URL,
+              downloadURL: SCRIPT_DOWNLOAD_URL,
+              runAt: SCRIPT_RUN_AT
             },
             scriptHandler: 'Vela',
-            version: '3.7.4',
+            version: '1.0',
             platform: { browserName: 'Vela', version: '1.0' }
           };
 
@@ -254,6 +383,16 @@ public enum UserScriptInjector {
           };
 
           api.GM_addElement = function (tag, attributes, parent) {
+            // Tampermonkey has two signatures: (tag, attributes, parent) and
+            // (parent, tagName, attributes). The first argument being an
+            // element is how the second is recognized.
+            if (tag && typeof tag === 'object' && tag.nodeType === 1) {
+              return api.GM_addElement(
+                String(attributes || 'div'),
+                parent && typeof parent === 'object' ? parent : null,
+                tag
+              );
+            }
             var element = document.createElement(String(tag));
             if (attributes) {
               for (var key in attributes) {
@@ -274,16 +413,24 @@ public enum UserScriptInjector {
           };
 
           api.GM_getResourceURL = function (name) {
-            return Object.prototype.hasOwnProperty.call(RESOURCES, name) ? RESOURCES[name] : null;
+            return Object.prototype.hasOwnProperty.call(RESOURCE_URLS, name)
+              ? RESOURCE_URLS[name]
+              : null;
           };
 
           api.GM_log = function () {
-            try { console.log.apply(console, [SCRIPT_NAME + ':'].concat(Array.prototype.slice.call(arguments))); }
-            catch (_error) {}
+            try {
+              console.log.apply(console, [SCRIPT_NAME + ':'].concat(Array.prototype.slice.call(arguments)));
+            } catch (_error) {}
           };
 
           api.GM_setClipboard = function (data, type) {
-            post({ type: 'setClipboard', scriptId: SCRIPT_ID, text: String(data), mimeType: type || 'text/plain' });
+            post({
+              type: 'setClipboard',
+              scriptId: SCRIPT_ID,
+              text: String(data),
+              mimeType: type || 'text/plain'
+            });
           };
 
           api.GM_notification = function (text, title, options) {
@@ -299,41 +446,268 @@ public enum UserScriptInjector {
 
           api.GM_registerMenuCommand = function (name, fn, accessKey) {
             var commandId = 'cmd-' + Math.random().toString(36).slice(2);
-            window.\(bridgeGlobalName) = window.\(bridgeGlobalName) || {};
-            window.\(bridgeGlobalName).menuCommands = window.\(bridgeGlobalName).menuCommands || {};
-            window.\(bridgeGlobalName).menuCommands[commandId] = fn;
+            bridge.menuCommands[commandId] = fn;
             post({
               type: 'registerMenuCommand',
               scriptId: SCRIPT_ID,
               commandId: commandId,
               name: String(name),
-              accessKey: String(accessKey || '')
+              accessKey: String(accessKey || ''),
+              scriptName: SCRIPT_NAME
             });
             return commandId;
           };
 
           api.GM_unregisterMenuCommand = function (commandId) {
-            if (window.\(bridgeGlobalName) && window.\(bridgeGlobalName).menuCommands) {
-              delete window.\(bridgeGlobalName).menuCommands[commandId];
+            delete bridge.menuCommands[commandId];
+            post({
+              type: 'unregisterMenuCommand',
+              scriptId: SCRIPT_ID,
+              commandId: String(commandId)
+            });
+          };
+
+          api.GM_openInTab = function (url, options) {
+            var active = true;
+            if (typeof options === 'boolean') {
+              active = options;
+            } else if (options && typeof options === 'object' && options.active === false) {
+              active = false;
             }
-            post({ type: 'unregisterMenuCommand', scriptId: SCRIPT_ID, commandId: String(commandId) });
+            post({
+              type: 'openInTab',
+              scriptId: SCRIPT_ID,
+              url: String(url || ''),
+              active: !!active
+            });
+            return {
+              close: function () {},
+              closed: false,
+              onclose: null
+            };
+          };
+
+          api.GM_download = function (details, onload, onerror) {
+            if (typeof details === 'string') { details = { url: details }; }
+            details = details || {};
+            var requestId = newRequestId('download');
+            expectResolution(requestId, function (payload) {
+              if (payload.error) {
+                try {
+                  if (details.onerror) { details.onerror(payload.error); }
+                  if (onerror) { onerror(payload.error); }
+                } catch (_error) {}
+                return;
+              }
+              var result = { id: payload.taskId || '', finalUrl: details.url };
+              try {
+                if (details.onload) { details.onload(result); }
+                if (onload) { onload(result); }
+              } catch (_error) {}
+            });
+            post({
+              type: 'download',
+              scriptId: SCRIPT_ID,
+              requestId: requestId,
+              url: String(details.url || ''),
+              name: String(details.name || '')
+            });
+          };
+
+          api.GM_cookie = function (action, details, callback) {
+            if (typeof action === 'object') {
+              return api.GM_cookie.list(action, details);
+            }
+            var requestId = newRequestId('cookie');
+            var verb = String(action || 'list');
+            expectResolution(requestId, function (payload) {
+              try {
+                if (verb === 'list') {
+                  if (callback) { callback(payload.cookies || [], payload.error || null); }
+                } else if (callback) {
+                  callback(payload.error || null);
+                }
+              } catch (_error) {}
+            });
+            post({
+              type: 'cookie',
+              scriptId: SCRIPT_ID,
+              requestId: requestId,
+              action: verb,
+              details: details || {}
+            });
+          };
+          api.GM_cookie.list = function (details, callback) {
+            return api.GM_cookie('list', details, callback);
+          };
+          api.GM_cookie.set = function (details, callback) {
+            return api.GM_cookie('set', details, callback);
+          };
+          api.GM_cookie.delete = function (details, callback) {
+            return api.GM_cookie('delete', details, callback);
+          };
+
+          api.GM_getTab = function (callback) {
+            var requestId = newRequestId('tab');
+            expectResolution(requestId, function (payload) {
+              var value = null;
+              try { value = payload.json ? JSON.parse(payload.json) : null; } catch (_error) {}
+              try { if (callback) { callback(value); } } catch (_error) {}
+            });
+            post({ type: 'getTab', scriptId: SCRIPT_ID, requestId: requestId, tabId: TAB_ID });
+          };
+
+          api.GM_saveTab = function (value) {
+            var json = 'null';
+            try { json = JSON.stringify(value); } catch (_error) {}
+            post({ type: 'saveTab', scriptId: SCRIPT_ID, tabId: TAB_ID, json: json });
+          };
+
+          api.GM_getTabs = function (callback) {
+            var requestId = newRequestId('tabs');
+            expectResolution(requestId, function (payload) {
+              var result = {};
+              var tabs = payload.tabs || {};
+              for (var key in tabs) {
+                if (!Object.prototype.hasOwnProperty.call(tabs, key)) { continue; }
+                try { result[key] = JSON.parse(tabs[key]); } catch (_error) { result[key] = null; }
+              }
+              try { if (callback) { callback(result); } } catch (_error) {}
+            });
+            post({ type: 'getTabs', scriptId: SCRIPT_ID, requestId: requestId });
+          };
+
+          api.GM_xmlhttpRequest = function (details) {
+            details = details || {};
+            var requestId = newRequestId('xhr');
+            var headers = details.headers || {};
+            var data = details.data;
+            if (data && typeof data === 'object' && !(data instanceof ArrayBuffer)) {
+              var pairs = [];
+              for (var key in data) {
+                if (!Object.prototype.hasOwnProperty.call(data, key)) { continue; }
+                pairs.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
+              }
+              data = pairs.join('&');
+              if (!headers['Content-Type'] && !headers['content-type']) {
+                headers['Content-Type'] = 'application/x-www-form-urlencoded';
+              }
+            }
+            var handle = {
+              abort: function () {
+                post({ type: 'xhrAbort', scriptId: SCRIPT_ID, requestId: requestId });
+              }
+            };
+            expectResolution(requestId, function (payload) {
+              var values = responseValue(details, payload);
+              var response = {
+                readyState: 4,
+                status: payload.status || 0,
+                statusText: payload.statusText || '',
+                responseHeaders: payload.responseHeaders || '',
+                responseText: values.responseText,
+                response: values.response,
+                finalUrl: payload.finalUrl || details.url
+              };
+              try {
+                if (payload.aborted) {
+                  if (details.onabort) { details.onabort(response); }
+                  return;
+                }
+                if (payload.timeout) {
+                  if (details.ontimeout) { details.ontimeout(response); }
+                  return;
+                }
+                if (payload.error) {
+                  if (details.onerror) { details.onerror(response); }
+                  return;
+                }
+                if (details.onreadystatechange) { details.onreadystatechange(response); }
+                if (details.onload) { details.onload(response); }
+              } catch (_error) {}
+            });
+            post({
+              type: 'xhr',
+              scriptId: SCRIPT_ID,
+              requestId: requestId,
+              method: String(details.method || 'GET').toUpperCase(),
+              url: String(details.url || ''),
+              headers: headers,
+              data: typeof data === 'string' ? data : '',
+              responseType: details.responseType || '',
+              timeout: Number(details.timeout) || 0,
+              anonymous: !!details.anonymous,
+              user: details.user || '',
+              password: details.password || ''
+            });
+            return handle;
+          };
+
+          api.GM_fetch = function (input, init) {
+            return new Promise(function (resolve, reject) {
+              var url = typeof input === 'string' ? input : ((input && input.url) || '');
+              var method = (init && init.method) || (input && input.method) || 'GET';
+              var headers = {};
+              var sourceHeaders = (init && init.headers) || (input && input.headers);
+              if (sourceHeaders) {
+                if (Array.isArray(sourceHeaders)) {
+                  for (var i = 0; i < sourceHeaders.length; i++) {
+                    headers[sourceHeaders[i][0]] = sourceHeaders[i][1];
+                  }
+                } else if (typeof sourceHeaders.forEach === 'function') {
+                  sourceHeaders.forEach(function (value, key) { headers[key] = value; });
+                } else {
+                  for (var key in sourceHeaders) {
+                    if (Object.prototype.hasOwnProperty.call(sourceHeaders, key)) {
+                      headers[key] = String(sourceHeaders[key]);
+                    }
+                  }
+                }
+              }
+              var handle = api.GM_xmlhttpRequest({
+                method: method,
+                url: url,
+                headers: headers,
+                data: init && init.body,
+                responseType: 'arraybuffer',
+                onload: function (response) {
+                  try {
+                    resolve(new Response(response.response, {
+                      // A data: or local response has status 0, which the
+                      // Response constructor rejects; those are successes.
+                      status: response.status || 200,
+                      statusText: response.statusText,
+                      headers: parseResponseHeaders(response.responseHeaders)
+                    }));
+                  } catch (error) {
+                    reject(error);
+                  }
+                },
+                onerror: function () { reject(new TypeError('Failed to fetch')); },
+                ontimeout: function () { reject(new TypeError('Network timeout')); },
+                onabort: function () { reject(new DOMException('Aborted', 'AbortError')); }
+              });
+              var signal = init && init.signal;
+              if (signal && typeof signal.addEventListener === 'function') {
+                signal.addEventListener('abort', function () {
+                  if (handle && typeof handle.abort === 'function') { handle.abort(); }
+                });
+              }
+            });
           };
 
           // Grants Vela cannot honour are present but inert, so a script that
           // feature-detects instead of trusting @grant takes the fallback path
           // rather than throwing a ReferenceError on the first call.
-          var unsupported = [];
           function defineUnsupported(name) {
             if (Object.prototype.hasOwnProperty.call(api, name)) { return; }
-            unsupported.push(name);
             api[name] = function () {
               api.GM_log(name + ' 在 iOS 上不可用（WebKit 不提供该能力）。');
               return null;
             };
           }
-          ['GM_xmlhttpRequest', 'GM_fetch', 'GM_download', 'GM_openInTab',
-           'GM_getTab', 'GM_saveTab', 'GM_getTabs',
-           'GM_cookie', 'GM_cookieSet', 'GM_cookieDelete'].forEach(defineUnsupported);
+          ['GM_EX_getSearchEngines', 'GM_EX_getAppSearchEngineUrl', 'GM_EX_TTS',
+           'GM_EX_ShareTextToApp', 'GM_EX_sniffMedia'].forEach(defineUnsupported);
 
           // Scripts reach the API either as bare globals (the common case) or
           // through the bridge object. Both are provided.
@@ -341,14 +715,47 @@ public enum UserScriptInjector {
             if (!Object.prototype.hasOwnProperty.call(api, name)) { continue; }
             try { window[name] = api[name]; } catch (_error) {}
           }
-          window.\(bridgeGlobalName) = window.\(bridgeGlobalName) || {};
-          window.\(bridgeGlobalName).api = api;
-          window.\(bridgeGlobalName).values = valueStore;
+          bridge.api = api;
+          bridge.values = valueStore;
 
           // `unsafeWindow` is the page's own window object. In a WKUserScript
           // the injected world shares the page's globals, so this is an alias
           // rather than the isolation-bypass it is in Firefox.
           try { window.unsafeWindow = window; } catch (_error) {}
+
+          // `window.onurlchange` is opt-in through @grant in Tampermonkey.
+          (function () {
+            var lastUrl = String(window.location.href || '');
+            function report() {
+              var nextUrl = String(window.location.href || '');
+              if (nextUrl === lastUrl) { return; }
+              lastUrl = nextUrl;
+              try {
+                if (typeof window.onurlchange === 'function') {
+                  window.onurlchange({ url: nextUrl });
+                }
+              } catch (_error) {}
+            }
+            try {
+              var pushState = window.history.pushState;
+              window.history.pushState = function () {
+                var result = pushState.apply(window.history, arguments);
+                report();
+                return result;
+              };
+              var replaceState = window.history.replaceState;
+              window.history.replaceState = function () {
+                var result = replaceState.apply(window.history, arguments);
+                report();
+                return result;
+              };
+              window.addEventListener('popstate', report);
+              window.addEventListener('hashchange', report);
+            } catch (_error) {}
+          })();
+
+          // @require dependencies, in declaration order, before the script.
+        \(requiresBlock)
 
           try {
             (function () {
@@ -375,5 +782,14 @@ public enum UserScriptInjector {
         }
         // `["x"]` → `"x"`
         return String(array.dropFirst().dropLast())
+    }
+
+    /// JSON-encodes any JSON-serializable value.
+    private static func jsonObject(_ value: Any) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: value),
+              let json = String(data: data, encoding: .utf8) else {
+            return "null"
+        }
+        return json
     }
 }

@@ -63,6 +63,12 @@ public final class SettingsService {
         didSet { persist(navigationDiagnostics, key: Key.navigationDiagnostics) }
     }
 
+    /// The user-script manager's own document: automatic update checks and
+    /// the time the last full pass ran.
+    public private(set) var userScriptSettings: UserScriptSettings {
+        didSet { persist(userScriptSettings, key: Key.userScripts) }
+    }
+
     /// The provider, credential and target language page translation uses.
     ///
     /// A document of its own for the same reason as the three above: a new
@@ -92,6 +98,11 @@ public final class SettingsService {
         self.translationSettings = Self.load(
             TranslationSettings.self,
             key: Key.translation,
+            from: defaults
+        ) ?? .default
+        self.userScriptSettings = Self.load(
+            UserScriptSettings.self,
+            key: Key.userScripts,
             from: defaults
         ) ?? .default
         // An unknown or absent value follows the system, which is the only
@@ -154,6 +165,13 @@ public final class SettingsService {
         var copy = translationSettings
         mutate(&copy)
         translationSettings = copy
+    }
+
+    public func updateUserScriptSettings(_ mutate: (inout UserScriptSettings) -> Void) {
+        var copy = userScriptSettings
+        mutate(&copy)
+        copy.updatedAt = Date()
+        userScriptSettings = copy
     }
 
     // MARK: - Appearance

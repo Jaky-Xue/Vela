@@ -59,7 +59,7 @@ public final class AppEnvironment {
             history: services.history,
             downloads: services.downloads,
             bookmarks: services.bookmarks,
-            userScripts: services.userScripts,
+            userScripts: services.userScriptRepository,
             searchHistory: services.searchHistory,
             sessionRepository: services.tabSessions,
             navigationLog: navigationLog
@@ -74,6 +74,13 @@ public final class AppEnvironment {
         self.translation = TranslationService()
 
         coordinator.attach(tabManager: tabManager)
+        coordinator.userScriptOpenTabHandler = { [weak self] url, active in
+            self?.tabManager.openTab(
+                url: url,
+                openSource: .webWindowOpen,
+                activate: active
+            )
+        }
         // A translated page's observer reports new blocks here. The closure is
         // weak on both sides: the coordinator is owned by this environment, so
         // a strong capture would keep the window alive for the app's lifetime.
@@ -99,7 +106,7 @@ public final class AppEnvironment {
     public var downloads: DownloadService { services.downloads }
     public var adBlock: AdBlockEngine { services.adBlock }
     public var searchHistory: SearchHistoryRepository { services.searchHistory }
-    public var userScripts: UserScriptRepository { services.userScripts }
+    public var userScripts: UserScriptService { services.userScripts }
     public var tabSessions: TabSessionRepository { services.tabSessions }
     public var novels: NovelLibraryService { services.novels }
     public var passwords: PasswordVaultService { services.passwords }

@@ -16,6 +16,9 @@ import Foundation
 
 public enum UserScriptRunAt: String, Codable, Sendable, CaseIterable {
     case documentStart = "document-start"
+    /// Runs once `<body>` exists. WKWebView has no separate hook for it, so it
+    /// is injected at document end, which is after the body is parsed.
+    case documentBody = "document-body"
     case documentIdle = "document-idle"
     case documentEnd = "document-end"
     /// Menu-only values: the script registers commands rather than running on load.
@@ -26,6 +29,7 @@ public enum UserScriptRunAt: String, Codable, Sendable, CaseIterable {
     public var displayName: String {
         switch self {
         case .documentStart: return "文档开始前"
+        case .documentBody: return "body 出现后"
         case .documentIdle: return "文档空闲时"
         case .documentEnd: return "文档加载完成后"
         case .mainMenu: return "仅主菜单"
@@ -38,7 +42,7 @@ public enum UserScriptRunAt: String, Codable, Sendable, CaseIterable {
     /// Menu-only values are not injected on load.
     public var injectsOnLoad: Bool {
         switch self {
-        case .documentStart, .documentIdle, .documentEnd: return true
+        case .documentStart, .documentBody, .documentIdle, .documentEnd: return true
         case .mainMenu, .toolMenu, .contextMenu: return false
         }
     }
@@ -95,11 +99,12 @@ public enum UserScriptGrant: String, Codable, Sendable, CaseIterable {
 
     /// Whether Vela can honour this grant in a `WKWebView`.
     ///
-    /// The value store, styling, logging, clipboard and `unsafeWindow` are all
-    /// reachable from an injected script. Cross-origin XHR, cookie access and
-    /// the download/open-tab commands are not: WebKit gives an injected script
-    /// no privileged network or cookie API, and `GM_openInTab` would have to be
-    /// routed through the app rather than the page.
+    /// Most grants are implemented in the injected bridge. The ones that need
+    /// a capability the page world does not have — cross-origin requests,
+    /// cookies, downloads, opening a tab, a per-tab store — are routed through
+    /// the app with an asynchronous resolver, which is why they can be honoured
+    /// here at all. The Huawei extension APIs and native window control remain
+    /// unsupported.
     public var isSupportedByVela: Bool {
         switch self {
         case .none,
@@ -110,12 +115,12 @@ public enum UserScriptGrant: String, Codable, Sendable, CaseIterable {
              .gmLog, .gmInfo, .gmNotification, .gmSetClipboard,
              .gmRegisterMenuCommand, .gmUnregisterMenuCommand,
              .gmAddValueChangeListener, .gmRemoveValueChangeListener,
-             .windowOnUrlChange, .unsafeWindow, .unknown:
-            return true
-        case .gmXmlhttpRequest, .gmFetch, .gmDownload, .gmOpenInTab,
+             .gmXmlhttpRequest, .gmFetch, .gmDownload, .gmOpenInTab,
              .gmGetTab, .gmSaveTab, .gmGetTabs,
              .gmCookie, .gmCookieSet, .gmCookieDelete,
-             .gmExGetSearchEngines, .gmExGetAppSearchEngineUrl,
+             .windowOnUrlChange, .unsafeWindow, .unknown:
+            return true
+        case .gmExGetSearchEngines, .gmExGetAppSearchEngineUrl,
              .gmExTTS, .gmExShareTextToApp, .gmExSniffMedia,
              .windowClose, .windowFocus:
             return false
@@ -288,6 +293,9 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
     public var grants: [UserScriptGrant]
     public var requireUrls: [String]
     public var requireSources: [String]
+    /// The `@resource` declarations, kept even when a download failed, so a
+    /// later refresh can retry them.
+    public var resourceDeclarations: [UserScriptResourceDeclaration]
     public var resources: [UserScriptResourceRecord]
     public var connectRules: [String]
     public var noframes: Bool
@@ -316,6 +324,7 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
         grants: [UserScriptGrant] = [],
         requireUrls: [String] = [],
         requireSources: [String] = [],
+        resourceDeclarations: [UserScriptResourceDeclaration] = [],
         resources: [UserScriptResourceRecord] = [],
         connectRules: [String] = [],
         noframes: Bool = false,
@@ -343,6 +352,7 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
         self.grants = grants
         self.requireUrls = requireUrls
         self.requireSources = requireSources
+        self.resourceDeclarations = resourceDeclarations
         self.resources = resources
         self.connectRules = connectRules
         self.noframes = noframes
@@ -386,6 +396,7 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
             excludes: candidate.excludes,
             grants: candidate.grants,
             requireUrls: candidate.requireUrls,
+            resourceDeclarations: candidate.resourceDeclarations,
             connectRules: candidate.connectRules,
             noframes: candidate.noframes,
             runAt: candidate.runAt,
@@ -410,6 +421,73 @@ public struct UserScriptSettings: Codable, Equatable, Sendable {
     }
 
     public static let `default` = UserScriptSettings()
+}
+
+/// A command a running script registered for the current page.
+///
+/// `GM_registerMenuCommand` has no browser chrome of its own; the menu panel
+/// lists the commands the active page's scripts registered, which is the only
+/// place a user can reach them.
+public struct UserScriptMenuCommand: Identifiable, Equatable, Sendable {
+    public var tabId: String
+    public var scriptId: String
+    public var scriptName: String
+    public var commandId: String
+    public var name: String
+    public var accessKey: String
+
+    public var id: String { "\(tabId)|\(scriptId)|\(commandId)" }
+
+    public init(
+        tabId: String,
+        scriptId: String,
+        scriptName: String,
+        commandId: String,
+        name: String,
+        accessKey: String = ""
+    ) {
+        self.tabId = tabId
+        self.scriptId = scriptId
+        self.scriptName = scriptName
+        self.commandId = commandId
+        self.name = name
+        self.accessKey = accessKey
+    }
+}
+
+/// What happened when one script's update URL was checked.
+public enum UserScriptUpdateResult: Equatable, Sendable {
+    case updated(from: String, to: String)
+    case upToDate
+    case noUpdateUrl
+    case failed(String)
+
+    public var displayName: String {
+        switch self {
+        case let .updated(from, to):
+            let old = from.isEmpty ? "无版本号" : "v\(from)"
+            let new = to.isEmpty ? "无版本号" : "v\(to)"
+            return "已从 \(old) 更新到 \(new)"
+        case .upToDate:
+            return "已是最新版本"
+        case .noUpdateUrl:
+            return "没有更新地址"
+        case let .failed(message):
+            return "检查失败：\(message)"
+        }
+    }
+}
+
+/// The result of an install or edit, including the non-fatal problems that
+/// should be shown to the user.
+public struct UserScriptInstallOutcome: Sendable {
+    public var script: InstalledUserScriptState
+    public var warnings: [String]
+
+    public init(script: InstalledUserScriptState, warnings: [String] = []) {
+        self.script = script
+        self.warnings = warnings
+    }
 }
 
 public enum UserScriptRuntimeBlockReason: String, Codable, Sendable {

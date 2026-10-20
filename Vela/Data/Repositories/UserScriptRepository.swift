@@ -22,8 +22,8 @@ public final class UserScriptRepository: @unchecked Sendable {
     private static let columns = """
     id, name, namespace, version, description, icon_url, source, source_url, update_url, \
     download_url, enabled, matches, includes, exclude_matches, excludes, grants, require_urls, \
-    require_sources, resources, connect_rules, noframes, run_at, install_source, position, \
-    created_at, updated_at
+    require_sources, resource_declarations, resources, connect_rules, noframes, run_at, install_source, \
+    position, created_at, updated_at, last_checked_at
     """
 
     private func decodeStringArray(_ raw: String) -> [String] {
@@ -66,13 +66,15 @@ public final class UserScriptRepository: @unchecked Sendable {
             grants: decodeStringArray(statement.string(at: 15)).map { UserScriptGrant(token: $0) },
             requireUrls: decodeStringArray(statement.string(at: 16)),
             requireSources: decodeStringArray(statement.string(at: 17)),
-            resources: decodeResources(statement.string(at: 18)),
-            connectRules: decodeStringArray(statement.string(at: 19)),
-            noframes: statement.bool(at: 20),
-            runAt: UserScriptRunAt(rawValue: statement.string(at: 21)) ?? .documentIdle,
-            installSource: UserScriptInstallSource(rawValue: statement.string(at: 22)) ?? .paste,
-            createdAt: Date(milliseconds: statement.int(at: 24)),
-            updatedAt: Date(milliseconds: statement.int(at: 25))
+            resourceDeclarations: decodeDeclarations(statement.string(at: 18)),
+            resources: decodeResources(statement.string(at: 19)),
+            connectRules: decodeStringArray(statement.string(at: 20)),
+            noframes: statement.bool(at: 21),
+            runAt: UserScriptRunAt(rawValue: statement.string(at: 22)) ?? .documentIdle,
+            installSource: UserScriptInstallSource(rawValue: statement.string(at: 23)) ?? .paste,
+            createdAt: Date(milliseconds: statement.int(at: 25)),
+            updatedAt: Date(milliseconds: statement.int(at: 26)),
+            lastCheckedAt: statement.optionalInt(at: 27).map { Date(milliseconds: $0) }
         )
     }
 
@@ -83,7 +85,7 @@ public final class UserScriptRepository: @unchecked Sendable {
         try database.execute(
             """
             INSERT OR REPLACE INTO \(BrowserSchema.userScriptsTable) (\(Self.columns))
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 .text(script.id),
@@ -104,6 +106,7 @@ public final class UserScriptRepository: @unchecked Sendable {
                 .text(encode(script.grants.map(\.rawValue), fallback: "[]")),
                 .text(encode(script.requireUrls, fallback: "[]")),
                 .text(encode(script.requireSources, fallback: "[]")),
+                .text(encode(script.resourceDeclarations, fallback: "[]")),
                 .text(encode(script.resources, fallback: "[]")),
                 .text(encode(script.connectRules, fallback: "[]")),
                 .integer(script.noframes ? 1 : 0),
@@ -111,7 +114,8 @@ public final class UserScriptRepository: @unchecked Sendable {
                 .text(script.installSource.rawValue),
                 .integer(Int64(position)),
                 .integer(script.createdAt.milliseconds),
-                .integer(script.updatedAt.milliseconds)
+                .integer(script.updatedAt.milliseconds),
+                script.lastCheckedAt.map { SQLiteValue.integer($0.milliseconds) } ?? .null
             ]
         )
     }
@@ -183,6 +187,13 @@ public final class UserScriptRepository: @unchecked Sendable {
                 [.text(id)]
             )
         }
+    }
+
+    public func setLastChecked(id: String, at date: Date = Date()) throws {
+        try database.execute(
+            "UPDATE \(BrowserSchema.userScriptsTable) SET last_checked_at = ? WHERE id = ?",
+            [.integer(date.milliseconds), .text(id)]
+        )
     }
 
     public func reorder(orderedIds: [String]) throws {

@@ -307,6 +307,35 @@ public final class DownloadService: NSObject {
         }
     }
 
+    /// Starts a download a user script asked for with `GM_download`.
+    ///
+    /// The confirmation prompt is bypassed: the script's author asked for the
+    /// transfer and the user installed the script. Everything else — queueing,
+    /// segmented transfer, the WebKit fallback, the list entry — is the normal
+    /// path.
+    @discardableResult
+    public func enqueueScriptDownload(
+        url: URL,
+        suggestedFileName: String,
+        boundary: BrowserDataBoundary,
+        webView: WKWebView?
+    ) -> DownloadTask {
+        let seeded = suggestedFileName.isEmpty
+            ? (url.lastPathComponent.isEmpty ? "download" : url.lastPathComponent)
+            : suggestedFileName
+        let task = DownloadTask(
+            profileId: boundary.profileId,
+            privacyMode: boundary.privacyMode,
+            dataScope: boundary.dataScope,
+            requestUrl: url.absoluteString,
+            suggestedFileName: Self.sanitizeFileName(seeded),
+            status: .pending
+        )
+        let item = QueuedDownload(task: task, request: URLRequest(url: url), webView: webView)
+        enqueue(item)
+        return task
+    }
+
     public func confirmPendingPrompt() {
         guard let item = pendingPromptPayload else {
             pendingPrompt = nil

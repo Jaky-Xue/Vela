@@ -31,7 +31,7 @@ public enum BrowserSchema {
 
     /// The first revision above the derived baseline. Introduces the iOS-native
     /// tables.
-    public static let velaSchemaVersion = 10
+    public static let velaSchemaVersion = 12
 
     public static let stateTable = "browser_schema_state"
     public static let bookmarksTable = "bookmarks"
@@ -381,6 +381,7 @@ public enum BrowserSchema {
           grants TEXT NOT NULL DEFAULT '[]',
           require_urls TEXT NOT NULL DEFAULT '[]',
           require_sources TEXT NOT NULL DEFAULT '[]',
+          resource_declarations TEXT NOT NULL DEFAULT '[]',
           resources TEXT NOT NULL DEFAULT '[]',
           connect_rules TEXT NOT NULL DEFAULT '[]',
           noframes INTEGER NOT NULL DEFAULT 0,
@@ -388,7 +389,8 @@ public enum BrowserSchema {
           install_source TEXT NOT NULL DEFAULT 'paste',
           position INTEGER NOT NULL DEFAULT 0,
           created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
+          updated_at INTEGER NOT NULL,
+          last_checked_at INTEGER
         )
         """,
         "CREATE INDEX IF NOT EXISTS idx_user_scripts_enabled ON \(userScriptsTable)(enabled, position)",

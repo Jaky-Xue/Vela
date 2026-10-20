@@ -23,7 +23,10 @@ public final class AppServices {
     public let downloads: DownloadService
     public let adBlock: AdBlockEngine
     public let searchHistory: SearchHistoryRepository
-    public let userScripts: UserScriptRepository
+    /// The low-level script table, used by the web engine's injection path.
+    public let userScriptRepository: UserScriptRepository
+    /// Install, edit and update operations, shared with the manager screen.
+    public let userScripts: UserScriptService
     public let tabSessions: TabSessionRepository
     /// The novel shelf: books, cached chapters and reading positions.
     public let novels: NovelLibraryService
@@ -83,7 +86,12 @@ public final class AppServices {
         let downloadRepository = DownloadRepository(database: safeConnection)
 
         self.searchHistory = SearchHistoryRepository(database: safeConnection)
-        self.userScripts = UserScriptRepository(database: safeConnection)
+        let userScriptRepository = UserScriptRepository(database: safeConnection)
+        self.userScriptRepository = userScriptRepository
+        self.userScripts = UserScriptService(
+            repository: userScriptRepository,
+            settings: settings
+        )
 
         let bookmarks = BookmarkService(repository: bookmarkRepository)
         let history = HistoryService(repository: historyRepository, settings: settings)
@@ -135,6 +143,16 @@ public final class AppServices {
         // the manifests on disk are what a relaunch resumes from.
         downloads.prepareBackgroundSessionReconnection()
         downloads.reconcileInterruptedTasks()
+        userScripts.reload()
+        if settings.userScriptSettings.autoUpdateEnabled {
+            // Off the launch path: the first window must not wait on the
+            // network, and a failed check is only a status line.
+            let service = userScripts
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await service.autoUpdateIfNeeded()
+            }
+        }
 
         // The built-in rule sources may not exist yet on a fresh install, so the
         // shipped catalogue is merged in before the first compile.

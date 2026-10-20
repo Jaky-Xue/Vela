@@ -72,6 +72,35 @@ public final class BrowserDatabase: @unchecked Sendable {
         for statement in BrowserSchema.creationStatements {
             try database.execute(statement)
         }
+        // `CREATE TABLE IF NOT EXISTS` does not add a column to a table that
+        // already exists, so columns introduced after the first release are
+        // added here. SQLite has no portable `ADD COLUMN IF NOT EXISTS`, hence
+        // the PRAGMA check.
+        ensureColumn(
+            "last_checked_at",
+            in: BrowserSchema.userScriptsTable,
+            definition: "INTEGER",
+            database: database
+        )
+        ensureColumn(
+            "resource_declarations",
+            in: BrowserSchema.userScriptsTable,
+            definition: "TEXT NOT NULL DEFAULT '[]'",
+            database: database
+        )
+    }
+
+    private func ensureColumn(
+        _ column: String,
+        in table: String,
+        definition: String,
+        database: SQLiteDatabase
+    ) {
+        let columns = (try? database.query("PRAGMA table_info(\(table))") {
+            $0.string(at: 1)
+        }) ?? []
+        guard !columns.contains(column) else { return }
+        try? database.execute("ALTER TABLE \(table) ADD COLUMN \(column) \(definition)")
     }
 
     /// Reads and updates the version row in `browser_schema_state`.
