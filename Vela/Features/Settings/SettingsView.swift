@@ -185,6 +185,10 @@ struct SettingsView: View {
         }
         .listStyle(.insetGrouped)
         .browserListSurface()
+        // The sheet's content observes the setting directly; a preference
+        // applied only by the presenting view can stay at the value the sheet
+        // was presented with.
+        .preferredColorScheme(env.settings.appearanceMode.colorScheme)
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

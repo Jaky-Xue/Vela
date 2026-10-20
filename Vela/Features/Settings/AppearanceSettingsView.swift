@@ -157,6 +157,7 @@ struct AppearanceSettingsView: View {
                 Text("无痕模式")
             }
         }
+        .preferredColorScheme(env.settings.appearanceMode.colorScheme)
         .navigationTitle("外观")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showPhotoPicker) {
