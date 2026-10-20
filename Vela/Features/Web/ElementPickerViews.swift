@@ -96,7 +96,21 @@ struct ElementHideConfirmSheet: View {
                     in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                 )
 
-            Text("只对 \(pick.host) 生效，可随时在 设置 ▸ 广告与内容过滤 中移除。")
+            if !pick.tagName.isEmpty || !pick.textPreview.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("选中区域：\(pick.tagName.isEmpty ? "元素" : pick.tagName)")
+                        .font(.caption.weight(.medium))
+                    if !pick.textPreview.isEmpty {
+                        Text("「\(pick.textPreview)」")
+                            .font(.caption2)
+                            .lineLimit(2)
+                    }
+                }
+                .foregroundStyle(palette.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Text("页面上已用蓝色框标出选中的区域。只对 \(pick.host) 生效，可随时在 设置 ▸ 广告与内容过滤 中移除。")
                 .font(.caption2)
                 .foregroundStyle(palette.secondaryText)
                 .multilineTextAlignment(.center)
@@ -124,7 +138,7 @@ struct ElementHideConfirmSheet: View {
         }
         .padding(.horizontal, 22)
         .browserSurfaceBackground(opacity: 0.74)
-        .presentationDetents([.height(430)])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
     }
 }

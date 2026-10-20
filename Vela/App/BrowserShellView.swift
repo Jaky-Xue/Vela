@@ -529,12 +529,20 @@ struct BrowserShellView: View {
         }
         .sheet(item: Binding(
             get: { env.overlays.elementPick },
-            set: { if $0 == nil { env.overlays.elementPick = nil } }
+            set: { value in
+                if value == nil {
+                    env.webCoordinator.disarmElementPicker(in: activeWebView)
+                    env.overlays.elementPick = nil
+                }
+            }
         )) { pick in
             ElementHideConfirmSheet(
                 pick: pick,
                 onHide: { applyElementHide(pick) },
-                onCancel: { env.overlays.elementPick = nil }
+                onCancel: {
+                    env.webCoordinator.disarmElementPicker(in: activeWebView)
+                    env.overlays.elementPick = nil
+                }
             )
             .environment(env)
             .browserAmbientSheet()
@@ -1961,7 +1969,7 @@ struct BrowserShellView: View {
                 readerArticle = ReaderArticle(
                     title: "无法提取正文",
                     byline: "",
-                    contentHtml: "<p>这个页面看起来不是一篇文章，暂时无法用阅读模式打开。</p>",
+                    contentHtml: "<p>这个页面看起来不是一篇文章，无法用文章阅读打开。如果是小说章节，请使用「小说模式」。</p>",
                     url: tab.url
                 )
                 isReaderActive = true

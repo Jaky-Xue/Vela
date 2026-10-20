@@ -243,7 +243,13 @@ public final class BrowserWebCoordinator: NSObject {
         overlays.isElementPickerArmed = false
         guard let host = URL(string: tab.url)?.host else { return }
         let count = payload["elementCount"] as? Int ?? 0
-        overlays.elementPick = ElementPickResult(selector: selector, host: host, matchedElementCount: count)
+        overlays.elementPick = ElementPickResult(
+            selector: selector,
+            host: host,
+            matchedElementCount: count,
+            tagName: payload["tag"] as? String ?? "",
+            textPreview: payload["text"] as? String ?? ""
+        )
     }
 
     private func handleAdBlockReport(_ message: WKScriptMessage, webView: WKWebView) {

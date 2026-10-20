@@ -164,9 +164,11 @@ enum NovelModeService {
       var selectors = [
         '#content', '#chaptercontent', '#chapter-content', '#booktext',
         '#htmlContent', '#txtContent', '#chapterContent', '#bookContent',
-        '.read-content', '.chapter-content', '.article-content', '.content',
-        '.showtxt', '.txtnav', '.yd_text2', '.read-content', '.novel-content',
-        '.chapter-body', '.read-content', 'article', '[role="main"]'
+        '#nr', '#nr1', '#chapter-c', '#article', '#booktxt', '#contents',
+        '#chaptertitle', '#chapterTitle', '.read-content', '.chapter-content',
+        '.article-content', '.content', '.content_read', '.contentbox',
+        '.box_con', '.markdown-body', '.novel-content', '.chapter-body',
+        '.showtxt', '.txtnav', '.yd_text2', 'article', '[role="main"]'
       ];
 
       var best = null;
@@ -183,6 +185,26 @@ enum NovelModeService {
           if (score > bestScore) {
             bestScore = score;
             best = element;
+          }
+        }
+      }
+
+      // Unknown sites still need a container. This is the same text/link
+      // trade-off reader mode uses: the longest prose block that is not a
+      // navigation list wins, and the cleaning pass below trims its ads.
+      if (!best) {
+        var broad = document.querySelectorAll('div, article, section, main');
+        for (var b = 0; b < broad.length; b++) {
+          var candidate = broad[b];
+          if (candidate.tagName === 'BODY' || candidate.tagName === 'HTML') { continue; }
+          var candidateText = textOf(candidate);
+          if (candidateText.length < 300) { continue; }
+          var candidateDensity = linkDensity(candidate);
+          if (candidateDensity > 0.55) { continue; }
+          var candidateScore = candidateText.length * (1 - candidateDensity);
+          if (candidateScore > bestScore) {
+            bestScore = candidateScore;
+            best = candidate;
           }
         }
       }
@@ -288,7 +310,8 @@ enum NovelModeService {
       var chapterTitle = meta('og:novel:chapter_name') ||
                          firstText([
                            '.chapter-title', '#chaptertitle', '#chapterTitle',
-                           '.chapter-name', '.title', '.bookname h1', 'h1'
+                           '.chapter-name', '.chapter_name', '#chapter_name',
+                           '.entry-title', '#title', '.title', '.bookname h1', 'h1'
                          ]);
 
       var documentTitle = String(document.title || '').trim();
@@ -300,8 +323,9 @@ enum NovelModeService {
                       meta('og:book:title') ||
                       meta('book:title') ||
                       firstText([
-                        '.bookname h1', '.book-name', '.book-title',
-                        '#bookname', '#info h1', '.book_info h1', '.book-info h1'
+                        '.bookname h1', '.book-name', '.book_name',
+                        '.book-title', '.book_title', '#bookname',
+                        '#info h1', '.book_info h1', '.book-info h1'
                       ]);
 
       // Document titles are usually "书名 - 第x章 标题" or the reverse. Pick

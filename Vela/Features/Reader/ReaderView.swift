@@ -47,10 +47,10 @@ struct ReaderView: View {
                     .background(palette.controlFill, in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("关闭阅读模式")
+            .accessibilityLabel("关闭文章阅读")
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(article.title.isEmpty ? "阅读模式" : article.title)
+                Text(article.title.isEmpty ? "文章阅读" : article.title)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(palette.primaryText)
                     .lineLimit(1)

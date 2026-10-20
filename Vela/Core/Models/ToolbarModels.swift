@@ -47,7 +47,7 @@ enum ToolbarControl: String, CaseIterable, Codable, Sendable, Identifiable, Hash
         case .bookmarks: return "书签"
         case .history: return "历史记录"
         case .downloads: return "下载"
-        case .reader: return "阅读模式"
+        case .reader: return "文章阅读"
         case .novel: return "小说模式"
         case .bookshelf: return "书架"
         case .passwords: return "密码"

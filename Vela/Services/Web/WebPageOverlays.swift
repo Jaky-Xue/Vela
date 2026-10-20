@@ -114,6 +114,11 @@ public struct ElementPickResult: Identifiable, Sendable {
     public var selector: String
     public var host: String
     public var matchedElementCount: Int
+    /// The tag of the element the user actually tapped, so the confirmation
+    /// can name it instead of showing a bare selector.
+    public var tagName: String = ""
+    /// A short text preview from the element, for the same reason.
+    public var textPreview: String = ""
 }
 
 /// The find bar's position in the page's matches.

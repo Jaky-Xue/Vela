@@ -65,7 +65,7 @@ struct GeneralSettingsView: View {
             }
 
             Section {
-                Toggle("阅读模式", isOn: Binding(
+                Toggle("文章阅读", isOn: Binding(
                     get: { env.settings.preferences.readerModeAvailable },
                     set: { value in env.settings.update { $0.readerModeAvailable = value } }
                 ))

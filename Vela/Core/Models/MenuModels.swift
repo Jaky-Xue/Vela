@@ -46,7 +46,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .addBookmark: return "添加书签"
         case .share: return "分享"
         case .findInPage: return "查找网页"
-        case .reader: return "阅读模式"
+        case .reader: return "文章阅读"
         case .novel: return "小说模式"
         case .bookshelf: return "书架"
         case .passwords: return "密码与保险箱"
