@@ -16,11 +16,6 @@ name: Build unsigned IPA
 # separately.
 
 on:
-  # Temporary: starts this build from GitHub's side while this machine's
-  # route to api.github.com (which workflow_dispatch needs) is being reset.
-  push:
-    branches:
-      - feature/vault-novel-toolbar-background
   workflow_dispatch:
     inputs:
       configuration:
