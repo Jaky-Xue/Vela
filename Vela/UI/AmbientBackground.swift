@@ -6,15 +6,15 @@
 //  behind it.
 //
 //  The field is deliberately static. An earlier version drifted the light
-//  sources with a repeating animation; every frame re-evaluated five enormous
-//  blurred layers, and the cost showed up as dropped frames while a page
-//  scrolled. The light here is fixed, with the palette surface mixed in and a
-//  fine grain to keep the large gradients from banding.
+//  sources with a repeating animation; every frame re-evaluated several
+//  enormous blurred layers, and the cost showed up as dropped frames while a
+//  page scrolled. The light here is fixed, with a neutral veil and a fine
+//  grain that keep the large gradients from banding.
 //
-//  The three fields are cool and clearly separated by hue: 极光 is mint and
-//  teal, 冰川 is ice-blue and silver, 紫雾 is lavender and periwinkle. No warm
-//  tones are used. Colours are pale on purpose; the frosted pane over them is
-//  thin so the result reads as light seen through glass, not as paint.
+//  The three fields are warm and clearly separated by hue: 暖阳 is peach and
+//  pale gold, 晚霞 is coral and rose, 琥珀 is cream and amber. Colours are
+//  pale on purpose; the frosted pane over them is thin so the result reads as
+//  light seen through glass, not as paint.
 //
 
 import SwiftUI
@@ -29,39 +29,39 @@ import UIKit
 public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Identifiable {
     /// The palette surface, unchanged: pure white in light, pure black in dark.
     case solid
-    /// Mint, teal and sky: the cool green-blue field.
-    case aurora
-    /// Ice blue, silver and pale aqua: the clean, almost white field.
-    case glacier
-    /// Lavender, lilac and periwinkle: the soft violet field.
-    case violet
+    /// Peach, apricot and pale gold: the warm morning field.
+    case sunrise
+    /// Coral, rose and mauve: the soft sunset field.
+    case sunset
+    /// Cream, butter and amber: the golden field.
+    case amber
 
     public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
         case .solid: return "纯净"
-        case .aurora: return "极光"
-        case .glacier: return "冰川"
-        case .violet: return "紫雾"
+        case .sunrise: return "暖阳"
+        case .sunset: return "晚霞"
+        case .amber: return "琥珀"
         }
     }
 
     public var summary: String {
         switch self {
         case .solid: return "纯白与纯黑，来自配色"
-        case .aurora: return "薄荷与青蓝，通透清冷"
-        case .glacier: return "冰蓝与银白，干净明亮"
-        case .violet: return "薰衣草与雾紫，柔和清冷"
+        case .sunrise: return "蜜桃与浅金，温暖通透"
+        case .sunset: return "珊瑚与玫瑰，柔和晚霞"
+        case .amber: return "奶油与琥珀，干净温暖"
         }
     }
 
     public var symbolName: String {
         switch self {
         case .solid: return "circle.fill"
-        case .aurora: return "sparkles"
-        case .glacier: return "snowflake"
-        case .violet: return "cloud.fill"
+        case .sunrise: return "sun.max.fill"
+        case .sunset: return "sunset.fill"
+        case .amber: return "sun.haze.fill"
         }
     }
 
@@ -70,18 +70,19 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
 
     /// Resolves a stored raw value, falling back to the shipped default.
     ///
-    /// `dawn` and `midnight` are the raw values of the two styles this build
-    /// replaced; they map to their cool successors rather than resetting the
-    /// user's choice.
+    /// The cool styles this build replaced (`aurora`, `glacier`, `violet`,
+    /// plus the older `dawn`/`midnight`) map to the warm field that is closest
+    /// in role, so an existing choice is kept rather than reset.
     public static func resolve(_ rawValue: String?) -> BrowserBackgroundStyle {
-        guard let rawValue else { return .aurora }
+        guard let rawValue else { return .sunrise }
         if let style = BrowserBackgroundStyle(rawValue: rawValue) {
             return style
         }
         switch rawValue {
-        case "dawn": return .glacier
-        case "midnight": return .violet
-        default: return .aurora
+        case "aurora", "dawn": return .sunrise
+        case "glacier", "midnight": return .sunset
+        case "violet": return .amber
+        default: return .sunrise
         }
     }
 }
@@ -89,7 +90,7 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
 // MARK: - Environment
 
 private struct BrowserBackgroundStyleKey: EnvironmentKey {
-    static let defaultValue: BrowserBackgroundStyle = .aurora
+    static let defaultValue: BrowserBackgroundStyle = .sunrise
 }
 
 extension EnvironmentValues {
@@ -156,7 +157,7 @@ struct AmbientBackgroundView: View {
 
                     LinearGradient(
                         stops: [
-                            .init(color: .white.opacity(colorScheme == .dark ? 0.05 : 0.18), location: 0),
+                            .init(color: .white.opacity(colorScheme == .dark ? 0.06 : 0.20), location: 0),
                             .init(color: .clear, location: 0.48)
                         ],
                         startPoint: .top,
@@ -181,10 +182,9 @@ struct AmbientBackgroundView: View {
         .accessibilityHidden(true)
     }
 
-    /// The style's own base, with the palette surface mixed back in lightly so
-    /// a chosen 配色 still influences the scene.
+    /// The style's own base, with a neutral veil rather than the palette
+    /// surface: a green or blue palette must not cool a warm field.
     private var base: some View {
-        let tokens = palette.tokens(for: colorScheme)
         let stops = baseColors
         return ZStack {
             LinearGradient(
@@ -197,8 +197,6 @@ struct AmbientBackgroundView: View {
                 endPoint: .bottomTrailing
             )
             if style.usesAmbient {
-                // Neutral, not the palette surface: a warm palette (朱砂,
-                // 莫兰迪) would otherwise tint every cool field warm.
                 (colorScheme == .dark ? Color.black : Color.white)
                     .opacity(colorScheme == .dark ? 0.08 : 0.10)
             }
@@ -211,46 +209,46 @@ struct AmbientBackgroundView: View {
         case .solid:
             let surface = palette.tokens(for: colorScheme).surface
             return [surface, surface, surface]
-        case .aurora:
+        case .sunrise:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.122, green: 0.169, blue: 0.200),
-                    Color(red: 0.133, green: 0.227, blue: 0.259),
-                    Color(red: 0.114, green: 0.180, blue: 0.212)
+                    Color(red: 0.137, green: 0.102, blue: 0.071),
+                    Color(red: 0.169, green: 0.122, blue: 0.082),
+                    Color(red: 0.141, green: 0.102, blue: 0.075)
                 ]
                 : [
-                    Color(red: 0.961, green: 0.992, blue: 0.988),
-                    Color(red: 0.929, green: 0.973, blue: 0.988),
-                    Color(red: 0.949, green: 0.988, blue: 0.980)
+                    Color(red: 1.000, green: 0.988, blue: 0.965),
+                    Color(red: 1.000, green: 0.957, blue: 0.902),
+                    Color(red: 1.000, green: 0.976, blue: 0.937)
                 ]
-        case .glacier:
+        case .sunset:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.165, green: 0.208, blue: 0.259),
-                    Color(red: 0.200, green: 0.278, blue: 0.353),
-                    Color(red: 0.169, green: 0.224, blue: 0.282)
+                    Color(red: 0.149, green: 0.086, blue: 0.098),
+                    Color(red: 0.176, green: 0.102, blue: 0.118),
+                    Color(red: 0.145, green: 0.082, blue: 0.098)
                 ]
                 : [
-                    Color(red: 0.980, green: 0.992, blue: 1.000),
-                    Color(red: 0.933, green: 0.969, blue: 0.996),
-                    Color(red: 0.957, green: 0.980, blue: 1.000)
+                    Color(red: 1.000, green: 0.980, blue: 0.973),
+                    Color(red: 1.000, green: 0.937, blue: 0.929),
+                    Color(red: 1.000, green: 0.965, blue: 0.953)
                 ]
-        case .violet:
+        case .amber:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.180, green: 0.161, blue: 0.239),
-                    Color(red: 0.231, green: 0.200, blue: 0.314),
-                    Color(red: 0.169, green: 0.149, blue: 0.224)
+                    Color(red: 0.141, green: 0.122, blue: 0.071),
+                    Color(red: 0.169, green: 0.145, blue: 0.090),
+                    Color(red: 0.149, green: 0.129, blue: 0.071)
                 ]
                 : [
-                    Color(red: 0.980, green: 0.969, blue: 1.000),
-                    Color(red: 0.949, green: 0.925, blue: 1.000),
-                    Color(red: 0.969, green: 0.949, blue: 1.000)
+                    Color(red: 1.000, green: 0.992, blue: 0.969),
+                    Color(red: 1.000, green: 0.969, blue: 0.890),
+                    Color(red: 1.000, green: 0.984, blue: 0.941)
                 ]
         }
     }
 
-    /// The Arc-style field: one mesh gradient carrying several pale, cool
+    /// The Arc-style field: one mesh gradient carrying several pale, warm
     /// colours through each other.
     @available(iOS 18.0, *)
     private var meshField: some View {
@@ -266,85 +264,85 @@ struct AmbientBackgroundView: View {
         )
     }
 
-    /// Nine cool stops per style. No orange, gold, peach or red appears here;
-    /// the three fields are separated by hue family rather than by intensity.
+    /// Nine warm stops per style. The hue families are peach/gold, coral/rose
+    /// and cream/amber, so the three are recognisable at a glance.
     private var meshColors: [Color] {
         let dark = colorScheme == .dark
         switch style {
         case .solid:
             let surface = palette.tokens(for: colorScheme).surface
             return Array(repeating: surface, count: 9)
-        case .aurora:
+        case .sunrise:
             return dark
                 ? [
-                    Color(red: 0.133, green: 0.200, blue: 0.227),
-                    Color(red: 0.184, green: 0.373, blue: 0.388),
-                    Color(red: 0.169, green: 0.435, blue: 0.471),
-                    Color(red: 0.157, green: 0.290, blue: 0.325),
-                    Color(red: 0.306, green: 0.600, blue: 0.584),
-                    Color(red: 0.302, green: 0.620, blue: 0.682),
-                    Color(red: 0.200, green: 0.424, blue: 0.471),
-                    Color(red: 0.353, green: 0.655, blue: 0.627),
-                    Color(red: 0.145, green: 0.208, blue: 0.239)
+                    Color(red: 0.165, green: 0.114, blue: 0.078),
+                    Color(red: 0.290, green: 0.180, blue: 0.110),
+                    Color(red: 0.416, green: 0.259, blue: 0.141),
+                    Color(red: 0.227, green: 0.153, blue: 0.098),
+                    Color(red: 0.478, green: 0.298, blue: 0.173),
+                    Color(red: 0.561, green: 0.353, blue: 0.204),
+                    Color(red: 0.337, green: 0.208, blue: 0.122),
+                    Color(red: 0.431, green: 0.271, blue: 0.157),
+                    Color(red: 0.180, green: 0.125, blue: 0.086)
                 ]
                 : [
-                    Color(red: 0.929, green: 0.988, blue: 0.973),
-                    Color(red: 0.812, green: 0.957, blue: 0.914),
-                    Color(red: 0.749, green: 0.918, blue: 0.957),
-                    Color(red: 0.867, green: 0.973, blue: 0.945),
-                    Color(red: 0.655, green: 0.886, blue: 0.847),
-                    Color(red: 0.624, green: 0.847, blue: 0.933),
-                    Color(red: 0.776, green: 0.941, blue: 0.957),
-                    Color(red: 0.714, green: 0.894, blue: 0.945),
-                    Color(red: 0.910, green: 0.984, blue: 0.969)
+                    Color(red: 1.000, green: 0.992, blue: 0.973),
+                    Color(red: 1.000, green: 0.914, blue: 0.812),
+                    Color(red: 1.000, green: 0.851, blue: 0.706),
+                    Color(red: 1.000, green: 0.965, blue: 0.910),
+                    Color(red: 1.000, green: 0.816, blue: 0.643),
+                    Color(red: 1.000, green: 0.761, blue: 0.557),
+                    Color(red: 1.000, green: 0.918, blue: 0.784),
+                    Color(red: 1.000, green: 0.847, blue: 0.682),
+                    Color(red: 1.000, green: 0.980, blue: 0.949)
                 ]
-        case .glacier:
+        case .sunset:
             return dark
                 ? [
-                    Color(red: 0.169, green: 0.227, blue: 0.290),
-                    Color(red: 0.239, green: 0.353, blue: 0.439),
-                    Color(red: 0.294, green: 0.447, blue: 0.522),
-                    Color(red: 0.208, green: 0.314, blue: 0.416),
-                    Color(red: 0.420, green: 0.576, blue: 0.667),
-                    Color(red: 0.478, green: 0.659, blue: 0.722),
-                    Color(red: 0.290, green: 0.416, blue: 0.502),
-                    Color(red: 0.435, green: 0.604, blue: 0.690),
-                    Color(red: 0.180, green: 0.239, blue: 0.298)
+                    Color(red: 0.165, green: 0.090, blue: 0.106),
+                    Color(red: 0.290, green: 0.137, blue: 0.161),
+                    Color(red: 0.431, green: 0.196, blue: 0.224),
+                    Color(red: 0.231, green: 0.118, blue: 0.141),
+                    Color(red: 0.549, green: 0.259, blue: 0.286),
+                    Color(red: 0.635, green: 0.318, blue: 0.353),
+                    Color(red: 0.361, green: 0.169, blue: 0.192),
+                    Color(red: 0.478, green: 0.227, blue: 0.259),
+                    Color(red: 0.176, green: 0.102, blue: 0.118)
                 ]
                 : [
-                    Color(red: 0.984, green: 0.992, blue: 1.000),
-                    Color(red: 0.902, green: 0.957, blue: 1.000),
-                    Color(red: 0.843, green: 0.933, blue: 0.984),
-                    Color(red: 0.937, green: 0.976, blue: 1.000),
-                    Color(red: 0.796, green: 0.902, blue: 0.969),
-                    Color(red: 0.741, green: 0.875, blue: 0.945),
-                    Color(red: 0.886, green: 0.949, blue: 0.988),
-                    Color(red: 0.820, green: 0.922, blue: 0.976),
-                    Color(red: 0.961, green: 0.988, blue: 1.000)
+                    Color(red: 1.000, green: 0.980, blue: 0.973),
+                    Color(red: 1.000, green: 0.878, blue: 0.863),
+                    Color(red: 1.000, green: 0.788, blue: 0.784),
+                    Color(red: 1.000, green: 0.941, blue: 0.925),
+                    Color(red: 1.000, green: 0.714, blue: 0.714),
+                    Color(red: 1.000, green: 0.639, blue: 0.663),
+                    Color(red: 1.000, green: 0.867, blue: 0.843),
+                    Color(red: 1.000, green: 0.776, blue: 0.784),
+                    Color(red: 1.000, green: 0.969, blue: 0.957)
                 ]
-        case .violet:
+        case .amber:
             return dark
                 ? [
-                    Color(red: 0.200, green: 0.173, blue: 0.271),
-                    Color(red: 0.290, green: 0.247, blue: 0.420),
-                    Color(red: 0.353, green: 0.298, blue: 0.486),
-                    Color(red: 0.251, green: 0.212, blue: 0.353),
-                    Color(red: 0.478, green: 0.408, blue: 0.659),
-                    Color(red: 0.541, green: 0.471, blue: 0.722),
-                    Color(red: 0.345, green: 0.290, blue: 0.471),
-                    Color(red: 0.498, green: 0.435, blue: 0.659),
-                    Color(red: 0.208, green: 0.176, blue: 0.286)
+                    Color(red: 0.157, green: 0.137, blue: 0.078),
+                    Color(red: 0.275, green: 0.227, blue: 0.114),
+                    Color(red: 0.416, green: 0.341, blue: 0.149),
+                    Color(red: 0.208, green: 0.176, blue: 0.094),
+                    Color(red: 0.502, green: 0.404, blue: 0.184),
+                    Color(red: 0.580, green: 0.482, blue: 0.239),
+                    Color(red: 0.310, green: 0.259, blue: 0.122),
+                    Color(red: 0.427, green: 0.345, blue: 0.161),
+                    Color(red: 0.169, green: 0.145, blue: 0.086)
                 ]
                 : [
-                    Color(red: 0.973, green: 0.957, blue: 1.000),
-                    Color(red: 0.914, green: 0.882, blue: 1.000),
-                    Color(red: 0.859, green: 0.835, blue: 1.000),
-                    Color(red: 0.945, green: 0.922, blue: 1.000),
-                    Color(red: 0.812, green: 0.773, blue: 0.980),
-                    Color(red: 0.780, green: 0.757, blue: 0.957),
-                    Color(red: 0.906, green: 0.871, blue: 1.000),
-                    Color(red: 0.851, green: 0.820, blue: 0.984),
-                    Color(red: 0.961, green: 0.945, blue: 1.000)
+                    Color(red: 1.000, green: 0.992, blue: 0.969),
+                    Color(red: 1.000, green: 0.945, blue: 0.827),
+                    Color(red: 1.000, green: 0.890, blue: 0.675),
+                    Color(red: 1.000, green: 0.976, blue: 0.918),
+                    Color(red: 1.000, green: 0.843, blue: 0.561),
+                    Color(red: 1.000, green: 0.796, blue: 0.447),
+                    Color(red: 1.000, green: 0.949, blue: 0.827),
+                    Color(red: 1.000, green: 0.882, blue: 0.659),
+                    Color(red: 1.000, green: 0.988, blue: 0.953)
                 ]
         }
     }
@@ -410,88 +408,88 @@ struct AmbientBackgroundView: View {
     }
 
     /// Four light sources for the pre-iOS-18 fallback. Their hues match the
-    /// mesh families: mint/teal, ice/silver, lavender/periwinkle.
+    /// mesh families: peach/gold, coral/rose, cream/amber.
     private var specs: [AmbientBlobSpec] {
         switch style {
         case .solid:
             return []
-        case .aurora:
+        case .sunrise:
             return [
                 AmbientBlobSpec(
-                    light: Color(red: 0.65, green: 0.93, blue: 0.85),
-                    dark: Color(red: 0.25, green: 0.75, blue: 0.70),
+                    light: Color(red: 1.00, green: 0.87, blue: 0.74),
+                    dark: Color(red: 0.82, green: 0.60, blue: 0.38),
                     x: 0.14, y: 0.12, diameter: 1.20,
                     opacity: colorScheme == .dark ? 0.22 : 0.34
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.68, green: 0.84, blue: 0.98),
-                    dark: Color(red: 0.32, green: 0.55, blue: 0.85),
+                    light: Color(red: 1.00, green: 0.93, blue: 0.78),
+                    dark: Color(red: 0.72, green: 0.56, blue: 0.30),
                     x: 0.86, y: 0.26, diameter: 1.10,
-                    opacity: colorScheme == .dark ? 0.22 : 0.32
+                    opacity: colorScheme == .dark ? 0.20 : 0.30
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.72, green: 0.93, blue: 0.96),
-                    dark: Color(red: 0.25, green: 0.75, blue: 0.82),
+                    light: Color(red: 1.00, green: 0.80, blue: 0.66),
+                    dark: Color(red: 0.76, green: 0.48, blue: 0.27),
                     x: 0.76, y: 0.86, diameter: 1.15,
                     opacity: colorScheme == .dark ? 0.20 : 0.30
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.76, green: 0.80, blue: 1.00),
-                    dark: Color(red: 0.35, green: 0.45, blue: 0.65),
+                    light: Color(red: 1.00, green: 0.90, blue: 0.84),
+                    dark: Color(red: 0.58, green: 0.40, blue: 0.26),
                     x: 0.10, y: 0.86, diameter: 0.80,
-                    opacity: colorScheme == .dark ? 0.12 : 0.20
+                    opacity: colorScheme == .dark ? 0.12 : 0.18
                 )
             ]
-        case .glacier:
+        case .sunset:
             return [
                 AmbientBlobSpec(
-                    light: Color(red: 0.85, green: 0.95, blue: 1.00),
-                    dark: Color(red: 0.40, green: 0.60, blue: 0.74),
+                    light: Color(red: 1.00, green: 0.78, blue: 0.76),
+                    dark: Color(red: 0.86, green: 0.46, blue: 0.50),
                     x: 0.14, y: 0.12, diameter: 1.20,
-                    opacity: colorScheme == .dark ? 0.22 : 0.36
+                    opacity: colorScheme == .dark ? 0.22 : 0.34
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.78, green: 0.88, blue: 0.98),
-                    dark: Color(red: 0.50, green: 0.72, blue: 0.85),
+                    light: Color(red: 1.00, green: 0.70, blue: 0.73),
+                    dark: Color(red: 0.74, green: 0.36, blue: 0.42),
                     x: 0.86, y: 0.28, diameter: 1.10,
                     opacity: colorScheme == .dark ? 0.20 : 0.30
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.80, green: 0.96, blue: 1.00),
-                    dark: Color(red: 0.34, green: 0.48, blue: 0.62),
+                    light: Color(red: 0.96, green: 0.76, blue: 0.86),
+                    dark: Color(red: 0.60, green: 0.32, blue: 0.44),
                     x: 0.74, y: 0.86, diameter: 1.15,
                     opacity: colorScheme == .dark ? 0.18 : 0.28
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.90, green: 0.97, blue: 1.00),
-                    dark: Color(red: 0.58, green: 0.78, blue: 0.88),
+                    light: Color(red: 1.00, green: 0.86, blue: 0.80),
+                    dark: Color(red: 0.52, green: 0.30, blue: 0.30),
                     x: 0.10, y: 0.86, diameter: 0.80,
-                    opacity: colorScheme == .dark ? 0.14 : 0.22
+                    opacity: colorScheme == .dark ? 0.12 : 0.18
                 )
             ]
-        case .violet:
+        case .amber:
             return [
                 AmbientBlobSpec(
-                    light: Color(red: 0.82, green: 0.75, blue: 1.00),
-                    dark: Color(red: 0.48, green: 0.38, blue: 0.78),
+                    light: Color(red: 1.00, green: 0.93, blue: 0.74),
+                    dark: Color(red: 0.82, green: 0.66, blue: 0.36),
                     x: 0.14, y: 0.14, diameter: 1.20,
                     opacity: colorScheme == .dark ? 0.22 : 0.34
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.88, green: 0.82, blue: 1.00),
-                    dark: Color(red: 0.35, green: 0.30, blue: 0.60),
+                    light: Color(red: 1.00, green: 0.97, blue: 0.84),
+                    dark: Color(red: 0.70, green: 0.60, blue: 0.32),
                     x: 0.86, y: 0.30, diameter: 1.05,
                     opacity: colorScheme == .dark ? 0.20 : 0.30
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.72, green: 0.72, blue: 0.98),
-                    dark: Color(red: 0.60, green: 0.50, blue: 0.82),
+                    light: Color(red: 1.00, green: 0.88, blue: 0.62),
+                    dark: Color(red: 0.72, green: 0.58, blue: 0.26),
                     x: 0.74, y: 0.86, diameter: 1.15,
                     opacity: colorScheme == .dark ? 0.20 : 0.30
                 ),
                 AmbientBlobSpec(
-                    light: Color(red: 0.78, green: 0.80, blue: 1.00),
-                    dark: Color(red: 0.45, green: 0.40, blue: 0.68),
+                    light: Color(red: 1.00, green: 0.95, blue: 0.86),
+                    dark: Color(red: 0.55, green: 0.44, blue: 0.22),
                     x: 0.10, y: 0.86, diameter: 0.80,
                     opacity: colorScheme == .dark ? 0.12 : 0.18
                 )

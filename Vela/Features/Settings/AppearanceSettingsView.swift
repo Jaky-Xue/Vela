@@ -276,23 +276,23 @@ private struct BackgroundStyleSwatch: View {
         switch style {
         case .solid:
             return [colorScheme == .dark ? .black : .white]
-        case .aurora:
+        case .sunrise:
             return [
-                Color(red: 0.62, green: 0.92, blue: 0.84),
-                Color(red: 0.60, green: 0.82, blue: 0.95),
-                Color(red: 0.45, green: 0.82, blue: 0.86)
+                Color(red: 1.00, green: 0.91, blue: 0.81),
+                Color(red: 1.00, green: 0.82, blue: 0.65),
+                Color(red: 1.00, green: 0.76, blue: 0.56)
             ]
-        case .glacier:
+        case .sunset:
             return [
-                Color(red: 0.93, green: 0.98, blue: 1.00),
-                Color(red: 0.80, green: 0.90, blue: 0.98),
-                Color(red: 0.70, green: 0.88, blue: 0.96)
+                Color(red: 1.00, green: 0.88, blue: 0.86),
+                Color(red: 1.00, green: 0.71, blue: 0.71),
+                Color(red: 1.00, green: 0.64, blue: 0.66)
             ]
-        case .violet:
+        case .amber:
             return [
-                Color(red: 0.86, green: 0.80, blue: 1.00),
-                Color(red: 0.76, green: 0.74, blue: 0.98),
-                Color(red: 0.64, green: 0.62, blue: 0.92)
+                Color(red: 1.00, green: 0.95, blue: 0.83),
+                Color(red: 1.00, green: 0.84, blue: 0.56),
+                Color(red: 1.00, green: 0.80, blue: 0.45)
             ]
         }
     }
