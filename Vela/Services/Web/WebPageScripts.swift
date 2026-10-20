@@ -1049,11 +1049,11 @@ public enum WebPageScripts {
     /// document whose height is still being computed is silently clamped to
     /// the height it had at that instant.
     public static func scrollRestoreScript(offsetY: Double) -> String {
-        let y = max(0, offsetY)
+        let target = max(0, Int(offsetY.rounded()))
         return """
         (function () {
           try {
-            var target = \(String(format: "%.1f", y));
+            var target = \(target);
             function apply() {
               try { window.scrollTo(0, target); } catch (_error) {}
             }
@@ -1064,6 +1064,10 @@ public enum WebPageScripts {
                 window.requestAnimationFrame(apply);
               });
             }
+            // Late images and lazy content can grow the document after the
+            // first frames; one more pass keeps a restored position from
+            // being clamped to a height the page had only for a moment.
+            window.setTimeout(apply, 320);
           } catch (_error) {
           }
         })();
