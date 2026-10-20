@@ -74,9 +74,10 @@ public final class AppEnvironment {
         self.translation = TranslationService()
 
         coordinator.attach(tabManager: tabManager)
-        coordinator.userScriptOpenTabHandler = { [weak self] url, active in
+        coordinator.userScriptOpenTabHandler = { [weak self] url, active, privacyMode in
             self?.tabManager.openTab(
                 url: url,
+                privacyMode: privacyMode,
                 openSource: .webWindowOpen,
                 activate: active
             )

@@ -33,7 +33,7 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
     /// parentheses, the engine half from the browser token at the tail.
     var claimedSummary: String {
         guard let ua = userAgent, !ua.isEmpty else {
-            return "由系统的 WebKit 现场生成，随 iOS 保持最新"
+            return "按当前设备自动选择：iPhone 手机版、iPad 平板版、Mac 桌面版"
         }
 
         var device = ""
@@ -80,7 +80,12 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
     }
 
     static let all: [BrowserUserAgentPreset] = [
-        BrowserUserAgentPreset(id: "default", title: "Vela 默认", userAgent: nil, isDesktop: false),
+        BrowserUserAgentPreset(
+            id: "auto",
+            title: "自动（跟随设备）",
+            userAgent: nil,
+            isDesktop: false
+        ),
         BrowserUserAgentPreset(
             id: "safari-iphone", title: "Safari iPhone",
             userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",

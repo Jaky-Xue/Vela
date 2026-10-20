@@ -116,6 +116,15 @@ private struct BrowserWindowRoot: View {
                 // Each window's log holds its own copy of the switches.
                 environment.applyNavigationDiagnosticsSettings()
             }
+            .onChange(of: environment.settings.appearanceMode) { _, mode in
+                // Pin the trait collection before the next SwiftUI update
+                // pass, so the whole window — including a presented settings
+                // sheet — changes in the same frame as the choice.
+                mode.applyToAllWindows()
+            }
+            .onAppear {
+                environment.settings.appearanceMode.applyToAllWindows()
+            }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .background:

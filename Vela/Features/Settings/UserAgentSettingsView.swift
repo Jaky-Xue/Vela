@@ -53,7 +53,7 @@ struct UserAgentSettingsView: View {
         return identity.customUserAgent
             ?? (env.settings.preferences.desktopSiteByDefault
                 ? BrowserUserAgent.desktopIdentifier
-                : BrowserUserAgent.mobileIdentifier)
+                : BrowserUserAgent.deviceIdentifier)
     }
 
     var body: some View {
@@ -69,8 +69,18 @@ struct UserAgentSettingsView: View {
                 Text("选择后，之后打开的页面都会以它出现。视频网站（如 YouTube）始终使用移动版 Safari 标识，以保证播放与字幕可用。")
             }
 
+            Section {
+                presetRow(BrowserUserAgentPreset.all[0])
+            } header: {
+                Text("自动")
+            } footer: {
+                Text("初始使用当前设备对应的标识：iPhone 用手机版，iPad 用平板版，Mac 用桌面版。手动选择下面的预设或填写自定义标识会覆盖它。")
+            }
+
             Section("移动端网页") {
-                ForEach(BrowserUserAgentPreset.all.filter { !$0.isDesktop }) { preset in
+                ForEach(BrowserUserAgentPreset.all.filter {
+                    !$0.isDesktop && $0.id != BrowserUserAgentPreset.all[0].id
+                }) { preset in
                     presetRow(preset)
                 }
             }
@@ -95,7 +105,10 @@ struct UserAgentSettingsView: View {
                 .lineLimit(3...6)
 
                 Button("恢复默认") {
-                    env.settings.update { $0.customUserAgent = "" }
+                    env.settings.update {
+                        $0.customUserAgent = ""
+                        $0.desktopSiteByDefault = false
+                    }
                     apply(reload: true)
                 }
             } header: {
@@ -143,7 +156,13 @@ struct UserAgentSettingsView: View {
     private func presetRow(_ preset: BrowserUserAgentPreset) -> some View {
         let isSelected = selectedPreset?.id == preset.id
         return Button {
-            env.settings.update { $0.customUserAgent = preset.userAgent ?? "" }
+            env.settings.update {
+                $0.customUserAgent = preset.userAgent ?? ""
+                // The automatic preset means "the device's own identity"; a
+                // stored desktop toggle from the menu must not quietly turn it
+                // into the desktop one.
+                $0.desktopSiteByDefault = preset.isDesktop
+            }
             apply(reload: true)
         } label: {
             HStack {

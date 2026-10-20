@@ -1046,6 +1046,33 @@ public enum WebPageScripts {
     })();
     """
 
+    /// Forces a visual zoom on the whole document.
+    ///
+    /// `WKWebView.pageZoom` is a layout zoom: pages with their own viewport
+    /// rules can ignore or partially apply it, which is why the setting looked
+    /// inconsistent. A `zoom` rule on the root element with `!important`
+    /// applies to the page as one box regardless of the site's viewport, so
+    /// the chosen factor is actually what the user sees. The script is
+    /// idempotent: it creates the style once and updates it on every call.
+    public static func forcedZoomScript(scale: Double) -> String {
+        let value = String(format: "%.3f", min(max(scale, 0.5), 2.0))
+        return """
+        (function () {
+          try {
+            var id = 'vela-forced-zoom';
+            var style = document.getElementById(id);
+            if (!style) {
+              style = document.createElement('style');
+              style.id = id;
+              (document.head || document.documentElement).appendChild(style);
+            }
+            style.textContent = 'html { zoom: \(value) !important; }';
+          } catch (_error) {
+          }
+        })();
+        """
+    }
+
     /// Puts a restored tab back where the user left it.
     ///
     /// Called once after a discarded tab's page has finished loading. Two

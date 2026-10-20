@@ -44,7 +44,7 @@ struct AppearanceSettingsView: View {
             } header: {
                 Text("外观模式")
             } footer: {
-                Text("「跟随系统」随系统设置实时切换。")
+                Text("「跟随系统」随系统设置实时切换；也可以直接轻点上面的浅色或深色预览立即切换。")
             }
 
             Section {
@@ -256,12 +256,14 @@ private struct AppearancePreviewStrip: View {
             AppearancePreviewCard(
                 tokens: palette.tokens(for: .light),
                 title: "浅色",
-                isInEffect: effectiveScheme == .light
+                isInEffect: effectiveScheme == .light,
+                onSelect: { env.settings.setAppearanceMode(.light) }
             )
             AppearancePreviewCard(
                 tokens: palette.tokens(for: .dark),
                 title: "深色",
-                isInEffect: effectiveScheme == .dark
+                isInEffect: effectiveScheme == .dark,
+                onSelect: { env.settings.setAppearanceMode(.dark) }
             )
         }
     }
@@ -273,8 +275,17 @@ private struct AppearancePreviewCard: View {
     let tokens: BrowserColorTokens
     let title: String
     let isInEffect: Bool
+    let onSelect: () -> Void
 
     var body: some View {
+        Button(action: onSelect) {
+            card
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("轻点切换到\(title)外观")
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
                 previewGroup {

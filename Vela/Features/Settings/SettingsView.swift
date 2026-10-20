@@ -203,7 +203,14 @@ struct SettingsView: View {
         if !stored.isEmpty {
             return BrowserUserAgentPreset.all.first { $0.userAgent == stored }?.title ?? "自定义"
         }
-        return env.settings.preferences.desktopSiteByDefault ? "桌面版" : "手机版"
+        if env.settings.preferences.desktopSiteByDefault {
+            return "桌面版"
+        }
+        switch UIDevice.current.userInterfaceIdiom {
+        case .pad: return "自动 · iPad"
+        case .mac: return "自动 · Mac"
+        default: return "自动 · iPhone"
+        }
     }
 
     private func settingsRow(icon: String, tint: Color, title: String, detail: String = "") -> some View {

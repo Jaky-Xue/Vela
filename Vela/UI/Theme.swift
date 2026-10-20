@@ -58,6 +58,32 @@ public enum AppearanceMode: String, CaseIterable, Codable, Sendable, Identifiabl
         case .dark: return .dark
         }
     }
+
+    public var userInterfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .system: return .unspecified
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
+    /// Applies the choice to every window on the spot.
+    ///
+    /// `preferredColorScheme` reaches the SwiftUI tree on its next update pass,
+    /// which is why a switch made from a presented sheet could look a beat
+    /// late — the sheet's UIKit-backed surfaces kept the old trait until that
+    /// pass. Setting each window's interface style changes the trait
+    /// collection immediately, so every dynamic colour resolves in the new
+    /// mode in the same run loop, sheets and all.
+    @MainActor
+    public func applyToAllWindows() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.overrideUserInterfaceStyle = userInterfaceStyle
+            }
+        }
+    }
 }
 
 // MARK: - Tokens

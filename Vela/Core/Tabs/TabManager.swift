@@ -37,12 +37,20 @@ public protocol BrowserWebViewConfigurationProviding: AnyObject {
     func webIdentity(for tab: BrowserTabState) -> BrowserWebIdentity
     /// The factor every page is drawn at, forced by 网页缩放.
     var pageZoomScale: Double { get }
+    /// Applies that factor to a page already on screen.
+    func applyForcedZoom(to webView: WKWebView)
     /// The delegates a tab's web view reports to.
     ///
     /// WebKit holds both weakly, so whatever this returns has to be owned
     /// somewhere else — the app environment owns it.
     var navigationDelegate: WKNavigationDelegate? { get }
     var uiDelegate: WKUIDelegate? { get }
+}
+
+public extension BrowserWebViewConfigurationProviding {
+    /// Test providers and any other non-browser configuration have nothing to
+    /// force; the real provider overrides this.
+    func applyForcedZoom(to webView: WKWebView) {}
 }
 
 @MainActor
@@ -557,7 +565,9 @@ public final class TabManager {
         let webView = WKWebView(frame: .zero, configuration: configuration)
 
         webView.customUserAgent = configurationProvider.webIdentity(for: tab).customUserAgent
-        webView.pageZoom = CGFloat(configurationProvider.pageZoomScale)
+        // Zoom is applied by the document's forced root style, not by
+        // `pageZoom`: a page with its own viewport can ignore the latter.
+        webView.pageZoom = 1
 
         // Without these the web view reports nothing: no `didFinish`, so back
         // and forward never become available; no title, URL or progress; no
@@ -701,17 +711,15 @@ public final class TabManager {
 
     /// Re-applies the forced page zoom to every live web view.
     ///
-    /// `pageZoom` belongs to the web view rather than to the document, so a
-    /// view that is open keeps the factor across navigations. Setting it here
-    /// makes a change visible on the page in front of the user without a
-    /// reload, and on backgrounded tabs before they are switched back to.
+    /// The zoom is a rule on the document's root element, so a live page has
+    /// to be told about a new factor directly; new documents receive it from
+    /// the injected script at document start and end. Applying it here makes a
+    /// change visible on the page in front of the user without a reload, and
+    /// on backgrounded tabs before they are switched back to.
     public func applyPageZoomToAllWebViews() {
-        let scale = CGFloat(configurationProvider.pageZoomScale)
         for tab in tabs {
             guard let webView = webViews[tab.id] else { continue }
-            if abs(webView.pageZoom - scale) > 0.001 {
-                webView.pageZoom = scale
-            }
+            configurationProvider.applyForcedZoom(to: webView)
         }
     }
 
@@ -1055,6 +1063,32 @@ public enum BrowserUserAgent {
         let lowered = host.lowercased()
         let domains = ["youtube.com", "youtube-nocookie.com", "youtubekids.com", "youtu.be"]
         return domains.contains { lowered == $0 || lowered.hasSuffix(".\($0)") }
+    }
+
+    /// The identifier the running device should present by default.
+    ///
+    /// The automatic preset is the initial choice, and this is what makes it
+    /// mean "the device you are holding": an iPhone claims a phone, an iPad a
+    /// tablet, and a Mac a desktop. The default path still lets WebKit build
+    /// its own identifier (which is the most current one); this value is used
+    /// to show the user what that identifier is and as the base for the
+    /// explicit presets.
+    public static var deviceIdentifier: String {
+        switch UIDevice.current.userInterfaceIdiom {
+        case .pad:
+            return padIdentifier
+        case .mac:
+            return desktopIdentifier
+        default:
+            return mobileIdentifier
+        }
+    }
+
+    /// A complete iPad identifier, for the automatic tablet identity.
+    public static var padIdentifier: String {
+        "Mozilla/5.0 (iPad; CPU OS "
+            + "\(operatingSystemVersion.replacingOccurrences(of: ".", with: "_")) like Mac OS X) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) \(safariTail)"
     }
 
     /// A complete desktop identifier, for the "请求桌面网站" toggle.

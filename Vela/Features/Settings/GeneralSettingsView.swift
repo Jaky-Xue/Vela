@@ -130,9 +130,9 @@ struct GeneralSettingsView: View {
                     }
                 }
             } header: {
-                Text("网页缩放")
+                Text("强制网页缩放")
             } footer: {
-                Text("强制页面按所选倍率显示，不受网站自身缩放设置的影响；改动对已打开的页面立即生效，无需刷新。")
+                Text("通过根元素强制按所选倍率缩放整页，不依赖网站自己的 viewport 或缩放设置；改动对已打开的页面立即生效，无需刷新。")
             }
 
             Section {

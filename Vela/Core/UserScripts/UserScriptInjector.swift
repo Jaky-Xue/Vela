@@ -837,19 +837,19 @@ public enum UserScriptInjector {
           ['GM_EX_getSearchEngines', 'GM_EX_getAppSearchEngineUrl', 'GM_EX_TTS',
            'GM_EX_ShareTextToApp', 'GM_EX_sniffMedia'].forEach(defineUnsupported);
 
-          // Scripts reach the API either as bare globals (the common case) or
-          // through the bridge object. Both are provided.
-          for (var name in api) {
-            if (!Object.prototype.hasOwnProperty.call(api, name)) { continue; }
-            try { window[name] = api[name]; } catch (_error) {}
-          }
           bridge.api = api;
           bridge.values = valueStore;
 
           // `unsafeWindow` is the page's own window object. In a WKUserScript
           // the injected world shares the page's globals, so this is an alias
           // rather than the isolation-bypass it is in Firefox.
-          try { window.unsafeWindow = window; } catch (_error) {}
+          api.unsafeWindow = window;
+
+          // The GM globals are scoped with `with (api)` below instead of
+          // being written to `window`. Each script's API closures carry its
+          // own SCRIPT_ID, and two scripts on one page must not overwrite each
+          // other's value store or menu commands. Sloppy mode is deliberate:
+          // many user scripts are not strict-mode safe.
 
           // `window.onurlchange` is opt-in through @grant in Tampermonkey.
           (function () {
@@ -882,20 +882,22 @@ public enum UserScriptInjector {
             } catch (_error) {}
           })();
 
-          // @require dependencies, in declaration order, before the script.
+          with (api) {
+            // @require dependencies, in declaration order, before the script.
         \(requiresBlock)
 
-          try {
-            (function () {
+            try {
+              (function () {
         \(script.source)
-            }).call(window);
-          } catch (error) {
-            api.GM_log('脚本执行出错：' + (error && error.message ? error.message : String(error)));
-            post({
-              type: 'executionError',
-              scriptId: SCRIPT_ID,
-              message: String(error && error.message ? error.message : error)
-            });
+              }).call(window);
+            } catch (error) {
+              api.GM_log('脚本执行出错：' + (error && error.message ? error.message : String(error)));
+              post({
+                type: 'executionError',
+                scriptId: SCRIPT_ID,
+                message: String(error && error.message ? error.message : error)
+              });
+            }
           }
         })();
         """

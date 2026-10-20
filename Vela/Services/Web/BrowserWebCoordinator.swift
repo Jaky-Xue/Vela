@@ -58,7 +58,7 @@ public final class BrowserWebCoordinator: NSObject {
 
     /// Opens a tab a user script asked for with `GM_openInTab`. Set by the
     /// environment, because the tab manager lives there.
-    public var userScriptOpenTabHandler: ((URL, Bool) -> Void)?
+    public var userScriptOpenTabHandler: ((URL, Bool, BrowserSessionPrivacyMode) -> Void)?
 
     /// In-flight `GM_xmlhttpRequest` tasks, keyed by script and request id.
     private var userScriptXHRTasks: [String: Task<Void, Never>] = [:]
@@ -366,7 +366,7 @@ public final class BrowserWebCoordinator: NSObject {
                   let url = URL(string: raw),
                   let scheme = url.scheme?.lowercased(),
                   scheme == "http" || scheme == "https" else { return }
-            userScriptOpenTabHandler?(url, payload["active"] as? Bool ?? true)
+            userScriptOpenTabHandler?(url, payload["active"] as? Bool ?? true, tab.privacyMode)
 
         case "download":
             handleUserScriptDownload(payload, tab: tab, webView: webView)
@@ -684,6 +684,9 @@ public final class BrowserWebCoordinator: NSObject {
                     properties[.domain] = rawDomain
                 } else if let rawURL, let url = URL(string: rawURL), let host = url.host {
                     properties[.domain] = host
+                    if (details["path"] as? String) == nil {
+                        properties[.path] = url.path.isEmpty ? "/" : url.path
+                    }
                 } else {
                     self.resolveUserScript(
                         scriptId: scriptId,
@@ -1062,6 +1065,17 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
+        // The forced zoom belongs to the top document only: scaling an iframe
+        // element already scales its content, and applying the root rule inside
+        // the iframe as well would double it.
+        controller.addUserScript(
+            WKUserScript(
+                source: WebPageScripts.forcedZoomScript(scale: settings.pageZoomScale),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+
         // A hand-picked identifier makes a claim the rest of the page surface
         // has to agree with — vendor, userAgentData, window.chrome. The
         // default path sends no script: WebKit's own identity is consistent
@@ -1075,6 +1089,16 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
+        // Re-assert the forced zoom after the page's own styles have loaded;
+        // a site that declares its own zoom or viewport rules is the exact
+        // case this setting exists for.
+        controller.addUserScript(
+            WKUserScript(
+                source: WebPageScripts.forcedZoomScript(scale: settings.pageZoomScale),
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            )
+        )
         controller.addUserScript(
             WKUserScript(
                 source: WebPageScripts.pageMetricsReporter,
@@ -1249,6 +1273,14 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     /// The forced page zoom, read from the preference so a new web view and a
     /// live one cannot disagree about the factor.
     public var pageZoomScale: Double { settings.pageZoomScale }
+
+    /// Applies the forced root-element zoom to a page already on screen.
+    public func applyForcedZoom(to webView: WKWebView) {
+        webView.evaluateJavaScript(
+            WebPageScripts.forcedZoomScript(scale: settings.pageZoomScale),
+            completionHandler: nil
+        )
+    }
 
     /// The coordinator is both of these; WebKit holds them weakly, and the app
     /// environment is what keeps it alive.
