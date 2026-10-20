@@ -16,8 +16,6 @@ name: Build unsigned IPA
 # separately.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       configuration:
