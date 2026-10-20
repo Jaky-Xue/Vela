@@ -32,6 +32,14 @@ public final class UserScriptRepository: @unchecked Sendable {
         return decoded
     }
 
+    private func decodeDeclarations(_ raw: String) -> [UserScriptResourceDeclaration] {
+        guard let data = raw.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([UserScriptResourceDeclaration].self, from: data) else {
+            return []
+        }
+        return decoded
+    }
+
     private func decodeResources(_ raw: String) -> [UserScriptResourceRecord] {
         guard let data = raw.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([UserScriptResourceRecord].self, from: data) else {

@@ -503,8 +503,8 @@ public final class UserScriptService {
 
     // MARK: - Decoding helpers
 
-    private func dictionary(keys: [String], values: [String]) -> [String: String] {
-        var result: [String: String] = [:]
+    private func dictionary<Key: Hashable, Value>(keys: [Key], values: [Value]) -> [Key: Value] {
+        var result: [Key: Value] = [:]
         for (key, value) in zip(keys, values) {
             result[key] = value
         }

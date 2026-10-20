@@ -45,7 +45,7 @@ public enum UserScriptInjector {
         tabId: String = ""
     ) -> (scripts: [WKUserScript], summary: UserScriptInjectionSummary) {
         var built: [WKUserScript] = []
-        var failed: [String] = []
+        let failed: [String] = []
 
         for script in scripts {
             guard script.runAt.injectsOnLoad else { continue }

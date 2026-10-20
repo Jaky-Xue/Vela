@@ -73,6 +73,18 @@ SwiftUI 环境注入。视图不 new 服务。
 `tab_sessions.window_id` 是这条边界的持久化形式。第一个窗口使用 `window-main`，
 启动时只有它的会话会被恢复，其余窗口 id 在下次启动时清理。
 
+## 用户脚本
+
+`UserScriptParser` 解析 Tampermonkey 元数据块，`UserScriptMatcher` 分别处理
+`@match`（Chrome 匹配模式）和 `@include`（通配/正则）。`UserScriptService`
+负责安装、编辑和更新：安装时下载 `@require` 与 `@resource`，把源码、声明和
+资源一起存入 `user_scripts`；更新按数字版本比较，并保留脚本 id、启用状态、
+GM 值存储与创建时间。`UserScriptInjector` 把依赖、资源和 API 一起注入页面；
+`GM_xmlhttpRequest`、`GM_fetch`、`GM_cookie`、`GM_download`、`GM_openInTab`
+和 `GM_getTab/saveTab/getTabs` 通过消息桥回到
+`BrowserWebCoordinator`，再用 `__velaUserScriptBridge.resolve` 把结果送回页面。
+`GM_registerMenuCommand` 注册的命令显示在菜单面板的“用户脚本”区。
+
 ## 网页翻译
 
 `WebPageScripts.translationSupportScript` 按“叶子块元素”（段落、列表项、标题、

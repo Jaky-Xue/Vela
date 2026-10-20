@@ -89,7 +89,7 @@ iOS 不允许安装没有签名的应用，所以 `.ipa` 需要用自己的 Appl
 | | 做法 |
 |---|---|
 | 广告过滤 | `WKContentRuleList`——WebKit 唯一允许的规则引擎。规则是声明式的，所以正则规则、`$csp`、`$rewrite`、脚本注入和扩展选择器表达不了，设置页会如实告诉你跳过了多少条 |
-| 用户脚本 | `WKUserScript`，注入点固定为文档开始和文档结束。需要特权的 `GM_xmlhttpRequest`、`GM_download`、`GM_cookie` 用不了，申请了这些权限的脚本仍可安装，详情页会标注 |
+| 用户脚本 | 按 Tampermonkey 的元数据解析 `@match` / `@include` / `@require` / `@resource` / `@run-at` / `@grant`。脚本可在管理页安装、编辑、检查更新和删除；`@require` 与 `@resource` 在安装时下载并随脚本保存。`GM_xmlhttpRequest`、`GM_fetch`、`GM_cookie`、`GM_download`、`GM_openInTab` 和 `GM_getTab` 系列需要原生能力，通过注入桥回到 App 执行；华为扩展 `GM_EX_*` 与原生 `window.close/focus` 语义仍不可用 |
 | 下载 | 浏览器自己的传输层：https 文件用 URLSession 做 Range 分片、并发上限、暂停/续段；服务器不支持 Range 时自动单连接。URLSession 无法忠实完成的情况（明文 http、登录/挑战页、blob）回退到 WebKit 的 `WKDownload`，后者只支持单连接 |
 | 网页翻译 | 按段落提取并由 Google 公共接口 / DeepL / OpenAI 兼容接口翻译，段落里的链接、加粗等行内标记保留；识别页面语言后像 Chrome 一样显示翻译栏，可显示原文、总是/不再翻译此网站，并继续翻译后来加载的内容 |
 | 拦截统计 | WebKit 不报告哪条规则命中、命中多少次，所以 Vela 不编造一个「已拦截 N 条」的数字。页面上显示的是规则条数，以及实际隐藏掉的元素数——那个是自己做的，能精确计数 |

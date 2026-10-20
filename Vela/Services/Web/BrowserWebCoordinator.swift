@@ -776,7 +776,7 @@ public final class BrowserWebCoordinator: NSObject {
 
     private func deleteCookie(_ cookie: HTTPCookie, from store: WKHTTPCookieStore) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            store.deleteCookie(cookie) { continuation.resume() }
+            store.delete(cookie) { continuation.resume() }
         }
     }
 
