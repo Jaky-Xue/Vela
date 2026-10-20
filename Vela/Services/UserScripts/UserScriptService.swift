@@ -218,7 +218,7 @@ public final class UserScriptService {
         for pattern in script.includes { lines.append(contentsOf: line("include", pattern).map { [$0] } ?? []) }
         for pattern in script.excludes { lines.append(contentsOf: line("exclude", pattern).map { [$0] } ?? []) }
         for pattern in script.excludeMatches { lines.append(contentsOf: line("exclude-match", pattern).map { [$0] } ?? []) }
-        if !(script.grants.count == 1 && script.grants.first == .none) {
+        if !(script.grants.count == 1 && script.grants.first == UserScriptGrant.none) {
             for grant in script.grants { lines.append(contentsOf: line("grant", grant.rawValue).map { [$0] } ?? []) }
         }
         for url in script.requireUrls { lines.append(contentsOf: line("require", url).map { [$0] } ?? []) }
