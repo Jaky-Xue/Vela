@@ -2146,14 +2146,17 @@ struct BrowserShellView: View {
             activateReaderMode()
         case .translate:
             guard let webView = activeWebView else { break }
-            translationBarDismissed = false
             // The menu item is the manual switch Chrome puts beside its
-            // bubble: it translates, and translates back when the page is
-            // already translated.
-            if env.translation.isTranslated {
+            // bubble: it translates, translates back when the bar is on
+            // screen, and reopens the bar when a translated page's bar was
+            // closed — so closing the bar never becomes a dead end.
+            if env.translation.isTranslated && !translationBarDismissed {
                 Task { await env.translation.restoreOriginal(webView: webView) }
             } else {
-                startPageTranslation()
+                translationBarDismissed = false
+                if !env.translation.isTranslated {
+                    startPageTranslation()
+                }
             }
         case .saveOfflinePage:
             saveOfflinePage()
