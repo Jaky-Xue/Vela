@@ -216,7 +216,7 @@ struct NewTabHomeView: View {
             return
         }
         backgroundImage = image
-        backgroundIsLight = ChromeBackdrop.isLight(image) ?? true
+        backgroundIsLight = ChromeBackdrop.topStripIsLight(image) ?? true
     }
 
     // MARK: - Bookmarks

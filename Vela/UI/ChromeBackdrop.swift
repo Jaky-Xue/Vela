@@ -24,11 +24,26 @@ enum ChromeBackdrop {
 
     /// The mean luminance of an image's bottom strip — the region the command
     /// bar floats over — against `lightThreshold`.
-    ///
+    static func bottomStripIsLight(_ image: UIImage) -> Bool? {
+        stripIsLight(image, rows: 32..<48, threshold: lightThreshold)
+    }
+
+    /// The top strip — what the iPad top bar sits on, and the band the home's
+    /// opening text occupies. A whole-picture average is not the answer for
+    /// either: a bright sky over dark grass averages to "dark" while both the
+    /// bar and the text are on the bright part.
+    static func topStripIsLight(_ image: UIImage) -> Bool? {
+        stripIsLight(image, rows: 0..<16, threshold: 0.5)
+    }
+
     /// The picture is squashed into a few dozen pixels first: an average is
     /// the answer wanted here, and a 16×48 read costs nothing next to a full
     /// histogram. `nil` when the picture has no bitmap to read.
-    static func bottomStripIsLight(_ image: UIImage) -> Bool? {
+    private static func stripIsLight(
+        _ image: UIImage,
+        rows: Range<Int>,
+        threshold: Double
+    ) -> Bool? {
         guard let cgImage = image.cgImage else { return nil }
         let width = 16
         let height = 48
@@ -47,10 +62,10 @@ enum ChromeBackdrop {
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
 
         // The context's first scanline in memory is the top of the drawn
-        // picture, so the strip the bar covers is the last rows read here.
+        // picture, so the bottom strip is the last rows read here.
         var total = 0.0
         var samples = 0
-        for row in (height - 16)..<height {
+        for row in rows {
             for column in 0..<width {
                 let offset = (row * width + column) * 4
                 total += 0.2126 * Double(pixels[offset]) / 255
@@ -59,37 +74,7 @@ enum ChromeBackdrop {
                 samples += 1
             }
         }
-        return total / Double(max(samples, 1)) > lightThreshold
-    }
-
-    /// The mean luminance of the whole picture against `lightThreshold`.
-    ///
-    /// Chrome sampling asks about the strip it floats over; home text sits
-    /// across the whole surface, so it asks about the whole picture.
-    static func isLight(_ image: UIImage) -> Bool? {
-        guard let cgImage = image.cgImage else { return nil }
-        let edge = 24
-        var pixels = [UInt8](repeating: 0, count: edge * edge * 4)
-        let context = CGContext(
-            data: &pixels,
-            width: edge,
-            height: edge,
-            bitsPerComponent: 8,
-            bytesPerRow: edge * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        )
-        guard let context else { return nil }
-        context.interpolationQuality = .low
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: edge, height: edge))
-
-        var total = 0.0
-        for offset in stride(from: 0, to: pixels.count, by: 4) {
-            total += 0.2126 * Double(pixels[offset]) / 255
-                + 0.7152 * Double(pixels[offset + 1]) / 255
-                + 0.0722 * Double(pixels[offset + 2]) / 255
-        }
-        return total / Double(edge * edge) > lightThreshold
+        return total / Double(max(samples, 1)) > threshold
     }
 
     /// A palette colour's own lightness, resolved for one appearance.

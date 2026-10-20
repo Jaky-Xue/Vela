@@ -132,6 +132,10 @@ struct BrowserShellView: View {
     /// initial value matches the shipped palette's dark chrome until the first
     /// measurement lands.
     @State private var chromeForegroundIsLight = false
+    /// The ink for the iPad top bar, sampled from the top of a home picture.
+    /// `nil` means the bar is over the ambient field or a page and the
+    /// appearance decides.
+    @State private var topChromeForegroundIsLight: Bool?
     @State private var chromeSampleTask: Task<Void, Never>?
 
     /// The one animation the chrome uses.
@@ -725,7 +729,10 @@ struct BrowserShellView: View {
     }
 
     private var padInk: Color {
-        colorScheme == .dark ? .white : .black
+        if let topChromeForegroundIsLight {
+            return topChromeForegroundIsLight ? .black : .white
+        }
+        return colorScheme == .dark ? .white : .black
     }
 
     /// The unified Safari-style top bar: sidebar, back, address, share, tabs,
@@ -1299,6 +1306,7 @@ struct BrowserShellView: View {
     private func updateChromeForeground() {
         guard let tab = activeTab else { return }
         chromeSampleTask?.cancel()
+        topChromeForegroundIsLight = nil
 
         if tab.isHome {
             if let stamp = env.settings.preferences.homeBackgroundStamp {
@@ -1309,10 +1317,22 @@ struct BrowserShellView: View {
                         HomeBackgroundStore.load(stamp: stamp)
                     }.value
                     guard !Task.isCancelled else { return }
-                    if let image, let backdropIsLight = ChromeBackdrop.bottomStripIsLight(image) {
-                        chromeForegroundIsLight = backdropIsLight
+                    if let image {
+                        if let backdropIsLight = ChromeBackdrop.bottomStripIsLight(image) {
+                            chromeForegroundIsLight = backdropIsLight
+                        } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
+                            chromeForegroundIsLight = backdropIsLight
+                        }
+
+                        // The top bar sits on the picture's sky, not its tail.
+                        if let topIsLight = ChromeBackdrop.topStripIsLight(image) {
+                            topChromeForegroundIsLight = topIsLight
+                        } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
+                            topChromeForegroundIsLight = backdropIsLight
+                        }
                     } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
                         chromeForegroundIsLight = backdropIsLight
+                        topChromeForegroundIsLight = backdropIsLight
                     }
                 }
             } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
@@ -2252,8 +2272,8 @@ private struct HomePictureBackdrop: View {
                     .scaledToFill()
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
-        .clipped()
         .task(id: stamp) {
             image = HomeBackgroundStore.load(stamp: stamp)
         }
