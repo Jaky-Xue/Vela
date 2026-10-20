@@ -177,6 +177,8 @@ extension BrowserShellView {
     func toolbarButton(_ control: ToolbarControl) -> some View {
         if control == .tabs {
             tabsButton
+        } else if control == .menu {
+            hamburgerButton()
         } else if control == .back {
             chromeButton(
                 symbol: control.symbolName,
@@ -258,6 +260,21 @@ extension BrowserShellView {
         case .privateMode:
             env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
         }
+    }
+
+    /// The menu control, drawn rather than taken from the symbol set so its
+    /// three bars are the same optical weight as the glyphs beside it.
+    func hamburgerButton(
+        foreground: Color? = nil,
+        label: String = "菜单",
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HamburgerGlyph()
+        }
+        .buttonStyle(ChromeButtonStyle())
+        .foregroundStyle(foreground ?? barForeground)
+        .accessibilityLabel(label)
     }
 
     /// One glyph button inside the chrome.

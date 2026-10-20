@@ -138,12 +138,7 @@ extension BrowserShellView {
                         padToolbarControl(control)
                     }
 
-                    chromeButton(
-                        symbol: "line.3.horizontal",
-                        isEnabled: true,
-                        label: "菜单",
-                        foreground: padInk
-                    ) {
+                    hamburgerButton(foreground: padInk) {
                         showMenu = true
                     }
                 }

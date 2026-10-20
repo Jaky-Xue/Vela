@@ -241,7 +241,10 @@ struct TabsOverviewView: View {
             }
             .disabled(visibleTabs.isEmpty)
         } label: {
-            headerCircle("line.3.horizontal")
+            HamburgerGlyph(width: 15, thickness: 1.8, spacing: 3.6)
+                .foregroundStyle(palette.primaryText)
+                .frame(width: 36, height: 36)
+                .background(.ultraThinMaterial, in: Circle())
         }
         .accessibilityLabel("标签页操作")
     }

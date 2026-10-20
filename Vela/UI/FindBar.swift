@@ -44,22 +44,15 @@ struct FindBar: View {
             .frame(height: 38)
             .background(palette.controlFill.opacity(0.7), in: Capsule())
 
-            Button(action: onPrevious) {
-                Image(systemName: "chevron.up")
+            findAction("chevron.up", label: "上一个", enabled: result.count > 0, action: onPrevious)
+            findAction("chevron.down", label: "下一个", enabled: result.count > 0, action: onNext)
+            findAction("xmark", label: "关闭查找", enabled: true) {
+                // Let go of the field first: a still-focused text field kept
+                // the keyboard up after the bar itself was gone, which read as
+                // the close having done nothing.
+                isFocused = false
+                onClose()
             }
-            .buttonStyle(ChromeButtonStyle())
-            .disabled(result.count == 0)
-
-            Button(action: onNext) {
-                Image(systemName: "chevron.down")
-            }
-            .buttonStyle(ChromeButtonStyle())
-            .disabled(result.count == 0)
-
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(ChromeButtonStyle())
         }
         .foregroundStyle(palette.primaryText)
         .padding(.horizontal, BrowserSpacing.compact + 2)
@@ -74,5 +67,26 @@ struct FindBar: View {
             elevation: .card
         )
         .onAppear { isFocused = true }
+    }
+
+    /// One find-bar control, with the 34 pt touch target the chrome's other
+    /// glyphs use. A bare symbol was a ~12 pt target, so the close mark in
+    /// particular was easy to miss and looked broken.
+    private func findAction(
+        _ symbol: String,
+        label: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ChromeButtonStyle())
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.35)
+        .accessibilityLabel(label)
     }
 }
