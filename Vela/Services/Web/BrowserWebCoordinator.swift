@@ -753,10 +753,19 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     /// ones. The visual zoom scales the rendered page uniformly on both.
     public func applyForcedZoom(to webView: WKWebView) {
         // The host applies the zoom once the view is attached; an off-screen
-        // scroll view has no zoomable geometry.
-        guard webView.window != nil else { return }
-        let target = CGFloat(min(max(settings.pageZoomScale, 0.5), 2.0))
+        // scroll view has no zoomable geometry. A zero-width view is between
+        // layout passes and is left for the host's next update.
         let scrollView = webView.scrollView
+        guard webView.window != nil, scrollView.bounds.width > 0 else { return }
+        let target = CGFloat(min(max(settings.pageZoomScale, 0.5), 2.0))
+        // 100% is WebKit's own state; do not touch the scroll view at all
+        // unless a previous factor is still applied.
+        if abs(target - 1) < 0.001,
+           abs(scrollView.zoomScale - 1) < 0.001,
+           abs(scrollView.minimumZoomScale - 1) < 0.001,
+           abs(scrollView.maximumZoomScale - 1) < 0.001 {
+            return
+        }
         if scrollView.maximumZoomScale < target {
             scrollView.maximumZoomScale = target
         }

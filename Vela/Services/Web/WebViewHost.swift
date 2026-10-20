@@ -114,26 +114,13 @@ struct WebViewHost: UIViewRepresentable {
             scrollView.verticalScrollIndicatorInsets.bottom = bottomContentInset
         }
 
-        applyZoom(to: scrollView)
-    }
-
-    /// Locks the scroll view to the chosen scale.
-    ///
-    /// Both limits are set to the same value: the setting is a forced zoom,
-    /// and leaving room above it lets WebKit's automatic focus zoom move the
-    /// page again when a text field is tapped.
-    private func applyZoom(to scrollView: UIScrollView) {
-        let target = CGFloat(min(max(zoomScale, 0.5), 2.0))
-        // Raise the maximum before the minimum; a transient min > max trips an
-        // assertion inside UIScrollView.
-        if scrollView.maximumZoomScale < target {
-            scrollView.maximumZoomScale = target
-        }
-        scrollView.minimumZoomScale = target
-        scrollView.maximumZoomScale = target
-        if abs(scrollView.zoomScale - target) > 0.001 {
-            scrollView.setZoomScale(target, animated: false)
-        }
+        // Applying the zoom is deliberately not part of this update path.
+        // SwiftUI re-runs it for every shell change — opening the omnibox,
+        // raising the keyboard, a tab switch — and touching the scroll view's
+        // zoom on each of those was enough to keep the layout machinery
+        // re-entering itself. The coordinator applies it only when the chosen
+        // factor actually changes (or the hosted web view is replaced).
+        context.coordinator.applyZoomIfNeeded(webView, scale: zoomScale)
     }
 
     static func dismantleUIView(_ container: WebViewContainerView, coordinator: Coordinator) {
@@ -159,9 +146,15 @@ struct WebViewHost: UIViewRepresentable {
         private var offsetObservation: NSKeyValueObservation?
         private var progressObservation: NSKeyValueObservation?
 
+        private var zoomedWebView: WKWebView?
+        private var appliedZoom: CGFloat?
+
         func observe(webView: WKWebView, onScroll: ((Double) -> Void)?, onProgress: ((Double) -> Void)?) {
             stopObserving()
             observedWebView = webView
+            // A different web view has its own scroll view and its own zoom.
+            zoomedWebView = nil
+            appliedZoom = nil
 
             if let onScroll {
                 offsetObservation = webView.scrollView.observe(\.contentOffset, options: [.new]) { scrollView, _ in
@@ -192,12 +185,56 @@ struct WebViewHost: UIViewRepresentable {
             }
         }
 
+        /// Applies the forced zoom once per scale/web-view pair.
+        ///
+        /// Both limits are set to the chosen value, so WebKit's automatic focus
+        /// zoom cannot move the page again when a text field is tapped.
+        func applyZoomIfNeeded(_ webView: WKWebView, scale: Double) {
+            let target = CGFloat(min(max(scale, 0.5), 2.0))
+            if zoomedWebView === webView,
+               let appliedZoom,
+               abs(appliedZoom - target) < 0.001 {
+                return
+            }
+            let scrollView = webView.scrollView
+            // A view that is not laid out yet has no zoomable geometry; leave
+            // the cache untouched so the next update retries.
+            guard webView.window != nil, scrollView.bounds.width > 0 else { return }
+
+            // 100% is WebKit's own state. Touch nothing unless a previous
+            // factor has to be undone, so the common case has no zoom code in
+            // the input-focus/keyboard path at all.
+            if abs(target - 1) < 0.001,
+               abs(scrollView.zoomScale - 1) < 0.001,
+               abs(scrollView.minimumZoomScale - 1) < 0.001,
+               abs(scrollView.maximumZoomScale - 1) < 0.001 {
+                zoomedWebView = webView
+                appliedZoom = target
+                return
+            }
+
+            // Raise the maximum before the minimum; a transient min > max trips
+            // an assertion inside UIScrollView.
+            if scrollView.maximumZoomScale < target {
+                scrollView.maximumZoomScale = target
+            }
+            scrollView.minimumZoomScale = target
+            scrollView.maximumZoomScale = target
+            if abs(scrollView.zoomScale - target) > 0.001 {
+                scrollView.setZoomScale(target, animated: false)
+            }
+            zoomedWebView = webView
+            appliedZoom = target
+        }
+
         func stopObserving() {
             offsetObservation?.invalidate()
             offsetObservation = nil
             progressObservation?.invalidate()
             progressObservation = nil
             observedWebView = nil
+            zoomedWebView = nil
+            appliedZoom = nil
         }
 
         deinit {
