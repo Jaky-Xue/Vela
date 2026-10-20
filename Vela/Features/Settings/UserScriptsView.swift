@@ -161,9 +161,13 @@ struct UserScriptsView: View {
         .task(id: installNotice) {
             // Auto-dismiss the success banner. `id` is the notice string, so a
             // second install cancels this task and starts a fresh window rather
-            // than the first install's timer clearing the new one early.
+            // than the first install's timer clearing the new one early. The
+            // cancellation check matters: `try?` around the sleep swallows the
+            // CancellationError, so without it the cancelled task would still
+            // fall through and clear the newer notice.
             guard installNotice != nil else { return }
             try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
             installNotice = nil
         }
         .sheet(isPresented: $showingInstall) {
