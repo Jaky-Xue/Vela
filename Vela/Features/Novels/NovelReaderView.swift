@@ -78,45 +78,44 @@ struct NovelReaderView: View {
             // broken over a real page.
             AmbientBackgroundView()
 
-            VStack(spacing: 0) {
-                if chromeVisible {
-                    headerInGlassContainer
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-
-                Group {
-                    if let chapter {
-                        NovelChapterWebView(
-                            html: styledHtml(for: chapter),
-                            initialProgress: progressBox.value,
-                            isPaged: pageMode == .paged,
-                            onProgress: handleProgress,
-                            onCenterTap: toggleChrome
-                        )
-                        .id(chapter.url)
-                    } else if isLoading {
-                        VStack(spacing: 12) {
-                            ProgressView()
-                            Text("正在载入章节…")
-                                .font(.footnote)
-                                .foregroundStyle(palette.secondaryText)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        EmptyState(
-                            systemImage: "book.closed",
-                            title: "无法打开这一章",
-                            message: statusMessage ?? "这一页没有可阅读的正文，可能需要在浏览器中打开。",
-                            actionTitle: "在浏览器中打开",
-                            action: openCurrentInBrowser
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Group {
+                if let chapter {
+                    NovelChapterWebView(
+                        html: styledHtml(for: chapter),
+                        initialProgress: progressBox.value,
+                        isPaged: pageMode == .paged,
+                        onProgress: handleProgress,
+                        onCenterTap: toggleChrome
+                    )
+                    .id(chapter.url)
+                } else if isLoading {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("正在载入章节…")
+                            .font(.footnote)
+                            .foregroundStyle(palette.secondaryText)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    EmptyState(
+                        systemImage: "book.closed",
+                        title: "无法打开这一章",
+                        message: statusMessage ?? "这一页没有可阅读的正文，可能需要在浏览器中打开。",
+                        actionTitle: "在浏览器中打开",
+                        action: openCurrentInBrowser
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .overlay(alignment: .top) {
+            if chromeVisible {
+                headerInGlassContainer
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .safeAreaInset(edge: .bottom) {
+        .overlay(alignment: .bottom) {
             if chromeVisible {
                 bottomBarInGlassContainer
                     .transition(.move(edge: .bottom).combined(with: .opacity))
