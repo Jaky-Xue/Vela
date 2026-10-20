@@ -303,7 +303,7 @@ enum NovelModeService {
         );
         if (href) { return href; }
         var onclick = anchor.getAttribute('onclick') || '';
-        var quoted = onclick.match(/['"]([^'"]*(?:#\/|\/book\/|\.html?)[^'"]*)['"]/);
+        var quoted = onclick.match(/['"]([^'"]*(?:#\\/|\\/book\\/|\\.html?)[^'"]*)['"]/);
         if (quoted) { return absolute(quoted[1]); }
         return '';
       }
