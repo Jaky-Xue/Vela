@@ -34,7 +34,11 @@ final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var 
         }
 
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        // The site's reader is an app: it fetches the chapter with the session
+        // it established while the user browsed. A non-persistent store starts
+        // blank, so the chapter opened from the live tab worked while the next
+        // one loaded an empty shell. Share the browser's store instead.
+        configuration.websiteDataStore = .default()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
         let webView = WKWebView(

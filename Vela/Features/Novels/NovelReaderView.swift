@@ -51,10 +51,10 @@ struct NovelReaderView: View {
     @State private var tocEntries: [NovelTOCEntry] = []
     @State private var isLoadingTOC = false
     @State private var showTOC = false
-    /// Whether the header and chapter controls are on screen. They retreat
-    /// after the reader settles so the chapter is the only thing visible; a
-    /// tap in the middle of the page brings them back.
-    @State private var chromeVisible = true
+    /// Whether the header and chapter controls are on screen. Reading starts
+    /// with them hidden so the chapter is the only thing visible; a tap in the
+    /// middle of the page brings them back, and another tap puts them away.
+    @State private var chromeVisible = false
 
     init(
         book: NovelBook,
@@ -72,8 +72,11 @@ struct NovelReaderView: View {
 
     var body: some View {
         ZStack {
-            AmbientSurfaceFill(opacity: 0.88)
-                .ignoresSafeArea()
+            // An opaque field, not a veil over the tab. The veil let the
+            // original page — its ads, its navigation, its ghost text — show
+            // through the reading paper, which is what made the reader look
+            // broken over a real page.
+            AmbientBackgroundView()
 
             VStack(spacing: 0) {
                 if chromeVisible {
@@ -120,16 +123,7 @@ struct NovelReaderView: View {
             }
         }
         .animation(.easeInOut(duration: 0.22), value: chromeVisible)
-        .task {
-            await prepare()
-            // The controls introduce the reader, then get out of the reading
-            // surface's way. A tap in the middle brings them back.
-            try? await Task.sleep(nanoseconds: 2_600_000_000)
-            guard !Task.isCancelled else { return }
-            if chromeVisible {
-                withAnimation(.easeInOut(duration: 0.24)) { chromeVisible = false }
-            }
-        }
+        .task { await prepare() }
         .onDisappear {
             saveNow()
             loader.cancel()
@@ -204,7 +198,7 @@ struct NovelReaderView: View {
 
             Spacer(minLength: 0)
 
-            Text(progressLabel)
+            Text(progressSummary)
                 .font(.system(size: 10, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(palette.secondaryText)
@@ -459,6 +453,10 @@ struct NovelReaderView: View {
 
         guard let extraction else {
             statusMessage = "网络或页面结构让这一章无法载入。"
+            // The controls start hidden; a failure is the one moment the
+            // reader must show the way out and the chapter bar without being
+            // asked for.
+            withAnimation(.easeInOut(duration: 0.2)) { chromeVisible = true }
             return
         }
 
@@ -550,6 +548,27 @@ struct NovelReaderView: View {
 
     private var progressLabel: String {
         "\(Int((progress * 100).rounded()))%"
+    }
+
+    /// The number across the book, then the position inside the chapter.
+    /// Without a catalog the chapter percentage stands alone.
+    private var progressSummary: String {
+        guard let chapterPositionLabel else { return progressLabel }
+        return "\(chapterPositionLabel) · \(progressLabel)"
+    }
+
+    /// The chapter's place in the catalog, when one is loaded. This is the
+    /// progress that matters across a book; the percentage is the position
+    /// inside the current chapter.
+    private var chapterPositionLabel: String? {
+        guard tocEntries.count > 1, let chapter else { return nil }
+        let number = NovelURLRoute.chapterNumber(for: chapter.url)
+        let index = tocEntries.firstIndex { entry in
+            entry.url == chapter.url ||
+                (number != nil && NovelURLRoute.chapterNumber(for: entry.url) == number)
+        }
+        guard let index else { return nil }
+        return "\(index + 1)/\(tocEntries.count)"
     }
 
     private func openCurrentInBrowser() {

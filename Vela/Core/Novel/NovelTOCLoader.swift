@@ -28,7 +28,9 @@ final class NovelTOCLoader: NSObject, WKNavigationDelegate {
         }
 
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        // The catalog is built by the site's own script from an API response;
+        // it needs the cookies and local storage the browser already has.
+        configuration.websiteDataStore = .default()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
         let webView = WKWebView(
