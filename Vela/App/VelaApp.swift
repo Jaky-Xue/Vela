@@ -121,19 +121,19 @@ private struct BrowserWindowRoot: View {
                 // Each window's log holds its own copy of the switches.
                 environment.applyNavigationDiagnosticsSettings()
             }
-            .onChange(of: environment.settings.appearanceMode) { _, mode in
-                // Pin the trait collection before the next SwiftUI update
-                // pass, so the whole window — including a presented settings
-                // sheet — changes in the same frame as the choice.
-                mode.applyToAllWindows()
+            .onChange(of: environment.settings.appearanceMode) { _, _ in
+                applyAppearance()
             }
             .onChange(of: systemColorScheme) { _, scheme in
-                // 跟随系统: UIKit updates the active window first. Tell every
-                // window — including a Stage Manager window that is not key —
-                // to re-render instead of waiting for its next activation.
+                // 跟随系统: UIKit updates the active window first. The pages
+                // in this window are re-pinned here, and every other window —
+                // including a Stage Manager window that is not key — is told
+                // to do the same instead of waiting for its next activation.
                 guard environment.settings.appearanceMode == .system else { return }
                 // Off the update pass: every window, this one included,
-                // re-renders from the notification.
+                // re-renders from the notification. Applying the overrides
+                // here instead would lay windows out while SwiftUI is still
+                // in an update pass.
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(
                         name: .velaSystemAppearanceChanged,
@@ -144,11 +144,11 @@ private struct BrowserWindowRoot: View {
             .onReceive(NotificationCenter.default.publisher(for: .velaSystemAppearanceChanged)) { _ in
                 systemAppearanceRevision &+= 1
                 if environment.settings.appearanceMode == .system {
-                    AppearanceMode.system.applyToAllWindows()
+                    applyAppearance()
                 }
             }
             .onAppear {
-                environment.settings.appearanceMode.applyToAllWindows()
+                applyAppearance()
             }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
@@ -171,11 +171,27 @@ private struct BrowserWindowRoot: View {
                 case .inactive:
                     environment.tabManager.persistSession()
                 case .active:
-                    break
+                    // The system can change while the app is in the background;
+                    // re-pin on return so a page that missed the broadcast
+                    // still matches the chrome.
+                    applyAppearance()
                 @unknown default:
                     break
                 }
             }
+    }
+
+    /// Applies the chosen appearance to this window's chrome and its pages.
+    ///
+    /// The windows get the user's mode (`unspecified` for 跟随系统, so UIKit
+    /// follows the system natively); the web views get the *resolved* style,
+    /// because WebKit only re-resolves a page's `prefers-color-scheme` when
+    /// the web view's own trait changes.
+    @MainActor
+    private func applyAppearance() {
+        let mode = environment.settings.appearanceMode
+        mode.applyToAllWindows()
+        environment.tabManager.applyAppearanceToAllWebViews(mode.effectiveUserInterfaceStyle)
     }
 
     /// The shell and the appearance it is injected with.
@@ -195,10 +211,11 @@ private struct BrowserWindowRoot: View {
             // selected 配色 has to reach all of them without a relaunch.
             .environment(\.browserPalette, activePalette)
             .environment(\.browserBackgroundStyle, environment.settings.backgroundStyle)
-            // nil means "follow the system", which is the whole of the
-            // 跟随系统 mode. Applied at the root so the sheet, the alert and
-            // every `UIColor` dynamic provider resolve against it.
-            .preferredColorScheme(environment.settings.appearanceMode.colorScheme)
+            // The appearance is carried by each window's
+            // `overrideUserInterfaceStyle` (see `applyToAllWindows`), not by
+            // `preferredColorScheme`. The modifier cannot be cleared once it
+            // has been set: switching to 跟随系统 left the old forced scheme
+            // pinned until something rebuilt the view tree.
     }
 
     /// The palette the user selected, or the shipped default when the stored

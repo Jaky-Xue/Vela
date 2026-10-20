@@ -623,7 +623,9 @@ struct UserScriptDetailView: View {
 
             Section {
                 Button("编辑代码", systemImage: "square.and.pencil") {
-                    editedSource = current.source
+                    // The stored source is the body alone; the editor needs the
+                    // metadata block too, or every save fails to re-parse.
+                    editedSource = env.userScripts.editableSource(for: current)
                     showEditor = true
                 }
                 Button("删除脚本", systemImage: "trash", role: .destructive) {

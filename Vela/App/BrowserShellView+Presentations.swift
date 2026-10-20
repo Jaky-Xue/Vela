@@ -20,13 +20,11 @@ extension BrowserShellView {
         .sheet(isPresented: $showBookmarks) {
             NavigationStack { BookmarksView() }
                 .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
                 .browserAmbientSheet()
         }
         .sheet(isPresented: $showHistory) {
             NavigationStack { HistoryView() }
                 .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
                 // Applied to the stack rather than to the list so every pushed
                 // screenshot — the day groups, an entry's detail sheet — shares
                 // the palette without each one restating it.
@@ -36,14 +34,12 @@ extension BrowserShellView {
         .sheet(isPresented: $showDownloads) {
             NavigationStack { DownloadsView() }
                 .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
                 .browserListSurface()
                 .browserAmbientSheet()
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack { SettingsView() }
                 .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
                 .browserListSurface()
                 .browserAmbientSheet()
         }
@@ -57,7 +53,6 @@ extension BrowserShellView {
                     }
             }
             .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
             .browserAmbientSheet()
         }
         .sheet(isPresented: $showBookshelf) {
@@ -68,7 +63,6 @@ extension BrowserShellView {
                 openNovel(book, chapter: env.novels.cachedChapter(book: book))
             }
             .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
         }
         .sheet(isPresented: $showShareSheet) {
             if let tab = activeTab, let url = URL(string: tab.url) {
@@ -80,7 +74,6 @@ extension BrowserShellView {
                 OfflinePagesView(onOpen: openOfflinePage)
             }
             .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
             .browserListSurface()
             .browserAmbientSheet()
         }
@@ -101,14 +94,12 @@ extension BrowserShellView {
                 }
             )
             .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
             .browserAmbientSheet()
             // Presented over the panel rather than after it: the user can
             // manage rule sources and close the screen back to the menu.
             .sheet(isPresented: $showAdBlockSettings) {
                 NavigationStack { AdBlockSettingsView() }
                     .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
                     .browserAmbientSheet()
             }
         }
@@ -118,7 +109,6 @@ extension BrowserShellView {
                 title: activeTab?.title ?? ""
             )
             .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
             .browserAmbientSheet()
         }
         .sheet(item: Binding(
@@ -139,7 +129,6 @@ extension BrowserShellView {
                 }
             )
             .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
             .browserAmbientSheet()
         }
         .alert(

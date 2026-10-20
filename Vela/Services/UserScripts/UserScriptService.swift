@@ -181,6 +181,63 @@ public final class UserScriptService {
         }
     }
 
+    /// The script text the editor shows.
+    ///
+    /// The stored `source` is only the executable body — everything after the
+    /// `==/UserScript==` marker — because that is what the injector runs. An
+    /// editor that started from it could never save: the metadata block is
+    /// missing, so the re-parse rejected every edit as "not a user script".
+    /// The block is rebuilt from the fields already stored, so editing an
+    /// already-downloaded script works without a migration.
+    public func editableSource(for script: InstalledUserScriptState) -> String {
+        let trimmed = script.source.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix("// ==UserScript==")
+            ? script.source
+            : Self.reconstructedSource(for: script)
+    }
+
+    /// Rebuilds a metadata block around a body that was stored without one.
+    static func reconstructedSource(for script: InstalledUserScriptState) -> String {
+        func line(_ key: String, _ value: String) -> String? {
+            let single = value
+                .replacingOccurrences(of: "\r", with: " ")
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespaces)
+            return single.isEmpty ? nil : "// @\(key) \(single)"
+        }
+
+        var lines: [String] = ["// ==UserScript=="]
+        lines.append(contentsOf: [
+            line("name", script.name),
+            line("namespace", script.namespace),
+            line("version", script.version),
+            line("description", script.description),
+            line("icon", script.iconUrl)
+        ].compactMap { $0 })
+        for pattern in script.matches { lines.append(contentsOf: line("match", pattern).map { [$0] } ?? []) }
+        for pattern in script.includes { lines.append(contentsOf: line("include", pattern).map { [$0] } ?? []) }
+        for pattern in script.excludes { lines.append(contentsOf: line("exclude", pattern).map { [$0] } ?? []) }
+        for pattern in script.excludeMatches { lines.append(contentsOf: line("exclude-match", pattern).map { [$0] } ?? []) }
+        if !(script.grants.count == 1 && script.grants.first == .none) {
+            for grant in script.grants { lines.append(contentsOf: line("grant", grant.rawValue).map { [$0] } ?? []) }
+        }
+        for url in script.requireUrls { lines.append(contentsOf: line("require", url).map { [$0] } ?? []) }
+        for declaration in script.resourceDeclarations {
+            lines.append(contentsOf: line("resource", "\(declaration.name) \(declaration.url)").map { [$0] } ?? [])
+        }
+        for rule in script.connectRules { lines.append(contentsOf: line("connect", rule).map { [$0] } ?? []) }
+        lines.append("// @run-at \(script.runAt.rawValue)")
+        if script.noframes { lines.append("// @noframes") }
+        lines.append(contentsOf: [
+            line("downloadURL", script.downloadUrl),
+            line("updateURL", script.updateUrl)
+        ].compactMap { $0 })
+        lines.append("// ==/UserScript==")
+        lines.append("")
+        lines.append(script.source)
+        return lines.joined(separator: "\n")
+    }
+
     /// Saves the text without parsing it.
     ///
     /// Offered when an edit is mid-flight and the metadata block is temporarily

@@ -43,6 +43,36 @@ final class UserScriptTests: XCTestCase {
         XCTAssertTrue(UserScriptGrant.gmXmlhttpRequest.isSupportedByVela)
     }
 
+    func testEditableSourceRebuildsMetadataForAStoredBody() throws {
+        // An installed script stores only its body; the editor must still get
+        // a document that parses, or every save fails as "not a user script".
+        let script = InstalledUserScriptState(
+            name: "Editable",
+            namespace: "vela.tests",
+            version: "2.0",
+            description: "line one\nline two",
+            source: "window.__velaEditedBody = 1;",
+            matches: ["https://example.com/*"],
+            grants: [.none],
+            requireUrls: ["https://cdn.example.com/lib.js"],
+            runAt: .documentStart
+        )
+        let text = UserScriptService.reconstructedSource(for: script)
+        XCTAssertTrue(text.hasPrefix("// ==UserScript=="))
+        XCTAssertTrue(text.contains("// @name Editable"))
+        XCTAssertTrue(text.contains("// @match https://example.com/*"))
+        XCTAssertTrue(text.contains("// @require https://cdn.example.com/lib.js"))
+        XCTAssertFalse(text.contains("// @grant none"))
+        XCTAssertTrue(text.contains("window.__velaEditedBody = 1;"))
+
+        let parsed = UserScriptParser.parse(text)
+        XCTAssertTrue(parsed.valid)
+        let candidate = try XCTUnwrap(parsed.candidate)
+        XCTAssertEqual(candidate.name, "Editable")
+        XCTAssertEqual(candidate.matches, ["https://example.com/*"])
+        XCTAssertTrue(candidate.source.contains("window.__velaEditedBody = 1;"))
+    }
+
     func testBootstrapIncludesRequirementsResourcesAndBridge() throws {
         let script = InstalledUserScriptState(
             name: "Injection Test",

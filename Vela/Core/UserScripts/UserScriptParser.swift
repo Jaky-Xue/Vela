@@ -85,7 +85,7 @@ public enum UserScriptParser {
                 if !value.isEmpty { candidate.includes.append(value); sawPattern = true }
             case "exclude":
                 if !value.isEmpty { candidate.excludes.append(value) }
-            case "excludematch", "exclude_match":
+            case "excludematch", "exclude_match", "exclude-match":
                 if !value.isEmpty { candidate.excludeMatches.append(value) }
             case "grant":
                 if !value.isEmpty { candidate.grants.append(UserScriptGrant(token: value)) }

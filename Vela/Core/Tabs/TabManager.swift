@@ -77,6 +77,9 @@ public final class TabManager {
 
     /// Live web views, keyed by tab id. A tab absent from this map is `cold`.
     private var webViews: [String: WKWebView] = [:]
+    /// The appearance every new web view starts in, until the shell applies a
+    /// newer one. Set through `applyAppearanceToAllWebViews`.
+    private var appearanceStyle: UIUserInterfaceStyle = .unspecified
     /// Least-recently-active order, used to pick a victim when the cap is hit.
     private var activationOrder: [String] = []
 
@@ -578,6 +581,9 @@ public final class TabManager {
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsLinkPreview = true
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        // A tab opened after an appearance switch starts in the style the app
+        // is showing, not in whatever the window happens to have.
+        webView.overrideUserInterfaceStyle = appearanceStyle
 
         webViews[tab.id] = webView
         tab.runtimeState = tab.id == activeTabId ? .active : .background
@@ -718,6 +724,30 @@ public final class TabManager {
         for tab in tabs {
             guard let webView = webViews[tab.id] else { continue }
             configurationProvider.applyForcedZoom(to: webView)
+        }
+    }
+
+    /// Pins every live web view to the appearance the app is showing.
+    ///
+    /// A window's `overrideUserInterfaceStyle` reaches the chrome immediately,
+    /// but WebKit resolves a page's `prefers-color-scheme` from the web view's
+    /// own trait collection, and it does not always inherit a window override
+    /// until the next document. Setting the style on the web view itself makes
+    /// the page re-resolve its media queries in place — the same instant
+    /// switch the chrome gets, without a reload.
+    ///
+    /// The style is concrete even in 跟随系统: when the system flips, the shell
+    /// calls this again with the new style, which is a trait change WebKit can
+    /// observe; leaving it `.unspecified` produced no change event on a page
+    /// that was already following the system.
+    public func applyAppearanceToAllWebViews(_ style: UIUserInterfaceStyle) {
+        appearanceStyle = style
+        for tab in tabs {
+            guard let webView = webViews[tab.id] else { continue }
+            if webView.overrideUserInterfaceStyle != style {
+                webView.overrideUserInterfaceStyle = style
+            }
+            webView.setNeedsLayout()
         }
     }
 

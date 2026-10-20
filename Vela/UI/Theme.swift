@@ -25,7 +25,8 @@ import UIKit
 /// Which appearance the user asked for.
 ///
 /// iOS offers both a system setting and a per-app override, so the per-app mode
-/// is its own setting, and `nil` from `colorScheme` means "follow the system".
+/// is its own setting; `.system` means the window's override is cleared and the
+/// system's own choice applies.
 public enum AppearanceMode: String, CaseIterable, Codable, Sendable, Identifiable {
     case system
     case light
@@ -49,16 +50,6 @@ public enum AppearanceMode: String, CaseIterable, Codable, Sendable, Identifiabl
         }
     }
 
-    /// The value handed to `preferredColorScheme`. `nil` follows the system,
-    /// which is what makes "跟随系统" a real mode rather than a third fixed one.
-    public var colorScheme: ColorScheme? {
-        switch self {
-        case .system: return nil
-        case .light: return .light
-        case .dark: return .dark
-        }
-    }
-
     public var userInterfaceStyle: UIUserInterfaceStyle {
         switch self {
         case .system: return .unspecified
@@ -67,20 +58,54 @@ public enum AppearanceMode: String, CaseIterable, Codable, Sendable, Identifiabl
         }
     }
 
+    /// The style the app is actually rendering in right now.
+    ///
+    /// In 跟随系统 that is the system's own choice, read from the screen rather
+    /// than from a view's trait collection: the view's trait is exactly what
+    /// an override changes, so reading it back would report the old forced
+    /// mode. This value is what the web views are pinned to, so a page's
+    /// `prefers-color-scheme` changes with the chrome instead of on the next
+    /// reload.
+    @MainActor
+    public var effectiveUserInterfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .light: return .light
+        case .dark: return .dark
+        case .system:
+            let style = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first?.screen.traitCollection.userInterfaceStyle
+            return style == .dark ? .dark : .light
+        }
+    }
+
     /// Applies the choice to every window on the spot.
     ///
-    /// `preferredColorScheme` reaches the SwiftUI tree on its next update pass,
-    /// which is why a switch made from a presented sheet could look a beat
-    /// late — the sheet's UIKit-backed surfaces kept the old trait until that
-    /// pass. Setting each window's interface style changes the trait
-    /// collection immediately, so every dynamic colour resolves in the new
-    /// mode in the same run loop, sheets and all.
+    /// This is the only carrier of the choice. `preferredColorScheme` was
+    /// removed deliberately: once SwiftUI had been given a scheme it could not
+    /// be cleared, so switching back to 跟随系统 left the previous forced
+    /// scheme pinned in the view tree while the window had already returned to
+    /// the system's. A window override can be cleared — `unspecified` means
+    /// the system's choice — and it changes the trait collection immediately,
+    /// so every dynamic colour resolves in the new mode in the same run loop,
+    /// sheets included.
     @MainActor
     public func applyToAllWindows() {
         for scene in UIApplication.shared.connectedScenes {
             guard let windowScene = scene as? UIWindowScene else { continue }
             for window in windowScene.windows {
                 window.overrideUserInterfaceStyle = userInterfaceStyle
+                // A presented sheet lives in its own view controller subtree
+                // and can keep the trait it was presented under. Walking the
+                // presentation chain sets the override where the sheet's
+                // dynamic colours actually resolve.
+                var presented = window.rootViewController?.presentedViewController
+                while let controller = presented {
+                    controller.overrideUserInterfaceStyle = userInterfaceStyle
+                    controller.view.setNeedsLayout()
+                    controller.view.layoutIfNeeded()
+                    presented = controller.presentedViewController
+                }
                 // A Stage Manager window that is not key may not redraw on the
                 // trait change alone; laying it out here resolves its dynamic
                 // colours in the same pass as the active window.
@@ -96,18 +121,6 @@ public extension Notification.Name {
     /// Every window observes it so an inactive Stage Manager window changes
     /// with the active one.
     static let velaSystemAppearanceChanged = Notification.Name("org.vela.system-appearance-changed")
-}
-
-/// Applies the user's appearance choice inside a presented sheet.
-///
-/// A sheet captures its colour scheme when it is presented; changing only the
-/// window's scheme leaves an already-open sheet — the settings screen is the
-/// one that matters — in the old appearance. Reading the setting inside the
-/// sheet's content makes the sheet itself observe the change.
-public extension View {
-    func browserSheetAppearance(_ mode: AppearanceMode) -> some View {
-        preferredColorScheme(mode.colorScheme)
-    }
 }
 
 // MARK: - Tokens
