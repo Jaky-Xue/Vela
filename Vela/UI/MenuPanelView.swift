@@ -101,10 +101,17 @@ struct MenuPanelView: View {
 
     private func menuItem(_ tile: MenuTile) -> some View {
         let enabled = canActOnPage || !tile.requiresPage
-        // The private-mode tile is the one switch in the grid, so its state
-        // is drawn on it: the accent wash and the corner badge read as "on"
-        // the way a checkmarked row would in a list menu.
-        let isModeOn = tile.action == .privateTab && isPrivateBrowsingOn
+        // The two switches in the grid — 无痕模式 and 广告过滤 — draw their
+        // state on the tile: the accent wash and the corner badge read as "on"
+        // the way a checkmarked row would in a list menu. 广告过滤 used to take
+        // the state and never show it, so tapping it closed the panel and left
+        // nothing on screen to say blocking had changed at all.
+        let isModeOn = (tile.action == .privateTab && isPrivateBrowsingOn)
+            || (tile.action == .adBlock && adBlockEnabled)
+        // Off is a shield with a slash; on is the filled shield in the accent.
+        let symbol = tile.action == .adBlock && !adBlockEnabled
+            ? "shield.slash"
+            : tile.symbolName
         return Button {
             guard enabled else { return }
             switch tile {
@@ -115,7 +122,7 @@ struct MenuPanelView: View {
             }
         } label: {
             VStack(spacing: BrowserSpacing.tight) {
-                Image(systemName: tile.symbolName)
+                Image(systemName: symbol)
                     .font(.system(size: 19, weight: .medium))
                     .foregroundStyle(isModeOn ? palette.accent : palette.primaryText)
                     .frame(width: 52, height: 52)
@@ -164,7 +171,11 @@ struct MenuPanelView: View {
                 }
             }
         }
-        .accessibilityLabel(tile.title)
+        .accessibilityLabel(
+            tile.action == .adBlock
+                ? "广告过滤，\(adBlockEnabled ? "已开启" : "已关闭")"
+                : tile.title
+        )
         .accessibilityHint(enabled ? "" : "当前不可用")
     }
 }

@@ -175,7 +175,7 @@ struct AmbientBackgroundView: View {
                     specular(in: size)
 
                     AmbientGrain()
-                        .opacity(colorScheme == .dark ? 0.30 : 0.24)
+                        .opacity(colorScheme == .dark ? 0.18 : 0.24)
                         .blendMode(.overlay)
                         .allowsHitTesting(false)
 
@@ -191,7 +191,7 @@ struct AmbientBackgroundView: View {
                     .allowsHitTesting(false)
 
                     RadialGradient(
-                        colors: [.clear, .black.opacity(colorScheme == .dark ? 0.16 : 0.03)],
+                        colors: [.clear, .black.opacity(colorScheme == .dark ? 0.10 : 0.03)],
                         center: .center,
                         startRadius: max(size.width, size.height) * 0.36,
                         endRadius: max(size.width, size.height) * 0.86
@@ -236,9 +236,9 @@ struct AmbientBackgroundView: View {
         case .sunrise:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.137, green: 0.102, blue: 0.071),
-                    Color(red: 0.169, green: 0.122, blue: 0.082),
-                    Color(red: 0.141, green: 0.102, blue: 0.075)
+                    Color(red: 0.067, green: 0.053, blue: 0.040),
+                    Color(red: 0.080, green: 0.063, blue: 0.047),
+                    Color(red: 0.069, green: 0.055, blue: 0.042),
                 ]
                 : [
                     Color(red: 1.000, green: 0.973, blue: 0.941),
@@ -248,9 +248,9 @@ struct AmbientBackgroundView: View {
         case .sunset:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.149, green: 0.086, blue: 0.098),
-                    Color(red: 0.176, green: 0.102, blue: 0.118),
-                    Color(red: 0.145, green: 0.082, blue: 0.098)
+                    Color(red: 0.070, green: 0.045, blue: 0.055),
+                    Color(red: 0.085, green: 0.052, blue: 0.064),
+                    Color(red: 0.072, green: 0.047, blue: 0.057),
                 ]
                 : [
                     Color(red: 1.000, green: 0.969, blue: 0.980),
@@ -260,9 +260,9 @@ struct AmbientBackgroundView: View {
         case .lime:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.106, green: 0.122, blue: 0.071),
-                    Color(red: 0.129, green: 0.149, blue: 0.082),
-                    Color(red: 0.114, green: 0.133, blue: 0.075)
+                    Color(red: 0.050, green: 0.058, blue: 0.034),
+                    Color(red: 0.060, green: 0.070, blue: 0.040),
+                    Color(red: 0.052, green: 0.061, blue: 0.036),
                 ]
                 : [
                     Color(red: 0.984, green: 0.992, blue: 0.949),
@@ -272,9 +272,9 @@ struct AmbientBackgroundView: View {
         case .aurora:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.071, green: 0.122, blue: 0.114),
-                    Color(red: 0.086, green: 0.145, blue: 0.133),
-                    Color(red: 0.075, green: 0.129, blue: 0.118)
+                    Color(red: 0.036, green: 0.060, blue: 0.056),
+                    Color(red: 0.043, green: 0.072, blue: 0.067),
+                    Color(red: 0.037, green: 0.062, blue: 0.058),
                 ]
                 : [
                     Color(red: 0.949, green: 0.988, blue: 0.980),
@@ -284,9 +284,9 @@ struct AmbientBackgroundView: View {
         case .glacier:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.075, green: 0.098, blue: 0.145),
-                    Color(red: 0.090, green: 0.118, blue: 0.169),
-                    Color(red: 0.078, green: 0.102, blue: 0.149)
+                    Color(red: 0.038, green: 0.048, blue: 0.070),
+                    Color(red: 0.045, green: 0.057, blue: 0.082),
+                    Color(red: 0.039, green: 0.050, blue: 0.072),
                 ]
                 : [
                     Color(red: 0.961, green: 0.980, blue: 1.000),
@@ -296,9 +296,9 @@ struct AmbientBackgroundView: View {
         case .violet:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.106, green: 0.086, blue: 0.145),
-                    Color(red: 0.125, green: 0.102, blue: 0.169),
-                    Color(red: 0.110, green: 0.090, blue: 0.149)
+                    Color(red: 0.052, green: 0.043, blue: 0.070),
+                    Color(red: 0.061, green: 0.050, blue: 0.082),
+                    Color(red: 0.054, green: 0.045, blue: 0.074),
                 ]
                 : [
                     Color(red: 0.980, green: 0.969, blue: 1.000),
@@ -308,9 +308,9 @@ struct AmbientBackgroundView: View {
         case .colorful:
             return colorScheme == .dark
                 ? [
-                    Color(red: 0.129, green: 0.082, blue: 0.133),
-                    Color(red: 0.067, green: 0.114, blue: 0.141),
-                    Color(red: 0.110, green: 0.090, blue: 0.169)
+                    Color(red: 0.048, green: 0.038, blue: 0.058),
+                    Color(red: 0.034, green: 0.050, blue: 0.060),
+                    Color(red: 0.043, green: 0.037, blue: 0.068),
                 ]
                 : [
                     Color(red: 1.000, green: 0.965, blue: 0.973),
@@ -347,15 +347,15 @@ struct AmbientBackgroundView: View {
         case .sunrise:
             return dark
                 ? [
-                    Color(red: 0.165, green: 0.114, blue: 0.078),
-                    Color(red: 0.290, green: 0.180, blue: 0.110),
-                    Color(red: 0.416, green: 0.259, blue: 0.141),
-                    Color(red: 0.227, green: 0.153, blue: 0.098),
-                    Color(red: 0.478, green: 0.298, blue: 0.173),
-                    Color(red: 0.561, green: 0.353, blue: 0.204),
-                    Color(red: 0.337, green: 0.208, blue: 0.122),
-                    Color(red: 0.431, green: 0.271, blue: 0.157),
-                    Color(red: 0.180, green: 0.125, blue: 0.086)
+                    Color(red: 0.098, green: 0.076, blue: 0.056),
+                    Color(red: 0.150, green: 0.108, blue: 0.072),
+                    Color(red: 0.186, green: 0.130, blue: 0.082),
+                    Color(red: 0.118, green: 0.088, blue: 0.063),
+                    Color(red: 0.212, green: 0.148, blue: 0.092),
+                    Color(red: 0.244, green: 0.170, blue: 0.104),
+                    Color(red: 0.136, green: 0.102, blue: 0.072),
+                    Color(red: 0.184, green: 0.134, blue: 0.088),
+                    Color(red: 0.104, green: 0.080, blue: 0.058),
                 ]
                 : [
                     Color(red: 1.000, green: 0.984, blue: 0.965),
@@ -371,15 +371,15 @@ struct AmbientBackgroundView: View {
         case .sunset:
             return dark
                 ? [
-                    Color(red: 0.165, green: 0.090, blue: 0.106),
-                    Color(red: 0.290, green: 0.137, blue: 0.161),
-                    Color(red: 0.431, green: 0.196, blue: 0.224),
-                    Color(red: 0.231, green: 0.118, blue: 0.141),
-                    Color(red: 0.549, green: 0.259, blue: 0.286),
-                    Color(red: 0.635, green: 0.318, blue: 0.353),
-                    Color(red: 0.361, green: 0.169, blue: 0.192),
-                    Color(red: 0.478, green: 0.227, blue: 0.259),
-                    Color(red: 0.176, green: 0.102, blue: 0.118)
+                    Color(red: 0.100, green: 0.060, blue: 0.074),
+                    Color(red: 0.156, green: 0.084, blue: 0.104),
+                    Color(red: 0.192, green: 0.100, blue: 0.124),
+                    Color(red: 0.120, green: 0.070, blue: 0.086),
+                    Color(red: 0.222, green: 0.112, blue: 0.140),
+                    Color(red: 0.254, green: 0.130, blue: 0.160),
+                    Color(red: 0.142, green: 0.080, blue: 0.098),
+                    Color(red: 0.192, green: 0.104, blue: 0.126),
+                    Color(red: 0.106, green: 0.064, blue: 0.078),
                 ]
                 : [
                     Color(red: 1.000, green: 0.976, blue: 0.984),
@@ -395,15 +395,15 @@ struct AmbientBackgroundView: View {
         case .lime:
             return dark
                 ? [
-                    Color(red: 0.122, green: 0.141, blue: 0.082),
-                    Color(red: 0.196, green: 0.227, blue: 0.125),
-                    Color(red: 0.275, green: 0.318, blue: 0.173),
-                    Color(red: 0.153, green: 0.176, blue: 0.098),
-                    Color(red: 0.318, green: 0.380, blue: 0.204),
-                    Color(red: 0.392, green: 0.463, blue: 0.247),
-                    Color(red: 0.208, green: 0.243, blue: 0.133),
-                    Color(red: 0.278, green: 0.322, blue: 0.173),
-                    Color(red: 0.129, green: 0.149, blue: 0.086)
+                    Color(red: 0.074, green: 0.086, blue: 0.050),
+                    Color(red: 0.108, green: 0.126, blue: 0.070),
+                    Color(red: 0.136, green: 0.158, blue: 0.086),
+                    Color(red: 0.090, green: 0.104, blue: 0.060),
+                    Color(red: 0.158, green: 0.184, blue: 0.098),
+                    Color(red: 0.182, green: 0.212, blue: 0.114),
+                    Color(red: 0.104, green: 0.120, blue: 0.068),
+                    Color(red: 0.136, green: 0.158, blue: 0.088),
+                    Color(red: 0.078, green: 0.090, blue: 0.054),
                 ]
                 : [
                     Color(red: 0.988, green: 0.996, blue: 0.953),
@@ -419,15 +419,15 @@ struct AmbientBackgroundView: View {
         case .aurora:
             return dark
                 ? [
-                    Color(red: 0.082, green: 0.141, blue: 0.133),
-                    Color(red: 0.125, green: 0.243, blue: 0.224),
-                    Color(red: 0.173, green: 0.345, blue: 0.318),
-                    Color(red: 0.098, green: 0.180, blue: 0.165),
-                    Color(red: 0.204, green: 0.412, blue: 0.376),
-                    Color(red: 0.247, green: 0.502, blue: 0.459),
-                    Color(red: 0.133, green: 0.259, blue: 0.239),
-                    Color(red: 0.173, green: 0.345, blue: 0.318),
-                    Color(red: 0.086, green: 0.153, blue: 0.141)
+                    Color(red: 0.054, green: 0.086, blue: 0.080),
+                    Color(red: 0.078, green: 0.126, blue: 0.116),
+                    Color(red: 0.098, green: 0.158, blue: 0.145),
+                    Color(red: 0.064, green: 0.098, blue: 0.090),
+                    Color(red: 0.114, green: 0.184, blue: 0.168),
+                    Color(red: 0.132, green: 0.212, blue: 0.194),
+                    Color(red: 0.074, green: 0.116, blue: 0.106),
+                    Color(red: 0.098, green: 0.154, blue: 0.142),
+                    Color(red: 0.058, green: 0.092, blue: 0.084),
                 ]
                 : [
                     Color(red: 0.957, green: 0.996, blue: 0.988),
@@ -443,15 +443,15 @@ struct AmbientBackgroundView: View {
         case .glacier:
             return dark
                 ? [
-                    Color(red: 0.086, green: 0.110, blue: 0.157),
-                    Color(red: 0.129, green: 0.180, blue: 0.263),
-                    Color(red: 0.180, green: 0.243, blue: 0.345),
-                    Color(red: 0.102, green: 0.141, blue: 0.200),
-                    Color(red: 0.216, green: 0.302, blue: 0.431),
-                    Color(red: 0.263, green: 0.365, blue: 0.510),
-                    Color(red: 0.141, green: 0.188, blue: 0.271),
-                    Color(red: 0.180, green: 0.243, blue: 0.345),
-                    Color(red: 0.090, green: 0.118, blue: 0.169)
+                    Color(red: 0.056, green: 0.070, blue: 0.100),
+                    Color(red: 0.082, green: 0.104, blue: 0.146),
+                    Color(red: 0.106, green: 0.132, blue: 0.186),
+                    Color(red: 0.068, green: 0.084, blue: 0.118),
+                    Color(red: 0.122, green: 0.150, blue: 0.210),
+                    Color(red: 0.142, green: 0.176, blue: 0.240),
+                    Color(red: 0.080, green: 0.098, blue: 0.138),
+                    Color(red: 0.106, green: 0.130, blue: 0.184),
+                    Color(red: 0.060, green: 0.074, blue: 0.104),
                 ]
                 : [
                     Color(red: 0.965, green: 0.984, blue: 1.000),
@@ -467,15 +467,15 @@ struct AmbientBackgroundView: View {
         case .violet:
             return dark
                 ? [
-                    Color(red: 0.114, green: 0.094, blue: 0.157),
-                    Color(red: 0.180, green: 0.145, blue: 0.263),
-                    Color(red: 0.247, green: 0.196, blue: 0.345),
-                    Color(red: 0.141, green: 0.114, blue: 0.200),
-                    Color(red: 0.302, green: 0.239, blue: 0.431),
-                    Color(red: 0.365, green: 0.294, blue: 0.510),
-                    Color(red: 0.188, green: 0.153, blue: 0.271),
-                    Color(red: 0.247, green: 0.196, blue: 0.345),
-                    Color(red: 0.118, green: 0.098, blue: 0.169)
+                    Color(red: 0.074, green: 0.060, blue: 0.098),
+                    Color(red: 0.108, green: 0.086, blue: 0.146),
+                    Color(red: 0.136, green: 0.108, blue: 0.184),
+                    Color(red: 0.090, green: 0.072, blue: 0.120),
+                    Color(red: 0.156, green: 0.128, blue: 0.212),
+                    Color(red: 0.180, green: 0.148, blue: 0.240),
+                    Color(red: 0.104, green: 0.084, blue: 0.144),
+                    Color(red: 0.136, green: 0.108, blue: 0.184),
+                    Color(red: 0.080, green: 0.064, blue: 0.104),
                 ]
                 : [
                     Color(red: 0.980, green: 0.973, blue: 1.000),
@@ -491,15 +491,15 @@ struct AmbientBackgroundView: View {
         case .colorful:
             return dark
                 ? [
-                    Color(red: 0.145, green: 0.086, blue: 0.129),
-                    Color(red: 0.290, green: 0.122, blue: 0.208),
-                    Color(red: 0.325, green: 0.180, blue: 0.110),
-                    Color(red: 0.086, green: 0.220, blue: 0.200),
-                    Color(red: 0.110, green: 0.220, blue: 0.365),
-                    Color(red: 0.180, green: 0.165, blue: 0.400),
-                    Color(red: 0.267, green: 0.161, blue: 0.365),
-                    Color(red: 0.365, green: 0.165, blue: 0.290),
-                    Color(red: 0.098, green: 0.110, blue: 0.180)
+                    Color(red: 0.082, green: 0.050, blue: 0.074),
+                    Color(red: 0.148, green: 0.076, blue: 0.112),
+                    Color(red: 0.160, green: 0.110, blue: 0.068),
+                    Color(red: 0.054, green: 0.116, blue: 0.106),
+                    Color(red: 0.060, green: 0.102, blue: 0.164),
+                    Color(red: 0.090, green: 0.080, blue: 0.198),
+                    Color(red: 0.126, green: 0.078, blue: 0.178),
+                    Color(red: 0.180, green: 0.080, blue: 0.142),
+                    Color(red: 0.058, green: 0.060, blue: 0.098),
                 ]
                 : [
                     Color(red: 1.000, green: 0.949, blue: 0.961),
@@ -608,25 +608,25 @@ struct AmbientBackgroundView: View {
                     Color(red: 1.00, green: 0.87, blue: 0.74),
                     Color(red: 0.82, green: 0.60, blue: 0.38),
                     x: 0.14, y: 0.12, diameter: 1.20,
-                    lightOpacity: 0.34, darkOpacity: 0.22
+                    lightOpacity: 0.34, darkOpacity: 0.13
                 ),
                 spec(
                     Color(red: 1.00, green: 0.93, blue: 0.78),
                     Color(red: 0.72, green: 0.56, blue: 0.30),
                     x: 0.86, y: 0.26, diameter: 1.10,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 1.00, green: 0.80, blue: 0.66),
                     Color(red: 0.76, green: 0.48, blue: 0.27),
                     x: 0.76, y: 0.86, diameter: 1.15,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 1.00, green: 0.90, blue: 0.84),
                     Color(red: 0.58, green: 0.40, blue: 0.26),
                     x: 0.10, y: 0.86, diameter: 0.80,
-                    lightOpacity: 0.18, darkOpacity: 0.12
+                    lightOpacity: 0.18, darkOpacity: 0.07
                 )
             ]
         case .sunset:
@@ -635,25 +635,25 @@ struct AmbientBackgroundView: View {
                     Color(red: 1.00, green: 0.78, blue: 0.82),
                     Color(red: 0.86, green: 0.46, blue: 0.58),
                     x: 0.14, y: 0.12, diameter: 1.20,
-                    lightOpacity: 0.34, darkOpacity: 0.22
+                    lightOpacity: 0.34, darkOpacity: 0.13
                 ),
                 spec(
                     Color(red: 1.00, green: 0.70, blue: 0.80),
                     Color(red: 0.74, green: 0.36, blue: 0.50),
                     x: 0.86, y: 0.28, diameter: 1.10,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.96, green: 0.76, blue: 0.90),
                     Color(red: 0.60, green: 0.32, blue: 0.48),
                     x: 0.74, y: 0.86, diameter: 1.15,
-                    lightOpacity: 0.28, darkOpacity: 0.18
+                    lightOpacity: 0.28, darkOpacity: 0.10
                 ),
                 spec(
                     Color(red: 1.00, green: 0.86, blue: 0.84),
                     Color(red: 0.52, green: 0.30, blue: 0.38),
                     x: 0.10, y: 0.86, diameter: 0.80,
-                    lightOpacity: 0.18, darkOpacity: 0.12
+                    lightOpacity: 0.18, darkOpacity: 0.07
                 )
             ]
         case .lime:
@@ -662,25 +662,25 @@ struct AmbientBackgroundView: View {
                     Color(red: 0.90, green: 0.96, blue: 0.72),
                     Color(red: 0.60, green: 0.72, blue: 0.34),
                     x: 0.14, y: 0.13, diameter: 1.20,
-                    lightOpacity: 0.34, darkOpacity: 0.22
+                    lightOpacity: 0.34, darkOpacity: 0.13
                 ),
                 spec(
                     Color(red: 0.82, green: 0.93, blue: 0.62),
                     Color(red: 0.52, green: 0.64, blue: 0.28),
                     x: 0.86, y: 0.28, diameter: 1.10,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.74, green: 0.88, blue: 0.52),
                     Color(red: 0.46, green: 0.58, blue: 0.24),
                     x: 0.75, y: 0.86, diameter: 1.15,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.88, green: 0.95, blue: 0.74),
                     Color(red: 0.40, green: 0.50, blue: 0.22),
                     x: 0.10, y: 0.86, diameter: 0.80,
-                    lightOpacity: 0.18, darkOpacity: 0.12
+                    lightOpacity: 0.18, darkOpacity: 0.07
                 )
             ]
         case .aurora:
@@ -689,25 +689,25 @@ struct AmbientBackgroundView: View {
                     Color(red: 0.76, green: 0.95, blue: 0.90),
                     Color(red: 0.34, green: 0.72, blue: 0.66),
                     x: 0.14, y: 0.12, diameter: 1.20,
-                    lightOpacity: 0.34, darkOpacity: 0.22
+                    lightOpacity: 0.34, darkOpacity: 0.13
                 ),
                 spec(
                     Color(red: 0.64, green: 0.90, blue: 0.84),
                     Color(red: 0.28, green: 0.64, blue: 0.58),
                     x: 0.86, y: 0.28, diameter: 1.10,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.52, green: 0.84, blue: 0.78),
                     Color(red: 0.24, green: 0.56, blue: 0.52),
                     x: 0.74, y: 0.86, diameter: 1.15,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.78, green: 0.95, blue: 0.91),
                     Color(red: 0.22, green: 0.48, blue: 0.44),
                     x: 0.10, y: 0.86, diameter: 0.80,
-                    lightOpacity: 0.18, darkOpacity: 0.12
+                    lightOpacity: 0.18, darkOpacity: 0.07
                 )
             ]
         case .glacier:
@@ -716,25 +716,25 @@ struct AmbientBackgroundView: View {
                     Color(red: 0.78, green: 0.90, blue: 0.98),
                     Color(red: 0.34, green: 0.58, blue: 0.82),
                     x: 0.14, y: 0.12, diameter: 1.20,
-                    lightOpacity: 0.34, darkOpacity: 0.22
+                    lightOpacity: 0.34, darkOpacity: 0.13
                 ),
                 spec(
                     Color(red: 0.64, green: 0.82, blue: 0.96),
                     Color(red: 0.28, green: 0.50, blue: 0.74),
                     x: 0.86, y: 0.28, diameter: 1.10,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.52, green: 0.74, blue: 0.93),
                     Color(red: 0.24, green: 0.44, blue: 0.68),
                     x: 0.74, y: 0.86, diameter: 1.15,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.76, green: 0.90, blue: 0.99),
                     Color(red: 0.20, green: 0.38, blue: 0.60),
                     x: 0.10, y: 0.86, diameter: 0.80,
-                    lightOpacity: 0.18, darkOpacity: 0.12
+                    lightOpacity: 0.18, darkOpacity: 0.07
                 )
             ]
         case .violet:
@@ -743,25 +743,25 @@ struct AmbientBackgroundView: View {
                     Color(red: 0.86, green: 0.82, blue: 0.98),
                     Color(red: 0.52, green: 0.42, blue: 0.82),
                     x: 0.14, y: 0.12, diameter: 1.20,
-                    lightOpacity: 0.34, darkOpacity: 0.22
+                    lightOpacity: 0.34, darkOpacity: 0.13
                 ),
                 spec(
                     Color(red: 0.78, green: 0.72, blue: 0.96),
                     Color(red: 0.46, green: 0.36, blue: 0.74),
                     x: 0.86, y: 0.28, diameter: 1.10,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.70, green: 0.62, blue: 0.93),
                     Color(red: 0.40, green: 0.32, blue: 0.68),
                     x: 0.74, y: 0.86, diameter: 1.15,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.84, green: 0.80, blue: 0.98),
                     Color(red: 0.34, green: 0.28, blue: 0.60),
                     x: 0.10, y: 0.86, diameter: 0.80,
-                    lightOpacity: 0.18, darkOpacity: 0.12
+                    lightOpacity: 0.18, darkOpacity: 0.07
                 )
             ]
         case .colorful:
@@ -770,25 +770,25 @@ struct AmbientBackgroundView: View {
                     Color(red: 1.00, green: 0.78, blue: 0.85),
                     Color(red: 0.78, green: 0.40, blue: 0.56),
                     x: 0.14, y: 0.12, diameter: 1.20,
-                    lightOpacity: 0.34, darkOpacity: 0.22
+                    lightOpacity: 0.34, darkOpacity: 0.13
                 ),
                 spec(
                     Color(red: 0.64, green: 0.95, blue: 0.89),
                     Color(red: 0.24, green: 0.62, blue: 0.55),
                     x: 0.86, y: 0.28, diameter: 1.10,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.60, green: 0.82, blue: 0.98),
                     Color(red: 0.22, green: 0.44, blue: 0.72),
                     x: 0.74, y: 0.86, diameter: 1.15,
-                    lightOpacity: 0.30, darkOpacity: 0.20
+                    lightOpacity: 0.30, darkOpacity: 0.07
                 ),
                 spec(
                     Color(red: 0.82, green: 0.74, blue: 0.98),
                     Color(red: 0.42, green: 0.32, blue: 0.72),
                     x: 0.10, y: 0.86, diameter: 0.80,
-                    lightOpacity: 0.18, darkOpacity: 0.12
+                    lightOpacity: 0.18, darkOpacity: 0.07
                 )
             ]
         }
