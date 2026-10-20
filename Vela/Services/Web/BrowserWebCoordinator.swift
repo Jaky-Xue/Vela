@@ -85,6 +85,10 @@ public final class BrowserWebCoordinator: NSObject {
     /// the policy callback and allowed as the plain web navigation it is,
     /// rather than being rewritten again — which would loop forever.
     private var pendingAppLinkReloads: Set<String> = []
+    /// A navigation cancelled to re-issue it under the identifier its host
+    /// needs (the video-site rule). One entry per navigation, so the
+    /// re-issued load is allowed through.
+    private var pendingIdentityReloads: Set<String> = []
 
     public init(
         overlays: WebPageOverlays,
@@ -874,7 +878,40 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         // URL, before WebKit starts the document.
         refreshUserScripts(webView: webView, tab: tab, url: url)
 
-        // 4. A tapped universal link on a registered app-link domain is
+        // 4. The identifier can depend on the host, and a link tap reaches
+        //    this point after the request was built with the previous page's
+        //    identifier. A YouTube link opened from another page therefore
+        //    carried the iPad identifier and was served the desktop site — the
+        //    player this engine cannot caption. The load is cancelled and
+        //    re-issued once, the way the app-link rewrite below does it, under
+        //    the identifier the destination host needs.
+        if navigationAction.navigationType == .linkActivated
+            || navigationAction.navigationType == .other,
+           let host = url.host,
+           BrowserUserAgent.isVideoSiteHost(host),
+           pendingIdentityReloads.remove(url.absoluteString) == nil {
+            let identity = BrowserUserAgent.identity(
+                custom: settings.preferences.customUserAgent,
+                prefersDesktop: settings.preferences.desktopSiteByDefault,
+                host: host
+            )
+            if webView.customUserAgent != identity.customUserAgent {
+                if pendingIdentityReloads.count > 16 {
+                    pendingIdentityReloads.removeAll()
+                }
+                pendingIdentityReloads.insert(url.absoluteString)
+                webView.customUserAgent = identity.customUserAgent
+                let target = tab
+                // Off the policy callback's own turn: the cancel has to be
+                // delivered before a new load starts on the same web view.
+                Task { @MainActor in
+                    _ = self.tabManager?.load(url: url, in: target)
+                }
+                return .cancel
+            }
+        }
+
+        // 5. A tapped universal link on a registered app-link domain is
         //    rewritten onto the web page instead of into the installed app —
         //    抖音, 哔哩哔哩 and the rest register their page URLs, and WebKit
         //    follows a user tap on them straight out of the browser. A load
@@ -897,7 +934,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             return .cancel
         }
 
-        // 5. A user-typed or link navigation updates the pending URL so the
+        // 6. A user-typed or link navigation updates the pending URL so the
         //    address bar shows it immediately, before the page commits. iOS
         //    reports an address-bar load as `.other` — there is no `.typed` case
         //    on `WKNavigationType`, unlike macOS.
@@ -906,7 +943,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             tab.pendingUrl = url.absoluteString
         }
 
-        // 6. Going back, going forward and reloading are re-displays of a page
+        // 7. Going back, going forward and reloading are re-displays of a page
         //    already in the history, not new visits. Recording them would
         //    inflate every visit count — which is what the new-tab shortcut grid
         //    ranks by — and fill the history list with the same URL over and

@@ -593,6 +593,15 @@ public final class TabManager {
         tab.isLoading = true
         tab.estimatedProgress = 0
         let webView = ensureWebView(for: tab)
+        // The identifier can depend on the host (the video-site rule above),
+        // and a tab that navigates from one site to another still carries the
+        // identifier it was created with. Refreshing it here, before the
+        // request goes out, is what makes the rule apply to every navigation
+        // rather than only to a tab that started on the video site.
+        let identity = configurationProvider.webIdentity(for: tab)
+        if webView.customUserAgent != identity.customUserAgent {
+            webView.customUserAgent = identity.customUserAgent
+        }
         webView.load(URLRequest(url: url))
         return webView
     }
@@ -944,6 +953,28 @@ public enum BrowserUserAgent {
         host: String? = nil
     ) -> BrowserWebIdentity {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Video sites get an answer of their own, ahead of every preset and of
+        // the desktop toggle; only a hand-typed identifier outranks it. YouTube
+        // is the case that matters. Its player is built for the browser it
+        // believes it is talking to, and every identity this app can claim is a
+        // lie to it: the iPad and desktop identifiers land the desktop site and
+        // its sign-in wall, and a preset that claims Chrome leaves the mobile
+        // player's captions unrendered, because the renderer it selects expects
+        // Chrome. The mobile Safari identifier is the one shape whose player,
+        // playback and captions work on this engine.
+        //
+        // A preset is a choice of identity rather than a hand-written string,
+        // so it yields here. A string the user typed is kept: that is the exact
+        // value they asked for.
+        if let host, isVideoSiteHost(host),
+           trimmed.isEmpty || BrowserUserAgentPreset.isPreset(trimmed) {
+            return BrowserWebIdentity(
+                applicationNameForUserAgent: safariTail,
+                customUserAgent: mobileIdentifier
+            )
+        }
+
         // Someone who typed a string asked for that exact value. Letting the
         // desktop toggle override it is what made the field look broken.
         if !trimmed.isEmpty {
@@ -953,22 +984,6 @@ public enum BrowserUserAgent {
             return BrowserWebIdentity(
                 applicationNameForUserAgent: safariTail,
                 customUserAgent: desktopIdentifier
-            )
-        }
-        // YouTube is the one host that gets an answer of its own. The iPad
-        // identifier WebKit builds by default hands YouTube its desktop site,
-        // and the desktop site is where its bot wall lives: a client with no
-        // Google session, arriving from a VPN-shaped IP, is told to sign in
-        // 「以确认你不是聊天机器人」 before the first video plays. The mobile
-        // site an iPhone identifier receives is the shape that plays without a
-        // login. The string is written out whole — WebKit will not rewrite its
-        // own platform token, so claiming a phone from an iPad needs the
-        // complete value, the way the desktop form does; everything beyond the
-        // platform token is still the running system's own.
-        if let host, isVideoSiteHost(host) {
-            return BrowserWebIdentity(
-                applicationNameForUserAgent: safariTail,
-                customUserAgent: mobileIdentifier
             )
         }
         // The default: no custom identifier at all, so WebKit appends the tail to

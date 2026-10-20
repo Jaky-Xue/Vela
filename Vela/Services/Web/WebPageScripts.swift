@@ -216,17 +216,22 @@ public enum WebPageScripts {
             track.kind === 'forced';
           if (!carriesCaption) { continue; }
           if (track.mode !== 'showing') { continue; }
-          video.__velaSuppressedCaptionTracks.push(track);
+          // The mode is remembered, not assumed: a caption track the user
+          // turned on has to come back on when the mirror stands down. The
+          // old code restored every suppressed track to 'hidden', which left
+          // YouTube's captions switched off for good after one fullscreen
+          // visit.
+          video.__velaSuppressedCaptionTracks.push({ track: track, mode: track.mode });
           try { track.mode = 'disabled'; } catch (error) {}
         }
       }
 
       function restoreOtherCaptionTracks(video) {
-        var tracks = video.__velaSuppressedCaptionTracks;
-        if (!tracks) { return; }
+        var saved = video.__velaSuppressedCaptionTracks;
+        if (!saved) { return; }
         video.__velaSuppressedCaptionTracks = null;
-        for (var i = 0; i < tracks.length; i++) {
-          try { tracks[i].mode = 'hidden'; } catch (error) {}
+        for (var i = 0; i < saved.length; i++) {
+          try { saved[i].track.mode = saved[i].mode; } catch (error) {}
         }
       }
 
@@ -304,8 +309,12 @@ public enum WebPageScripts {
           // Repeated every tick: a player can switch a track on at any time
           // (its addtrack listener, WebKit's quirk, the native menu), and the
           // mirror has to stay the only caption layer while it carries the
-          // sentence.
-          if (painted) { hideOtherCaptionTracks(video, track); }
+          // sentence. Suppression belongs to the native presentation only:
+          // inline the mirror is hidden, so standing the page's own track
+          // down there removed the captions the viewer was reading.
+          if (mode && mode !== 'inline' && painted) {
+            hideOtherCaptionTracks(video, track);
+          }
         }
 
         sync();
@@ -452,6 +461,20 @@ public enum WebPageScripts {
         default: platformVersion = "10.0.0"
         }
 
+        // The platform and the touch-point count were still the iPad's on
+        // every preset: a Windows Chrome claim beside a platform of "MacIntel"
+        // and five touch points is the mismatch a site's browser check reads
+        // first. Chrome on iOS is left alone — it really is WebKit on iOS.
+        let claimedPlatform: String
+        switch platform {
+        case "Android": claimedPlatform = "Linux armv8l"
+        case "macOS": claimedPlatform = "MacIntel"
+        case "Windows": claimedPlatform = "Win32"
+        default: claimedPlatform = "Linux x86_64"
+        }
+        let claimedTouchPoints = mobile ? 5 : 0
+        let platformLiteral = Self.jsonString(claimedPlatform)
+
         let grease = ["brand": "Not_A Brand", "version": "24"]
         let brands: [[String: String]] = isEdge
             ? [["brand": "Microsoft Edge", "version": majorToken(after: "edg/") ?? chromiumMajor],
@@ -509,6 +532,21 @@ public enum WebPageScripts {
           try { if (!window.chrome) { window.chrome = { runtime: {} }; } } catch (error) {}
         """ : ""
 
+        let platformBlock = (claimsChromiumData || claimsFirefox) ? """
+          try {
+            Object.defineProperty(Navigator.prototype, 'platform', {
+              get: function () { return \(platformLiteral); },
+              configurable: true
+            });
+          } catch (error) {}
+          try {
+            Object.defineProperty(Navigator.prototype, 'maxTouchPoints', {
+              get: function () { return \(claimedTouchPoints); },
+              configurable: true
+            });
+          } catch (error) {}
+        """ : ""
+
         return """
         (function () {
           if (window.__velaIdentityConsistency === true) { return; }
@@ -516,6 +554,7 @@ public enum WebPageScripts {
         \(vendorBlock)
         \(userAgentDataBlock)
         \(windowChromeBlock)
+        \(platformBlock)
         })();
         """
     }
