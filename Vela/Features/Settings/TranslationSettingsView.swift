@@ -65,6 +65,25 @@ struct TranslationSettingsView: View {
             }
 
             Section {
+                Toggle(isOn: Binding(
+                    get: { settings.offersAutomatically },
+                    set: { value in
+                        env.settings.updateTranslationSettings { $0.autoOffer = value }
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("自动提示翻译外语页面")
+                        Text("识别到页面语言与目标语言不同时，在页面顶部显示翻译栏。")
+                            .font(.caption2)
+                            .foregroundStyle(palette.secondaryText)
+                    }
+                }
+                .tint(palette.accent)
+            } header: {
+                Text("自动提示")
+            }
+
+            Section {
                 Picker("目标语言", selection: Binding(
                     get: { settings.target },
                     set: { language in
@@ -98,6 +117,35 @@ struct TranslationSettingsView: View {
                     Text("凭据")
                 } footer: {
                     Text("密钥只保存在这台设备的设置里，不会上传到 Vela 之外的任何地方——它只随翻译请求发给所选服务商。")
+                }
+            }
+
+            if let rules = settings.siteRules, !rules.isEmpty {
+                Section {
+                    ForEach(rules.keys.sorted(), id: \.self) { host in
+                        HStack {
+                            Text(host)
+                            Spacer()
+                            Text(
+                                SiteTranslationRule(rawValue: rules[host] ?? "")?.displayName
+                                    ?? "已忽略"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(palette.secondaryText)
+
+                            Button {
+                                env.settings.updateTranslationSettings { $0.setRule(nil, for: host) }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(palette.secondaryText)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                } header: {
+                    Text("网站规则")
+                } footer: {
+                    Text("在翻译栏的选项菜单里选择「总是翻译此网站」或「不再翻译此网站」会写到这里。")
                 }
             }
 
@@ -136,7 +184,7 @@ struct TranslationSettingsView: View {
 
             Section("说明") {
                 LabeledContent("当前状态", value: settings.isUsable ? "可以使用" : "缺少凭据")
-                Text("翻译只替换页面里的文本节点，不重新载入文档；关闭翻译面板时选择「显示原文」即可恢复，滚动位置不会丢失。")
+                Text("翻译按段落进行，段落里的链接、加粗等行内标记会原样保留；译文写回页面而不重新载入文档，选择「显示原文」即可恢复，滚动位置不会丢失。")
                     .font(.footnote)
                     .foregroundStyle(palette.secondaryText)
             }

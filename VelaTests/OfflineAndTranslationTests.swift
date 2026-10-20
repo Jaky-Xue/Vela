@@ -47,6 +47,17 @@ final class OfflineAndTranslationTests: XCTestCase {
         XCTAssertTrue(chat.isUsable)
     }
 
+    func testSiteRulesIgnoreTheWwwPrefix() {
+        var settings = TranslationSettings(provider: .google)
+        settings.setRule(.always, for: "WWW.Example.com")
+        XCTAssertEqual(settings.rule(for: "example.com"), .always)
+        XCTAssertEqual(settings.rule(for: "www.example.com"), .always)
+
+        settings.setRule(nil, for: "example.com")
+        XCTAssertNil(settings.rule(for: "www.example.com"))
+        XCTAssertNil(settings.siteRules)
+    }
+
     func testTranslationTargetKeepsItsCodeAcrossProviders() {
         XCTAssertEqual(TranslationTargetLanguage.simplifiedChinese.googleCode, "zh-CN")
         XCTAssertEqual(TranslationTargetLanguage.simplifiedChinese.deepLCode, "ZH")

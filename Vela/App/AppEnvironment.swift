@@ -74,6 +74,18 @@ public final class AppEnvironment {
         self.translation = TranslationService()
 
         coordinator.attach(tabManager: tabManager)
+        // A translated page's observer reports new blocks here. The closure is
+        // weak on both sides: the coordinator is owned by this environment, so
+        // a strong capture would keep the window alive for the app's lifetime.
+        coordinator.dynamicTranslationHandler = { [weak self] payload, tabId, webView in
+            guard let self else { return }
+            self.translation.handleDynamicUnits(
+                payload,
+                tabId: tabId,
+                webView: webView,
+                settings: self.settings.translationSettings
+            )
+        }
         services.bootOnce()
         bootWindow()
     }

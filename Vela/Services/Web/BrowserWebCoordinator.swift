@@ -49,6 +49,13 @@ public final class BrowserWebCoordinator: NSObject {
     /// handed in, so a view can observe one dialog without observing the engine.
     public let overlays: WebPageOverlays
 
+    /// Receives new text blocks from a translated page's mutation observer.
+    ///
+    /// The coordinator sees the script message; the translation service owns
+    /// the provider and the target, so the two are connected by this closure
+    /// rather than by the engine reaching into the service.
+    public var dynamicTranslationHandler: ((String, String, WKWebView) -> Void)?
+
     /// What is known about the navigation each live web view is running.
     ///
     /// Keyed by web-view identity rather than by tab, because that is what WebKit
@@ -158,6 +165,8 @@ public final class BrowserWebCoordinator: NSObject {
             handleElementPickMessage(message, tab: tab)
         case .adBlockReport:
             handleAdBlockReport(message, webView: webView)
+        case .translation:
+            handleTranslationMessage(message, from: webView)
         case .userScript:
             handleUserScriptMessage(message, tab: tab, webView: webView)
         case .console:
@@ -258,6 +267,20 @@ public final class BrowserWebCoordinator: NSObject {
             tagName: payload["tag"] as? String ?? "",
             textPreview: payload["text"] as? String ?? ""
         )
+    }
+
+    /// New blocks found by a translated page's observer.
+    ///
+    /// Only the main frame is accepted: an iframe's content is its own
+    /// document and was never part of the page translation.
+    private func handleTranslationMessage(_ message: WKScriptMessage, from webView: WKWebView) {
+        guard message.frameInfo.isMainFrame,
+              let tab = tab(for: webView),
+              let payload = message.body as? [String: Any],
+              let units = payload["units"] as? [[String: Any]], !units.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        dynamicTranslationHandler?(json, tab.id, webView)
     }
 
     private func handleAdBlockReport(_ message: WKScriptMessage, webView: WKWebView) {

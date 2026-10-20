@@ -76,17 +76,19 @@ public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable
     /// shows.
     var batchCharacterLimit: Int {
         switch self {
-        case .google: return 1_600
-        case .deepL: return 9_000
-        case .openAICompatible: return 6_000
+        // Google is sent a POST body, not a query string, so a batch can hold
+        // several paragraphs. The other two have their own per-request caps.
+        case .google: return 12_000
+        case .deepL: return 24_000
+        case .openAICompatible: return 8_000
         }
     }
 
     var batchItemLimit: Int {
         switch self {
-        case .google: return 20
+        case .google: return 50
         case .deepL: return 40
-        case .openAICompatible: return 40
+        case .openAICompatible: return 30
         }
     }
 }
@@ -145,6 +147,35 @@ public enum TranslationTargetLanguage: String, Codable, CaseIterable, Identifiab
         }
     }
 
+    /// The target a fresh install starts with: the user's preferred language
+    /// when it is one the picker offers, otherwise Simplified Chinese.
+    public static var defaultTarget: TranslationTargetLanguage {
+        for identifier in Locale.preferredLanguages {
+            let lower = identifier.lowercased()
+            if lower.hasPrefix("zh-hant") || lower.hasPrefix("zh-tw") || lower.hasPrefix("zh-hk") {
+                return .traditionalChinese
+            }
+            if lower.hasPrefix("zh") { return .simplifiedChinese }
+            if lower.hasPrefix("en") { return .english }
+            if lower.hasPrefix("ja") { return .japanese }
+            if lower.hasPrefix("ko") { return .korean }
+            if lower.hasPrefix("fr") { return .french }
+            if lower.hasPrefix("de") { return .german }
+            if lower.hasPrefix("es") { return .spanish }
+            if lower.hasPrefix("ru") { return .russian }
+        }
+        return .simplifiedChinese
+    }
+
+    /// The part of a language tag that identifies the language rather than the
+    /// region or script. NaturalLanguage returns tags such as `zh-Hans`, while
+    /// the settings store `zh-CN`; both are Chinese for this comparison.
+    public static func baseCode(of code: String) -> String {
+        let lower = code.lowercased()
+        if lower.hasPrefix("zh") { return "zh" }
+        return lower.split(separator: "-").first.map(String.init) ?? lower
+    }
+
     /// How a chat-completions prompt names the language.
     public var naturalName: String {
         switch self {
@@ -161,6 +192,38 @@ public enum TranslationTargetLanguage: String, Codable, CaseIterable, Identifiab
     }
 }
 
+// MARK: - Site rules
+
+/// What to do the next time a page on this host is recognised as foreign.
+///
+/// Chrome's "always translate" / "never translate" choice, scoped to a host.
+/// Stored as raw strings because the settings document is decoded as a whole
+/// and an unknown value must not fail the decode.
+public enum SiteTranslationRule: String, Codable, CaseIterable, Sendable {
+    case always
+    case never
+
+    public var displayName: String {
+        switch self {
+        case .always: return "总是翻译"
+        case .never: return "不再翻译"
+        }
+    }
+}
+
+/// A language the page is written in, as far as detection can tell.
+public struct DetectedPageLanguage: Equatable, Sendable {
+    public var code: String
+    public var displayName: String
+    public var confidence: Double
+
+    public init(code: String, displayName: String, confidence: Double) {
+        self.code = code
+        self.displayName = displayName
+        self.confidence = confidence
+    }
+}
+
 // MARK: - Settings document
 
 public struct TranslationSettings: Codable, Equatable, Sendable {
@@ -173,22 +236,64 @@ public struct TranslationSettings: Codable, Equatable, Sendable {
     public var endpoint: String
     /// Blank means the provider's default model.
     public var model: String
+    /// Host -> `SiteTranslationRule` raw value.
+    ///
+    /// Optional so an existing settings document still decodes; absent means
+    /// no host has a rule yet.
+    public var siteRules: [String: String]?
+    /// Whether a foreign-language page offers translation automatically.
+    /// Optional for the same decode-compatibility reason; absent means yes.
+    public var autoOffer: Bool?
 
     public init(
         provider: TranslationProviderKind = .google,
-        targetLanguage: String = TranslationTargetLanguage.simplifiedChinese.rawValue,
+        targetLanguage: String = TranslationTargetLanguage.defaultTarget.rawValue,
         apiKey: String = "",
         endpoint: String = "",
-        model: String = ""
+        model: String = "",
+        siteRules: [String: String]? = nil,
+        autoOffer: Bool? = nil
     ) {
         self.provider = provider
         self.targetLanguage = targetLanguage
         self.apiKey = apiKey
         self.endpoint = endpoint
         self.model = model
+        self.siteRules = siteRules
+        self.autoOffer = autoOffer
     }
 
     public static let `default` = TranslationSettings()
+
+    /// Whether to offer translation for a foreign-language page without the
+    /// user opening a menu.
+    public var offersAutomatically: Bool { autoOffer ?? true }
+
+    public func rule(for host: String) -> SiteTranslationRule? {
+        guard let host = Self.normalizedHost(host),
+              let raw = siteRules?[host] else { return nil }
+        return SiteTranslationRule(rawValue: raw)
+    }
+
+    public mutating func setRule(_ rule: SiteTranslationRule?, for host: String) {
+        guard let host = Self.normalizedHost(host) else { return }
+        var rules = siteRules ?? [:]
+        if let rule {
+            rules[host] = rule.rawValue
+        } else {
+            rules.removeValue(forKey: host)
+        }
+        siteRules = rules.isEmpty ? nil : rules
+    }
+
+    /// A host without the `www.` prefix, so the same site does not need two
+    /// rules depending on how its links were written.
+    public static func normalizedHost(_ raw: String) -> String? {
+        var host = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !host.isEmpty else { return nil }
+        if host.hasPrefix("www.") { host = String(host.dropFirst(4)) }
+        return host
+    }
 
     public var target: TranslationTargetLanguage {
         get { TranslationTargetLanguage(rawValue: targetLanguage) ?? .simplifiedChinese }

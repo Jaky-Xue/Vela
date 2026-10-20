@@ -75,11 +75,16 @@ SwiftUI 环境注入。视图不 new 服务。
 
 ## 网页翻译
 
-`WebPageScripts.textExtractionScript` 给每个正文文本节点编号并记下原文，
-`TranslationService` 按服务商的批量上限切段、发请求、用
-`textApplicationScript` 写回同一批节点；`textRestoreScript` 用记下的原文恢复，
-不重新加载文档。服务商（Google 公共接口 / DeepL / OpenAI 兼容接口）与目标语言
-保存在独立的 `TranslationSettings` 文档中，设置页为 `网页翻译`。
+`WebPageScripts.translationSupportScript` 按“叶子块元素”（段落、列表项、标题、
+表格单元等）提取翻译单元，单元带着 `innerHTML` 走请求，所以链接、加粗和其它
+行内标记在译文里保留；写回时先按元素结构逐文本节点替换，结构不一致才回退到整块
+`innerHTML`。原文记录在文本节点上，`显示原文` 是原地恢复，不重新加载文档。
+`TranslationService` 负责识别语言（NaturalLanguage）、按服务商批量上限发送、
+处理 Google 返回的包装元素、以及翻译 MutationObserver 报告的新增内容。
+Google / DeepL / OpenAI 兼容接口、目标语言、自动提示开关和按网站的
+总是/不再翻译规则保存在独立的 `TranslationSettings` 文档中。界面是页面顶部的
+`TranslationBar`，而不是弹窗：检测到外语页面时出现，翻译中显示进度，翻译后可
+显示原文或修改规则。
 
 ## 离线页面
 

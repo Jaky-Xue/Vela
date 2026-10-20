@@ -63,8 +63,9 @@ struct BrowserShellView: View {
     @State private var showAddBookmarkChoice = false
     @State private var showShareSheet = false
     @State private var showFindBar = false
-    /// The page-translation panel.
-    @State private var showTranslation = false
+    /// Whether the user closed the translation bar for the page on screen.
+    /// Reset on every tab switch and navigation.
+    @State private var translationBarDismissed = false
     /// The shelf of saved offline pages.
     @State private var showOfflinePages = false
     /// A one-line result from saving a page: "已保存" or the reason it failed.
@@ -411,9 +412,11 @@ struct BrowserShellView: View {
         .onChange(of: tabManager.activeTabId) { _, _ in
             isReaderActive = false
             readerArticle = nil
-            // A translation belongs to the document it was applied to.
-            showTranslation = false
-            env.translation.reset()
+            // A translation belongs to the document it was applied to. The
+            // service keeps one record per tab, so switching back can restore
+            // the bar rather than losing the fact that the page is translated.
+            translationBarDismissed = false
+            syncTranslationState()
             showFindBar = false
             findQuery = ""
             chromeHidden = false
@@ -430,15 +433,30 @@ struct BrowserShellView: View {
         }
         .onChange(of: activeTab?.url) { _, _ in
             // A new document is a fresh read: the chrome comes back for it.
-            showTranslation = false
-            env.translation.reset()
+            translationBarDismissed = false
+            syncTranslationState()
             chromeHidden = false
             scrollTracker.accumulation = 0
             syncAddressText()
             updateChromeForeground()
         }
-        .onChange(of: activeTab?.loadState) { _, _ in
+        .onChange(of: activeTab?.loadState) { _, state in
+            // A reload can keep the same tab and URL; the navigation itself is
+            // what says the translated document is gone.
+            if let tab = activeTab,
+               state == .requested || state == .provisional {
+                env.translation.pageWillNavigate(tabId: tab.id)
+            }
             updateChromeForeground()
+        }
+        // Runs once the active page has finished loading (and again on a tab
+        // or URL change): this is what recognises a foreign-language page and
+        // offers to translate it, the way Chrome's translate bubble does.
+        .task(id: translationDetectionKey) {
+            guard !translationDetectionKey.isEmpty else { return }
+            translationBarDismissed = false
+            syncTranslationState()
+            await offerTranslationIfNeeded()
         }
         .onChange(of: env.settings.preferences.backgroundImageStamp) { _, _ in
             updateChromeForeground()
@@ -485,6 +503,10 @@ struct BrowserShellView: View {
     /// of one enormous one.
     private func presentations() -> some View {
         shellRoot
+        .overlay(alignment: .top) {
+            translationBarLayer
+        }
+        .animation(.snappy(duration: 0.24), value: showsTranslationBar)
         .sheet(isPresented: $showBookmarks) {
             NavigationStack { BookmarksView() }
                 .environment(env)
@@ -535,16 +557,6 @@ struct BrowserShellView: View {
         .sheet(isPresented: $showShareSheet) {
             if let tab = activeTab, let url = URL(string: tab.url) {
                 ShareSheet(items: [url])
-            }
-        }
-        .sheet(isPresented: $showTranslation) {
-            if let webView = activeWebView {
-                TranslationSheet(
-                    webView: webView,
-                    target: env.settings.translationSettings.target
-                )
-                .environment(env)
-                .browserAmbientSheet()
             }
         }
         .sheet(isPresented: $showOfflinePages) {
@@ -1906,6 +1918,128 @@ struct BrowserShellView: View {
         }
     }
 
+    // MARK: - Page translation
+
+    /// Whether the translation bar should be on screen.
+    ///
+    /// It appears for an automatic offer, while a translation runs, and while
+    /// one is applied. It stays out of the way of the tab overview, the
+    /// scanner, the novel reader and the omnibox search page: those are layers
+    /// above the page, and a small bar floating over them would read as part
+    /// of them.
+    private var showsTranslationBar: Bool {
+        guard !translationBarDismissed,
+              !showTabsOverview,
+              !showQRScanner,
+              novelSession == nil,
+              !omnibox.isEditing,
+              let tab = activeTab,
+              !tab.isHome,
+              tabManager.webView(for: tab.id) != nil else { return false }
+
+        if env.translation.isBusy || env.translation.isTranslated { return true }
+        if case .failed = env.translation.phase { return true }
+        return env.translation.detected != nil
+    }
+
+    /// The distance from the window's top to the bar.
+    ///
+    /// On the iPad layout the bar sits under the chrome's top bar when it is
+    /// visible; on the phone layout there is no top bar, so it sits below the
+    /// status bar. The page runs underneath it either way.
+    private var translationBarTopPadding: CGFloat {
+        if usesPadLayout {
+            return safeTop + (chromeHidden ? 6 : Self.padTopBarHeight + 6)
+        }
+        return safeTop + 6
+    }
+
+    /// Re-identifies the page the translation bar belongs to.
+    private var translationDetectionKey: String {
+        guard let tab = activeTab, !tab.isHome, tab.loadState == .finished else {
+            return ""
+        }
+        return "\(tab.id)|\(tab.url)"
+    }
+
+    @ViewBuilder
+    private var translationBarLayer: some View {
+        if showsTranslationBar, let webView = activeWebView {
+            TranslationBar(
+                webView: webView,
+                onClose: {
+                    withAnimation(.snappy(duration: 0.2)) {
+                        translationBarDismissed = true
+                    }
+                },
+                onOpenSettings: { showSettings = true }
+            )
+            .padding(.horizontal, 10)
+            .padding(.top, translationBarTopPadding)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .zIndex(12)
+        }
+    }
+
+    /// Hands the active tab and document to the translation service, which is
+    /// where the per-tab applied state lives.
+    private func syncTranslationState() {
+        guard let tab = activeTab else {
+            env.translation.reset()
+            return
+        }
+        env.translation.sync(
+            tabId: tab.id,
+            url: tab.url,
+            webView: tabManager.webView(for: tab.id)
+        )
+    }
+
+    /// Recognises the page's language and, when it differs from the target,
+    /// leaves the bar showing its offer. A site marked 总是翻译 starts at once.
+    private func offerTranslationIfNeeded() async {
+        guard let tab = activeTab, !tab.isHome, tab.loadState == .finished,
+              let webView = tabManager.webView(for: tab.id) else { return }
+
+        let settings = env.settings.translationSettings
+        guard settings.offersAutomatically else { return }
+        if let host = URL(string: tab.url)?.host,
+           settings.rule(for: host) == .never {
+            return
+        }
+        if env.translation.isTranslated || env.translation.isBusy { return }
+
+        await env.translation.detectLanguage(in: webView, target: settings.target)
+
+        guard activeTab?.id == tab.id,
+              !env.translation.isTranslated,
+              !env.translation.isBusy else { return }
+        if let host = URL(string: tab.url)?.host,
+           settings.rule(for: host) == .always,
+           env.translation.detected != nil {
+            startPageTranslation(target: settings.target)
+        }
+    }
+
+    /// Starts translating the active page.
+    private func startPageTranslation(target: TranslationTargetLanguage? = nil) {
+        guard let tab = activeTab, !tab.isHome,
+              let webView = tabManager.webView(for: tab.id) else { return }
+        translationBarDismissed = false
+        if let target {
+            env.settings.updateTranslationSettings { $0.target = target }
+        }
+        let settings = env.settings.translationSettings
+        let resolved = target ?? settings.target
+        Task {
+            await env.translation.translate(
+                webView: webView,
+                settings: settings,
+                target: resolved
+            )
+        }
+    }
+
     /// Saves the active page's archive, then reports the result in one line.
     private func saveOfflinePage() {
         guard let tab = activeTab, !tab.isHome,
@@ -2011,7 +2145,16 @@ struct BrowserShellView: View {
             guard env.settings.preferences.readerModeAvailable else { break }
             activateReaderMode()
         case .translate:
-            showTranslation = true
+            guard let webView = activeWebView else { break }
+            translationBarDismissed = false
+            // The menu item is the manual switch Chrome puts beside its
+            // bubble: it translates, and translates back when the page is
+            // already translated.
+            if env.translation.isTranslated {
+                Task { await env.translation.restoreOriginal(webView: webView) }
+            } else {
+                startPageTranslation()
+            }
         case .saveOfflinePage:
             saveOfflinePage()
         case .offlinePages:
