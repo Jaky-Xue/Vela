@@ -54,6 +54,14 @@ SwiftUI 环境注入。视图不 new 服务。
 `MenuTile` 和 `MenuLayout`。布局以原始字符串保存在偏好文档里（顺序、隐藏项、
 快捷方式），`MenuPanelView` 只负责画传给它的 tiles。设置 ▸ 菜单面板 负责编辑。
 
+## 小说目录与翻页
+
+`novel_toc_entries` / `novel_toc_sources` 保存一本书的目录和目录页地址。进入小说
+模式时章节页给出的目录链接会写入来源；阅读页按需用 `NovelTOCLoader` 离屏加载
+目录页，`NovelModeService.tocExtractionScript` 选取章节链接并缓存。下一页/上一页
+在章节本身没有链接时回退到目录邻居。翻页方式（滚动 / 整屏翻页）保存在
+`BrowserPreferences.novelPageMode`，只切换 web view 的分页属性，不重载章节。
+
 ## 验证
 
 本机没有 Swift 工具链。可编译性由 `.github/workflows/build-ios.yml` 在 macOS

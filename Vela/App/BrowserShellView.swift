@@ -190,9 +190,27 @@ struct BrowserShellView: View {
             : safeBottom + BrowserChrome.barHeight + BrowserChrome.barGap
     }
 
+    /// Whether the shell's own ambient field is worth drawing.
+    ///
+    /// A live page is opaque and covers it completely; keeping a full-screen
+    /// mesh, material and specular layers under that page only costs
+    /// compositing. The field appears on the surfaces that show something of
+    /// the app itself — home, reader, error, empty — and in sheets, which draw
+    /// their own.
+    private var showsAmbientRootBackground: Bool {
+        if novelSession != nil { return false }
+        guard let tab = activeTab else { return true }
+        if tab.isHome || isReaderActive || tab.loadState.isFailure { return true }
+        return tabManager.webView(for: tab.id) == nil
+    }
+
     private var shellRoot: some View {
         ZStack {
-            AmbientBackgroundView()
+            if showsAmbientRootBackground {
+                AmbientBackgroundView()
+            } else {
+                palette.surface.ignoresSafeArea()
+            }
 
             if usesPadLayout {
                 padRoot

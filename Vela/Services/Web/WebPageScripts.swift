@@ -963,6 +963,7 @@ public enum WebPageScripts {
       window.__velaScrollReporterInstalled = true;
 
       var lastY = window.scrollY || 0;
+      var lastEmitAt = 0;
       var ticking = false;
 
       function emit() {
@@ -970,8 +971,16 @@ public enum WebPageScripts {
         try {
           var y = window.scrollY || 0;
           var delta = y - lastY;
-          // A threshold keeps a one-pixel jitter from toggling the toolbar.
-          if (Math.abs(delta) < 6) { return; }
+          // A distance threshold plus a time gate keeps the script bridge quiet
+          // during a fling: the chrome only needs to know which side of its
+          // threshold the accumulated movement is on, not every frame.
+          if (Math.abs(delta) < 8) { return; }
+          var now = Date.now();
+          // Reaching the top is always reported: a thinned-out final frame
+          // must not leave the bar hidden on a page the user has returned to
+          // the start of.
+          if (y > 0 && now - lastEmitAt < 70) { return; }
+          lastEmitAt = now;
           if (window.webkit && window.webkit.messageHandlers &&
               window.webkit.messageHandlers.\(Handler.scroll.rawValue)) {
             window.webkit.messageHandlers.\(Handler.scroll.rawValue).postMessage({
