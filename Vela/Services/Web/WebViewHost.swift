@@ -246,7 +246,6 @@ struct WebViewHost: UIViewRepresentable {
             appliedGestureZoom = nil
             zoomedUrl = nil
             originalZoomRange = nil
-            originalZoomRange = nil
         }
 
         deinit {

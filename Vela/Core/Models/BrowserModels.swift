@@ -464,12 +464,9 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var tabsNotRetained: Bool?
     /// 小说阅读的翻页方式：scroll 或 paged。
     public var novelPageMode: String?
-    /// 强制页面缩放：页面按这个倍率绘制，忽略网站自己的缩放设定。
-    ///
-    /// Optional for the decode reason every other new preference carries: an
-    /// absent key must not reset the rest of the document. `nil` is 100%.
-    /// Whether every page may be pinched to zoom, including pages that
-    /// declare `user-scalable=no`. Optional for decode compatibility.
+    /// 强制网页缩放：允许用双指手势缩放每一页，包括声明了
+    /// `user-scalable=no` 的页面。Optional for decode compatibility — an
+    /// absent key must not reset the rest of the document.
     public var forcedZoomEnabled: Bool?
 
     public init(
