@@ -178,7 +178,7 @@ extension BrowserShellView {
         if control == .tabs {
             tabsButton
         } else if control == .menu {
-            hamburgerButton()
+            hamburgerButton { showMenu = true }
         } else if control == .back {
             chromeButton(
                 symbol: control.symbolName,
