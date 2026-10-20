@@ -1055,7 +1055,15 @@ public enum WebPageScripts {
     /// the chosen factor is actually what the user sees. The script is
     /// idempotent: it creates the style once and updates it on every call.
     public static func forcedZoomScript(scale: Double) -> String {
-        let value = String(format: "%.3f", min(max(scale, 0.5), 2.0))
+        let clamped = min(max(scale, 0.5), 2.0)
+        // 100% is neutral: the style is emptied rather than forcing zoom: 1,
+        // which would override a site that scales its own root deliberately.
+        let rule = abs(clamped - 1) < 0.001
+            ? ""
+            : "html { zoom: \(String(format: "%.3f", clamped)) !important; }"
+        let escaped = rule
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\'")
         return """
         (function () {
           try {
@@ -1066,7 +1074,7 @@ public enum WebPageScripts {
               style.id = id;
               (document.head || document.documentElement).appendChild(style);
             }
-            style.textContent = 'html { zoom: \(value) !important; }';
+            style.textContent = '\(escaped)';
           } catch (_error) {
           }
         })();

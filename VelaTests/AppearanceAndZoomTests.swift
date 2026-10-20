@@ -26,6 +26,9 @@ final class AppearanceAndZoomTests: XCTestCase {
 
         let clampedLow = WebPageScripts.forcedZoomScript(scale: 0.1)
         XCTAssertTrue(clampedLow.contains("zoom: 0.500 !important"))
+
+        // 100% is neutral and must not override a site's own root zoom.
+        XCTAssertFalse(WebPageScripts.forcedZoomScript(scale: 1).contains("zoom:"))
     }
 
     func testTheAutomaticIdentityPresetIsFirstAndStoresNoString() {
