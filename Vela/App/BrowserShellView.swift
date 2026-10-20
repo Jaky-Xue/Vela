@@ -35,76 +35,76 @@ import WebKit
 import UniformTypeIdentifiers
 
 struct BrowserShellView: View {
-    @Environment(AppEnvironment.self) private var env
-    @Environment(\.browserPalette) private var palette
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(AppEnvironment.self) var env
+    @Environment(\.browserPalette) var palette
+    @Environment(\.colorScheme) var colorScheme
+    @Environment(\.scenePhase) var scenePhase
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
 
     /// The omnibox session. Created here rather than inside the view body
     /// because it is long-lived: it survives every tab switch, and rebuilding it
     /// would throw away the user's collapsed-section choices on each one.
-    @State private var omnibox: OmniboxViewModel
+    @State var omnibox: OmniboxViewModel
 
-    @State private var showTabsOverview = false
-    @State private var showQRScanner = false
-    @State private var qrCopyNotice: String?
-    @State private var showBookmarks = false
-    @State private var showHistory = false
-    @State private var showDownloads = false
-    @State private var showSettings = false
+    @State var showTabsOverview = false
+    @State var showQRScanner = false
+    @State var qrCopyNotice: String?
+    @State var showBookmarks = false
+    @State var showHistory = false
+    @State var showDownloads = false
+    @State var showSettings = false
     /// Whether the menu's 广告过滤 tile has its settings open over the panel.
-    @State private var showAdBlockSettings = false
-    @State private var showPasswords = false
-    @State private var showBookshelf = false
-    @State private var showMenu = false
+    @State var showAdBlockSettings = false
+    @State var showPasswords = false
+    @State var showBookshelf = false
+    @State var showMenu = false
     /// Whether the iPad layout's sidebar drawer is open.
-    @State private var showPadSidebar = false
-    @State private var showAddBookmarkChoice = false
-    @State private var showShareSheet = false
-    @State private var showFindBar = false
+    @State var showPadSidebar = false
+    @State var showAddBookmarkChoice = false
+    @State var showShareSheet = false
+    @State var showFindBar = false
     /// Whether the user closed the translation bar for the page on screen.
     /// Reset on every tab switch and navigation.
-    @State private var translationBarDismissed = false
+    @State var translationBarDismissed = false
     /// The shelf of saved offline pages.
-    @State private var showOfflinePages = false
+    @State var showOfflinePages = false
     /// A one-line result from saving a page: "已保存" or the reason it failed.
-    @State private var offlineNotice: String?
-    @State private var findQuery = ""
+    @State var offlineNotice: String?
+    @State var findQuery = ""
     /// The debounce behind the find field. Typing is what runs the search.
-    @State private var findDebounceTask: Task<Void, Never>?
+    @State var findDebounceTask: Task<Void, Never>?
 
-    @State private var isReaderActive = false
-    @State private var readerArticle: ReaderArticle?
+    @State var isReaderActive = false
+    @State var readerArticle: ReaderArticle?
 
     /// The novel reader's layer, when one is open.
     ///
     /// It is a value rather than two optionals so opening a different book or
     /// chapter is one assignment; the reader itself owns the loading that
     /// follows.
-    @State private var novelSession: NovelSession?
+    @State var novelSession: NovelSession?
     /// Why 小说模式 could not open the page.
-    @State private var novelNotice: String?
+    @State var novelNotice: String?
 
     /// Set when an omnibox submission was refused, so the shell can say why
     /// instead of closing the field as if nothing had happened.
-    @State private var addressNotice: String?
+    @State var addressNotice: String?
     /// The input that was refused, kept so the alert can offer to search for it.
-    @State private var rejectedInput = ""
+    @State var rejectedInput = ""
 
     /// Whether the command bar has slid out of the way under the status bar.
-    @State private var chromeHidden = false
+    @State var chromeHidden = false
     /// How far the user has dragged the bar downward, mid-gesture.
     ///
     /// The bar follows the finger while the drag is in progress and either
     /// commits to hiding or springs back when the finger lifts. Never read in
     /// `body` except through the two modifiers below, so the per-frame writes
     /// cost nothing beyond the offset itself.
-    @State private var chromeDragOffset: CGFloat = 0
+    @State var chromeDragOffset: CGFloat = 0
     /// How far the user has dragged the bar upward, mid-gesture — the gesture
     /// that returns to the home surface. The bar lifts a little with the
     /// finger as the promise of what releasing will do.
-    @State private var chromeLiftOffset: CGFloat = 0
+    @State var chromeLiftOffset: CGFloat = 0
 
     /// Whether the drag-to-hide gesture may act.
     ///
@@ -113,7 +113,7 @@ struct BrowserShellView: View {
     /// one included — hides the bar the same way: the bar is the page's
     /// controls, and a page the user is pushing out of the way takes its
     /// controls with it.
-    private var canDragChromeAway: Bool {
+    var canDragChromeAway: Bool {
         guard !omnibox.isEditing else { return false }
         return activeTab != nil
     }
@@ -123,38 +123,38 @@ struct BrowserShellView: View {
     /// each frame — exactly the layout work that shows up as dropped frames
     /// while a page scrolls. The box changes without touching SwiftUI; only
     /// the `chromeHidden` threshold transition re-renders.
-    @State private var scrollTracker = ShellScrollTracker()
+    @State var scrollTracker = ShellScrollTracker()
 
     /// The keyboard's height while visible, from the frame-change notifications.
     ///
     /// The suggestion card's height budget is measured down to the keyboard's
     /// top edge — a card that ignores the keyboard is a card whose last rows
     /// can never be reached.
-    @State private var keyboardHeight: CGFloat = 0
+    @State var keyboardHeight: CGFloat = 0
     /// The safe-area insets and the height of the safe-area rectangle, measured
     /// once the view is in the hierarchy and again on rotation.
-    @State private var safeTop: CGFloat = 0
-    @State private var safeBottom: CGFloat = 0
-    @State private var safeRectHeight: CGFloat = 0
+    @State var safeTop: CGFloat = 0
+    @State var safeBottom: CGFloat = 0
+    @State var safeRectHeight: CGFloat = 0
 
     /// Whether the surface the chrome floats over reads light — a bright
     /// wallpaper, a pale page — and the bar should therefore draw black ink.
     /// Decided by `updateChromeForeground` from the strip behind the bar; the
     /// initial value matches the shipped palette's dark chrome until the first
     /// measurement lands.
-    @State private var chromeForegroundIsLight = false
+    @State var chromeForegroundIsLight = false
     /// The ink for the iPad top bar, sampled from the top of a home picture.
     /// `nil` means the bar is over the ambient field or a page and the
     /// appearance decides.
-    @State private var topChromeForegroundIsLight: Bool?
-    @State private var chromeSampleTask: Task<Void, Never>?
+    @State var topChromeForegroundIsLight: Bool?
+    @State var chromeSampleTask: Task<Void, Never>?
 
     /// The one animation the chrome uses.
     ///
     /// A spring rather than an ease: the bar leaves and returns along a path
     /// the user's own scroll is also moving, and an ease-out over a fixed
     /// duration reads as a separate, laggier movement next to the page.
-    private static let chromeAnimation = Animation.spring(response: 0.32, dampingFraction: 0.86)
+    static let chromeAnimation = Animation.spring(response: 0.32, dampingFraction: 0.86)
 
     @MainActor
     init(environment: AppEnvironment) {
@@ -167,20 +167,20 @@ struct BrowserShellView: View {
         ))
     }
 
-    private var tabManager: TabManager { env.tabManager }
+    var tabManager: TabManager { env.tabManager }
 
-    private var activeTab: BrowserTabState? { tabManager.activeTab }
+    var activeTab: BrowserTabState? { tabManager.activeTab }
 
-    private static let padSidebarWidth: CGFloat = 286
+    static let padSidebarWidth: CGFloat = 286
     /// The top bar's laid-out height: 46 for the glass row plus its 8/6 gaps.
-    private static let padTopBarHeight: CGFloat = 60
+    static let padTopBarHeight: CGFloat = 60
 
     /// Whether the shell draws the iPad layout.
     ///
     /// 自动 follows the device and the window: an iPad in a regular-width
     /// window gets the two-column chrome, a phone or a narrow iPad Split View
     /// window keeps the single column.
-    private var usesPadLayout: Bool {
+    var usesPadLayout: Bool {
         switch env.settings.interfaceLayout {
         case .phone:
             return false
@@ -197,7 +197,7 @@ struct BrowserShellView: View {
     /// indicator's inset is part of the clearance. In the iPad layout the
     /// content column already ends at the safe area, and only the floating bar
     /// overlaps it.
-    private var bottomChromeClearance: CGFloat {
+    var bottomChromeClearance: CGFloat {
         // The iPad layout puts the navigation in a top bar, so the page can run
         // to the bottom edge of its column.
         usesPadLayout
@@ -212,7 +212,7 @@ struct BrowserShellView: View {
     /// compositing. The field appears on the surfaces that show something of
     /// the app itself — home, reader, error, empty — and in sheets, which draw
     /// their own.
-    private var showsAmbientRootBackground: Bool {
+    var showsAmbientRootBackground: Bool {
         if novelSession != nil { return false }
         if showsBackgroundPictureAtRoot { return false }
         guard let tab = activeTab else { return true }
@@ -226,11 +226,11 @@ struct BrowserShellView: View {
     /// it belongs behind the top bar as well as the home, so the chrome and
     /// the home sit on the same picture. A page covers it completely, which
     /// is why there is no per-tab condition here.
-    private var showsBackgroundPictureAtRoot: Bool {
+    var showsBackgroundPictureAtRoot: Bool {
         env.settings.preferences.backgroundImageStamp != nil
     }
 
-    private var shellRoot: some View {
+    var shellRoot: some View {
         ZStack {
             if showsBackgroundPictureAtRoot, let stamp = env.settings.preferences.backgroundImageStamp {
                 BackgroundPictureBackdrop(stamp: stamp)
@@ -501,248 +501,6 @@ struct BrowserShellView: View {
     /// the chain's far end, but the weight was the whole chain. Splitting the
     /// presentations off hands the checker two moderate expressions instead
     /// of one enormous one.
-    private func presentations() -> some View {
-        shellRoot
-        .overlay(alignment: .top) {
-            translationBarLayer
-        }
-        .animation(.snappy(duration: 0.24), value: showsTranslationBar)
-        .sheet(isPresented: $showBookmarks) {
-            NavigationStack { BookmarksView() }
-                .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-                .browserAmbientSheet()
-        }
-        .sheet(isPresented: $showHistory) {
-            NavigationStack { HistoryView() }
-                .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-                // Applied to the stack rather than to the list so every pushed
-                // screenshot — the day groups, an entry's detail sheet — shares
-                // the palette without each one restating it.
-                .browserListSurface()
-                .browserAmbientSheet()
-        }
-        .sheet(isPresented: $showDownloads) {
-            NavigationStack { DownloadsView() }
-                .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-                .browserListSurface()
-                .browserAmbientSheet()
-        }
-        .sheet(isPresented: $showSettings) {
-            NavigationStack { SettingsView() }
-                .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-                .browserListSurface()
-                .browserAmbientSheet()
-        }
-        .sheet(isPresented: $showPasswords) {
-            NavigationStack {
-                PasswordVaultView()
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("完成") { showPasswords = false }
-                        }
-                    }
-            }
-            .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-            .browserAmbientSheet()
-        }
-        .sheet(isPresented: $showBookshelf) {
-            NovelBookshelfView { book in
-                showBookshelf = false
-                // A resumed book that still has its chapter cached opens
-                // instantly; otherwise the reader loads it itself.
-                openNovel(book, chapter: env.novels.cachedChapter(book: book))
-            }
-            .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-        }
-        .sheet(isPresented: $showShareSheet) {
-            if let tab = activeTab, let url = URL(string: tab.url) {
-                ShareSheet(items: [url])
-            }
-        }
-        .sheet(isPresented: $showOfflinePages) {
-            NavigationStack {
-                OfflinePagesView(onOpen: openOfflinePage)
-            }
-            .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-            .browserListSurface()
-            .browserAmbientSheet()
-        }
-        .sheet(isPresented: $showMenu) {
-            MenuPanelView(
-                tiles: env.settings.menuLayout.visibleTiles,
-                canActOnPage: canActOnPage,
-                isPrivateMode: activeTab?.privacyMode == .private,
-                isPrivateBrowsingOn: env.settings.preferences.privateBrowsingMode ?? false,
-                adBlockEnabled: env.settings.adBlockSettings.preferences.enabled,
-                pageTitle: menuPanelTitle,
-                onPerform: handleMenuAction,
-                onOpenShortcut: handleMenuShortcut,
-                scriptCommands: activeUserScriptCommands,
-                onRunScriptCommand: { command in
-                    showMenu = false
-                    env.webCoordinator.runUserScriptMenuCommand(command)
-                }
-            )
-            .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-            .browserAmbientSheet()
-            // Presented over the panel rather than after it: the user can
-            // manage rule sources and close the screen back to the menu.
-            .sheet(isPresented: $showAdBlockSettings) {
-                NavigationStack { AdBlockSettingsView() }
-                    .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-                    .browserAmbientSheet()
-            }
-        }
-        .sheet(isPresented: $showAddBookmarkChoice) {
-            AddBookmarkChoiceSheet(
-                url: activeTab?.url ?? "",
-                title: activeTab?.title ?? ""
-            )
-            .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-            .browserAmbientSheet()
-        }
-        .sheet(item: Binding(
-            get: { env.overlays.elementPick },
-            set: { value in
-                if value == nil {
-                    env.webCoordinator.disarmElementPicker(in: activeWebView)
-                    env.overlays.elementPick = nil
-                }
-            }
-        )) { pick in
-            ElementHideConfirmSheet(
-                pick: pick,
-                onHide: { applyElementHide(pick) },
-                onCancel: {
-                    env.webCoordinator.disarmElementPicker(in: activeWebView)
-                    env.overlays.elementPick = nil
-                }
-            )
-            .environment(env)
-                .browserSheetAppearance(env.settings.appearanceMode)
-            .browserAmbientSheet()
-        }
-        .alert(
-            "离线页面",
-            isPresented: Binding(
-                get: { offlineNotice != nil },
-                set: { if !$0 { offlineNotice = nil } }
-            ),
-            presenting: offlineNotice
-        ) { _ in
-            Button("好") { offlineNotice = nil }
-        } message: { message in
-            Text(message)
-        }
-        .alert(
-            "无法打开该地址",
-            isPresented: Binding(
-                get: { addressNotice != nil },
-                set: { if !$0 { addressNotice = nil } }
-            ),
-            presenting: addressNotice
-        ) { _ in
-            Button("搜索「\(rejectedInput)」") {
-                let input = rejectedInput
-                addressNotice = nil
-                searchRefusedInput(input)
-            }
-            Button("好", role: .cancel) { addressNotice = nil }
-        } message: { notice in
-            Text(notice)
-        }
-        .alert(
-            env.overlays.javascriptDialog?.message ?? "",
-            isPresented: Binding(
-                get: { env.overlays.javascriptDialog != nil },
-                set: { if !$0 { env.webCoordinator.resolveJavaScriptDialog(confirmed: false, text: nil) } }
-            ),
-            presenting: env.overlays.javascriptDialog
-        ) { dialog in
-            switch dialog.kind {
-            case .alert:
-                Button("好") { env.webCoordinator.resolveJavaScriptDialog(confirmed: true, text: nil) }
-            case .confirm:
-                Button("取消", role: .cancel) {
-                    env.webCoordinator.resolveJavaScriptDialog(confirmed: false, text: nil)
-                }
-                Button("确定") { env.webCoordinator.resolveJavaScriptDialog(confirmed: true, text: nil) }
-            case .prompt:
-                // A prompt needs a text field, which an alert cannot host on
-                // iOS; the shell routes it to the sheet below instead.
-                Button("关闭") { env.webCoordinator.resolveJavaScriptDialog(confirmed: false, text: nil) }
-            }
-        } message: { dialog in
-            if dialog.fromUserScript {
-                Text("来自用户脚本")
-            }
-        }
-        .alert(
-            "要用其他应用打开吗？",
-            isPresented: Binding(
-                get: { env.overlays.externalNavigation != nil },
-                set: { if !$0 { env.webCoordinator.dismissExternalNavigation() } }
-            ),
-            presenting: env.overlays.externalNavigation
-        ) { request in
-            Button("打开") { env.webCoordinator.confirmExternalNavigation(allow: true, remember: false) }
-            Button("总是允许此网站") {
-                env.webCoordinator.confirmExternalNavigation(allow: true, remember: true)
-            }
-            Button("取消", role: .cancel) { env.webCoordinator.dismissExternalNavigation() }
-        } message: { request in
-            Text(request.url.absoluteString)
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { env.overlays.permissionRequest != nil },
-                // Dismissing the sheet by any route other than the two buttons
-                // is a refusal. Leaving the request set would make the sheet
-                // re-present forever, and never calling WebKit's handler would
-                // block the page on a question nobody can answer.
-                set: { if !$0 { env.webCoordinator.resolvePermissionRequest(allow: false, remember: false) } }
-            )
-        ) {
-            if let request = env.overlays.permissionRequest {
-                PermissionPromptView(request: request) { allow, remember in
-                    env.webCoordinator.resolvePermissionRequest(allow: allow, remember: remember)
-                }
-                .browserAmbientSheet()
-            }
-        }
-        .fileImporter(
-            isPresented: Binding(
-                get: { env.overlays.fileUpload != nil },
-                set: { if !$0 { env.webCoordinator.resolveFileUpload(nil) } }
-            ),
-            allowedContentTypes: [.item],
-            allowsMultipleSelection: env.overlays.fileUpload?.allowsMultipleSelection ?? false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                // A picked file is readable only inside its security scope, and
-                // WebKit copies the contents when the handler runs, so access
-                // is opened here and left open for WebKit to read through.
-                for url in urls {
-                    _ = url.startAccessingSecurityScopedResource()
-                }
-                env.webCoordinator.resolveFileUpload(urls)
-            case .failure:
-                env.webCoordinator.resolveFileUpload(nil)
-            }
-        }
-    }
-
     // MARK: - Safe area
 
     /// Reads the safe-area geometry once the view is in a window.
@@ -751,7 +509,7 @@ struct BrowserShellView: View {
     /// ZStack is laid out in, so the numbers here are the real insets on this
     /// device, re-read on rotation — which is what the keyboard-aware card
     /// budget and the full-bleed insets need.
-    private var safeAreaReader: some View {
+    var safeAreaReader: some View {
         GeometryReader { geo in
             Color.clear
                 .onAppear { recordSafeArea(geo) }
@@ -760,888 +518,10 @@ struct BrowserShellView: View {
         }
     }
 
-    private func recordSafeArea(_ geo: GeometryProxy) {
+    func recordSafeArea(_ geo: GeometryProxy) {
         safeTop = geo.safeAreaInsets.top
         safeBottom = geo.safeAreaInsets.bottom
         safeRectHeight = geo.size.height
-    }
-
-    // MARK: - Surfaces
-
-    /// The iPad chrome, after Safari's arrangement: one top bar spanning the
-    /// window, a bookmarks strip beneath it, and the page filling the rest.
-    /// The tab sidebar is a drawer over the page rather than a permanent
-    /// column, so the page keeps the whole width while reading.
-    private var padRoot: some View {
-        VStack(spacing: 0) {
-            // The search page carries its own field; leaving the top bar in
-            // place would put two address fields on screen.
-            if !omnibox.isEditing, novelSession == nil {
-                padTopBar
-                    .frame(height: chromeHidden ? 0 : Self.padTopBarHeight, alignment: .top)
-                    .clipped()
-                    .opacity(chromeHidden ? 0 : 1)
-                    .allowsHitTesting(!chromeHidden)
-                    .zIndex(2)
-            }
-
-            ZStack(alignment: .topLeading) {
-                VStack(spacing: 0) {
-                    if !omnibox.isEditing, novelSession == nil {
-                        BookmarksBarView(
-                            onNavigate: { url in
-                                navigate(to: url, in: submissionTab)
-                            },
-                            onOpenManager: { showBookmarks = true },
-                            isHidden: chromeHidden
-                        )
-                    }
-                    contentSurface
-                }
-
-                if showPadSidebar {
-                    padSidebarLayer
-                        .zIndex(3)
-                }
-            }
-        }
-        .animation(.snappy(duration: 0.26), value: showPadSidebar)
-    }
-
-    private var padInk: Color {
-        if let topChromeForegroundIsLight {
-            return topChromeForegroundIsLight ? .black : .white
-        }
-        return colorScheme == .dark ? .white : .black
-    }
-
-    /// The unified Safari-style top bar: sidebar, back, address, share, tabs,
-    /// menu — one glass surface instead of the phone layout's three clusters.
-    @ViewBuilder
-    private var padTopBar: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: BrowserChrome.barGap) {
-                padTopBarContent
-            }
-        } else {
-            padTopBarContent
-        }
-    }
-
-    private var padToolbarLayout: ToolbarLayout { env.settings.padToolbarLayout }
-
-    /// Three glass pieces rather than one continuous strip: the fixed sidebar
-    /// surface plus the user's leading controls, the address field, and the
-    /// user's trailing controls plus the menu. The gaps are what divide the
-    /// bar that used to read as one long slab.
-    ///
-    /// The field's width is stated here rather than left to an `HStack`. The
-    /// field is a bridged `UITextField`, and a text field answers a size query
-    /// with a width of its own — after the home picture loads, the ink update
-    /// re-measures the bar, and the answer was a width close to the whole
-    /// bar. Taken at face value, the row grew wider than the screen: the
-    /// sidebar and back buttons were pushed off the leading edge and the menu
-    /// off the trailing one, with the field filling everything between, and in
-    /// portrait the whole row was clipped down to a band of empty glass. A
-    /// width this layout computes cannot drift.
-    private var padTopBarContent: some View {
-        GeometryReader { geo in
-            let leadingWidth = Self.padClusterWidth(controlCount: padToolbarLayout.leading.count + 1)
-            let trailingWidth = Self.padClusterWidth(controlCount: padToolbarLayout.trailing.count + 1)
-            // The bar's own 12-point margins and the two 6-point gaps between
-            // its pieces come out first; whatever is left is the field's.
-            let fieldWidth = max(
-                64,
-                geo.size.width - 24 - leadingWidth - trailingWidth - 12
-            )
-
-            HStack(spacing: 6) {
-                HStack(spacing: 2) {
-                    chromeButton(
-                        symbol: "sidebar.left",
-                        isEnabled: true,
-                        label: showPadSidebar ? "收起标签页侧边栏" : "显示标签页侧边栏",
-                        foreground: padInk
-                    ) {
-                        withAnimation(.snappy(duration: 0.26)) {
-                            showPadSidebar.toggle()
-                        }
-                    }
-
-                    ForEach(padToolbarLayout.leading) { control in
-                        padToolbarControl(control)
-                    }
-                }
-                .padding(.horizontal, 4)
-                .frame(height: BrowserChrome.barHeight)
-                .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
-
-                OmniboxView(
-                    viewModel: omnibox,
-                    isLoading: activeTab?.isLoading ?? false,
-                    progress: activeTab?.estimatedProgress ?? 0,
-                    placeholder: omniboxPlaceholder,
-                    onReload: reloadActiveTab,
-                    onStop: {
-                        guard let tab = activeTab else { return }
-                        tabManager.stopLoading(tab: tab)
-                    },
-                    foregroundOverride: padInk
-                )
-                .frame(width: fieldWidth)
-
-                HStack(spacing: 2) {
-                    ForEach(padToolbarLayout.trailing) { control in
-                        padToolbarControl(control)
-                    }
-
-                    chromeButton(
-                        symbol: "ellipsis",
-                        isEnabled: true,
-                        label: "菜单",
-                        foreground: padInk
-                    ) {
-                        showMenu = true
-                    }
-                }
-                .padding(.horizontal, 4)
-                .frame(height: BrowserChrome.barHeight)
-                .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
-            .frame(width: geo.size.width, height: Self.padTopBarHeight, alignment: .top)
-        }
-        .frame(height: Self.padTopBarHeight)
-        // Safari-like gestures on the bar itself: an upward flick tucks the
-        // top bar (and the bookmarks strip) away; a downward flick returns to
-        // the home surface.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 16)
-                .onEnded { value in
-                    let vertical = value.translation.height
-                    guard abs(vertical) > abs(value.translation.width) else { return }
-                    if vertical < -48 {
-                        setChromeHidden(true)
-                    } else if vertical > 48 {
-                        openHomeTab()
-                    }
-                }
-        )
-    }
-
-    /// The width one of the iPad bar's fixed clusters takes: four points of
-    /// padding either side, a 34-point button per control, and two points
-    /// between them. Every control in both clusters is drawn at 34 points, so
-    /// the number is exact rather than an estimate.
-    private static func padClusterWidth(controlCount: Int) -> CGFloat {
-        let count = max(controlCount, 1)
-        return 8 + CGFloat(count) * 34 + CGFloat(count - 1) * 2
-    }
-
-    @ViewBuilder
-    private func padToolbarControl(_ control: ToolbarControl) -> some View {
-        if control == .tabs {
-            tabsButton(ink: padInk)
-        } else if control == .back {
-            chromeButton(
-                symbol: control.symbolName,
-                isEnabled: toolbarControlEnabled(control),
-                label: control.title,
-                foreground: padInk
-            ) {
-                performToolbarControl(control)
-            }
-            .contextMenu { backHistoryMenu }
-        } else {
-            chromeButton(
-                symbol: control.symbolName,
-                isEnabled: toolbarControlEnabled(control),
-                label: control.title,
-                foreground: padInk
-            ) {
-                performToolbarControl(control)
-            }
-        }
-    }
-
-    /// The tab drawer. It sits over the content only (below the top bar), with
-    /// a scrim that closes it on a tap outside.
-    private var padSidebarLayer: some View {
-        ZStack(alignment: .topLeading) {
-            Color.black
-                .opacity(colorScheme == .dark ? 0.30 : 0.14)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { showPadSidebar = false }
-
-            BrowserSidebarView(
-                onClose: { showPadSidebar = false }
-            )
-            .frame(width: Self.padSidebarWidth)
-            .frame(maxHeight: .infinity)
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.16), radius: 28, x: 10, y: 0)
-        }
-        .transition(.opacity.combined(with: .move(edge: .leading)))
-    }
-
-    /// The page, and whatever floats over it.
-    private var contentSurface: some View {
-        ZStack(alignment: .bottom) {
-            mainSurface
-
-            if omnibox.isEditing {
-                OmniboxSearchPageView(
-                    viewModel: omnibox,
-                    keyboardHeight: keyboardHeight,
-                    cardMaxHeight: omniboxCardHeight,
-                    topGap: searchPageTopGap
-                )
-                .transition(.opacity)
-            }
-        }
-        // The keyboard overlays the page — a browser never shrinks its document
-        // for a keyboard — and the search page measures down to the keyboard's
-        // top edge itself.
-        .ignoresSafeArea(.keyboard)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    /// How far down the screen the search page puts its field: about a third
-    /// of the space the keyboard leaves, which is where the reference search
-    /// pages place it and where a thumb can still reach the cancel button.
-    private var searchPageTopGap: CGFloat {
-        let screenHeight = safeRectHeight + safeTop + safeBottom
-        let available = screenHeight - keyboardHeight
-        return min(max(56, available * 0.3), 320)
-    }
-
-    @ViewBuilder
-    private var mainSurface: some View {
-        if isReaderActive, let article = readerArticle {
-            // Reading mode replaces the page rather than covering it. Its own
-            // header sits below the chrome, and the article still scrolls
-            // under the glass.
-            ReaderView(
-                article: article,
-                onClose: {
-                    isReaderActive = false
-                    readerArticle = nil
-                }
-            )
-            .id("reader")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .safeAreaInset(edge: .bottom) {
-                // The command bar floats over the surface's tail; the spacer
-                // keeps the article's last lines scrollable above it.
-                Color.clear.frame(height: bottomChromeClearance)
-            }
-        } else if let tab = activeTab {
-            // A stable identity per tab keeps SwiftUI from rebuilding the
-            // representable when the tab strip changes.
-            Group {
-                if tab.isHome {
-                    NewTabHomeView(
-                        isPrivate: tab.privacyMode == .private,
-                        onNavigate: { url in navigate(to: url, in: tab) },
-                        onChromeSwipe: { translation in
-                            guard canDragChromeAway else { return }
-                            if translation < -48 {
-                                setChromeHidden(true)
-                            } else if translation > 48 {
-                                setChromeHidden(false)
-                            }
-                        }
-                    )
-                    .id("home-\(tab.id)")
-                    .safeAreaInset(edge: .bottom) {
-                        // The command bar floats over the surface's tail; the
-                        // spacer keeps the last tiles scrollable above it.
-                        Color.clear.frame(height: bottomChromeClearance)
-                    }
-                } else if let failure = tab.lastFailure, tab.loadState.isFailure {
-                    // A failed navigation shows the error surface *instead of*
-                    // the web view, but the web view is kept: it is what the
-                    // retry re-uses, and it holds whatever the process still has.
-                    WebPageErrorView(
-                        failure: failure,
-                        canGoBack: tabManager.webView(for: tab.id)?.canGoBack ?? false,
-                        onReload: { retry(tab) },
-                        onGoBack: {
-                            env.webCoordinator.goBack()
-                        },
-                        onCopyAddress: {},
-                        onHome: { goHome(tab) }
-                    )
-                    .id("error-\(tab.id)-\(tab.navigationSerial)")
-                    .safeAreaInset(edge: .bottom) {
-                        Color.clear.frame(height: bottomChromeClearance)
-                    }
-                } else if let webView = tabManager.webView(for: tab.id) {
-                    // 全局顶部保护 decides how the status bar strip is kept.
-                    // Off, the page scrolls under the clock with an inset
-                    // holding its first line clear — Safari's arrangement. On,
-                    // the web view's frame is held below the strip and the
-                    // strip shows the surface colour, so the page never paints
-                    // there at all.
-                    let protectsTop = env.settings.preferences.topProtectionEnabled
-                    WebViewHost(
-                        webView: webView,
-                        // The status bar's height, so the page's own first
-                        // line starts below it instead of running under the
-                        // clock — while still scrolling underneath, the way
-                        // Safari's does. A reserved strip makes the page start
-                        // at its own top, so the inset drops to zero there.
-                        topContentInset: usesPadLayout ? 0 : (protectsTop ? 0 : safeTop),
-                        topReservedInset: usesPadLayout ? 0 : (protectsTop ? safeTop : 0),
-                        bottomContentInset: bottomChromeClearance,
-                        // Applied when the view is actually attached: an
-                        // off-screen web view has no zoomable geometry.
-                        zoomScale: env.settings.pageZoomScale,
-                        onScroll: { offset in
-                            handleScroll(offset: offset)
-                        },
-                        onProgress: { progress in
-                            tab.estimatedProgress = progress
-                        }
-                    )
-                    .id("web-\(tab.id)")
-                    // The phone layout runs the page edge to edge, so the
-                    // floating bar has safe-area content to refract. The iPad
-                    // layout keeps the page inside its column and below the top
-                    // bar, but still lets it run under the home indicator so no
-                    // strip of background shows beneath the document.
-                    .ignoresSafeArea(edges: usesPadLayout ? .bottom : .all)
-                } else {
-                    // A cold tab with no web view at all. Materialising happens
-                    // in `onAppear` rather than here: creating a web view during
-                    // view evaluation would mutate published state mid-update.
-                    Color.clear
-                        .onAppear {
-                            tabManager.activateTab(id: tab.id)
-                        }
-                        .ignoresSafeArea(edges: .top)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            EmptyState(
-                systemImage: "square.on.square",
-                title: "没有标签页",
-                message: "新建一个标签页就可以开始浏览了。",
-                actionTitle: "新建标签页",
-                action: { tabManager.createTab(openSource: .user) }
-            )
-        }
-    }
-
-    // MARK: - Chrome
-
-    /// The single command bar: back and forward, the omnibox, tabs and menu.
-    ///
-    /// Three glass surfaces in one row — a pair of history buttons, the
-    /// omnibox, and a pair of view controls — because the omnibox is the centre
-    /// of the chrome and the four buttons around it are its context. Everything
-    /// else in the browser hangs off the menu button.
-    ///
-    /// The bar sits at the bottom of the screen, above the home indicator,
-    /// where a thumb reaches it and where the system's own toolbars live.
-    // MARK: - Chrome ink
-
-    /// The ink the bottom chrome draws in: white over a dark backdrop, black
-    /// over a light one. The palette decides the chrome's fill, but only the
-    /// backdrop behind the glass can decide whether its ink is legible, so the
-    /// foreground follows the backdrop and not the palette.
-    private var barForeground: Color {
-        chromeForegroundIsLight ? .black : .white
-    }
-
-    /// How far the bar travels when it hides: its own height, the gap under
-    /// it, and the safe-area inset. The overlay already holds the bar above
-    /// the inset, so this is the whole distance from its resting edge to the
-    /// bottom of the screen, plus a little slack.
-    private var hiddenChromeOffset: CGFloat {
-        BrowserChrome.barHeight + BrowserChrome.barGap + safeBottom + 16
-    }
-
-    /// The bar's glass shapes riding one coordinated layer, with the movement
-    /// applied to the layer as a whole.
-    ///
-    /// `glassEffect` without a container gives every shape its own system
-    /// layer, and a rotation can leave a layer parked at its pre-rotation
-    /// frame — the ghost second bottom bar a portrait rotation used to show.
-    /// The container samples the page once for the whole bar and moves it as
-    /// one piece. The offset and the fade live OUTSIDE the container for the
-    /// same reason: a transform on a shape inside the container is advice the
-    /// system layer may take loosely, while a transform on the container
-    /// itself is the layer's own geometry — which is what makes a hide take
-    /// the glass with it instead of leaving it behind.
-    @ViewBuilder private var commandBar: some View {
-        Group {
-            if #available(iOS 26.0, *) {
-                GlassEffectContainer(spacing: BrowserChrome.barGap) {
-                    commandBarContent
-                }
-            } else {
-                commandBarContent
-            }
-        }
-        .padding(.horizontal, BrowserChrome.sideInset)
-        // The bottom-aligned overlay already lays the bar out above the
-        // home-indicator inset; adding the inset again here lifted the bar a
-        // whole safe area off the edge. The gap is all this padding owes.
-        .padding(.bottom, BrowserChrome.barGap)
-        // Sliding fully out — past the bottom edge — with a fade reads as the
-        // bar dissolving into the page rather than parking behind the home
-        // indicator. Mid-drag the bar follows the finger downward and fades
-        // with distance; dragged upward it lifts a little, promising the home
-        // surface on release.
-        .offset(y: chromeHidden
-            ? hiddenChromeOffset
-            : (chromeDragOffset > 0 ? chromeDragOffset : chromeLiftOffset))
-        // The search page covers the screen completely, so the bar yields to it
-        // while the omnibox session is open — a bottom bar under a search page
-        // is chrome the user did not ask for.
-        .opacity(omnibox.isEditing ? 0 : chromeHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
-        .allowsHitTesting(!chromeHidden && !omnibox.isEditing)
-        .animation(Self.chromeAnimation, value: chromeHidden)
-        .animation(Self.chromeAnimation, value: omnibox.isEditing)
-        // Dragging the bar downward dismisses it, off the bottom edge the way
-        // a sheet leaves; dragging it upward returns to the home surface, the
-        // same promise the home button makes. The minimum distance keeps a tap
-        // on the omnibox or a button from reading as a drag, and the gesture
-        // stands down while the omnibox session is open, where a downward drag
-        // means dismissing the keyboard.
-        .gesture(
-            DragGesture(minimumDistance: 12)
-                .onChanged { value in
-                    guard canDragChromeAway, !chromeHidden else { return }
-                    if value.translation.height > 0 {
-                        chromeDragOffset = value.translation.height
-                        chromeLiftOffset = 0
-                    } else {
-                        chromeLiftOffset = max(-36, value.translation.height * 0.35)
-                        chromeDragOffset = 0
-                    }
-                }
-                .onEnded { value in
-                    if canDragChromeAway, !chromeHidden {
-                        if value.translation.height > 56 {
-                            setChromeHidden(true)
-                        } else if value.translation.height < -64 {
-                            openHomeTab()
-                        }
-                    }
-                    withAnimation(Self.chromeAnimation) {
-                        chromeDragOffset = 0
-                        chromeLiftOffset = 0
-                    }
-                },
-            isEnabled: !omnibox.isEditing
-        )
-        .accessibilityHidden(chromeHidden)
-    }
-
-    @ViewBuilder private var floatingToolsInGlassContainer: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: BrowserChrome.barGap) {
-                floatingTools
-            }
-        } else {
-            floatingTools
-        }
-    }
-
-    private var toolbarLayout: ToolbarLayout { env.settings.toolbarLayout }
-
-    private var commandBarContent: some View {
-        // Six points between the pieces rather than eight, and four of padding
-        // inside each cluster: the field is the bar's subject, and every point
-        // the clusters give back is a point of address.
-        HStack(spacing: 6) {
-            if !toolbarLayout.leading.isEmpty {
-                toolbarCluster(toolbarLayout.leading)
-            }
-
-            OmniboxView(
-                viewModel: omnibox,
-                isLoading: activeTab?.isLoading ?? false,
-                progress: activeTab?.estimatedProgress ?? 0,
-                placeholder: omniboxPlaceholder,
-                onReload: reloadActiveTab,
-                onStop: {
-                    guard let tab = activeTab else { return }
-                    tabManager.stopLoading(tab: tab)
-                },
-                foregroundOverride: barForeground
-            )
-            .frame(maxWidth: .infinity)
-
-            if !toolbarLayout.trailing.isEmpty {
-                toolbarCluster(toolbarLayout.trailing)
-            }
-        }
-    }
-
-    /// One side of the omnibox, as the user arranged it.
-    private func toolbarCluster(_ controls: [ToolbarControl]) -> some View {
-        HStack(spacing: 2) {
-            ForEach(controls) { control in
-                toolbarButton(control)
-            }
-        }
-        .padding(.horizontal, 4)
-        .frame(height: BrowserChrome.barHeight)
-        .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
-    }
-
-    /// One control in the bar. Back keeps its long-press history, and the tab
-    /// control keeps its count badge wherever the user puts it.
-    @ViewBuilder
-    private func toolbarButton(_ control: ToolbarControl) -> some View {
-        if control == .tabs {
-            tabsButton
-        } else if control == .back {
-            chromeButton(
-                symbol: control.symbolName,
-                isEnabled: toolbarControlEnabled(control),
-                label: control.title
-            ) {
-                performToolbarControl(control)
-            }
-            .contextMenu { backHistoryMenu }
-        } else {
-            chromeButton(
-                symbol: control.symbolName,
-                isEnabled: toolbarControlEnabled(control),
-                label: control.title
-            ) {
-                performToolbarControl(control)
-            }
-        }
-    }
-
-    private func toolbarControlEnabled(_ control: ToolbarControl) -> Bool {
-        switch control {
-        case .back:
-            return canGoBack
-        case .home:
-            return activeTab != nil
-        case .reader:
-            return canActOnPage && env.settings.preferences.readerModeAvailable
-        case .share, .novel, .find, .reload:
-            return canActOnPage
-        default:
-            return true
-        }
-    }
-
-    private func performToolbarControl(_ control: ToolbarControl) {
-        switch control {
-        case .back:
-            goBack()
-        case .home:
-            openHomeTab()
-        case .tabs:
-            withAnimation(.snappy(duration: 0.3)) {
-                showTabsOverview = true
-            }
-        case .menu:
-            showMenu = true
-        case .bookmarks:
-            showBookmarks = true
-        case .history:
-            showHistory = true
-        case .downloads:
-            showDownloads = true
-        case .reader:
-            guard env.settings.preferences.readerModeAvailable else { return }
-            activateReaderMode()
-        case .novel:
-            activateNovelMode()
-        case .bookshelf:
-            showBookshelf = true
-        case .passwords:
-            showPasswords = true
-        case .share:
-            showShareSheet = true
-        case .reload:
-            reloadActiveTab()
-        case .find:
-            if showFindBar {
-                showFindBar = false
-                findQuery = ""
-                env.webCoordinator.clearFindInPage()
-            } else {
-                showFindBar = true
-            }
-        case .settings:
-            showSettings = true
-        case .adBlock:
-            toggleAdBlock()
-        case .privateMode:
-            env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
-        }
-    }
-
-    /// One glyph button inside the chrome.
-    private func chromeButton(
-        symbol: String,
-        isEnabled: Bool,
-        label: String? = nil,
-        foreground: Color? = nil,
-        action: @escaping () -> Void
-    ) -> some View {
-        let ink = foreground ?? barForeground
-        return Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 16, weight: .semibold))
-                .frame(width: 34, height: 34)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(ChromeButtonStyle())
-        .foregroundStyle(
-            isEnabled ? ink : ink.opacity(0.35)
-        )
-        .disabled(!isEnabled)
-        .accessibilityLabel(label ?? (symbol == "chevron.left" ? "后退" : "菜单"))
-    }
-
-    // MARK: - Chrome backdrop sampling
-
-    /// Re-decides the ink the chrome draws in, from what sits behind the bar.
-    ///
-    /// Three possible backs: the home surface's own picture, the palette
-    /// surface, or the live page. The first two are measured from what they
-    /// are — the picture's bottom strip, the surface token in the current
-    /// scheme. The page is measured from a small print of its own bottom
-    /// strip, taken a beat after the load state settles so the sample reads
-    /// this document and not the one before it.
-    private func updateChromeForeground() {
-        guard let tab = activeTab else { return }
-        chromeSampleTask?.cancel()
-        topChromeForegroundIsLight = nil
-
-        if tab.isHome {
-            if let stamp = env.settings.preferences.backgroundImageStamp {
-                let scheme = colorScheme
-                let surface = palette.surface
-                chromeSampleTask = Task {
-                    let image = await Task.detached(priority: .utility) {
-                        BackgroundImageStore.load(stamp: stamp)
-                    }.value
-                    guard !Task.isCancelled else { return }
-                    if let image {
-                        if let backdropIsLight = ChromeBackdrop.bottomStripIsLight(image) {
-                            chromeForegroundIsLight = backdropIsLight
-                        } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
-                            chromeForegroundIsLight = backdropIsLight
-                        }
-
-                        // The top bar sits on the picture's sky, not its tail.
-                        if let topIsLight = ChromeBackdrop.topStripIsLight(image) {
-                            topChromeForegroundIsLight = topIsLight
-                        } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
-                            topChromeForegroundIsLight = backdropIsLight
-                        }
-                    } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
-                        chromeForegroundIsLight = backdropIsLight
-                        topChromeForegroundIsLight = backdropIsLight
-                    }
-                }
-            } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
-                chromeForegroundIsLight = backdropIsLight
-            }
-            return
-        }
-
-        if isReaderActive,
-           let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
-            // The reader redraws the article on the palette surface; there is
-            // no page behind the bar to sample.
-            chromeForegroundIsLight = backdropIsLight
-            return
-        }
-
-        if tab.loadState.isFailure,
-           let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
-            // The error surface is the shell's own, drawn on the palette
-            // surface — there is no page to sample.
-            chromeForegroundIsLight = backdropIsLight
-            return
-        }
-
-        guard let webView = tabManager.webView(for: tab.id) else { return }
-        let tabId = tab.id
-        let scheme = colorScheme
-        let surface = palette.surface
-        chromeSampleTask = Task {
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            guard !Task.isCancelled, tabManager.activeTabId == tabId else { return }
-
-            if let image = await takeBottomStripSnapshot(webView: webView),
-               let backdropIsLight = ChromeBackdrop.bottomStripIsLight(image) {
-                chromeForegroundIsLight = backdropIsLight
-                return
-            }
-            if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
-                chromeForegroundIsLight = backdropIsLight
-            }
-        }
-    }
-
-    /// A small print of the web view's bottom strip — the region the command
-    /// bar covers. The web view runs edge to edge, so this is the backdrop the
-    /// ink has to live on.
-    private func takeBottomStripSnapshot(webView: WKWebView) async -> UIImage? {
-        let stripHeight = min(140, webView.bounds.height)
-        guard stripHeight > 0, webView.bounds.width > 0 else { return nil }
-        let config = WKSnapshotConfiguration()
-        config.rect = CGRect(
-            x: 0,
-            y: webView.bounds.height - stripHeight,
-            width: webView.bounds.width,
-            height: stripHeight
-        )
-        config.snapshotWidth = 32
-        return await withCheckedContinuation { continuation in
-            webView.takeSnapshot(with: config) { image, _ in
-                continuation.resume(returning: image)
-            }
-        }
-    }
-
-    /// The pages behind the current one, newest first, for the back button's
-    /// long-press menu — the way to skip several entries at once.
-    @ViewBuilder
-    private var backHistoryMenu: some View {
-        if let tab = activeTab, let webView = tabManager.webView(for: tab.id) {
-            let items = Array(webView.backForwardList.backList.suffix(6).reversed())
-            if items.isEmpty {
-                Text("没有更早的页面")
-            } else {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    Button {
-                        _ = webView.go(to: item)
-                    } label: {
-                        Label(
-                            item.title?.isEmpty == false
-                                ? item.title!
-                                : (item.url.host ?? item.url.absoluteString),
-                            systemImage: "clock.arrow.circlepath"
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    /// The tab count the bar button carries: the active mode's own strip.
-    ///
-    /// The regular and private strips are two collections, each with its own
-    /// home, and the overview presents one of them at a time. A badge summing
-    /// both would show a number the overview it opens cannot match — 普通 16
-    /// beside 无痕 3 is never 19.
-    private var tabCountForActiveMode: Int {
-        let mode = activeTab?.privacyMode
-            ?? ((env.settings.preferences.privateBrowsingMode ?? false) ? .private : .regular)
-        return tabManager.displayedTabCount(privacyMode: mode)
-    }
-
-    /// The tab switcher button: a page outline carrying the count inside it —
-    /// the number is what the user reads, so it is the drawing's subject, not
-    /// a footnote under a glyph.
-    private var tabsButton: some View {
-        tabsButton(ink: barForeground)
-    }
-
-    private func tabsButton(ink: Color) -> some View {
-        Button {
-            withAnimation(.snappy(duration: 0.3)) {
-                showTabsOverview = true
-            }
-        } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6.5, style: .continuous)
-                    .strokeBorder(ink, lineWidth: 1.6)
-                    .frame(width: 21, height: 21)
-
-                Text("\(min(tabCountForActiveMode, 99))")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(ink)
-                    .offset(y: 0.5)
-            }
-            .frame(width: 34, height: 34)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(ChromeButtonStyle())
-        .accessibilityLabel("标签页，\(tabCountForActiveMode) 个")
-    }
-
-    /// The find bar and the server-status notice, pinned under the chrome.
-    ///
-    /// They are tools for the page in view, so they do not take part in the
-    /// scroll-hide: a find bar that vanished mid-search would be a bar the user
-    /// has to chase.
-    private var floatingTools: some View {
-        VStack(spacing: 8) {
-            if env.overlays.isElementPickerArmed {
-                ElementPickerBanner {
-                    env.webCoordinator.disarmElementPicker(in: activeWebView)
-                }
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            // An HTTP error status is reported here, over the page the server
-            // sent, rather than replacing it.
-            if let tab = activeTab, tab.serverStatus >= 400, !tab.isHome {
-                ServerStatusNotice(status: tab.serverStatus) {
-                    tab.serverStatus = 0
-                }
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            if showFindBar {
-                FindBar(
-                    query: $findQuery,
-                    result: env.overlays.findResult,
-                    onNext: { env.webCoordinator.findInPage(findQuery, forward: true) },
-                    onPrevious: { env.webCoordinator.findInPage(findQuery, forward: false) },
-                    onClose: {
-                        showFindBar = false
-                        findQuery = ""
-                        env.webCoordinator.clearFindInPage()
-                    }
-                )
-                // Typing drives the search. The field used to bind the query
-                // and nothing ran until the next/previous button was pressed,
-                // so a search looked like it did nothing at all. The watcher
-                // sits on the bar rather than on the shell's root chain, which
-                // is already at the type checker's budget.
-                .onChange(of: findQuery) { _, query in
-                    scheduleFind(for: query)
-                }
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .padding(.horizontal, BrowserChrome.sideInset)
-        // The shell ignores the keyboard at its root, so the bar it floats
-        // above no longer rises — and the find bar lifts by the keyboard's own
-        // measured height instead. The lift tracks the find bar rather than
-        // the keyboard: a keyboard raised by the page's own fields moves
-        // nothing the user is not reading, while one raised by the find field
-        // carries the find bar with it.
-        // The overlay holds these above the home-indicator inset already, so
-        // they clear the bar by the bar's own height and gap, not by the
-        // inset as well.
-        .padding(
-            .bottom,
-            BrowserChrome.barHeight + BrowserChrome.barGap + 6
-                + (showFindBar ? keyboardHeight : 0)
-        )
-        .animation(Self.chromeAnimation, value: showFindBar)
     }
 
     // MARK: - Screen-edge swipe back
@@ -1655,7 +535,7 @@ struct BrowserShellView: View {
     /// swipe falls through to the tab that opened it, then the home surface),
     /// an error surface covering the web view, and the home surface with a
     /// page behind it.
-    private var edgeSwipeBackEnabled: Bool {
+    var edgeSwipeBackEnabled: Bool {
         // The novel reader is its own layer with its own gestures; an edge
         // swipe there would pop reader mode or navigate the page underneath it.
         guard novelSession == nil else { return false }
@@ -1668,7 +548,7 @@ struct BrowserShellView: View {
         return !tab.canGoBack
     }
 
-    private func handleEdgeSwipeBack() {
+    func handleEdgeSwipeBack() {
         guard novelSession == nil else { return }
         guard !omnibox.isEditing, !showFindBar else { return }
         if isReaderActive {
@@ -1696,7 +576,7 @@ struct BrowserShellView: View {
     /// surface called `goBack()` on the hidden web view, which stepped one
     /// entry *further* down the history and re-opened the page before the one
     /// the user had actually been reading.
-    private var canGoBack: Bool {
+    var canGoBack: Bool {
         guard let tab = activeTab else { return false }
         if tab.isHome { return !tab.url.isEmpty }
         return true
@@ -1709,19 +589,19 @@ struct BrowserShellView: View {
     /// where they can never be tapped, which is the "list cut off" failure this
     /// budget exists to prevent. The card still sizes to its content — this is
     /// only the ceiling.
-    private var omniboxCardHeight: CGFloat {
+    var omniboxCardHeight: CGFloat {
         let screenHeight = safeRectHeight + safeTop + safeBottom
         let spaceAboveBar = screenHeight - keyboardHeight
             - safeBottom - BrowserChrome.barHeight - BrowserChrome.barGap - 6
         return min(max(200, spaceAboveBar), BrowserMetrics.omniboxCardMaxHeight)
     }
 
-    private var omniboxPlaceholder: String {
+    var omniboxPlaceholder: String {
         let engine = env.settings.preferences.searchEngine.activeEngine.name
         return "用 \(engine) 搜索或输入网址"
     }
 
-    private var displayUrl: String {
+    var displayUrl: String {
         guard let tab = activeTab else { return "" }
         return tab.isHome ? "" : tab.url
     }
@@ -1731,7 +611,7 @@ struct BrowserShellView: View {
     /// The field shows the page's URL while the omnibox is closed — which the
     /// pre-refactor bar did not, leaving the placeholder on screen instead of
     /// the address of the page being read.
-    private func syncAddressText() {
+    func syncAddressText() {
         omnibox.currentPageUrl = displayUrl
         guard !omnibox.isEditing else { return }
         if omnibox.text != displayUrl {
@@ -1741,7 +621,7 @@ struct BrowserShellView: View {
 
     // MARK: - Omnibox wiring
 
-    private func wireOmnibox() {
+    func wireOmnibox() {
         omnibox.onSelectSuggestion = { suggestion in
             commitSuggestion(suggestion)
         }
@@ -1761,7 +641,7 @@ struct BrowserShellView: View {
     /// the behaviour that makes a collapsing toolbar feel broken. The hide,
     /// conversely, waits for a deliberate distance of downward travel, so a
     /// page that jiggles under a refresh does not bounce the bar.
-    private func handleScroll(offset: Double) {
+    func handleScroll(offset: Double) {
         // An open omnibox or an active find pins the chrome: the user is
         // working in it, and sliding it away mid-sentence would be hostile.
         guard !omnibox.isEditing, !showFindBar else { return }
@@ -1795,7 +675,7 @@ struct BrowserShellView: View {
         }
     }
 
-    private func setChromeHidden(_ hidden: Bool) {
+    func setChromeHidden(_ hidden: Bool) {
         guard chromeHidden != hidden else { return }
         withAnimation(Self.chromeAnimation) {
             chromeHidden = hidden
@@ -1804,7 +684,7 @@ struct BrowserShellView: View {
 
     // MARK: - Actions
 
-    private func goBack() {
+    func goBack() {
         guard let tab = activeTab else { return }
         if tab.isHome {
             // Coming back out of the home surface, which is not a page.
@@ -1840,7 +720,7 @@ struct BrowserShellView: View {
     /// and returning to browsing from there loaded the next page into that
     /// same tab. Now the reading tab keeps its place in the strip, and the
     /// start page opens beside it under the name 主页.
-    private func openHomeTab() {
+    func openHomeTab() {
         guard activeTab?.isHome != true else { return }
         tabManager.createTab(openSource: .user)
     }
@@ -1856,7 +736,7 @@ struct BrowserShellView: View {
     /// shows nothing while `isHome` is set, so there is no reason to throw the
     /// page away, and throwing it away is what made the old home button a
     /// one-way door.
-    private func goHome(_ tab: BrowserTabState) {
+    func goHome(_ tab: BrowserTabState) {
         tabManager.webView(for: tab.id)?.stopLoading()
         isReaderActive = false
         readerArticle = nil
@@ -1879,7 +759,7 @@ struct BrowserShellView: View {
     /// has one, because an in-page history change updates the web view before
     /// anything else knows about it, and the tab's copy would otherwise restore
     /// the address of an earlier document.
-    private func returnToPage(_ tab: BrowserTabState) {
+    func returnToPage(_ tab: BrowserTabState) {
         if let current = tabManager.webView(for: tab.id)?.url?.absoluteString, !current.isEmpty {
             tab.url = current
         }
@@ -1896,7 +776,7 @@ struct BrowserShellView: View {
     /// routed through 无痕模式 like every other new page; anything else is
     /// copied, with the payload named in the notice so the copy is
     /// confirmed rather than assumed.
-    private func handleScannedText(_ raw: String) {
+    func handleScannedText(_ raw: String) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
@@ -1922,14 +802,14 @@ struct BrowserShellView: View {
     }
 
     /// The live web view of the active tab, when it has one.
-    private var activeWebView: WKWebView? {
+    var activeWebView: WKWebView? {
         guard let tab = activeTab else { return nil }
         return tabManager.webView(for: tab.id)
     }
 
     /// Saves the picked selector for this host and reloads so the cosmetic
     /// style that hides it is attached to a new document.
-    private func applyElementHide(_ pick: ElementPickResult) {
+    func applyElementHide(_ pick: ElementPickResult) {
         env.settings.addManualElementHide(selector: pick.selector, host: pick.host)
         env.overlays.elementPick = nil
         if let tab = activeTab, !tab.isHome {
@@ -1937,194 +817,27 @@ struct BrowserShellView: View {
         }
     }
 
-    // MARK: - Page translation
-
-    /// Whether the translation bar should be on screen.
-    ///
-    /// It appears for an automatic offer, while a translation runs, and while
-    /// one is applied. It stays out of the way of the tab overview, the
-    /// scanner, the novel reader and the omnibox search page: those are layers
-    /// above the page, and a small bar floating over them would read as part
-    /// of them.
-    private var showsTranslationBar: Bool {
-        guard !translationBarDismissed,
-              !showTabsOverview,
-              !showQRScanner,
-              novelSession == nil,
-              !omnibox.isEditing,
-              let tab = activeTab,
-              !tab.isHome,
-              tabManager.webView(for: tab.id) != nil else { return false }
-
-        if env.translation.isBusy || env.translation.isTranslated { return true }
-        if case .failed = env.translation.phase { return true }
-        return env.translation.detected != nil
-    }
-
-    /// The distance from the window's top to the bar.
-    ///
-    /// On the iPad layout the bar sits under the chrome's top bar when it is
-    /// visible; on the phone layout there is no top bar, so it sits below the
-    /// status bar. The page runs underneath it either way.
-    private var translationBarTopPadding: CGFloat {
-        if usesPadLayout {
-            return safeTop + (chromeHidden ? 6 : Self.padTopBarHeight + 6)
-        }
-        return safeTop + 6
-    }
-
-    /// Re-identifies the page the translation bar belongs to.
-    private var translationDetectionKey: String {
-        guard let tab = activeTab, !tab.isHome, tab.loadState == .finished else {
-            return ""
-        }
-        return "\(tab.id)|\(tab.url)"
-    }
-
-    @ViewBuilder
-    private var translationBarLayer: some View {
-        if showsTranslationBar, let webView = activeWebView {
-            TranslationBar(
-                webView: webView,
-                onClose: {
-                    withAnimation(.snappy(duration: 0.2)) {
-                        translationBarDismissed = true
-                    }
-                },
-                onOpenSettings: { showSettings = true }
-            )
-            .padding(.horizontal, 10)
-            .padding(.top, translationBarTopPadding)
-            .transition(.move(edge: .top).combined(with: .opacity))
-            .zIndex(12)
-        }
-    }
-
-    /// Hands the active tab and document to the translation service, which is
-    /// where the per-tab applied state lives.
-    private func syncTranslationState() {
-        guard let tab = activeTab else {
-            env.translation.reset()
-            return
-        }
-        env.translation.sync(
-            tabId: tab.id,
-            url: tab.url,
-            webView: tabManager.webView(for: tab.id)
-        )
-    }
-
-    /// Recognises the page's language and, when it differs from the target,
-    /// leaves the bar showing its offer. A site marked 总是翻译 starts at once.
-    private func offerTranslationIfNeeded() async {
-        guard let tab = activeTab, !tab.isHome, tab.loadState == .finished,
-              let webView = tabManager.webView(for: tab.id) else { return }
-
-        let settings = env.settings.translationSettings
-        guard settings.offersAutomatically else { return }
-        if let host = URL(string: tab.url)?.host,
-           settings.rule(for: host) == .never {
-            return
-        }
-        if env.translation.isTranslated || env.translation.isBusy { return }
-
-        await env.translation.detectLanguage(in: webView, target: settings.target)
-
-        guard activeTab?.id == tab.id,
-              !env.translation.isTranslated,
-              !env.translation.isBusy else { return }
-        if let host = URL(string: tab.url)?.host,
-           settings.rule(for: host) == .always,
-           env.translation.detected != nil {
-            startPageTranslation(target: settings.target)
-        }
-    }
-
-    /// Starts translating the active page.
-    private func startPageTranslation(target: TranslationTargetLanguage? = nil) {
-        guard let tab = activeTab, !tab.isHome,
-              let webView = tabManager.webView(for: tab.id) else { return }
-        translationBarDismissed = false
-        if let target {
-            env.settings.updateTranslationSettings { $0.target = target }
-        }
-        let settings = env.settings.translationSettings
-        let resolved = target ?? settings.target
-        Task {
-            await env.translation.translate(
-                webView: webView,
-                settings: settings,
-                target: resolved
-            )
-        }
-    }
-
-    /// Saves the active page's archive, then reports the result in one line.
-    private func saveOfflinePage() {
-        guard let tab = activeTab, !tab.isHome,
-              let webView = tabManager.webView(for: tab.id) else { return }
-        let urlString = tab.url
-        let title = tab.title
-        let favicon = tab.faviconUrl
-        Task { @MainActor in
-            let result = await env.offlinePages.save(
-                webView: webView,
-                urlString: urlString,
-                title: title,
-                faviconUrl: favicon
-            )
-            switch result {
-            case .success:
-                offlineNotice = "页面已保存，可以在离线页面中打开。"
-            case let .failure(error):
-                offlineNotice = error.localizedDescription
-            }
-        }
-    }
-
-    /// Opens a saved archive in a fresh tab.
-    ///
-    /// The archive is handed to the tab's web view directly; the tab then owns
-    /// the document exactly as it owns a network page, so back/forward, find,
-    /// reader and translation all keep working.
-    private func openOfflinePage(_ page: OfflinePageRecord) {
-        showOfflinePages = false
-        guard let data = env.offlinePages.archiveData(for: page),
-              let url = URL(string: page.originalUrl) else {
-            offlineNotice = "离线文件已丢失，请重新保存这个页面。"
-            return
-        }
-        let tab = tabManager.createTab(openSource: .user)
-        tabManager.loadOfflineArchive(
-            data: data,
-            baseURL: url,
-            title: page.displayTitle,
-            in: tab
-        )
-        env.offlinePages.markOpened(page)
-    }
-
     /// Whether the menu's page-bound actions have something to act on.
-    private var canActOnPage: Bool {
+    var canActOnPage: Bool {
         guard let tab = activeTab, !tab.isHome else { return false }
         return tabManager.webView(for: tab.id) != nil
     }
 
     /// Commands the active page's scripts registered, for the menu panel.
-    private var activeUserScriptCommands: [UserScriptMenuCommand] {
+    var activeUserScriptCommands: [UserScriptMenuCommand] {
         guard let tab = activeTab else { return [] }
         return env.overlays.userScriptMenuCommands.filter { $0.tabId == tab.id }
     }
 
     /// What the menu panel's header names as its subject.
-    private var menuPanelTitle: String {
+    var menuPanelTitle: String {
         guard let tab = activeTab, !tab.isHome else { return "菜单" }
         if !tab.title.isEmpty { return tab.title }
         return tab.url.isEmpty ? "菜单" : tab.url
     }
 
     /// Runs one tile from the menu panel.
-    private func handleMenuAction(_ action: VelaMenuAction) {
+    func handleMenuAction(_ action: VelaMenuAction) {
         // 广告过滤 opens its settings instead of toggling in place. The panel
         // is not where rule sources or custom rules can be managed, and a
         // toggle that dismissed the panel and changed nothing on screen is
@@ -2234,7 +947,7 @@ struct BrowserShellView: View {
     /// A short pause keeps one document walk off every keystroke; an empty
     /// query clears the highlights instead. `reset` starts a changed query at
     /// its first match rather than carrying the previous query's position.
-    private func scheduleFind(for query: String) {
+    func scheduleFind(for query: String) {
         findDebounceTask?.cancel()
         findDebounceTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 180_000_000)
@@ -2252,7 +965,7 @@ struct BrowserShellView: View {
     /// The shortcut's text is treated the way the omnibox treats a bare host:
     /// a missing scheme becomes https, and anything that is not http(s) is
     /// refused rather than handed to the system.
-    private func handleMenuShortcut(_ shortcut: MenuShortcut) {
+    func handleMenuShortcut(_ shortcut: MenuShortcut) {
         showMenu = false
         let raw = shortcut.url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return }
@@ -2267,7 +980,7 @@ struct BrowserShellView: View {
     }
 
     /// Runs one hardware-keyboard command from the app's menu bar.
-    private func handleBrowserCommand(_ command: BrowserCommand) {
+    func handleBrowserCommand(_ command: BrowserCommand) {
         switch command {
         case .newTab:
             tabManager.createTab(openSource: .user)
@@ -2304,7 +1017,7 @@ struct BrowserShellView: View {
         }
     }
 
-    private func toggleDesktopSite(for tab: BrowserTabState) {
+    func toggleDesktopSite(for tab: BrowserTabState) {
         let next = !env.settings.preferences.desktopSiteByDefault
         // The menu item is an explicit choice between the two built-in
         // identifiers, so it clears a custom one. Leaving the custom string in
@@ -2317,7 +1030,7 @@ struct BrowserShellView: View {
         _ = tabManager.reload(tab: tab)
     }
 
-    private func toggleAdBlock() {
+    func toggleAdBlock() {
         let enabled = env.settings.adBlockSettings.preferences.enabled
         env.settings.setAdBlockEnabled(!enabled)
         Task {
@@ -2329,7 +1042,7 @@ struct BrowserShellView: View {
         }
     }
 
-    private func activateReaderMode() {
+    func activateReaderMode() {
         guard let tab = activeTab, !tab.isHome,
               let webView = tabManager.webView(for: tab.id) else { return }
         Task {
@@ -2352,7 +1065,7 @@ struct BrowserShellView: View {
         }
     }
 
-    private func reloadActiveTab() {
+    func reloadActiveTab() {
         guard let tab = activeTab else { return }
         _ = tabManager.reload(tab: tab)
     }
@@ -2365,7 +1078,7 @@ struct BrowserShellView: View {
     /// ignored: the user pressed a button and is owed an answer. Extraction
     /// runs on the live web view, so the chapter it opens is the page that is
     /// actually on screen.
-    private func activateNovelMode() {
+    func activateNovelMode() {
         guard NovelModeService.isLikelyNovel(activeTab?.url ?? ""),
               let tab = activeTab, !tab.isHome,
               let webView = tabManager.webView(for: tab.id) else {
@@ -2393,14 +1106,14 @@ struct BrowserShellView: View {
         }
     }
 
-    private func openNovel(_ book: NovelBook, chapter: NovelChapter?) {
+    func openNovel(_ book: NovelBook, chapter: NovelChapter?) {
         novelSession = NovelSession(book: book, chapter: chapter)
     }
 
     /// Opens a chapter in the active tab and leaves the reader. Used from the
     /// reader's own "在浏览器中打开" action, where the chapter is a page the
     /// user may need the original site to render.
-    private func openInBrowser(_ url: URL) {
+    func openInBrowser(_ url: URL) {
         if let tab = activeTab {
             navigate(to: url, in: tab)
         } else {
@@ -2416,7 +1129,7 @@ struct BrowserShellView: View {
     /// its web view and the button would appear to do nothing. `TabManager.reload`
     /// decides between re-requesting and re-displaying; this only has to say
     /// which tab.
-    private func retry(_ tab: BrowserTabState) {
+    func retry(_ tab: BrowserTabState) {
         _ = tabManager.reload(tab: tab)
     }
 
@@ -2427,13 +1140,13 @@ struct BrowserShellView: View {
     /// An empty tab strip is a state the user can reach — closing everything
     /// leaves none — and a query typed into an address bar with no tabs must
     /// not evaporate. The submission opens the tab it needs.
-    private var submissionTab: BrowserTabState {
+    var submissionTab: BrowserTabState {
         activeTab ?? tabManager.createTab(openSource: .user)
     }
 
         /// Writes a search query into the suggestion history unless the user has
     /// asked the browser not to keep history at all.
-    private func recordSearchQuery(
+    func recordSearchQuery(
         _ query: String,
         engineId: SearchEngineId,
         boundary: BrowserDataBoundary
@@ -2446,7 +1159,7 @@ struct BrowserShellView: View {
         )
     }
 
-    private func submitAddressBar(_ input: String) {
+    func submitAddressBar(_ input: String) {
         let tab = submissionTab
         let engine = env.settings.preferences.searchEngine.activeEngine
 
@@ -2478,7 +1191,7 @@ struct BrowserShellView: View {
         }
     }
 
-    private static func message(for reason: AddressBarRejection, input: String) -> String {
+    static func message(for reason: AddressBarRejection, input: String) -> String {
         switch reason {
         case .empty:
             return "请输入网址或搜索内容。"
@@ -2491,7 +1204,7 @@ struct BrowserShellView: View {
 
     /// Searches for an input that was refused, which is what the refusal alert
     /// offers as the way forward.
-    private func searchRefusedInput(_ input: String) {
+    func searchRefusedInput(_ input: String) {
         let tab = submissionTab
         let engine = env.settings.preferences.searchEngine.activeEngine
         guard let url = engine.searchUrl(for: input) else { return }
@@ -2499,7 +1212,7 @@ struct BrowserShellView: View {
         navigate(to: url, in: tab)
     }
 
-    private func navigate(to url: URL, in tab: BrowserTabState) {
+    func navigate(to url: URL, in tab: BrowserTabState) {
         // An external scheme cannot be loaded, so it is handed to the system.
         if let scheme = url.scheme?.lowercased(),
            BrowserUrlResolver.externalSchemes.contains(scheme) {
@@ -2519,7 +1232,7 @@ struct BrowserShellView: View {
         syncAddressText()
     }
 
-    private func commitSuggestion(_ suggestion: OmniboxSuggestion) {
+    func commitSuggestion(_ suggestion: OmniboxSuggestion) {
         switch suggestion.kind {
         case .openTab(let tabId):
             omnibox.endEditing()
@@ -2572,7 +1285,7 @@ struct BrowserShellView: View {
 
 /// Mutable scroll bookkeeping for the shell. A reference box so per-frame
 /// writes do not invalidate the view tree.
-private final class ShellScrollTracker {
+final class ShellScrollTracker {
     var lastOffset: Double = 0
     var accumulation: CGFloat = 0
 }
@@ -2585,7 +1298,7 @@ private final class ShellScrollTracker {
 /// its cached chapter pruned; the reader then loads `book.currentChapterUrl`
 /// itself. The identity is the session's, not the book's, so opening the same
 /// book again after a position change still rebuilds the layer.
-private struct NovelSession: Identifiable, Equatable {
+struct NovelSession: Identifiable, Equatable {
     let id = UUID()
     var book: NovelBook
     var chapter: NovelChapter?
@@ -2608,7 +1321,7 @@ private struct NovelSession: Identifiable, Equatable {
 /// That is why the bar broke only once a picture was set. The GeometryReader
 /// gives the picture the container's exact size, so it can never grow the
 /// shell to fit itself.
-private struct BackgroundPictureBackdrop: View {
+struct BackgroundPictureBackdrop: View {
     var stamp: Double
     @State private var image: UIImage?
 
