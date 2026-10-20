@@ -160,7 +160,7 @@ struct NewTabHomeView: View {
                     onChromeSwipe?(abs(predicted) > abs(vertical) ? predicted : vertical)
                 }
         )
-        .task(id: env.settings.preferences.homeBackgroundStamp) {
+        .task(id: env.settings.preferences.backgroundImageStamp) {
             reloadBackgroundImage()
         }
         .onAppear {
@@ -209,8 +209,8 @@ struct NewTabHomeView: View {
     }
 
     private func reloadBackgroundImage() {
-        guard let stamp = env.settings.preferences.homeBackgroundStamp,
-              let image = HomeBackgroundStore.load(stamp: stamp) else {
+        guard let stamp = env.settings.preferences.backgroundImageStamp,
+              let image = BackgroundImageStore.load(stamp: stamp) else {
             backgroundImage = nil
             backgroundIsLight = true
             return

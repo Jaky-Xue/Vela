@@ -11,11 +11,13 @@
 //  page scrolled. The light here is fixed, with a neutral veil and a fine
 //  grain that keep the large gradients from banding.
 //
-//  Seven fields, warm and cool, separated by hue rather than by saturation:
-//  暖阳 (peach/orange), 晚霞 (coral/rose), 青柠 (yellow-green), 极光
-//  (mint/teal), 冰川 (azure), 紫雾 (violet) and 缤纷 (rose, mint, sky and
-//  violet together). The light bases are pale so text stays legible; each
-//  mesh carries enough chroma for the choice to be obvious at a glance.
+//  Eight fields, warm, cool and neutral, separated by hue rather than by
+//  saturation: 暖阳 (peach/orange), 晚霞 (coral/rose), 青柠 (yellow-green), 极光
+//  (mint/teal), 冰川 (azure), 紫雾 (violet), 缤纷 (rose, mint, sky and
+//  violet together) and 曜黑 (graphite — the neutral field, where the grain
+//  and the specular sheen are the texture rather than colour). The light
+//  bases are pale so text stays legible; each mesh carries enough chroma for
+//  the choice to be obvious at a glance.
 //  纯净, the palette surface, is the shipped default: a new install starts on
 //  the plain surface and the fields are a choice, not an imposition.
 //
@@ -32,6 +34,8 @@ import UIKit
 public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Identifiable {
     /// The palette surface, unchanged: pure white in light, pure black in dark.
     case solid
+    /// Graphite and near-black: the neutral field, carried by texture.
+    case onyx
     /// Peach and orange: the warm morning field.
     case sunrise
     /// Coral and rose: the warm evening field.
@@ -52,6 +56,7 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
     public var displayName: String {
         switch self {
         case .solid: return "纯净"
+        case .onyx: return "曜黑"
         case .sunrise: return "暖阳"
         case .sunset: return "晚霞"
         case .lime: return "青柠"
@@ -65,6 +70,7 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
     public var summary: String {
         switch self {
         case .solid: return "纯白与纯黑，来自配色"
+        case .onyx: return "细纹石墨与曜黑"
         case .sunrise: return "蜜桃与暖橙"
         case .sunset: return "珊瑚与玫红"
         case .lime: return "嫩芽与青柠"
@@ -78,6 +84,7 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
     public var symbolName: String {
         switch self {
         case .solid: return "circle.fill"
+        case .onyx: return "moon.fill"
         case .sunrise: return "sun.max.fill"
         case .sunset: return "sunset.fill"
         case .lime: return "leaf.fill"
@@ -233,6 +240,18 @@ struct AmbientBackgroundView: View {
         case .solid:
             let surface = palette.tokens(for: colorScheme).surface
             return [surface, surface, surface]
+        case .onyx:
+            return colorScheme == .dark
+                ? [
+                    Color(red: 0.043, green: 0.045, blue: 0.049),
+                    Color(red: 0.055, green: 0.058, blue: 0.063),
+                    Color(red: 0.046, green: 0.048, blue: 0.052)
+                ]
+                : [
+                    Color(red: 0.933, green: 0.936, blue: 0.941),
+                    Color(red: 0.886, green: 0.890, blue: 0.898),
+                    Color(red: 0.914, green: 0.918, blue: 0.925)
+                ]
         case .sunrise:
             return colorScheme == .dark
                 ? [
@@ -344,6 +363,30 @@ struct AmbientBackgroundView: View {
         case .solid:
             let surface = palette.tokens(for: colorScheme).surface
             return Array(repeating: surface, count: 9)
+        case .onyx:
+            return dark
+                ? [
+                    Color(red: 0.070, green: 0.073, blue: 0.079),
+                    Color(red: 0.105, green: 0.110, blue: 0.118),
+                    Color(red: 0.135, green: 0.142, blue: 0.152),
+                    Color(red: 0.090, green: 0.094, blue: 0.101),
+                    Color(red: 0.150, green: 0.158, blue: 0.170),
+                    Color(red: 0.175, green: 0.184, blue: 0.198),
+                    Color(red: 0.104, green: 0.109, blue: 0.117),
+                    Color(red: 0.132, green: 0.139, blue: 0.149),
+                    Color(red: 0.076, green: 0.079, blue: 0.086)
+                ]
+                : [
+                    Color(red: 0.960, green: 0.963, blue: 0.968),
+                    Color(red: 0.905, green: 0.910, blue: 0.918),
+                    Color(red: 0.860, green: 0.866, blue: 0.876),
+                    Color(red: 0.930, green: 0.933, blue: 0.940),
+                    Color(red: 0.845, green: 0.852, blue: 0.864),
+                    Color(red: 0.800, green: 0.808, blue: 0.822),
+                    Color(red: 0.912, green: 0.917, blue: 0.926),
+                    Color(red: 0.858, green: 0.865, blue: 0.877),
+                    Color(red: 0.945, green: 0.949, blue: 0.955)
+                ]
         case .sunrise:
             return dark
                 ? [
@@ -602,6 +645,33 @@ struct AmbientBackgroundView: View {
         switch style {
         case .solid:
             return []
+        case .onyx:
+            return [
+                spec(
+                    Color(red: 0.93, green: 0.93, blue: 0.94),
+                    Color(red: 0.42, green: 0.43, blue: 0.46),
+                    x: 0.14, y: 0.12, diameter: 1.20,
+                    lightOpacity: 0.30, darkOpacity: 0.12
+                ),
+                spec(
+                    Color(red: 0.88, green: 0.89, blue: 0.91),
+                    Color(red: 0.36, green: 0.38, blue: 0.41),
+                    x: 0.86, y: 0.28, diameter: 1.10,
+                    lightOpacity: 0.26, darkOpacity: 0.10
+                ),
+                spec(
+                    Color(red: 0.90, green: 0.91, blue: 0.93),
+                    Color(red: 0.33, green: 0.35, blue: 0.38),
+                    x: 0.74, y: 0.86, diameter: 1.15,
+                    lightOpacity: 0.26, darkOpacity: 0.10
+                ),
+                spec(
+                    Color(red: 0.95, green: 0.95, blue: 0.96),
+                    Color(red: 0.45, green: 0.46, blue: 0.49),
+                    x: 0.10, y: 0.86, diameter: 0.80,
+                    lightOpacity: 0.16, darkOpacity: 0.07
+                )
+            ]
         case .sunrise:
             return [
                 spec(

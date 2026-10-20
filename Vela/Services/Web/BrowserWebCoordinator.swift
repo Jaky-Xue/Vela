@@ -469,11 +469,19 @@ public final class BrowserWebCoordinator: NSObject {
 
     // MARK: - Find in page
 
+    /// Highlights `query` in the active page and steps through its matches.
+    ///
+    /// The match list and the position live on the page; this only carries the
+    /// query and the direction, so a step cannot disagree with the count the
+    /// find bar is showing. `reset` is what a changed query passes: start at
+    /// its first match instead of continuing from the previous query's
+    /// position.
     public func findInPage(_ query: String, forward: Bool = true, reset: Bool = false) {
         guard let tab = tabManager?.activeTab,
               let webView = tabManager?.webView(for: tab.id) else { return }
-        let index = reset ? 0 : overlays.findResult.index + (forward ? 1 : -1)
-        webView.evaluateJavaScript(WebPageScripts.findInPageScript(query: query, forward: forward, focusIndex: index))
+        webView.evaluateJavaScript(
+            WebPageScripts.findInPageScript(query: query, forward: forward, reset: reset)
+        )
     }
 
     public func clearFindInPage() {

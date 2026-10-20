@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import PhotosUI
 
 // MARK: - Appearance
 
@@ -14,6 +15,12 @@ import UIKit
 struct AppearanceSettingsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
+
+    @State private var showPhotoPicker = false
+
+    private var backgroundImageStamp: Double? {
+        env.settings.preferences.backgroundImageStamp
+    }
 
     var body: some View {
         List {
@@ -72,6 +79,44 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
+                if let image = BackgroundImageStore.load(stamp: backgroundImageStamp) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 140)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                }
+
+                Button {
+                    showPhotoPicker = true
+                } label: {
+                    Label(
+                        backgroundImageStamp == nil ? "从相册选择图片" : "更换图片",
+                        systemImage: "photo"
+                    )
+                }
+
+                if backgroundImageStamp != nil {
+                    Button(role: .destructive) {
+                        BackgroundImageStore.clear()
+                        env.settings.update { $0.backgroundImageStamp = nil }
+                    } label: {
+                        Label("移除图片", systemImage: "trash")
+                    }
+                }
+            } header: {
+                Text("自定义背景图片")
+            } footer: {
+                Text(
+                    backgroundImageStamp == nil
+                        ? "选择一张图片作为全局背景，主页、顶部栏与设置界面都会使用它。"
+                        : "当前使用自定义图片；移除后会回到下方选择的背景样式。"
+                )
+            }
+
+            Section {
                 ForEach(BrowserBackgroundStyle.allCases) { style in
                     Button {
                         env.settings.backgroundStyle = style
@@ -96,7 +141,7 @@ struct AppearanceSettingsView: View {
             } header: {
                 Text("全局背景")
             } footer: {
-                Text("背景作用于主页、设置、书架与浮层，玻璃工具栏会折射它。网页本身保持网站自己的颜色。")
+                Text("背景作用于主页、设置、书架与浮层，玻璃工具栏会折射它。网页本身保持网站自己的颜色。选择了自定义图片时，这里的样式暂不显示。")
             }
 
             Section {
@@ -114,6 +159,70 @@ struct AppearanceSettingsView: View {
         }
         .navigationTitle("外观")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showPhotoPicker) {
+            PhotoLibraryPicker { image in
+                saveBackgroundImage(image)
+            }
+        }
+    }
+
+    /// Writes the picture and records its stamp in one step. The shell reads
+    /// the stamp, so the change is live behind the settings sheet.
+    private func saveBackgroundImage(_ image: UIImage) {
+        guard let stamp = BackgroundImageStore.save(image) else { return }
+        env.settings.update { $0.backgroundImageStamp = stamp }
+    }
+}
+
+// MARK: - Photo picker
+
+/// The system photo picker, bridged.
+///
+/// `PHPicker` rather than the `Photos` framework: the picker runs out of
+/// process, hands over exactly the one image the user chose, and asks for no
+/// photo-library permission at all — which is the whole reason the feature
+/// can ship as a single button.
+struct PhotoLibraryPicker: UIViewControllerRepresentable {
+    /// Called on the main actor with the chosen image.
+    var onImage: (UIImage) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var configuration = PHPickerConfiguration(photoLibrary: .shared())
+        configuration.filter = .images
+        configuration.selectionLimit = 1
+        let controller = PHPickerViewController(configuration: configuration)
+        controller.delegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        private var parent: PhotoLibraryPicker
+
+        init(parent: PhotoLibraryPicker) {
+            self.parent = parent
+        }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            parent.dismiss()
+            guard let provider = results.first?.itemProvider,
+                  provider.canLoadObject(ofClass: UIImage.self) else { return }
+            // The load lands off the main actor; the caller is a UIKit view
+            // and a settings write, so the hop is made before it is handed on.
+            provider.loadObject(ofClass: UIImage.self) { object, _ in
+                guard let image = object as? UIImage else { return }
+                Task { @MainActor in
+                    self.parent.onImage(image)
+                }
+            }
+        }
     }
 }
 
@@ -276,6 +385,12 @@ private struct BackgroundStyleSwatch: View {
         switch style {
         case .solid:
             return [colorScheme == .dark ? .black : .white]
+        case .onyx:
+            return [
+                Color(red: 0.46, green: 0.48, blue: 0.51),
+                Color(red: 0.24, green: 0.25, blue: 0.28),
+                Color(red: 0.10, green: 0.11, blue: 0.12)
+            ]
         case .sunrise:
             return [
                 Color(red: 1.00, green: 0.91, blue: 0.81),

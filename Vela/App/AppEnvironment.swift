@@ -63,6 +63,17 @@ public final class AppEnvironment {
         self.settings = settings
         self.commands = BrowserCommandCenter()
 
+        // The picture used to belong to the home alone; it is the shell's
+        // background now. Carrying it over at launch keeps the picture an
+        // existing install already chose instead of asking again.
+        if settings.preferences.backgroundImageStamp == nil,
+           let stamp = BackgroundImageStore.adoptLegacyHomeImage() {
+            settings.update { preferences in
+                preferences.backgroundImageStamp = stamp
+                preferences.homeBackgroundStamp = nil
+            }
+        }
+
         // The database open is the one operation allowed to fail loudly: every
         // other service reads through it, so a failure has to be reported once
         // and surfaced, not swallowed per-call.

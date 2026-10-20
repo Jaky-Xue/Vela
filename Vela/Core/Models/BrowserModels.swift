@@ -399,14 +399,19 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var userScriptsEnabled: Bool
     public var homepageUrl: String
     public var themePaletteId: String
-    /// The custom home background, as the timestamp of the saved image file.
+    /// The picture the retired 主页背景 feature saved, kept only so an
+    /// existing install can be carried into `backgroundImageStamp`.
     ///
     /// Optional rather than defaulted because the preferences document decodes
     /// as a whole: a required key absent from an existing install's document
-    /// would fail the decode and reset every setting with it. `nil` — and an
-    /// absent key, which decodes to the same — means the palette surface.
-    /// The image itself lives on disk (`HomeBackgroundStore`), not in here.
+    /// would fail the decode and reset every setting with it.
     public var homeBackgroundStamp: Double?
+    /// 全局背景图片，保存的是图片文件的时间戳；`nil` 表示使用全局背景样式。
+    ///
+    /// Optional for the same decode reason. The image itself lives on disk
+    /// (`BackgroundImageStore`), not in this document, and a stamp of nil means
+    /// the chosen `backgroundStyle` is what the shell draws.
+    public var backgroundImageStamp: Double?
     /// 无痕模式的路由开关：开启后，所有没有指名隐私模式的新页面都以无痕
     /// 打开。Optional for the same decode reason as the two fields above —
     /// an absent key decodes to the default, which is off.
@@ -423,7 +428,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// install's document would fail the decode and reset every setting with
     /// it. `nil` decodes to the default, which is protection on.
     public var topProtection: Bool?
-    /// 全局背景样式：纯净、暖阳、晚霞、青柠、极光、冰川、紫雾、缤纷。
+    /// 全局背景样式：纯净、曜黑、暖阳、晚霞、青柠、极光、冰川、紫雾、缤纷。
     /// `nil` 是纯净。
     public var backgroundStyle: String?
     /// 底部工具栏两侧的控件，按用户拖拽的顺序保存。
@@ -487,6 +492,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         homepageUrl: String = "about:home",
         themePaletteId: String = "default",
         homeBackgroundStamp: Double? = nil,
+        backgroundImageStamp: Double? = nil,
         topProtection: Bool? = true,
         privateBrowsingMode: Bool? = false,
         homeTileIconSize: Double? = nil,
@@ -532,6 +538,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.homepageUrl = homepageUrl
         self.themePaletteId = themePaletteId
         self.homeBackgroundStamp = homeBackgroundStamp
+        self.backgroundImageStamp = backgroundImageStamp
         self.topProtection = topProtection
         self.privateBrowsingMode = privateBrowsingMode
         self.homeTileIconSize = homeTileIconSize

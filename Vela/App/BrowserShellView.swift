@@ -64,6 +64,8 @@ struct BrowserShellView: View {
     @State private var showShareSheet = false
     @State private var showFindBar = false
     @State private var findQuery = ""
+    /// The debounce behind the find field. Typing is what runs the search.
+    @State private var findDebounceTask: Task<Void, Never>?
 
     @State private var isReaderActive = false
     @State private var readerArticle: ReaderArticle?
@@ -205,26 +207,26 @@ struct BrowserShellView: View {
     /// their own.
     private var showsAmbientRootBackground: Bool {
         if novelSession != nil { return false }
-        if showsHomePictureAtRoot { return false }
+        if showsBackgroundPictureAtRoot { return false }
         guard let tab = activeTab else { return true }
         if tab.isHome || isReaderActive || tab.loadState.isFailure { return true }
         return tabManager.webView(for: tab.id) == nil
     }
 
-    /// Whether the home's own picture is the shell's backdrop.
+    /// Whether the user's background picture is the shell's backdrop.
     ///
-    /// The picture belongs behind the top bar as well as the home; drawing it
-    /// only inside the home left the bar over the ambient field, which read as
-    /// a coloured band that had nothing to do with the wallpaper.
-    private var showsHomePictureAtRoot: Bool {
-        guard activeTab?.isHome == true else { return false }
-        return env.settings.preferences.homeBackgroundStamp != nil
+    /// The picture is the global background, not a layer inside the home:
+    /// it belongs behind the top bar as well as the home, so the chrome and
+    /// the home sit on the same picture. A page covers it completely, which
+    /// is why there is no per-tab condition here.
+    private var showsBackgroundPictureAtRoot: Bool {
+        env.settings.preferences.backgroundImageStamp != nil
     }
 
     private var shellRoot: some View {
         ZStack {
-            if showsHomePictureAtRoot, let stamp = env.settings.preferences.homeBackgroundStamp {
-                HomePictureBackdrop(stamp: stamp)
+            if showsBackgroundPictureAtRoot, let stamp = env.settings.preferences.backgroundImageStamp {
+                BackgroundPictureBackdrop(stamp: stamp)
             } else if showsAmbientRootBackground {
                 AmbientBackgroundView()
             } else {
@@ -427,7 +429,24 @@ struct BrowserShellView: View {
         .onChange(of: activeTab?.loadState) { _, _ in
             updateChromeForeground()
         }
-        .onChange(of: env.settings.preferences.homeBackgroundStamp) { _, _ in
+        .onChange(of: findQuery) { _, query in
+            // Typing drives the search. The field used to bind the query and
+            // nothing ran until the next/previous button was pressed, so a
+            // search looked like it did nothing at all. The short pause keeps
+            // one document walk off every keystroke.
+            findDebounceTask?.cancel()
+            let text = query
+            findDebounceTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 180_000_000)
+                guard !Task.isCancelled else { return }
+                if text.isEmpty {
+                    env.webCoordinator.clearFindInPage()
+                } else {
+                    env.webCoordinator.findInPage(text, forward: true, reset: true)
+                }
+            }
+        }
+        .onChange(of: env.settings.preferences.backgroundImageStamp) { _, _ in
             updateChromeForeground()
         }
         .onChange(of: env.settings.preferences.themePaletteId) { _, _ in
@@ -1350,12 +1369,12 @@ struct BrowserShellView: View {
         topChromeForegroundIsLight = nil
 
         if tab.isHome {
-            if let stamp = env.settings.preferences.homeBackgroundStamp {
+            if let stamp = env.settings.preferences.backgroundImageStamp {
                 let scheme = colorScheme
                 let surface = palette.surface
                 chromeSampleTask = Task {
                     let image = await Task.detached(priority: .utility) {
-                        HomeBackgroundStore.load(stamp: stamp)
+                        BackgroundImageStore.load(stamp: stamp)
                     }.value
                     guard !Task.isCancelled else { return }
                     if let image {
@@ -2299,33 +2318,44 @@ private struct NovelSession: Identifiable, Equatable {
     var chapter: NovelChapter?
 }
 
-// MARK: - Home picture backdrop
+// MARK: - Background picture
 
-/// The custom home picture, drawn behind the whole shell rather than only
-/// inside the home's rectangle.
+/// The custom global background picture, drawn behind the whole shell.
 ///
-/// The top bar is a sibling of the home. A picture that stopped at the home's
-/// top edge left the bar sampling the ambient field — a warm band over a blue
-/// sky — so the picture now runs full-bleed behind the chrome, and the home
-/// itself stays clear. It is scaled once, continuously, from the status strip
-/// to the bottom edge.
-private struct HomePictureBackdrop: View {
+/// The picture is the shell's backdrop rather than a layer inside any one
+/// surface: the home, the top bar and the surfaces around a page all sit on
+/// it, so the chrome samples the picture the user chose.
+///
+/// Its frame is set explicitly from the container's size, and the overflow is
+/// clipped. A `scaledToFill` image on its own answers a layout query with the
+/// aspect-fill size, which can be wider or taller than the window — and inside
+/// the shell's ZStack that answer inflated the whole layout: the top bar was
+/// proposed a width larger than the screen, its controls were centred on that
+/// wider canvas, and the leading cluster and the menu fell outside the window.
+/// That is why the bar broke only once a picture was set. The GeometryReader
+/// gives the picture the container's exact size, so it can never grow the
+/// shell to fit itself.
+private struct BackgroundPictureBackdrop: View {
     var stamp: Double
     @State private var image: UIImage?
 
     var body: some View {
-        ZStack {
-            Color(uiColor: .systemBackground)
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
+        GeometryReader { geo in
+            ZStack {
+                Color(uiColor: .systemBackground)
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .task(id: stamp) {
-            image = HomeBackgroundStore.load(stamp: stamp)
+            image = BackgroundImageStore.load(stamp: stamp)
         }
         .accessibilityHidden(true)
     }

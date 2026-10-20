@@ -1027,118 +1027,259 @@ public enum WebPageScripts {
 
     // MARK: - Find in page
 
-    /// Highlights every match of `query` and reports the count.
+    /// The in-page find script.
     ///
-    /// Implemented with a DOM walk
-    /// rather than `window.find()` because `window.find` is not exposed in
-    /// WebKit's JavaScript context and selecting text does not survive a scroll
-    /// on a long page.
-    public static func findInPageScript(query: String, forward: Bool, focusIndex: Int) -> String {
+    /// It highlights with the CSS Custom Highlight API — ranges, not elements —
+    /// so a search never rewrites the page's DOM. The earlier version wrapped
+    /// every match in a `mark` element and unwrapped it again on the next
+    /// keystroke; on a framework-rendered page that mutates text nodes React or
+    /// Vue still hold references to, and the page can stop updating after a
+    /// search. Highlights leave the document untouched.
+    ///
+    /// The match list and the current index live on the page, so "next" cannot
+    /// race a report message that has not arrived yet. `reset` means the query
+    /// changed: start at its first match. WebKit without the highlight API
+    /// falls back to wrapping marks, and rebuilds the list on every step
+    /// because wrapping invalidates the ranges.
+    public static func findInPageScript(query: String, forward: Bool, reset: Bool) -> String {
         let encoded = (try? JSONSerialization.data(withJSONObject: [query]))
             .flatMap { String(data: $0, encoding: .utf8) }
             .map { String($0.dropFirst().dropLast()) } ?? "\"\""
+        let forwardLiteral = forward ? "true" : "false"
+        let resetLiteral = reset ? "true" : "false"
 
         return """
         (function () {
-          var HIGHLIGHT_ID = '__vela_find_highlight';
-          var ACTIVE_CLASS = '__vela_find_active';
+          var HANDLER = '\(Handler.pageMetrics.rawValue)';
+          var STYLE_ID = '__vela_find_style';
+          var ALL = 'vela-find';
+          var ACTIVE = 'vela-find-active';
 
-          function clearHighlights() {
-            var existing = document.querySelectorAll('.' + ACTIVE_CLASS);
-            for (var i = 0; i < existing.length; i++) {
-              var parent = existing[i].parentNode;
-              if (!parent) { continue; }
-              parent.replaceChild(document.createTextNode(existing[i].textContent), existing[i]);
-              parent.normalize();
+          function report(count, index) {
+            if (window.webkit && window.webkit.messageHandlers &&
+                window.webkit.messageHandlers[HANDLER]) {
+              window.webkit.messageHandlers[HANDLER].postMessage({
+                findResult: { count: count, index: index }
+              });
             }
-            var style = document.getElementById(HIGHLIGHT_ID);
-            if (style) { style.remove(); }
           }
 
-          clearHighlights();
+          function hasHighlightAPI() {
+            return !!(window.CSS && CSS.highlights && window.Highlight &&
+                      window.Highlight.prototype && window.Highlight.prototype.add);
+          }
+
+          function ensureStyle(supported) {
+            if (document.getElementById(STYLE_ID)) { return; }
+            var style = document.createElement('style');
+            style.id = STYLE_ID;
+            style.textContent = supported
+              ? '::highlight(vela-find){background-color:#ffd54f;color:#000;}' +
+                '::highlight(vela-find-active){background-color:#ff9800;color:#000;}'
+              : 'mark.__vela_find_all{background-color:#ffd54f;color:#000;}' +
+                'mark.__vela_find_active{background-color:#ff9800;color:#000;}';
+            (document.head || document.documentElement).appendChild(style);
+          }
+
+          function clearAll() {
+            if (window.CSS && CSS.highlights) {
+              CSS.highlights.delete(ALL);
+              CSS.highlights.delete(ACTIVE);
+            }
+            var marks = document.querySelectorAll('mark.__vela_find_all, mark.__vela_find_active');
+            for (var i = marks.length - 1; i >= 0; i--) {
+              var mark = marks[i];
+              var parent = mark.parentNode;
+              if (!parent) { continue; }
+              parent.replaceChild(document.createTextNode(mark.textContent), mark);
+              parent.normalize();
+            }
+          }
+
+          function collect(query) {
+            var ranges = [];
+            var lower = query.toLowerCase();
+            if (!lower) { return ranges; }
+            var walker = document.createTreeWalker(
+              document.body || document.documentElement,
+              NodeFilter.SHOW_TEXT,
+              {
+                acceptNode: function (node) {
+                  if (!node.nodeValue) { return NodeFilter.FILTER_REJECT; }
+                  var parent = node.parentNode;
+                  var name = parent ? parent.nodeName : '';
+                  if (name === 'SCRIPT' || name === 'STYLE' || name === 'NOSCRIPT' ||
+                      name === 'TEXTAREA' || name === 'INPUT' || name === 'SELECT') {
+                    return NodeFilter.FILTER_REJECT;
+                  }
+                  if (parent && parent.isContentEditable) {
+                    return NodeFilter.FILTER_REJECT;
+                  }
+                  if (node.nodeValue.toLowerCase().indexOf(lower) < 0) {
+                    return NodeFilter.FILTER_REJECT;
+                  }
+                  return NodeFilter.FILTER_ACCEPT;
+                }
+              }
+            );
+            var node;
+            while ((node = walker.nextNode())) {
+              var text = node.nodeValue;
+              var haystack = text.toLowerCase();
+              var at = haystack.indexOf(lower);
+              while (at >= 0) {
+                var range = document.createRange();
+                range.setStart(node, at);
+                range.setEnd(node, at + query.length);
+                ranges.push(range);
+                at = haystack.indexOf(lower, at + query.length);
+              }
+            }
+            return ranges;
+          }
+
+          function wrapMarks(ranges, activeIndex) {
+            var byNode = [];
+            for (var i = 0; i < ranges.length; i++) {
+              var node = ranges[i].startContainer;
+              var group = null;
+              for (var g = 0; g < byNode.length; g++) {
+                if (byNode[g].node === node) { group = byNode[g]; break; }
+              }
+              if (!group) {
+                group = { node: node, hits: [] };
+                byNode.push(group);
+              }
+              group.hits.push({
+                start: ranges[i].startOffset,
+                end: ranges[i].endOffset,
+                index: i
+              });
+            }
+            for (var b = 0; b < byNode.length; b++) {
+              var entry = byNode[b];
+              var text = entry.node.nodeValue;
+              if (!text || !entry.node.parentNode) { continue; }
+              entry.hits.sort(function (a, b2) { return a.start - b2.start; });
+              var fragment = document.createDocumentFragment();
+              var cursor = 0;
+              for (var h = 0; h < entry.hits.length; h++) {
+                var hit = entry.hits[h];
+                if (hit.start < cursor) { continue; }
+                if (hit.start > cursor) {
+                  fragment.appendChild(document.createTextNode(text.slice(cursor, hit.start)));
+                }
+                var mark = document.createElement('mark');
+                mark.className = hit.index === activeIndex
+                  ? '__vela_find_active'
+                  : '__vela_find_all';
+                mark.textContent = text.slice(hit.start, hit.end);
+                fragment.appendChild(mark);
+                cursor = hit.end;
+              }
+              if (cursor < text.length) {
+                fragment.appendChild(document.createTextNode(text.slice(cursor)));
+              }
+              entry.node.parentNode.replaceChild(fragment, entry.node);
+            }
+          }
 
           var query = \(encoded);
+          var forward = \(forwardLiteral);
+          var reset = \(resetLiteral);
+          var supported = hasHighlightAPI();
+          var state = window.__velaFindState ||
+            (window.__velaFindState = { query: '', ranges: [], index: -1 });
+
           if (!query) {
-            if (window.webkit && window.webkit.messageHandlers &&
-                window.webkit.messageHandlers.\(Handler.pageMetrics.rawValue)) {
-              window.webkit.messageHandlers.\(Handler.pageMetrics.rawValue).postMessage({ findResult: { count: 0, index: -1 } });
-            }
+            clearAll();
+            state.query = '';
+            state.ranges = [];
+            state.index = -1;
+            report(0, -1);
             return;
           }
 
-          var lowerQuery = query.toLowerCase();
-          var matches = [];
-          // A TreeWalker is the only way to visit text nodes without collecting
-          // every element in the document into an array first.
-          var walker = document.createTreeWalker(
-            document.body || document.documentElement,
-            NodeFilter.SHOW_TEXT,
-            {
-              acceptNode: function (node) {
-                if (!node.nodeValue || node.nodeValue.toLowerCase().indexOf(lowerQuery) < 0) {
-                  return NodeFilter.FILTER_REJECT;
-                }
-                var tag = node.parentNode ? node.parentNode.nodeName : '';
-                if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') {
-                  return NodeFilter.FILTER_REJECT;
-                }
-                return NodeFilter.FILTER_ACCEPT;
-              }
-            }
-          );
+          ensureStyle(supported);
 
-          var current;
-          while ((current = walker.nextNode())) {
-            var text = current.nodeValue;
-            var lowerText = text.toLowerCase();
-            var position = lowerText.indexOf(lowerQuery);
-            var fragment = document.createDocumentFragment();
-            var cursor = 0;
-            while (position >= 0) {
-              if (position > cursor) {
-                fragment.appendChild(document.createTextNode(text.slice(cursor, position)));
-              }
-              var mark = document.createElement('mark');
-              mark.className = ACTIVE_CLASS;
-              mark.style.backgroundColor = '#ffd54f';
-              mark.style.color = '#000';
-              mark.textContent = text.slice(position, position + query.length);
-              fragment.appendChild(mark);
-              matches.push(mark);
-              cursor = position + query.length;
-              position = lowerText.indexOf(lowerQuery, cursor);
-            }
-            if (cursor < text.length) {
-              fragment.appendChild(document.createTextNode(text.slice(cursor)));
-            }
-            current.parentNode.replaceChild(fragment, current);
+          var sameQuery = state.query === query && state.ranges.length > 0;
+          // The wrapping fallback invalidates the ranges it uses, so it is
+          // rebuilt on every step; the native path keeps them between steps.
+          var rebuild = reset || !supported || !sameQuery;
+
+          if (rebuild) {
+            clearAll();
+            state.ranges = collect(query);
+            state.query = query;
+            if (!sameQuery) { state.index = -1; }
           }
 
-          var index = matches.length === 0 ? -1 : ((\(focusIndex) % matches.length) + matches.length) % matches.length;
-          if (index >= 0) {
-            matches[index].style.backgroundColor = '#ff9800';
-            matches[index].scrollIntoView({ block: 'center', behavior: 'smooth' });
+          var count = state.ranges.length;
+          var index = -1;
+          if (count > 0) {
+            if (state.index < 0) {
+              index = forward ? 0 : count - 1;
+            } else {
+              index = ((state.index + (forward ? 1 : -1)) % count + count) % count;
+            }
+          }
+          state.index = index;
+
+          if (supported) {
+            var all = new Highlight();
+            for (var i = 0; i < count; i++) {
+              if (i !== index) { all.add(state.ranges[i]); }
+            }
+            CSS.highlights.set(ALL, all);
+            if (index >= 0 && index < count) {
+              var active = new Highlight();
+              active.add(state.ranges[index]);
+              CSS.highlights.set(ACTIVE, active);
+            } else {
+              CSS.highlights.delete(ACTIVE);
+            }
+          } else if (count > 0) {
+            clearAll();
+            wrapMarks(state.ranges, index);
           }
 
-          if (window.webkit && window.webkit.messageHandlers &&
-              window.webkit.messageHandlers.\(Handler.pageMetrics.rawValue)) {
-            window.webkit.messageHandlers.\(Handler.pageMetrics.rawValue).postMessage({
-              findResult: { count: matches.length, index: index }
-            });
+          if (index >= 0 && index < count) {
+            var range = state.ranges[index];
+            var node = range.startContainer;
+            var element = node.nodeType === 1 ? node : node.parentElement;
+            if (element && element.scrollIntoView) {
+              element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
           }
+
+          report(count, index);
         })();
         """
     }
 
+    /// Removes the find highlights and forgets the match list.
+    ///
+    /// Both highlight paths are cleared: the registry entries of the native
+    /// API, and — for WebKit without it — the marks the fallback wrapped.
     public static let clearFindInPageScript = """
     (function () {
-      var marks = document.querySelectorAll('.__vela_find_active');
+      if (window.CSS && CSS.highlights) {
+        CSS.highlights.delete('vela-find');
+        CSS.highlights.delete('vela-find-active');
+      }
+      var marks = document.querySelectorAll('mark.__vela_find_all, mark.__vela_find_active');
       for (var i = marks.length - 1; i >= 0; i--) {
         var mark = marks[i];
         var parent = mark.parentNode;
         if (!parent) { continue; }
         parent.replaceChild(document.createTextNode(mark.textContent), mark);
         parent.normalize();
+      }
+      var state = window.__velaFindState;
+      if (state) {
+        state.query = '';
+        state.ranges = [];
+        state.index = -1;
       }
     })();
     """
