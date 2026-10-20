@@ -510,11 +510,13 @@ struct BrowserShellView: View {
         .sheet(isPresented: $showBookmarks) {
             NavigationStack { BookmarksView() }
                 .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
                 .browserAmbientSheet()
         }
         .sheet(isPresented: $showHistory) {
             NavigationStack { HistoryView() }
                 .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
                 // Applied to the stack rather than to the list so every pushed
                 // screenshot — the day groups, an entry's detail sheet — shares
                 // the palette without each one restating it.
@@ -524,12 +526,14 @@ struct BrowserShellView: View {
         .sheet(isPresented: $showDownloads) {
             NavigationStack { DownloadsView() }
                 .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
                 .browserListSurface()
                 .browserAmbientSheet()
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack { SettingsView() }
                 .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
                 .browserListSurface()
                 .browserAmbientSheet()
         }
@@ -543,6 +547,7 @@ struct BrowserShellView: View {
                     }
             }
             .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
             .browserAmbientSheet()
         }
         .sheet(isPresented: $showBookshelf) {
@@ -553,6 +558,7 @@ struct BrowserShellView: View {
                 openNovel(book, chapter: env.novels.cachedChapter(book: book))
             }
             .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
         }
         .sheet(isPresented: $showShareSheet) {
             if let tab = activeTab, let url = URL(string: tab.url) {
@@ -564,6 +570,7 @@ struct BrowserShellView: View {
                 OfflinePagesView(onOpen: openOfflinePage)
             }
             .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
             .browserListSurface()
             .browserAmbientSheet()
         }
@@ -584,12 +591,14 @@ struct BrowserShellView: View {
                 }
             )
             .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
             .browserAmbientSheet()
             // Presented over the panel rather than after it: the user can
             // manage rule sources and close the screen back to the menu.
             .sheet(isPresented: $showAdBlockSettings) {
                 NavigationStack { AdBlockSettingsView() }
                     .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
                     .browserAmbientSheet()
             }
         }
@@ -599,6 +608,7 @@ struct BrowserShellView: View {
                 title: activeTab?.title ?? ""
             )
             .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
             .browserAmbientSheet()
         }
         .sheet(item: Binding(
@@ -619,6 +629,7 @@ struct BrowserShellView: View {
                 }
             )
             .environment(env)
+                .browserSheetAppearance(env.settings.appearanceMode)
             .browserAmbientSheet()
         }
         .alert(

@@ -63,7 +63,6 @@ struct VelaApp: App {
 private struct BrowserWindowRoot: View {
     @StateObject private var store: WindowEnvironmentStore
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.colorScheme) private var systemColorScheme
 
     @MainActor
     init(services: AppServices) {
@@ -122,14 +121,6 @@ private struct BrowserWindowRoot: View {
                 // pass, so the whole window — including a presented settings
                 // sheet — changes in the same frame as the choice.
                 mode.applyToAllWindows()
-                environment.webCoordinator.applyPageColorScheme()
-            }
-            .onChange(of: systemColorScheme) { _, _ in
-                // 跟随系统 follows a Control Centre switch too; pages get the
-                // new prefers-color-scheme without being reloaded.
-                if environment.settings.appearanceMode == .system {
-                    environment.webCoordinator.applyPageColorScheme()
-                }
             }
             .onAppear {
                 environment.settings.appearanceMode.applyToAllWindows()

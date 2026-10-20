@@ -1046,41 +1046,6 @@ public enum WebPageScripts {
     })();
     """
 
-    /// Forces a visual zoom on the whole document.
-    ///
-    /// `WKWebView.pageZoom` is a layout zoom: pages with their own viewport
-    /// rules can ignore or partially apply it, which is why the setting looked
-    /// inconsistent. A `zoom` rule on the root element with `!important`
-    /// applies to the page as one box regardless of the site's viewport, so
-    /// the chosen factor is actually what the user sees. The script is
-    /// idempotent: it creates the style once and updates it on every call.
-    public static func forcedZoomScript(scale: Double) -> String {
-        let clamped = min(max(scale, 0.5), 2.0)
-        // 100% is neutral: the style is emptied rather than forcing zoom: 1,
-        // which would override a site that scales its own root deliberately.
-        let rule = abs(clamped - 1) < 0.001
-            ? ""
-            : "html { zoom: \(String(format: "%.3f", clamped)) !important; }"
-        let escaped = rule
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\'")
-        return """
-        (function () {
-          try {
-            var id = 'vela-forced-zoom';
-            var style = document.getElementById(id);
-            if (!style) {
-              style = document.createElement('style');
-              style.id = id;
-              (document.head || document.documentElement).appendChild(style);
-            }
-            style.textContent = '\(escaped)';
-          } catch (_error) {
-          }
-        })();
-        """
-    }
-
     /// Puts a restored tab back where the user left it.
     ///
     /// Called once after a discarded tab's page has finished loading. Two
@@ -1107,28 +1072,6 @@ public enum WebPageScripts {
             // first frames; one more pass keeps a restored position from
             // being clamped to a height the page had only for a moment.
             window.setTimeout(apply, 320);
-          } catch (_error) {
-          }
-        })();
-        """
-    }
-
-    // MARK: - Dark mode
-
-    /// Tells the page whether it should render dark, and reads back whether it
-    /// has a dark stylesheet.
-    public static func colorSchemeScript(prefersDark: Bool) -> String {
-        """
-        (function () {
-          try {
-            var meta = document.querySelector('meta[name="color-scheme"]');
-            if (!meta) {
-              meta = document.createElement('meta');
-              meta.setAttribute('name', 'color-scheme');
-              (document.head || document.documentElement).appendChild(meta);
-            }
-            meta.setAttribute('content', '\(prefersDark ? "dark light" : "light dark")');
-            document.documentElement.style.colorScheme = '\(prefersDark ? "dark" : "light")';
           } catch (_error) {
           }
         })();

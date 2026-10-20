@@ -16,21 +16,6 @@ final class AppearanceAndZoomTests: XCTestCase {
         XCTAssertEqual(AppearanceMode.dark.userInterfaceStyle, .dark)
     }
 
-    func testForcedZoomScriptEmbedsTheFactorAndClampsIt() {
-        let normal = WebPageScripts.forcedZoomScript(scale: 1.5)
-        XCTAssertTrue(normal.contains("zoom: 1.500 !important"))
-        XCTAssertTrue(normal.contains("vela-forced-zoom"))
-
-        let clampedHigh = WebPageScripts.forcedZoomScript(scale: 9)
-        XCTAssertTrue(clampedHigh.contains("zoom: 2.000 !important"))
-
-        let clampedLow = WebPageScripts.forcedZoomScript(scale: 0.1)
-        XCTAssertTrue(clampedLow.contains("zoom: 0.500 !important"))
-
-        // 100% is neutral and must not override a site's own root zoom.
-        XCTAssertFalse(WebPageScripts.forcedZoomScript(scale: 1).contains("zoom:"))
-    }
-
     func testTheAutomaticIdentityPresetIsFirstAndStoresNoString() {
         let first = BrowserUserAgentPreset.all[0]
         XCTAssertEqual(first.id, "auto")

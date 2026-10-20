@@ -86,6 +86,18 @@ public enum AppearanceMode: String, CaseIterable, Codable, Sendable, Identifiabl
     }
 }
 
+/// Applies the user's appearance choice inside a presented sheet.
+///
+/// A sheet captures its colour scheme when it is presented; changing only the
+/// window's scheme leaves an already-open sheet — the settings screen is the
+/// one that matters — in the old appearance. Reading the setting inside the
+/// sheet's content makes the sheet itself observe the change.
+public extension View {
+    func browserSheetAppearance(_ mode: AppearanceMode) -> some View {
+        preferredColorScheme(mode.colorScheme)
+    }
+}
+
 // MARK: - Tokens
 
 /// The colour tokens one palette needs, for one appearance.

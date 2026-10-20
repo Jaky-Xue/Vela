@@ -132,7 +132,7 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("强制网页缩放")
             } footer: {
-                Text("通过根元素强制按所选倍率缩放整页，不依赖网站自己的 viewport 或缩放设置；改动对已打开的页面立即生效，无需刷新。")
+                Text("通过 WebKit 的可视缩放（与双指缩放相同的机制）按所选倍率缩放整页，手机版与桌面版页面都生效；改动对已打开的页面立即生效，无需刷新。")
             }
 
             Section {

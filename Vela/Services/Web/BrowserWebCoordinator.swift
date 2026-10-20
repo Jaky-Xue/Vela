@@ -1055,8 +1055,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             WebPageScripts.fullscreenBridge,
             WebPageScripts.inlineVideoControlsScript,
             WebPageScripts.youtubeTapControlsScript,
-            WebPageScripts.youtubeQualityScript,
-            WebPageScripts.colorSchemeScript(prefersDark: prefersDarkPageAppearance)
+            WebPageScripts.youtubeQualityScript
         ]
 
         for source in startScripts {
@@ -1065,16 +1064,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
-        // The forced zoom belongs to the top document only: scaling an iframe
-        // element already scales its content, and applying the root rule inside
-        // the iframe as well would double it.
-        controller.addUserScript(
-            WKUserScript(
-                source: WebPageScripts.forcedZoomScript(scale: settings.pageZoomScale),
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true
-            )
-        )
 
         // A hand-picked identifier makes a claim the rest of the page surface
         // has to agree with — vendor, userAgentData, window.chrome. The
@@ -1089,16 +1078,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
-        // Re-assert the forced zoom after the page's own styles have loaded;
-        // a site that declares its own zoom or viewport rules is the exact
-        // case this setting exists for.
-        controller.addUserScript(
-            WKUserScript(
-                source: WebPageScripts.forcedZoomScript(scale: settings.pageZoomScale),
-                injectionTime: .atDocumentEnd,
-                forMainFrameOnly: true
-            )
-        )
         controller.addUserScript(
             WKUserScript(
                 source: WebPageScripts.pageMetricsReporter,
@@ -1274,36 +1253,20 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     /// live one cannot disagree about the factor.
     public var pageZoomScale: Double { settings.pageZoomScale }
 
-    /// Applies the forced root-element zoom to a page already on screen.
-    public func applyForcedZoom(to webView: WKWebView) {
-        webView.evaluateJavaScript(
-            WebPageScripts.forcedZoomScript(scale: settings.pageZoomScale),
-            completionHandler: nil
-        )
-    }
-
-    /// What a page should be told `prefers-color-scheme` resolves to.
+    /// Applies the zoom to a page already on screen.
     ///
-    /// The appearance choice belongs to the browser, not to a tab's privacy
-    /// mode; a private tab used to be forced dark, which made the global
-    /// appearance switch look broken on half the tabs.
-    private var prefersDarkPageAppearance: Bool {
-        switch settings.appearanceMode {
-        case .dark:
-            return true
-        case .light:
-            return false
-        case .system:
-            return UITraitCollection.current.userInterfaceStyle == .dark
-        }
-    }
-
-    /// Pushes the current appearance into pages that are already open.
-    public func applyPageColorScheme() {
-        guard let tabManager else { return }
-        let script = WebPageScripts.colorSchemeScript(prefersDark: prefersDarkPageAppearance)
-        for tab in tabManager.tabs {
-            tabManager.webView(for: tab.id)?.evaluateJavaScript(script, completionHandler: nil)
+    /// This is the scroll view's visual zoom — the same transform pinch-to-zoom
+    /// uses — rather than `pageZoom` or a CSS rule. Those are layout zooms, and
+    /// a page with a mobile viewport can ignore or partially apply them, which
+    /// is why the setting used to work on desktop pages and not on mobile
+    /// ones. The visual zoom scales the rendered page uniformly on both.
+    public func applyForcedZoom(to webView: WKWebView) {
+        let scale = CGFloat(settings.pageZoomScale)
+        let scrollView = webView.scrollView
+        scrollView.minimumZoomScale = min(0.5, scale)
+        scrollView.maximumZoomScale = max(2.0, scale)
+        if abs(scrollView.zoomScale - scale) > 0.001 {
+            scrollView.setZoomScale(scale, animated: false)
         }
     }
 
@@ -1846,6 +1809,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             // fresh document; this is the one event that says the document is
             // ready to be scrolled.
             self.restoreScrollPosition(of: tab, in: webView)
+            self.applyForcedZoom(to: webView)
             self.log(
                 tab: tab,
                 event: .finish,
