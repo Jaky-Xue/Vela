@@ -373,11 +373,11 @@ enum BrowserRadius {
     static let field: CGFloat = 14
     static let card: CGFloat = 16
     static let sheet: CGFloat = 20
-    /// The address field. Rounder than a generic field because the omnibox is
-    /// the one control the whole chrome is arranged around — at 22 pt on a
-    /// 52 pt bar it reads as a capsule without losing the straight edges that
-    /// keep a long URL from looking squeezed.
-    static let omnibox: CGFloat = 22
+    /// The address field. A full capsule — half of the 52 pt bar — so the
+    /// field and the cluster pills around it read as one continuous rounded
+    /// surface rather than a pill with flattened shoulders. The search page's
+    /// taller field carries its own matching radius.
+    static let omnibox: CGFloat = 26
     /// The floating bar the toolbar sits in, and every other panel that has to
     /// read as detached from the screen edge rather than as a strip of it.
     static let floating: CGFloat = 26

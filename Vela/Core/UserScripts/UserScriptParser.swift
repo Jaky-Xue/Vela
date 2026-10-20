@@ -40,9 +40,21 @@ public enum UserScriptParser {
 
         let metadataText = String(text[startRange.upperBound..<endRange.lowerBound])
 
+        // The verbatim block — from the start of the `// ==UserScript==` line
+        // through the end of the `==/UserScript==` marker — is kept so the
+        // editor can re-show the source the user installed. Rebuilding the
+        // block from the parsed fields drops every `@key` this manager does not
+        // recognise, which read as the source being truncated. Stopping at the
+        // marker (not the next newline) keeps a body that shares the closer's
+        // line out of the block.
+        let blockLineStart = text[text.startIndex..<startRange.lowerBound]
+            .lastIndex(of: "\n")
+            .map { text.index(after: $0) } ?? text.startIndex
+
         var candidate = UserScriptPackageCandidate()
         candidate.installSource = installSource
         candidate.sourceUrl = sourceUrl
+        candidate.metadataBlock = String(text[blockLineStart..<endRange.upperBound])
 
         var sawName = false
         var sawPattern = false

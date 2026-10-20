@@ -30,6 +30,10 @@ struct UserScriptsView: View {
     @State private var showingFilePicker = false
     @State private var pendingDelete: InstalledUserScriptState?
     @State private var checkAllMessage: String?
+    /// A transient confirmation that an install succeeded. The sheet dismisses
+    /// on success, so without this the only feedback was the script appearing in
+    /// the list — which a reinstall of an existing script does not even do.
+    @State private var installNotice: String?
 
     private enum InstallSource: String, CaseIterable, Identifiable {
         case paste, url, file
@@ -47,6 +51,14 @@ struct UserScriptsView: View {
 
     var body: some View {
         List {
+            if let installNotice {
+                Section {
+                    Label(installNotice, systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.footnote.weight(.medium))
+                }
+            }
+
             Section {
                 Toggle("启用用户脚本", isOn: Binding(
                     get: { env.settings.preferences.userScriptsEnabled },
@@ -146,6 +158,14 @@ struct UserScriptsView: View {
             }
         }
         .onAppear { env.userScripts.reload() }
+        .task(id: installNotice) {
+            // Auto-dismiss the success banner. `id` is the notice string, so a
+            // second install cancels this task and starts a fresh window rather
+            // than the first install's timer clearing the new one early.
+            guard installNotice != nil else { return }
+            try? await Task.sleep(for: .seconds(4))
+            installNotice = nil
+        }
         .sheet(isPresented: $showingInstall) {
             installSheet
         }
@@ -385,6 +405,10 @@ struct UserScriptsView: View {
         case let .success(outcome):
             installWarnings = outcome.warnings
             if outcome.warnings.isEmpty {
+                // A clean install dismisses the sheet, so without this banner the
+                // only feedback was the script appearing in the list — which a
+                // reinstall of an existing script does not even do.
+                installNotice = "已安装「\(outcome.script.displayName)」"
                 showingInstall = false
             }
             // With warnings the sheet stays open so the user can read them; the
@@ -679,6 +703,11 @@ struct UserScriptDetailView: View {
                     .font(.system(size: 12, design: .monospaced))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    // A flexible height is what makes the whole script reachable:
+                    // without it the editor sized to a few lines and the rest of
+                    // the source read as cut off, especially on a long script.
+                    .frame(maxHeight: .infinity)
+                    .scrollContentBackground(.hidden)
                     .padding(.horizontal, 8)
             }
             .navigationTitle("编辑代码")

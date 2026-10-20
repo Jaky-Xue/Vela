@@ -95,11 +95,13 @@ struct OmniboxSearchPageView: View {
         }
         .padding(.leading, 14)
         .padding(.trailing, 14)
-        .frame(height: 54)
+        .frame(height: BrowserChrome.barHeight)
         // The same floating glass as the command bar, so the search field is
         // the bar lifted off the page rather than a second kind of control.
+        // The radius and height match the bottom bar's field exactly, so the
+        // address field reads as the same control in both places.
         .browserFloatingChrome(
-            radius: 27,
+            radius: BrowserRadius.omnibox,
             material: .regularMaterial,
             tintStrength: 0.35,
             elevation: .floating,

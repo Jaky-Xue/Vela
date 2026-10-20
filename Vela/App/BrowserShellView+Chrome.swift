@@ -84,12 +84,16 @@ extension BrowserShellView {
         .animation(Self.chromeAnimation, value: omnibox.isEditing)
         // Dragging the bar downward dismisses it, off the bottom edge the way
         // a sheet leaves; dragging it upward returns to the home surface, the
-        // same promise the home button makes. The minimum distance keeps a tap
-        // on the omnibox or a button from reading as a drag, and the gesture
-        // stands down while the omnibox session is open, where a downward drag
-        // means dismissing the keyboard.
-        .gesture(
-            DragGesture(minimumDistance: 12)
+        // same promise the home button makes. The gesture is *simultaneous*
+        // rather than exclusive so it does not delay or defeat a tap on the
+        // omnibox — an exclusive drag on the bar is what made the address field
+        // read as intermittently dead in landscape, where the same finger that
+        // landed on the field had to wait for the drag recogniser to give up
+        // before the tap registered. The 16 pt minimum matches the iPad top bar
+        // and keeps a tap from reading as a drag; the bar is also non-hit-testable
+        // while the omnibox session is open, so the gesture cannot fire then.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 16)
                 .onChanged { value in
                     guard canDragChromeAway, !chromeHidden else { return }
                     if value.translation.height > 0 {
@@ -112,8 +116,7 @@ extension BrowserShellView {
                         chromeDragOffset = 0
                         chromeLiftOffset = 0
                     }
-                },
-            isEnabled: !omnibox.isEditing
+                }
         )
         .accessibilityHidden(chromeHidden)
     }

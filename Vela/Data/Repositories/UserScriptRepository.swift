@@ -23,7 +23,7 @@ public final class UserScriptRepository: @unchecked Sendable {
     id, name, namespace, version, description, icon_url, source, source_url, update_url, \
     download_url, enabled, matches, includes, exclude_matches, excludes, grants, require_urls, \
     require_sources, resource_declarations, resources, connect_rules, noframes, run_at, install_source, \
-    position, created_at, updated_at, last_checked_at
+    position, created_at, updated_at, last_checked_at, metadata_block
     """
 
     private func decodeStringArray(_ raw: String) -> [String] {
@@ -82,7 +82,8 @@ public final class UserScriptRepository: @unchecked Sendable {
             installSource: UserScriptInstallSource(rawValue: statement.string(at: 23)) ?? .paste,
             createdAt: Date(milliseconds: statement.int(at: 25)),
             updatedAt: Date(milliseconds: statement.int(at: 26)),
-            lastCheckedAt: statement.optionalInt(at: 27).map { Date(milliseconds: $0) }
+            lastCheckedAt: statement.optionalInt(at: 27).map { Date(milliseconds: $0) },
+            metadataBlock: statement.string(at: 28)
         )
     }
 
@@ -93,7 +94,7 @@ public final class UserScriptRepository: @unchecked Sendable {
         try database.execute(
             """
             INSERT OR REPLACE INTO \(BrowserSchema.userScriptsTable) (\(Self.columns))
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 .text(script.id),
@@ -123,7 +124,8 @@ public final class UserScriptRepository: @unchecked Sendable {
                 .integer(Int64(position)),
                 .integer(script.createdAt.milliseconds),
                 .integer(script.updatedAt.milliseconds),
-                script.lastCheckedAt.map { SQLiteValue.integer($0.milliseconds) } ?? .null
+                script.lastCheckedAt.map { SQLiteValue.integer($0.milliseconds) } ?? .null,
+                .text(script.metadataBlock)
             ]
         )
     }

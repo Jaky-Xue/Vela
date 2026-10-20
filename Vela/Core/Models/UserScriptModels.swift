@@ -190,6 +190,12 @@ public struct UserScriptPackageCandidate: Codable, Equatable, Sendable {
     public var description: String
     public var iconUrl: String
     public var source: String
+    /// The metadata block exactly as the user installed it, markers and `//`
+    /// prefixes included. Kept so the editor can show the script the user
+    /// pasted rather than a reconstruction that silently drops any `@key` this
+    /// manager does not understand — a reconstructed block read as the source
+    /// being cut off.
+    public var metadataBlock: String
     public var sourceUrl: String
     public var updateUrl: String
     public var downloadUrl: String
@@ -212,6 +218,7 @@ public struct UserScriptPackageCandidate: Codable, Equatable, Sendable {
         description: String = "",
         iconUrl: String = "",
         source: String = "",
+        metadataBlock: String = "",
         sourceUrl: String = "",
         updateUrl: String = "",
         downloadUrl: String = "",
@@ -233,6 +240,7 @@ public struct UserScriptPackageCandidate: Codable, Equatable, Sendable {
         self.description = description
         self.iconUrl = iconUrl
         self.source = source
+        self.metadataBlock = metadataBlock
         self.sourceUrl = sourceUrl
         self.updateUrl = updateUrl
         self.downloadUrl = downloadUrl
@@ -282,6 +290,10 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
     public var description: String
     public var iconUrl: String
     public var source: String
+    /// The verbatim metadata block the script was installed with, kept so the
+    /// editor can re-show the original source rather than a lossy rebuild. See
+    /// `UserScriptPackageCandidate.metadataBlock`.
+    public var metadataBlock: String
     public var sourceUrl: String
     public var updateUrl: String
     public var downloadUrl: String
@@ -313,6 +325,7 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
         description: String = "",
         iconUrl: String = "",
         source: String,
+        metadataBlock: String = "",
         sourceUrl: String = "",
         updateUrl: String = "",
         downloadUrl: String = "",
@@ -341,6 +354,7 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
         self.description = description
         self.iconUrl = iconUrl
         self.source = source
+        self.metadataBlock = metadataBlock
         self.sourceUrl = sourceUrl
         self.updateUrl = updateUrl
         self.downloadUrl = downloadUrl
@@ -387,6 +401,7 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
             description: candidate.description,
             iconUrl: candidate.iconUrl,
             source: candidate.source,
+            metadataBlock: candidate.metadataBlock,
             sourceUrl: candidate.sourceUrl,
             updateUrl: candidate.updateUrl,
             downloadUrl: candidate.downloadUrl,

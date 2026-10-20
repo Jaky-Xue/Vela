@@ -43,6 +43,29 @@ final class UserScriptTests: XCTestCase {
         XCTAssertTrue(UserScriptGrant.gmXmlhttpRequest.isSupportedByVela)
     }
 
+    func testMetadataBlockKeepsUnknownKeysVerbatim() throws {
+        // The editor shows the block the user installed, not a rebuild from the
+        // parsed fields — so an `@key` the parser does not capture (here
+        // `@author`) survives into the editor instead of reading as truncated.
+        let text = """
+        // ==UserScript==
+        // @name Keeps Unknown Keys
+        // @namespace vela.tests
+        // @match https://example.com/*
+        // @author Anon
+        // @grant none
+        // ==/UserScript==
+        console.log('body');
+        """
+        let result = UserScriptParser.parse(text)
+        XCTAssertTrue(result.valid)
+        let candidate = try XCTUnwrap(result.candidate)
+        XCTAssertTrue(candidate.metadataBlock.hasPrefix("// ==UserScript=="))
+        XCTAssertTrue(candidate.metadataBlock.hasSuffix("// ==/UserScript=="))
+        XCTAssertTrue(candidate.metadataBlock.contains("// @author Anon"))
+        XCTAssertEqual(candidate.source, "console.log('body');")
+    }
+
     func testEditableSourceRebuildsMetadataForAStoredBody() throws {
         // An installed script stores only its body; the editor must still get
         // a document that parses, or every save fails as "not a user script".

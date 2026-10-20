@@ -88,6 +88,12 @@ public final class BrowserDatabase: @unchecked Sendable {
             definition: "TEXT NOT NULL DEFAULT '[]'",
             database: database
         )
+        ensureColumn(
+            "metadata_block",
+            in: BrowserSchema.userScriptsTable,
+            definition: "TEXT NOT NULL DEFAULT ''",
+            database: database
+        )
     }
 
     private func ensureColumn(

@@ -360,11 +360,21 @@ struct OmniboxTextField: UIViewRepresentable {
         // Selection happens only on a programmatic focus, so a tap that lands
         // inside the field while the user is already editing still places the
         // caret where they tapped.
+        //
+        // `becomeFirstResponder` is deferred off the SwiftUI update pass: raising
+        // the keyboard synchronously inside `updateUIView` re-enters UIKit's
+        // layout pass, and under the heavier landscape layout that re-entry read
+        // as a stall followed by a crash. One runloop later the field is in the
+        // window and the keyboard comes up without the re-entrant layout.
         if isEditing {
             field.isUserInteractionEnabled = true
             if grabsFocus, !field.isFirstResponder {
                 context.coordinator.selectAllOnNextFocus = true
-                field.becomeFirstResponder()
+                let fieldToFocus = field
+                DispatchQueue.main.async {
+                    guard !fieldToFocus.isFirstResponder else { return }
+                    fieldToFocus.becomeFirstResponder()
+                }
             }
         } else {
             if field.isFirstResponder {

@@ -187,13 +187,22 @@ public final class UserScriptService {
     /// `==/UserScript==` marker — because that is what the injector runs. An
     /// editor that started from it could never save: the metadata block is
     /// missing, so the re-parse rejected every edit as "not a user script".
-    /// The block is rebuilt from the fields already stored, so editing an
-    /// already-downloaded script works without a migration.
+    ///
+    /// The block shown is the verbatim one the script was installed with
+    /// (`metadataBlock`), so an unknown `@key` the parser does not capture is
+    /// still on screen — a rebuilt block dropped those, which read as the
+    /// source being cut off. Scripts installed before the field existed fall
+    /// back to a reconstruction, and a raw save (where `source` already holds
+    /// the whole text) is shown as-is.
     public func editableSource(for script: InstalledUserScriptState) -> String {
         let trimmed = script.source.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.hasPrefix("// ==UserScript==")
-            ? script.source
-            : Self.reconstructedSource(for: script)
+        if trimmed.hasPrefix("// ==UserScript==") || trimmed.hasPrefix("==UserScript==") {
+            return script.source
+        }
+        if !script.metadataBlock.isEmpty {
+            return script.metadataBlock + "\n\n" + script.source
+        }
+        return Self.reconstructedSource(for: script)
     }
 
     /// Rebuilds a metadata block around a body that was stored without one.
