@@ -569,6 +569,19 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
+        if settings.preferences.forcedZoomEnabled ?? false {
+            // Remove the page's own zoom lock before and after its markup is
+            // parsed: the viewport meta usually arrives with the document.
+            for time in [WKUserScriptInjectionTime.atDocumentStart, .atDocumentEnd] {
+                controller.addUserScript(
+                    WKUserScript(
+                        source: WebPageScripts.gestureZoomViewportScript(enabled: true),
+                        injectionTime: time,
+                        forMainFrameOnly: true
+                    )
+                )
+            }
+        }
         controller.addUserScript(
             WKUserScript(
                 source: WebPageScripts.pageMetricsReporter,
@@ -740,40 +753,34 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         )
     }
 
-    /// The forced page zoom, read from the preference so a new web view and a
-    /// live one cannot disagree about the factor.
-    public var pageZoomScale: Double { settings.pageZoomScale }
-
-    /// Applies the zoom to a page already on screen.
+    /// Applies 强制网页缩放 to a page that has just loaded or is on screen.
     ///
-    /// This is the scroll view's visual zoom — the same transform pinch-to-zoom
-    /// uses — rather than `pageZoom` or a CSS rule. Those are layout zooms, and
-    /// a page with a mobile viewport can ignore or partially apply them, which
-    /// is why the setting used to work on desktop pages and not on mobile
-    /// ones. The visual zoom scales the rendered page uniformly on both.
+    /// The switch has no fixed factor: it removes the page's `user-scalable`
+    /// and `maximum-scale` lock so the standard pinch gesture works. The
+    /// scroll view's limits are configured by the host when the page is
+    /// displayed; this only updates the document, for a live toggle.
     public func applyForcedZoom(to webView: WKWebView) {
-        // The host applies the zoom once the view is attached; an off-screen
-        // scroll view has no zoomable geometry. A zero-width view is between
-        // layout passes and is left for the host's next update.
+        let enabled = settings.preferences.forcedZoomEnabled ?? false
         let scrollView = webView.scrollView
-        guard webView.window != nil, scrollView.bounds.width > 0 else { return }
-        let target = CGFloat(min(max(settings.pageZoomScale, 0.5), 2.0))
-        // 100% is WebKit's own state; do not touch the scroll view at all
-        // unless a previous factor is still applied.
-        if abs(target - 1) < 0.001,
-           abs(scrollView.zoomScale - 1) < 0.001,
-           abs(scrollView.minimumZoomScale - 1) < 0.001,
-           abs(scrollView.maximumZoomScale - 1) < 0.001 {
-            return
+        // Re-established per document: WebKit resets the scroll view's zoom
+        // limits when the next page loads.
+        if webView.window != nil, scrollView.bounds.width > 0 {
+            if enabled {
+                scrollView.minimumZoomScale = 0.5
+                scrollView.maximumZoomScale = 3.0
+                scrollView.pinchGestureRecognizer?.isEnabled = true
+            } else {
+                if abs(scrollView.zoomScale - 1) > 0.001 {
+                    scrollView.setZoomScale(1, animated: false)
+                }
+                scrollView.minimumZoomScale = 1
+                scrollView.maximumZoomScale = 1
+            }
         }
-        if scrollView.maximumZoomScale < target {
-            scrollView.maximumZoomScale = target
-        }
-        scrollView.minimumZoomScale = target
-        scrollView.maximumZoomScale = target
-        if abs(scrollView.zoomScale - target) > 0.001 {
-            scrollView.setZoomScale(target, animated: false)
-        }
+        webView.evaluateJavaScript(
+            WebPageScripts.gestureZoomViewportScript(enabled: enabled),
+            completionHandler: nil
+        )
     }
 
     /// The coordinator is both of these; WebKit holds them weakly, and the app

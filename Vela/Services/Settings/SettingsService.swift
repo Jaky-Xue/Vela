@@ -181,21 +181,6 @@ public final class SettingsService {
         appearanceMode = mode
     }
 
-    /// The factor every page is drawn at, forced regardless of the site's
-    /// own viewport. 1 is the shipped value; the range is the one the settings
-    /// slider offers, enforced here as well so a hand-edited preferences
-    /// document cannot produce an unreadable page.
-    public var pageZoomScale: Double {
-        get {
-            let stored = preferences.pageZoomScale ?? 1
-            return min(max(stored, 0.5), 2)
-        }
-        set {
-            let clamped = min(max(newValue, 0.5), 2)
-            update { $0.pageZoomScale = clamped }
-        }
-    }
-
     /// The global background style, resolved from its stored raw value.
     public var backgroundStyle: BrowserBackgroundStyle {
         get { BrowserBackgroundStyle.resolve(preferences.backgroundStyle) }

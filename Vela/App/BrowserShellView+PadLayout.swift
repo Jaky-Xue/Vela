@@ -341,7 +341,7 @@ extension BrowserShellView {
                         bottomContentInset: bottomChromeClearance,
                         // Applied when the view is actually attached: an
                         // off-screen web view has no zoomable geometry.
-                        zoomScale: env.settings.pageZoomScale,
+                        allowsGestureZoom: env.settings.preferences.forcedZoomEnabled ?? false,
                         onScroll: { offset in
                             handleScroll(offset: offset)
                         },

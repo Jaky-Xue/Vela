@@ -16,6 +16,16 @@ final class AppearanceAndZoomTests: XCTestCase {
         XCTAssertEqual(AppearanceMode.dark.userInterfaceStyle, .dark)
     }
 
+    func testGestureZoomScriptRemovesTheViewportLock() {
+        let enabled = WebPageScripts.gestureZoomViewportScript(enabled: true)
+        XCTAssertTrue(enabled.contains("user-scalable=yes"))
+        XCTAssertTrue(enabled.contains("maximum-scale=3"))
+        XCTAssertTrue(enabled.contains("if (true)"))
+
+        let disabled = WebPageScripts.gestureZoomViewportScript(enabled: false)
+        XCTAssertTrue(disabled.contains("if (false)"))
+    }
+
     func testTheAutomaticIdentityPresetIsFirstAndStoresNoString() {
         let first = BrowserUserAgentPreset.all[0]
         XCTAssertEqual(first.id, "auto")

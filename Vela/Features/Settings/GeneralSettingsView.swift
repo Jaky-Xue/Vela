@@ -105,34 +105,25 @@ struct GeneralSettingsView: View {
             }
 
             Section {
-                HStack {
-                    Text("页面缩放")
-                    Spacer()
-                    Text("\(Int((env.settings.pageZoomScale * 100).rounded()))%")
-                        .font(.footnote.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                Slider(
-                    value: Binding(
-                        get: { env.settings.pageZoomScale },
-                        set: { value in
-                            env.settings.pageZoomScale = value
-                            env.tabManager.applyPageZoomToAllWebViews()
-                        }
-                    ),
-                    in: 0.5...2.0,
-                    step: 0.05
-                )
-                if env.settings.pageZoomScale != 1 {
-                    Button("恢复 100%") {
-                        env.settings.pageZoomScale = 1
-                        env.tabManager.applyPageZoomToAllWebViews()
+                Toggle(isOn: Binding(
+                    get: { env.settings.preferences.forcedZoomEnabled ?? false },
+                    set: { value in
+                        env.settings.update { $0.forcedZoomEnabled = value }
+                        env.tabManager.applyGestureZoomToAllWebViews()
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("允许双指缩放")
+                        Text("打开后，所有页面都可以用双指放大或缩小，包括声明了 user-scalable=no 的页面。")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 }
+                .tint(.accentColor)
             } header: {
                 Text("强制网页缩放")
             } footer: {
-                Text("通过 WebKit 的可视缩放（与双指缩放相同的机制）按所选倍率缩放整页，手机版与桌面版页面都生效；改动对已打开的页面立即生效，无需刷新。")
+                Text("缩放比例由双指手势决定，不再使用固定倍率滑块。关闭后不再强制放开页面的缩放限制。")
             }
 
             Section {

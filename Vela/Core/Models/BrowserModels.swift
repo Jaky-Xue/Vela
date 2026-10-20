@@ -468,7 +468,9 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     ///
     /// Optional for the decode reason every other new preference carries: an
     /// absent key must not reset the rest of the document. `nil` is 100%.
-    public var pageZoomScale: Double?
+    /// Whether every page may be pinched to zoom, including pages that
+    /// declare `user-scalable=no`. Optional for decode compatibility.
+    public var forcedZoomEnabled: Bool?
 
     public init(
         searchEngine: SearchEngineSettings = .default,
@@ -515,7 +517,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         historyNotRetained: Bool? = nil,
         tabsNotRetained: Bool? = nil,
         novelPageMode: String? = nil,
-        pageZoomScale: Double? = nil
+        forcedZoomEnabled: Bool? = nil
     ) {
         self.searchEngine = searchEngine
         self.adBlock = adBlock
@@ -561,7 +563,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.historyNotRetained = historyNotRetained
         self.tabsNotRetained = tabsNotRetained
         self.novelPageMode = novelPageMode
-        self.pageZoomScale = pageZoomScale
+        self.forcedZoomEnabled = forcedZoomEnabled
     }
 
     /// The resolved switch: protection is on unless explicitly turned off.

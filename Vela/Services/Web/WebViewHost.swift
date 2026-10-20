@@ -66,10 +66,9 @@ struct WebViewHost: UIViewRepresentable {
     /// The bottom content inset: the command bar's height plus the safe area,
     /// so the page's last lines stay scrollable clear of the bar.
     let bottomContentInset: CGFloat
-    /// The forced page zoom. Applied only once the web view is attached to a
-    /// window — an off-screen scroll view has no zoomable geometry, and
-    /// setting it there was both pointless and a source of layout churn.
-    let zoomScale: Double
+    /// Whether 强制网页缩放 is on. It does not pick a factor; it removes the
+    /// page's zoom lock so the standard pinch gesture works.
+    let allowsGestureZoom: Bool
     /// Reports scroll offset changes so the toolbar can react without a message
     /// round-trip on every frame.
     let onScroll: ((Double) -> Void)?
@@ -118,9 +117,10 @@ struct WebViewHost: UIViewRepresentable {
         // SwiftUI re-runs it for every shell change — opening the omnibox,
         // raising the keyboard, a tab switch — and touching the scroll view's
         // zoom on each of those was enough to keep the layout machinery
-        // re-entering itself. The coordinator applies it only when the chosen
-        // factor actually changes (or the hosted web view is replaced).
-        context.coordinator.applyZoomIfNeeded(webView, scale: zoomScale)
+        // re-entering itself. The host configures the limits once per hosted
+        // web view/switch pair; the coordinator re-establishes them after each
+        // document load, when WebKit resets them.
+        context.coordinator.applyGestureZoomIfNeeded(webView, enabled: allowsGestureZoom)
     }
 
     static func dismantleUIView(_ container: WebViewContainerView, coordinator: Coordinator) {
@@ -147,14 +147,18 @@ struct WebViewHost: UIViewRepresentable {
         private var progressObservation: NSKeyValueObservation?
 
         private var zoomedWebView: WKWebView?
-        private var appliedZoom: CGFloat?
+        private var appliedGestureZoom: Bool?
+        /// The scroll view's own limits before 强制缩放 changed them, so
+        /// turning the switch off restores what the page asked for.
+        private var originalZoomRange: (min: CGFloat, max: CGFloat)?
 
         func observe(webView: WKWebView, onScroll: ((Double) -> Void)?, onProgress: ((Double) -> Void)?) {
             stopObserving()
             observedWebView = webView
             // A different web view has its own scroll view and its own zoom.
             zoomedWebView = nil
-            appliedZoom = nil
+            appliedGestureZoom = nil
+            originalZoomRange = nil
 
             if let onScroll {
                 offsetObservation = webView.scrollView.observe(\.contentOffset, options: [.new]) { scrollView, _ in
@@ -185,46 +189,38 @@ struct WebViewHost: UIViewRepresentable {
             }
         }
 
-        /// Applies the forced zoom once per scale/web-view pair.
+        /// Configures the pinch limits once per web view/switch pair.
         ///
-        /// Both limits are set to the chosen value, so WebKit's automatic focus
-        /// zoom cannot move the page again when a text field is tapped.
-        func applyZoomIfNeeded(_ webView: WKWebView, scale: Double) {
-            let target = CGFloat(min(max(scale, 0.5), 2.0))
-            if zoomedWebView === webView,
-               let appliedZoom,
-               abs(appliedZoom - target) < 0.001 {
+        /// Nothing is applied on every layout pass: opening the omnibox or
+        /// raising the keyboard re-runs the host, and touching the scroll
+        /// view's zoom on each of those was what made input focus unstable.
+        func applyGestureZoomIfNeeded(_ webView: WKWebView, enabled: Bool) {
+            if zoomedWebView === webView, appliedGestureZoom == enabled {
                 return
             }
             let scrollView = webView.scrollView
-            // A view that is not laid out yet has no zoomable geometry; leave
-            // the cache untouched so the next update retries.
             guard webView.window != nil, scrollView.bounds.width > 0 else { return }
 
-            // 100% is WebKit's own state. Touch nothing unless a previous
-            // factor has to be undone, so the common case has no zoom code in
-            // the input-focus/keyboard path at all.
-            if abs(target - 1) < 0.001,
-               abs(scrollView.zoomScale - 1) < 0.001,
-               abs(scrollView.minimumZoomScale - 1) < 0.001,
-               abs(scrollView.maximumZoomScale - 1) < 0.001 {
-                zoomedWebView = webView
-                appliedZoom = target
-                return
-            }
-
-            // Raise the maximum before the minimum; a transient min > max trips
-            // an assertion inside UIScrollView.
-            if scrollView.maximumZoomScale < target {
-                scrollView.maximumZoomScale = target
-            }
-            scrollView.minimumZoomScale = target
-            scrollView.maximumZoomScale = target
-            if abs(scrollView.zoomScale - target) > 0.001 {
-                scrollView.setZoomScale(target, animated: false)
+            if enabled {
+                if originalZoomRange == nil {
+                    originalZoomRange = (scrollView.minimumZoomScale, scrollView.maximumZoomScale)
+                }
+                scrollView.minimumZoomScale = 0.5
+                scrollView.maximumZoomScale = 3.0
+                scrollView.pinchGestureRecognizer?.isEnabled = true
+            } else {
+                if let original = originalZoomRange {
+                    if abs(scrollView.zoomScale - 1) > 0.001 {
+                        scrollView.setZoomScale(1, animated: false)
+                    }
+                    scrollView.minimumZoomScale = original.min
+                    scrollView.maximumZoomScale = original.max
+                    originalZoomRange = nil
+                }
+                // Never forced on this view: leave the page's own limits alone.
             }
             zoomedWebView = webView
-            appliedZoom = target
+            appliedGestureZoom = enabled
         }
 
         func stopObserving() {
@@ -234,7 +230,9 @@ struct WebViewHost: UIViewRepresentable {
             progressObservation = nil
             observedWebView = nil
             zoomedWebView = nil
-            appliedZoom = nil
+            appliedGestureZoom = nil
+            originalZoomRange = nil
+            originalZoomRange = nil
         }
 
         deinit {

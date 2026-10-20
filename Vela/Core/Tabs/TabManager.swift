@@ -35,9 +35,7 @@ public protocol BrowserWebViewConfigurationProviding: AnyObject {
     /// appends it to its own, and the override is set on the web view; that split
     /// is why this returns a recipe rather than one string.
     func webIdentity(for tab: BrowserTabState) -> BrowserWebIdentity
-    /// The factor every page is drawn at, forced by 网页缩放.
-    var pageZoomScale: Double { get }
-    /// Applies that factor to a page already on screen.
+    /// Configures a page's zoom limits from the 强制网页缩放 switch.
     func applyForcedZoom(to webView: WKWebView)
     /// The delegates a tab's web view reports to.
     ///
@@ -716,7 +714,7 @@ public final class TabManager {
     /// the injected script at document start and end. Applying it here makes a
     /// change visible on the page in front of the user without a reload, and
     /// on backgrounded tabs before they are switched back to.
-    public func applyPageZoomToAllWebViews() {
+    public func applyGestureZoomToAllWebViews() {
         for tab in tabs {
             guard let webView = webViews[tab.id] else { continue }
             configurationProvider.applyForcedZoom(to: webView)
