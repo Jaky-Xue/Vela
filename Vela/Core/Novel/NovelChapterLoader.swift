@@ -14,11 +14,14 @@
 //
 
 import Foundation
+import UIKit
 import WebKit
 
 final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var webView: WKWebView?
     private var continuation: CheckedContinuation<NovelExtraction?, Never>?
     private var timeoutTask: Task<Void, Never>?
+    /// The off-window container the web view is parked in while it renders.
+    private weak var renderingHost: UIView?
     private var targetUrl = ""
 
     /// Loads and extracts one chapter. Resolves to `nil` on a bad URL, a
@@ -51,6 +54,7 @@ final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var 
 
         return await withCheckedContinuation { continuation in
             self.continuation = continuation
+            attachOffscreen(webView)
             webView.load(URLRequest(url: url))
 
             // A chapter page that hangs must not leave the reader on a spinner
@@ -73,13 +77,45 @@ final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var 
         timeoutTask = nil
         guard let continuation else { return }
         self.continuation = nil
+        detachOffscreen()
         webView?.navigationDelegate = nil
         webView?.stopLoading()
         webView = nil
         continuation.resume(returning: extraction)
     }
 
-    // MARK: - WKNavigationDelegate
+    // MARK: - Off-screen rendering
+
+    /// A detached web view loads, but a single-page reader often holds its
+    /// first paint until it believes it is visible. Parking the view just
+    /// outside the window keeps it rendering the way it does in a tab without
+    /// showing a pixel.
+    private func attachOffscreen(_ webView: WKWebView) {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+            ?? UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first,
+            let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first else {
+            return
+        }
+        let host = UIView(frame: CGRect(x: -12_000, y: -12_000, width: 1024, height: 2048))
+        host.alpha = 0.01
+        host.isUserInteractionEnabled = false
+        webView.frame = host.bounds
+        host.addSubview(webView)
+        window.addSubview(host)
+        renderingHost = host
+    }
+
+    private func detachOffscreen() {
+        webView?.removeFromSuperview()
+        renderingHost?.removeFromSuperview()
+        renderingHost = nil
+    }
+
+// MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard webView === self.webView else { return }
@@ -91,7 +127,7 @@ final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var 
             // Hash-routed sites paint the chapter after didFinish — and some
             // paint it behind two or three network round-trips. Poll for the
             // extraction instead of trusting a single delay.
-            let delays: [UInt64] = [700_000_000, 900_000_000, 1_200_000_000]
+            let delays: [UInt64] = [1_000_000_000, 1_500_000_000, 2_000_000_000, 2_500_000_000]
             for delay in delays {
                 try? await Task.sleep(nanoseconds: delay)
                 guard !Task.isCancelled else { return }
