@@ -1056,7 +1056,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             WebPageScripts.inlineVideoControlsScript,
             WebPageScripts.youtubeTapControlsScript,
             WebPageScripts.youtubeQualityScript,
-            WebPageScripts.colorSchemeScript(prefersDark: tab.privacyMode == .private)
+            WebPageScripts.colorSchemeScript(prefersDark: prefersDarkPageAppearance)
         ]
 
         for source in startScripts {
@@ -1280,6 +1280,31 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             WebPageScripts.forcedZoomScript(scale: settings.pageZoomScale),
             completionHandler: nil
         )
+    }
+
+    /// What a page should be told `prefers-color-scheme` resolves to.
+    ///
+    /// The appearance choice belongs to the browser, not to a tab's privacy
+    /// mode; a private tab used to be forced dark, which made the global
+    /// appearance switch look broken on half the tabs.
+    private var prefersDarkPageAppearance: Bool {
+        switch settings.appearanceMode {
+        case .dark:
+            return true
+        case .light:
+            return false
+        case .system:
+            return UITraitCollection.current.userInterfaceStyle == .dark
+        }
+    }
+
+    /// Pushes the current appearance into pages that are already open.
+    public func applyPageColorScheme() {
+        guard let tabManager else { return }
+        let script = WebPageScripts.colorSchemeScript(prefersDark: prefersDarkPageAppearance)
+        for tab in tabManager.tabs {
+            tabManager.webView(for: tab.id)?.evaluateJavaScript(script, completionHandler: nil)
+        }
     }
 
     /// The coordinator is both of these; WebKit holds them weakly, and the app
