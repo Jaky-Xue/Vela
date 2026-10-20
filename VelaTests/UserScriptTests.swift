@@ -78,6 +78,6 @@ final class UserScriptTests: XCTestCase {
         XCTAssertTrue(source.contains("GM_xmlhttpRequest"))
         XCTAssertTrue(source.contains("GM_getResourceURL"))
         XCTAssertTrue(source.contains("tab-1"))
-        XCTAssertTrue(source.contains("resolve(scriptId, requestId, payload)"))
+        XCTAssertTrue(source.contains("bridge.resolve = function"))
     }
 }

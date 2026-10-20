@@ -546,6 +546,13 @@ public enum UserScriptInjector {
           api.GM_cookie.delete = function (details, callback) {
             return api.GM_cookie('delete', details, callback);
           };
+          // Older Tampermonkey builds exposed these as separate globals.
+          api.GM_cookieSet = function (details, callback) {
+            return api.GM_cookie.set(details, callback);
+          };
+          api.GM_cookieDelete = function (details, callback) {
+            return api.GM_cookie.delete(details, callback);
+          };
 
           api.GM_getTab = function (callback) {
             var requestId = newRequestId('tab');
@@ -694,6 +701,127 @@ public enum UserScriptInjector {
                 });
               }
             });
+          };
+
+          // The promise-based `GM` namespace that Violentmonkey and current
+          // Tampermonkey expose. Scripts written for either manager often use
+          // these instead of the old synchronous GM_* globals.
+          function promiseCall(value) {
+            return new Promise(function (resolve) { resolve(value); });
+          }
+          api.GM = {
+            info: api.GM_info,
+            getValue: function (key, defaultValue) {
+              return promiseCall(api.GM_getValue(key, defaultValue));
+            },
+            getValues: function (defaults) {
+              return promiseCall(api.GM_getValues(defaults));
+            },
+            setValue: function (key, value) {
+              return promiseCall(api.GM_setValue(key, value));
+            },
+            setValues: function (values) {
+              return promiseCall(api.GM_setValues(values));
+            },
+            deleteValue: function (key) {
+              return promiseCall(api.GM_deleteValue(key));
+            },
+            deleteValues: function (keys) {
+              return promiseCall(api.GM_deleteValues(keys));
+            },
+            listValues: function () {
+              return promiseCall(api.GM_listValues());
+            },
+            addValueChangeListener: function (key, listener) {
+              return api.GM_addValueChangeListener(key, listener);
+            },
+            removeValueChangeListener: function (listener) {
+              return api.GM_removeValueChangeListener(listener);
+            },
+            addStyle: function (css) {
+              return promiseCall(api.GM_addStyle(css));
+            },
+            getResourceText: function (name) {
+              return promiseCall(api.GM_getResourceText(name));
+            },
+            getResourceUrl: function (name) {
+              return promiseCall(api.GM_getResourceURL(name));
+            },
+            xmlHttpRequest: function (details) {
+              return new Promise(function (resolve, reject) {
+                var copy = {};
+                for (var key in details) {
+                  if (Object.prototype.hasOwnProperty.call(details, key)) {
+                    copy[key] = details[key];
+                  }
+                }
+                copy.onload = resolve;
+                copy.onerror = reject;
+                copy.ontimeout = reject;
+                copy.onabort = reject;
+                api.GM_xmlhttpRequest(copy);
+              });
+            },
+            download: function (details) {
+              return new Promise(function (resolve, reject) {
+                var copy = {};
+                for (var key in details) {
+                  if (Object.prototype.hasOwnProperty.call(details, key)) {
+                    copy[key] = details[key];
+                  }
+                }
+                copy.onload = resolve;
+                copy.onerror = reject;
+                api.GM_download(copy);
+              });
+            },
+            openInTab: function (url, options) {
+              return promiseCall(api.GM_openInTab(url, options));
+            },
+            notification: function (text, title, options) {
+              return promiseCall(api.GM_notification(text, title, options));
+            },
+            setClipboard: function (data, type) {
+              return promiseCall(api.GM_setClipboard(data, type));
+            },
+            registerMenuCommand: function (name, fn, accessKey) {
+              return api.GM_registerMenuCommand(name, fn, accessKey);
+            },
+            unregisterMenuCommand: function (commandId) {
+              return api.GM_unregisterMenuCommand(commandId);
+            },
+            getTab: function () {
+              return new Promise(function (resolve) { api.GM_getTab(resolve); });
+            },
+            saveTab: function (value) {
+              return promiseCall(api.GM_saveTab(value));
+            },
+            getTabs: function () {
+              return new Promise(function (resolve) { api.GM_getTabs(resolve); });
+            },
+            cookie: {
+              list: function (details) {
+                return new Promise(function (resolve, reject) {
+                  api.GM_cookie.list(details, function (cookies, error) {
+                    if (error) { reject(error); } else { resolve(cookies); }
+                  });
+                });
+              },
+              set: function (details) {
+                return new Promise(function (resolve, reject) {
+                  api.GM_cookie.set(details, function (error) {
+                    if (error) { reject(error); } else { resolve(); }
+                  });
+                });
+              },
+              delete: function (details) {
+                return new Promise(function (resolve, reject) {
+                  api.GM_cookie.delete(details, function (error) {
+                    if (error) { reject(error); } else { resolve(); }
+                  });
+                });
+              }
+            }
           };
 
           // Grants Vela cannot honour are present but inert, so a script that

@@ -487,7 +487,7 @@ public final class BrowserWebCoordinator: NSObject {
         let anonymous = payload["anonymous"] as? Bool ?? false
         let headers = payload["headers"] as? [String: Any] ?? [:]
         let body = payload["data"] as? String ?? ""
-        let timeoutMilliseconds = payload["timeout"] as? Double ?? 0
+        let timeoutMilliseconds = (payload["timeout"] as? NSNumber)?.doubleValue ?? 0
         let user = payload["user"] as? String ?? ""
         let password = payload["password"] as? String ?? ""
         let key = "\(scriptId)|\(requestId)"
@@ -634,7 +634,7 @@ public final class BrowserWebCoordinator: NSObject {
             case "list":
                 let all = await self.allCookies(from: store)
                 let wantedDomain = (details["domain"] as? String)?.lowercased()
-                let wantedURL = (details["url"] as? String).flatMap(URL.init(string:))
+                let wantedURL = (details["url"] as? String).flatMap { URL(string: $0) }
                 let wantedName = details["name"] as? String
                 let filtered = all.filter { cookie in
                     if let wantedName, cookie.name != wantedName { return false }
@@ -694,7 +694,7 @@ public final class BrowserWebCoordinator: NSObject {
                     return
                 }
                 properties[.path] = details["path"] as? String ?? "/"
-                if let expires = details["expirationDate"] as? Double {
+                if let expires = (details["expirationDate"] as? NSNumber)?.doubleValue {
                     properties[.expires] = Date(timeIntervalSince1970: expires)
                 }
                 if let secure = details["secure"] as? Bool {
@@ -724,7 +724,7 @@ public final class BrowserWebCoordinator: NSObject {
                 let all = await self.allCookies(from: store)
                 let wantedName = details["name"] as? String
                 let wantedDomain = (details["domain"] as? String)?.lowercased()
-                let wantedURL = (details["url"] as? String).flatMap(URL.init(string:))
+                let wantedURL = (details["url"] as? String).flatMap { URL(string: $0) }
                 for cookie in all {
                     if let wantedName, cookie.name != wantedName { continue }
                     if let wantedDomain {

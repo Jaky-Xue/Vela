@@ -83,7 +83,12 @@ public final class UserScriptService {
         defer { isInstalling = false }
         lastError = nil
 
-        let parse = UserScriptParser.parse(text, installSource: source, sourceUrl: sourceUrl)
+        // A URL install may point at a metadata-only update file; follow its
+        // @downloadURL/@updateURL when the body is absent.
+        let installText = source == .url && !sourceUrl.isEmpty
+            ? await fullScriptText(text, baseURL: sourceUrl)
+            : text
+        let parse = UserScriptParser.parse(installText, installSource: source, sourceUrl: sourceUrl)
         guard parse.valid, let candidate = parse.candidate else {
             let failure = UserScriptServiceError.parseFailed(parse.errorMessage)
             lastError = failure.localizedDescription
@@ -199,7 +204,7 @@ public final class UserScriptService {
             values: script.requireSources
         )
         let previousResources = dictionary(
-            keys: script.resources.map(Self.resourceKey),
+            keys: script.resources.map { Self.resourceKey($0) },
             values: script.resources
         )
         let dependencies = await downloadDependencies(
@@ -238,7 +243,7 @@ public final class UserScriptService {
             values: existing?.requireSources ?? []
         )
         let previousResources = dictionary(
-            keys: (existing?.resources ?? []).map(Self.resourceKey),
+            keys: (existing?.resources ?? []).map { Self.resourceKey($0) },
             values: existing?.resources ?? []
         )
         return await downloadDependencies(
@@ -326,6 +331,44 @@ public final class UserScriptService {
         var mimeType: String
     }
 
+    /// Follows a metadata-only update file to the script it points at.
+    private func fullScriptText(_ text: String, baseURL: String) async -> String {
+        let parse = UserScriptParser.parse(
+            text,
+            installSource: .url,
+            sourceUrl: baseURL
+        )
+        guard !parse.valid, parse.errorMessage.contains("没有可执行") else { return text }
+        guard let relative = Self.metadataValue(in: text, key: "downloadurl")
+                ?? Self.metadataValue(in: text, key: "updateurl"),
+              let resolved = URL(string: relative, relativeTo: URL(string: baseURL))?.absoluteString,
+              let fetched = await fetch(resolved, base: nil, limit: 8_000_000),
+              let script = Self.decodeText(fetched.data) else {
+            return text
+        }
+        return script
+    }
+
+    /// Reads one `@key value` from a metadata block without requiring the
+    /// whole document to parse.
+    private static func metadataValue(in text: String, key: String) -> String? {
+        let wanted = "@" + key.lowercased()
+        for rawLine in text.split(whereSeparator: \.isNewline) {
+            var line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("//") {
+                line = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+            } else if line.hasPrefix("#") {
+                line = String(line.dropFirst(1)).trimmingCharacters(in: .whitespaces)
+            }
+            let lower = line.lowercased()
+            guard lower.hasPrefix(wanted) else { continue }
+            let remainder = line.dropFirst(wanted.count)
+            let value = remainder.trimmingCharacters(in: .whitespaces)
+            if !value.isEmpty { return value }
+        }
+        return nil
+    }
+
     private func fetch(_ raw: String, base: URL?, limit: Int) async -> Fetched? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -380,12 +423,13 @@ public final class UserScriptService {
         }
 
         guard let fetched = await fetch(rawURL, base: URL(string: script.sourceUrl), limit: 8_000_000),
-              let text = Self.decodeText(fetched.data) else {
+              let downloaded = Self.decodeText(fetched.data) else {
             let result = UserScriptUpdateResult.failed("无法下载脚本")
             updateStatus[script.id] = result.displayName
             return result
         }
 
+        let text = await fullScriptText(downloaded, baseURL: rawURL)
         let parse = UserScriptParser.parse(text, installSource: .url, sourceUrl: rawURL)
         guard parse.valid, let candidate = parse.candidate else {
             let result = UserScriptUpdateResult.failed(parse.errorMessage)
