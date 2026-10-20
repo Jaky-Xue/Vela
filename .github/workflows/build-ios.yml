@@ -16,6 +16,11 @@ name: Build unsigned IPA
 # separately.
 
 on:
+  # Temporary: lets a push start the build while this machine's route to
+  # api.github.com (which workflow_dispatch needs) is being reset.
+  push:
+    branches:
+      - feature/vault-novel-toolbar-background
   workflow_dispatch:
     inputs:
       configuration:
@@ -48,7 +53,7 @@ jobs:
     # macos-26 carries Xcode 26 and the iOS 26 SDK, which is the newest the
     # runners publish — so it is the closest the build can get to a device
     # running the current release.
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner || 'macos-26' }}
     timeout-minutes: 30
 
     steps:
@@ -66,7 +71,7 @@ jobs:
           xcodebuild \
             -project Vela.xcodeproj \
             -scheme Vela \
-            -configuration ${{ inputs.configuration }} \
+            -configuration ${{ inputs.configuration || 'Release' }} \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
@@ -80,7 +85,7 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          APP_PATH="build/Build/Products/${{ inputs.configuration }}-iphoneos/Vela.app"
+          APP_PATH="build/Build/Products/${{ inputs.configuration || 'Release' }}-iphoneos/Vela.app"
           if [ ! -d "$APP_PATH" ]; then
             echo "::error::App bundle not found at $APP_PATH"
             find build/Build/Products -maxdepth 3 -name '*.app' || true
@@ -107,7 +112,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Vela-dSYM
-          path: build/Build/Products/${{ inputs.configuration }}-iphoneos/*.dSYM
+          path: build/Build/Products/${{ inputs.configuration || 'Release' }}-iphoneos/*.dSYM
           if-no-files-found: ignore
           retention-days: 30
 
@@ -125,7 +130,7 @@ jobs:
     name: Run the unit tests
     # The same image as the build, for the same SDK reason — and because a test
     # that passes against one SDK says nothing about the other.
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner || 'macos-26' }}
     timeout-minutes: 30
 
     steps:
