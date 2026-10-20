@@ -126,6 +126,13 @@ struct TranslationBar: View {
             .font(.footnote.weight(.semibold))
             .buttonStyle(.borderless)
         case .failed:
+            if translation.appliedUrl != nil {
+                Button("显示原文") {
+                    Task { await translation.restoreOriginal(webView: webView) }
+                }
+                .font(.footnote.weight(.semibold))
+                .buttonStyle(.borderless)
+            }
             Button("重试") {
                 start(into: settings.target)
             }

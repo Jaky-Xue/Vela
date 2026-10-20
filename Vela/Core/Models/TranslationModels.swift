@@ -199,7 +199,7 @@ public enum TranslationTargetLanguage: String, Codable, CaseIterable, Identifiab
 /// Chrome's "always translate" / "never translate" choice, scoped to a host.
 /// Stored as raw strings because the settings document is decoded as a whole
 /// and an unknown value must not fail the decode.
-public enum SiteTranslationRule: String, Codable, CaseIterable, Sendable {
+public enum SiteTranslationRule: String, Codable, Equatable, CaseIterable, Sendable {
     case always
     case never
 

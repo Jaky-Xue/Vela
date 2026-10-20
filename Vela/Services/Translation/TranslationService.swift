@@ -364,6 +364,8 @@ public final class TranslationService {
                 _ = try? await webView.evaluateJavaScript(
                     "window.__velaStartTranslationObserver && window.__velaStartTranslationObserver();"
                 )
+                appliedTarget = target
+                appliedUrl = extraction.url
                 fail(run, "已翻译 \(applied)/\(total) 段：\(message)")
             } else {
                 fail(run, message)
@@ -561,6 +563,14 @@ public final class TranslationService {
         }
         if let values = raw as? [Int] {
             return values
+        }
+        // WebKit normally bridges a JavaScript number array to NSNumber, but
+        // the generic array path costs nothing and keeps a successful page
+        // from being reported as a failed one if it does not.
+        if let values = raw as? [Any] {
+            return values.compactMap { value in
+                (value as? NSNumber)?.intValue ?? (value as? Int)
+            }
         }
         return []
     }
