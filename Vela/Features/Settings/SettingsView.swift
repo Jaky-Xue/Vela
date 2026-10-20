@@ -153,6 +153,17 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
+                    TranslationSettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "character.bubble",
+                        tint: .blue,
+                        title: "网页翻译",
+                        detail: env.settings.translationSettings.provider.displayName
+                    )
+                }
+
+                NavigationLink {
                     NavigationDiagnosticsView()
                 } label: {
                     settingsRow(

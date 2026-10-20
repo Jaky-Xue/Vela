@@ -13,8 +13,12 @@
 //  and ATS exception. WebKit's resume blob is still the resume path for that
 //  fallback; segmented tasks resume from their manifest and part files.
 //
-//  What this does not do: background URLSession transfers (the app must stay
-//  alive while the transfer runs), and bandwidth throttling.
+//  Segmented transfers run on a background URLSession, so they continue while
+//  the app is suspended and are reattached at launch if the system kept their
+//  tasks. Queued transfers are started when the app goes to the background for
+//  the same reason. What remains out of scope: bandwidth throttling, and
+//  background continuation for the WebKit fallback, which has no URLSession to
+//  put in the background.
 //
 
 import Foundation
@@ -103,17 +107,106 @@ public final class DownloadService: NSObject {
     public func reconcileInterruptedTasks() -> [DownloadTask] {
         let interrupted = (try? repository.interruptedTasks()) ?? []
         for var task in interrupted where task.status == .running {
-            // WebKit does not survive app termination, so a task that was
-            // running is now resumable, not running.
-            task.status = .paused
-            task.updatedAt = Date()
-            try? repository.upsert(task)
+            // A segmented transfer may still be running in the system's
+            // background daemon, with its identifier recorded in the manifest.
+            // Reattaching is what lets that transfer finish without the user
+            // pressing resume. Anything with no live session behind it — a
+            // WebKit fallback, or a manifest written by a build that did not
+            // use background sessions — becomes resumable.
+            if let manifest = ManifestStore.load(guid: task.guid),
+               let identifier = manifest.backgroundIdentifier,
+               !manifest.isComplete,
+               let url = URL(string: manifest.url) {
+                activeGuids.insert(task.guid)
+                // The registry may already have reconnected this session when
+                // UIKit delivered its launch event before boot finished.
+                if segmentedSessions[task.guid] == nil {
+                    beginSegmented(
+                        manifest: manifest,
+                        request: URLRequest(url: url),
+                        reattaching: identifier
+                    )
+                }
+            } else {
+                task.status = .paused
+                task.updatedAt = Date()
+                try? repository.upsert(task)
+            }
         }
         reload()
-        activeGuids.removeAll()
         refreshActiveCount()
         pumpQueue()
         return interrupted
+    }
+
+    /// Installs the bridge that lets a relaunch find its background sessions.
+    ///
+    /// Called once at boot, before the first window exists. The registry may
+    /// already be holding identifiers from `handleEventsForBackgroundURLSession`;
+    /// installing the reconnector drains them, so an event delivered before
+    /// the environment was built is not lost.
+    public func prepareBackgroundSessionReconnection() {
+        BackgroundDownloadRegistry.shared.setReconnector { [weak self] identifier in
+            Task { @MainActor in
+                self?.reattachBackgroundSession(identifier: identifier)
+            }
+        }
+    }
+
+    /// Starts every queued transfer so it can continue on the background
+    /// session after the app is suspended.
+    ///
+    /// The concurrency limit exists to keep the *foreground* responsive; a
+    /// suspended process is not rendering anything, and a queued file the user
+    /// asked for should not sit still until they come back. The limit resumes
+    /// applying as soon as the queue is pumped again.
+    public func continueQueuedInBackground() {
+        guard !queued.isEmpty else { return }
+        let pending = queued.values.filter { $0.task.status == .pending }
+        for item in pending {
+            queued.removeValue(forKey: item.task.guid)
+            activeGuids.insert(item.task.guid)
+            Task { @MainActor [weak self] in
+                await self?.startQueued(item)
+            }
+        }
+        refreshActiveCount()
+    }
+
+    /// Reconnects a background session named by UIKit.
+    private func reattachBackgroundSession(identifier: String) {
+        guard let guid = SegmentedDownloadSession.guid(fromIdentifier: identifier) else { return }
+
+        if let existing = segmentedSessions[guid] {
+            existing.reattach(identifier: identifier)
+            return
+        }
+
+        guard let manifest = ManifestStore.load(guid: guid),
+              !manifest.isComplete,
+              let url = URL(string: manifest.url) else {
+            // Nothing on disk belongs to this session any more. Releasing the
+            // handler is still required, or the system keeps waiting.
+            BackgroundDownloadRegistry.shared.complete(identifier: identifier)
+            return
+        }
+
+        if var task = try? repository.task(guid: guid) {
+            task.status = .running
+            task.failure = nil
+            task.updatedAt = Date()
+            try? repository.upsert(task)
+            updateTaskInMemory(task)
+            reload(privacyMode: task.privacyMode)
+        }
+
+        activeGuids.insert(guid)
+        refreshActiveCount()
+        beginSegmented(
+            manifest: manifest,
+            request: URLRequest(url: url),
+            reattaching: identifier
+        )
     }
 
     // MARK: - Destination
@@ -350,9 +443,21 @@ public final class DownloadService: NSObject {
         updateTaskInMemory(task)
         ManifestStore.save(plan)
 
+        beginSegmented(manifest: plan, request: prepared)
+    }
+
+    /// Builds the transfer object and either starts it or reattaches it to a
+    /// background session from a previous process.
+    @discardableResult
+    private func beginSegmented(
+        manifest: SegmentedDownloadManifest,
+        request: URLRequest,
+        reattaching identifier: String? = nil
+    ) -> SegmentedDownloadSession {
+        let guid = manifest.guid
         let session = SegmentedDownloadSession(
-            manifest: plan,
-            request: prepared,
+            manifest: manifest,
+            request: request,
             onProgress: { [weak self] received, total in
                 Task { @MainActor in
                     self?.applyProgress(guid: guid, received: received, total: total)
@@ -373,7 +478,12 @@ public final class DownloadService: NSObject {
             }
         )
         segmentedSessions[guid] = session
-        session.start()
+        if let identifier {
+            session.reattach(identifier: identifier)
+        } else {
+            session.start()
+        }
+        return session
     }
 
     /// The request the transfer engine actually sends: the original method and

@@ -62,6 +62,48 @@ SwiftUI 环境注入。视图不 new 服务。
 在章节本身没有链接时回退到目录邻居。翻页方式（滚动 / 整屏翻页）保存在
 `BrowserPreferences.novelPageMode`，只切换 web view 的分页属性，不重载章节。
 
+## 窗口与共享服务
+
+`AppServices` 是进程级的组合根：数据库、设置、书签、历史、下载、小说、密码、
+离线页面和命令中心都在这里构造一次，并启动一次（`bootOnce`）。`AppEnvironment`
+是每个窗口的组合根：它持有该窗口的 `TabManager`、`BrowserWebCoordinator`、
+`WebPageOverlays`、`NavigationLog` 和 `TranslationService`，并从 `AppServices`
+转发共享服务。`VelaApp` 的 `WindowGroup` 为每个场景建立一个
+`WindowEnvironmentStore`，因此 Stage Manager 里的两个窗口各有自己的标签会话；
+`tab_sessions.window_id` 是这条边界的持久化形式。第一个窗口使用 `window-main`，
+启动时只有它的会话会被恢复，其余窗口 id 在下次启动时清理。
+
+## 网页翻译
+
+`WebPageScripts.textExtractionScript` 给每个正文文本节点编号并记下原文，
+`TranslationService` 按服务商的批量上限切段、发请求、用
+`textApplicationScript` 写回同一批节点；`textRestoreScript` 用记下的原文恢复，
+不重新加载文档。服务商（Google 公共接口 / DeepL / OpenAI 兼容接口）与目标语言
+保存在独立的 `TranslationSettings` 文档中，设置页为 `网页翻译`。
+
+## 离线页面
+
+保存时向 WebKit 要一份 web archive（`createWebArchiveData`），连同预览图和 JSON
+清单写入 `Application Support/Vela/OfflinePages/<id>/`，元数据写入
+`offline_pages`。打开时把归档交给新标签页的
+`WKWebView.load(data:mimeType:"application/x-webarchive")`；标签页会标记
+`isOfflinePage`，避免导航代理把归档的合成文档地址写回真实网址。
+
+## 后台下载
+
+分片传输使用带唯一标识的 `URLSessionConfiguration.background`，任务上写入
+`taskDescription` 以便换进程后仍能对应到字节段；标识随 manifest 落盘。
+App 因后台事件被唤起时，`VelaAppDelegate` 把
+`handleEventsForBackgroundURLSession` 交给 `BackgroundDownloadRegistry`，
+`DownloadService` 在启动时安装重连器并重连遗留任务。进入后台时队列里待开始的任务
+也会立即启动，交给同一套后台会话。WebKit 回退通道没有 URLSession，仍不支持后台续传。
+
+## 标签页滚动位置
+
+回收 web view 时把 `contentOffset.y + contentInset.top` 归一化后写入标签页并置
+`pendingScrollRestore`；会话恢复的标签页同样带这个标记。`didFinish` 消费一次标记，
+用 `WebPageScripts.scrollRestoreScript` 在布局稳定后把文档滚回原位置。
+
 ## 验证
 
 本机没有 Swift 工具链。可编译性由 `.github/workflows/build-ios.yml` 在 macOS

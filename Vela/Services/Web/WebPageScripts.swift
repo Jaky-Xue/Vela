@@ -1042,6 +1042,34 @@ public enum WebPageScripts {
     })();
     """
 
+    /// Puts a restored tab back where the user left it.
+    ///
+    /// Called once after a discarded tab's page has finished loading. Two
+    /// animation frames after the call let layout settle first — scrolling a
+    /// document whose height is still being computed is silently clamped to
+    /// the height it had at that instant.
+    public static func scrollRestoreScript(offsetY: Double) -> String {
+        let y = max(0, offsetY)
+        return """
+        (function () {
+          try {
+            var target = \(String(format: "%.1f", y));
+            function apply() {
+              try { window.scrollTo(0, target); } catch (_error) {}
+            }
+            apply();
+            if (window.requestAnimationFrame) {
+              window.requestAnimationFrame(function () {
+                apply();
+                window.requestAnimationFrame(apply);
+              });
+            }
+          } catch (_error) {
+          }
+        })();
+        """
+    }
+
     // MARK: - Dark mode
 
     /// Tells the page whether it should render dark, and reads back whether it
@@ -1528,9 +1556,15 @@ public enum WebPageScripts {
       var node;
       while ((node = walker.nextNode())) {
         node.__velaTranslationIndex = index;
+        // The first translation of a document records what the page wrote
+        // there. Later runs — a changed target language — translate that
+        // original rather than the translation that replaced it.
+        if (node.__velaOriginalText === undefined) {
+          node.__velaOriginalText = node.nodeValue;
+        }
         segments.push({
           index: index,
-          text: (node.nodeValue || '').trim(),
+          text: (node.__velaOriginalText || node.nodeValue || '').trim(),
           tag: node.parentNode ? node.parentNode.nodeName.toLowerCase() : ''
         });
         index++;
@@ -1545,20 +1579,32 @@ public enum WebPageScripts {
     """
 
     /// Writes translated text back into the nodes the extraction indexed.
+    ///
+    /// One walk for the whole batch rather than one walk per segment: the
+    /// first version entered the tree again for every string, which on the
+    /// 800-node ceiling is 640,000 node visits for a page the user is waiting
+    /// on.
     public static let textApplicationScript = """
     window.__velaApplyTranslation = function (payload) {
       try {
         var data = typeof payload === 'string' ? JSON.parse(payload) : payload;
         var segments = data.segments || [];
+        var byIndex = {};
         for (var i = 0; i < segments.length; i++) {
           var segment = segments[i];
-          var nodes = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-          var node;
-          while ((node = nodes.nextNode())) {
-            if (node.__velaTranslationIndex === segment.index) {
-              node.nodeValue = segment.text;
-              break;
-            }
+          byIndex[String(segment.index)] = segment.text;
+        }
+        var nodes = document.createTreeWalker(
+          document.body || document.documentElement,
+          NodeFilter.SHOW_TEXT,
+          null
+        );
+        var node;
+        while ((node = nodes.nextNode())) {
+          if (node.__velaTranslationIndex === undefined) { continue; }
+          var translated = byIndex[String(node.__velaTranslationIndex)];
+          if (typeof translated === 'string') {
+            node.nodeValue = translated;
           }
         }
         return true;
@@ -1566,5 +1612,30 @@ public enum WebPageScripts {
         return false;
       }
     };
+    """
+
+    /// Puts the page's own text back after a translation.
+    ///
+    /// The values are the ones the extraction recorded, so this restores the
+    /// document in place: no reload, no lost scroll position, no second fetch.
+    public static let textRestoreScript = """
+    (function () {
+      try {
+        var nodes = document.createTreeWalker(
+          document.body || document.documentElement,
+          NodeFilter.SHOW_TEXT,
+          null
+        );
+        var node;
+        while ((node = nodes.nextNode())) {
+          if (node.__velaOriginalText !== undefined) {
+            node.nodeValue = node.__velaOriginalText;
+          }
+        }
+        return true;
+      } catch (_error) {
+        return false;
+      }
+    })();
     """
 }

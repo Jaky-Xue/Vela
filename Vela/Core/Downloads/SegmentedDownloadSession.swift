@@ -44,6 +44,13 @@ struct SegmentedDownloadManifest: Codable, Equatable, Sendable {
     var segments: [DownloadSegment]
     /// A single stream has one segment but no Range header.
     var singleStream: Bool
+    /// The identifier of the background URLSession carrying this transfer.
+    ///
+    /// Written when the transfer starts and stored with the manifest, because
+    /// after an app termination the system hands the app an identifier and the
+    /// app has to reconnect to exactly that session. A pause/resume gets a new
+    /// identifier (and overwrites this), so a stale one is never reused.
+    var backgroundIdentifier: String? = nil
 
     var completedBytes: Int64 {
         segments.reduce(into: 0) { total, segment in
@@ -61,6 +68,9 @@ enum SegmentedDownloadError: LocalizedError {
     case missingBody
     case incompleteFile
     case noSpaceOrWriteFailure
+    /// The background session kept no task for this transfer. The parts on
+    /// disk are still good, so the record becomes resumable rather than failed.
+    case interrupted
 
     var errorDescription: String? {
         switch self {
@@ -68,6 +78,7 @@ enum SegmentedDownloadError: LocalizedError {
         case .missingBody: return "服务器没有返回文件内容。"
         case .incompleteFile: return "下载的文件不完整。"
         case .noSpaceOrWriteFailure: return "无法写入下载文件。"
+        case .interrupted: return "下载在后台中断，已完成的部分已保留。"
         }
     }
 }
@@ -93,6 +104,11 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
     private var finished = false
     private var paused = false
     private var wholeFileReceived = false
+    /// True when this object was attached to a session created by an earlier
+    /// process. Those sessions may still be delivering callbacks for ranges
+    /// that finished while the app was gone, so the merge waits for them.
+    private var reconnected = false
+    private var mergeScheduled = false
 
     init(
         manifest: SegmentedDownloadManifest,
@@ -134,16 +150,28 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
             return
         }
 
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 60 * 60 * 24
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        let queue = OperationQueue()
-        queue.name = "org.vela.download.\(guid)"
-        queue.maxConcurrentOperationCount = 1
-        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: queue)
+        // A background configuration is the difference between "downloads
+        // while the app is on screen" and "downloads while the app is
+        // suspended": the transfer is owned by a system daemon, not by the
+        // process, and the delegate is woken to deliver its events.
+        // A fresh attempt always gets a fresh identifier: the previous
+        // session may still be unwinding from a pause, and creating a second
+        // URLSession under its identifier would attach this transfer to the
+        // one that is being cancelled.
+        let identifier = Self.makeIdentifier(guid: guid)
+        manifest.backgroundIdentifier = identifier
+        let configuration = Self.backgroundConfiguration(identifier: identifier)
+        let session = URLSession(
+            configuration: configuration,
+            delegate: self,
+            delegateQueue: Self.delegateQueue(guid: guid)
+        )
         self.session = session
+        let snapshot = manifest
+        lock.unlock()
+        onManifest(snapshot)
 
+        lock.lock()
         for (index, segment) in manifest.segments.enumerated() where !segment.completed {
             var segmentRequest = request
             if !manifest.singleStream {
@@ -153,12 +181,134 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
                 )
             }
             let task = session.downloadTask(with: segmentRequest)
+            // The task outlives the process. Its description is how a
+            // relaunched app maps the callback back to the byte range it
+            // belongs to; task identifiers are new in every process.
+            task.taskDescription = Self.taskDescription(index: index)
             segmentByTask[task.taskIdentifier] = index
             writtenByTask[task.taskIdentifier] = 0
             activeTasks.insert(task.taskIdentifier)
             task.resume()
         }
         lock.unlock()
+    }
+
+    // MARK: - Background session reconnection
+
+    /// The prefix every background session identifier shares.
+    static let identifierPrefix = "org.vela.download.segment."
+
+    static func makeIdentifier(guid: String) -> String {
+        "\(identifierPrefix)\(guid).\(UUID().uuidString.prefix(8).lowercased())"
+    }
+
+    /// The guid inside a session identifier, ignoring the attempt suffix.
+    static func guid(fromIdentifier identifier: String) -> String? {
+        guard identifier.hasPrefix(identifierPrefix) else { return nil }
+        let rest = identifier.dropFirst(identifierPrefix.count)
+        let guid = rest.split(separator: ".", maxSplits: 1).first.map(String.init) ?? ""
+        return guid.isEmpty ? nil : guid
+    }
+
+    static func backgroundConfiguration(identifier: String) -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
+        configuration.sessionSendsLaunchEvents = true
+        configuration.isDiscretionary = false
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 60 * 60 * 24
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpMaximumConnectionsPerHost = 8
+        return configuration
+    }
+
+    static func delegateQueue(guid: String) -> OperationQueue {
+        let queue = OperationQueue()
+        queue.name = "org.vela.download.\(guid)"
+        queue.maxConcurrentOperationCount = 1
+        return queue
+    }
+
+    private static let segmentPrefix = "vela-segment-"
+
+    private static func taskDescription(index: Int) -> String {
+        "\(segmentPrefix)\(index)"
+    }
+
+    private static func segmentIndex(from description: String?) -> Int? {
+        guard let description, description.hasPrefix(segmentPrefix) else { return nil }
+        return Int(description.dropFirst(segmentPrefix.count))
+    }
+
+    /// Connects to the background session that outlived the app.
+    ///
+    /// The tasks were created by a previous process, so their identifiers are
+    /// unrelated to the ones this object would assign. getAllTasks plus the
+    /// description stored on each task rebuilds the map; the session itself is
+    /// created with the same identifier, which is what makes the system hand
+    /// us the queued events.
+    func reattach(identifier: String? = nil) {
+        lock.lock()
+        guard !finished, !paused, session == nil else {
+            lock.unlock()
+            return
+        }
+        let identifier = identifier ?? manifest.backgroundIdentifier ?? Self.makeIdentifier(guid: guid)
+        manifest.backgroundIdentifier = identifier
+        reconnected = true
+        let configuration = Self.backgroundConfiguration(identifier: identifier)
+        let session = URLSession(
+            configuration: configuration,
+            delegate: self,
+            delegateQueue: Self.delegateQueue(guid: guid)
+        )
+        self.session = session
+        let snapshot = manifest
+        lock.unlock()
+
+        onManifest(snapshot)
+        onProgress(completedBytes, manifest.totalBytes)
+
+        session.getAllTasks { [weak self] tasks in
+            guard let self else { return }
+            self.adopt(tasks: tasks)
+        }
+    }
+
+    private func adopt(tasks: [URLSessionTask]) {
+        lock.lock()
+        guard !finished, !paused else {
+            lock.unlock()
+            return
+        }
+        for task in tasks {
+            guard let index = Self.segmentIndex(from: task.taskDescription),
+                  manifest.segments.indices.contains(index),
+                  !manifest.segments[index].completed else { continue }
+            segmentByTask[task.taskIdentifier] = index
+            writtenByTask[task.taskIdentifier] = 0
+            activeTasks.insert(task.taskIdentifier)
+        }
+        let pending = activeTasks.count
+        lock.unlock()
+
+        guard pending == 0 else { return }
+
+        // No task survived. That can mean two very different things: every
+        // range finished while the app was dead (its callbacks are queued and
+        // about to arrive), or the system dropped the session altogether. Give
+        // the queued callbacks a moment before declaring the transfer
+        // interrupted — the parts on disk are not lost either way.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let shouldStop = !self.finished && !self.paused
+                && self.activeTasks.isEmpty
+                && !self.manifest.isComplete
+            self.lock.unlock()
+            if shouldStop {
+                self.finish(.failure(SegmentedDownloadError.interrupted))
+            }
+        }
     }
 
     /// Stops the transfer but keeps completed parts and the manifest.
@@ -358,6 +508,10 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
             lock.unlock()
             return
         }
+        if let index = Self.segmentIndex(from: downloadTask.taskDescription),
+           segmentByTask[downloadTask.taskIdentifier] == nil {
+            segmentByTask[downloadTask.taskIdentifier] = index
+        }
         if segmentByTask[downloadTask.taskIdentifier] != nil {
             writtenByTask[downloadTask.taskIdentifier] = totalBytesWritten
         }
@@ -379,11 +533,13 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
             lock.unlock()
             return
         }
-        guard let index = segmentByTask[downloadTask.taskIdentifier],
-              manifest.segments.indices.contains(index) else {
+        let index = segmentByTask[downloadTask.taskIdentifier]
+            ?? Self.segmentIndex(from: downloadTask.taskDescription)
+        guard let index, manifest.segments.indices.contains(index) else {
             lock.unlock()
             return
         }
+        segmentByTask[downloadTask.taskIdentifier] = index
         let status = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? 0
         let single = manifest.singleStream
         let segment = manifest.segments[index]
@@ -485,11 +641,37 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
 
         if remaining == 0 {
             if allComplete {
-                mergeAndFinish()
+                scheduleMerge()
+            } else if reconnected {
+                // A reconnected session can report its adopted tasks complete
+                // while callbacks for ranges that finished in the previous
+                // process are still queued. Wait for them before deciding the
+                // file is short.
+                DispatchQueue.global().asyncAfter(deadline: .now() + 4) { [weak self] in
+                    guard let self else { return }
+                    self.lock.lock()
+                    let complete = self.manifest.isComplete
+                    let stopped = self.finished || self.paused
+                    self.lock.unlock()
+                    guard !stopped else { return }
+                    if complete {
+                        self.scheduleMerge()
+                    } else {
+                        self.finish(.failure(SegmentedDownloadError.interrupted))
+                    }
+                }
             } else {
                 finish(.failure(SegmentedDownloadError.incompleteFile))
             }
         }
+    }
+
+    /// Tells UIKit that every event for a background session has been
+    /// delivered, which releases the system's completion handler.
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        BackgroundDownloadRegistry.shared.complete(
+            identifier: session.configuration.identifier ?? ""
+        )
     }
 
     /// `didFinishDownloadingTo` fires before the matching completion callback.
@@ -500,7 +682,34 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
         let remaining = activeTasks.count
         lock.unlock()
         if remaining == 0 {
-            mergeAndFinish()
+            scheduleMerge()
+        }
+    }
+
+    /// Runs the merge once the session has finished delivering its events.
+    ///
+    /// A reconnected session can report every adopted task as complete while
+    /// callbacks for ranges that finished in the previous process are still
+    /// queued. Merging immediately would find their part files missing and
+    /// call a complete download incomplete, so the reconnected path waits
+    /// briefly first.
+    private func scheduleMerge() {
+        lock.lock()
+        if mergeScheduled || finished {
+            lock.unlock()
+            return
+        }
+        mergeScheduled = true
+        let delay: TimeInterval = reconnected ? 3 : 0
+        lock.unlock()
+
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let stillFinished = self.finished
+            self.lock.unlock()
+            guard !stillFinished else { return }
+            self.mergeAndFinish()
         }
     }
 

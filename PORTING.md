@@ -127,7 +127,7 @@ Aira Browser 3.7.4 → Vela 的逐模块对照。
 | `core/browser/tabsOverview/*` | `Features/Tabs/TabsOverviewView.swift` | **偏离**。Aira 用 `BrowserTabPreviewCaptureService` 抓页面预览；Vela 用标题卡片，因为每个标签页抓一次快照等于一次完整渲染，而 iOS 的标签切换器被期望是瞬间打开的——迟一秒到的预览比立刻就在的标题更糟。隐私分离保留：普通和无痕永不出现在同一个列表 |
 | `features/newtab/*` + `BrowserHomePresentationViewModel.ets` | `Features/Home/NewTabHomeView.swift` | **部分**。原生新标签页（搜索 + 常用网站 + 最近关闭）已做。ADR 0044（"主页快捷方式独立于书签"）用另一种方式满足：快捷方式从历史按访问次数派生，省掉整个第二存储。ADR 0046（自定义主页）未移植——没有 `customhome` 运行时 |
 | `ThemePaletteSettingsPage.ets` + `features/theme/palettes/*` | `UI/Theme.swift` | 等价实现（色板是值不是资源目录颜色，所以能在运行时换）。色板从 Aira 的目录收敛到 4 个在两种动态字体极值下都成立的 |
-| `app/pages/BookmarkManagerPage.ets` 等约 84 个页面 | `Features/*/` | 部分。已做：书签、历史、下载、设置及其子页、标签页、阅读、用户脚本。未做：小说书架、离线页面、密码、同步、翻译、代理、跨端标签、法律文档 |
+| `app/pages/BookmarkManagerPage.ets` 等约 84 个页面 | `Features/*/` | 部分。已做：书签、历史、下载、设置及其子页、标签页、阅读、用户脚本。未做：同步、代理、跨端标签、法律文档 |
 
 ---
 
@@ -165,9 +165,7 @@ Aira Browser 3.7.4 → Vela 的逐模块对照。
 
 - 跨端同步（WebDAV / Personal Server / Aira-sync 扩展）：**数据模型全部移植了**（`sync_state`、`origin_id`、`device_id`、`last_modified_by` 都在），缺的是客户端同步调度
 - 小说模式与书架（`core/novel`、`features/novel`）
-- 网页翻译（`services/translation`）：正文提取脚本已移植，服务商配置与调用未接
 - 视频接管（`features/youtubeTakeover`、`features/videoAssistant`）
-- 离线页面保存与查看（表已移植）
 - 自定义主页运行时（ADR 0046）
 - 桌面/平板形态：双栏设置、键盘快捷键、书签栏、纵向标签、窗口管理（`BrowserLargeScreen*` 约 40 个文件）
 - 底部工具栏自定义排序界面

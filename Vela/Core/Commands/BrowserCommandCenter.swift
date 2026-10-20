@@ -16,21 +16,32 @@ import Observation
 @MainActor
 @Observable
 public final class BrowserCommandCenter {
-    private var handler: ((BrowserCommand) -> Void)?
+    /// One handler per window, in the order the windows registered.
+    ///
+    /// A `Commands` menu is a property of the app, but the tabs a command acts
+    /// on belong to a window. The most recently registered window is the one
+    /// the command drives; when it closes it removes only its own handler, so
+    /// the window behind it keeps working.
+    private var handlers: [String: (BrowserCommand) -> Void] = [:]
+    private var order: [String] = []
 
     public init() {}
 
-    public func register(_ handler: @escaping (BrowserCommand) -> Void) {
-        self.handler = handler
+    public func register(owner: String, _ handler: @escaping (BrowserCommand) -> Void) {
+        handlers[owner] = handler
+        order.removeAll { $0 == owner }
+        order.append(owner)
     }
 
-    public func unregister() {
-        handler = nil
+    public func unregister(owner: String) {
+        handlers.removeValue(forKey: owner)
+        order.removeAll { $0 == owner }
     }
 
     public func perform(_ command: BrowserCommand) {
-        handler?(command)
+        guard let owner = order.last else { return }
+        handlers[owner]?(command)
     }
 
-    public var isAvailable: Bool { handler != nil }
+    public var isAvailable: Bool { !order.isEmpty }
 }

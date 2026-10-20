@@ -27,6 +27,7 @@ public final class SettingsService {
         static let manualElementHide = "org.vela.browser.manual-element-hide"
         static let appearanceMode = "org.vela.browser.appearance-mode"
         static let navigationDiagnostics = "org.vela.browser.navigation-diagnostics"
+        static let translation = "org.vela.browser.translation-settings"
     }
 
     public private(set) var preferences: BrowserPreferences {
@@ -62,6 +63,15 @@ public final class SettingsService {
         didSet { persist(navigationDiagnostics, key: Key.navigationDiagnostics) }
     }
 
+    /// The provider, credential and target language page translation uses.
+    ///
+    /// A document of its own for the same reason as the three above: a new
+    /// required key inside `BrowserPreferences` would make an existing
+    /// install's preferences fail to decode as a whole.
+    public private(set) var translationSettings: TranslationSettings {
+        didSet { persist(translationSettings, key: Key.translation) }
+    }
+
     private let defaults: UserDefaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -77,6 +87,11 @@ public final class SettingsService {
         self.navigationDiagnostics = Self.load(
             NavigationDiagnosticsSettings.self,
             key: Key.navigationDiagnostics,
+            from: defaults
+        ) ?? .default
+        self.translationSettings = Self.load(
+            TranslationSettings.self,
+            key: Key.translation,
             from: defaults
         ) ?? .default
         // An unknown or absent value follows the system, which is the only
@@ -133,6 +148,12 @@ public final class SettingsService {
         var copy = navigationDiagnostics
         mutate(&copy)
         navigationDiagnostics = copy
+    }
+
+    public func updateTranslationSettings(_ mutate: (inout TranslationSettings) -> Void) {
+        var copy = translationSettings
+        mutate(&copy)
+        translationSettings = copy
     }
 
     // MARK: - Appearance

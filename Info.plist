@@ -52,6 +52,18 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 
+	<!-- Multiple scenes, which is what lets Stage Manager open a second Vela
+	     window instead of raising the first one. Each scene builds its own
+	     AppEnvironment and therefore its own tab session; the database and the
+	     other shared services stay single. Without this key the system treats
+	     the app as a single-window app and the second window is impossible to
+	     create, whatever the SwiftUI scene says. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+	</dict>
+
 	<!-- Multitasking is allowed so the iPad layout can be used in Split View,
 	     Slide Over and Stage Manager. UIRequiresFullScreen is deliberately
 	     absent: it would forbid all of them. The trade-off is that the system's

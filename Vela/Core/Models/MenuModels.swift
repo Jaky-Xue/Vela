@@ -21,6 +21,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
     case share
     case findInPage
     case reader
+    case translate
     case novel
     case bookshelf
     case passwords
@@ -30,6 +31,8 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
     case bookmarks
     case history
     case downloads
+    case saveOfflinePage
+    case offlinePages
     case scanQRCode
     case privateTab
     case adBlock
@@ -47,6 +50,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .share: return "分享"
         case .findInPage: return "查找网页"
         case .reader: return "文章阅读"
+        case .translate: return "网页翻译"
         case .novel: return "小说模式"
         case .bookshelf: return "书架"
         case .passwords: return "密码与保险箱"
@@ -56,6 +60,8 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .bookmarks: return "书签"
         case .history: return "历史记录"
         case .downloads: return "下载管理"
+        case .saveOfflinePage: return "保存离线页面"
+        case .offlinePages: return "离线页面"
         case .scanQRCode: return "扫一扫"
         case .privateTab: return "无痕模式"
         case .adBlock: return "广告过滤"
@@ -71,6 +77,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .share: return "square.and.arrow.up"
         case .findInPage: return "magnifyingglass"
         case .reader: return "doc.plaintext"
+        case .translate: return "character.bubble"
         case .novel: return "text.book.closed"
         case .bookshelf: return "books.vertical"
         case .passwords: return "key.fill"
@@ -80,6 +87,8 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .bookmarks: return "book"
         case .history: return "clock.arrow.circlepath"
         case .downloads: return "arrow.down.circle"
+        case .saveOfflinePage: return "arrow.down.doc"
+        case .offlinePages: return "tray.full"
         case .scanQRCode: return "qrcode.viewfinder"
         case .privateTab: return "eyeglasses"
         case .adBlock: return "shield.lefthalf.filled"
@@ -94,8 +103,8 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
     /// reference panels grey out what a page-less context cannot do.
     var requiresPage: Bool {
         switch self {
-        case .addBookmark, .share, .findInPage, .reader, .novel, .hideElements,
-             .desktopSite, .reload:
+        case .addBookmark, .share, .findInPage, .reader, .translate, .novel,
+             .hideElements, .desktopSite, .saveOfflinePage, .reload:
             return true
         default:
             return false

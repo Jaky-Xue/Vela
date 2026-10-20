@@ -76,6 +76,11 @@ public final class TabManager {
 
     private let configurationProvider: BrowserWebViewConfigurationProviding
     private let sessionRepository: TabSessionRepository?
+    /// The `window_id` this manager's tabs are stored under.
+    ///
+    /// A Stage Manager window gets its own manager and its own id, so opening
+    /// a link in one window cannot rewrite the tab strip of another.
+    public let windowId: String
 
     /// The transition a navigation is recorded under is decided by the
     /// navigation delegate, which is the only place that sees WebKit's
@@ -83,10 +88,12 @@ public final class TabManager {
     /// used to take was passed by the environment and never read.
     public init(
         configurationProvider: BrowserWebViewConfigurationProviding,
-        sessionRepository: TabSessionRepository? = nil
+        sessionRepository: TabSessionRepository? = nil,
+        windowId: String = TabSessionRepository.defaultWindowId
     ) {
         self.configurationProvider = configurationProvider
         self.sessionRepository = sessionRepository
+        self.windowId = windowId
     }
 
     // MARK: - Queries
@@ -584,6 +591,14 @@ public final class TabManager {
     /// recognisable as stale rather than being mistaken for the new one's.
     @discardableResult
     public func load(url: URL, in tab: BrowserTabState) -> WKWebView {
+        // A position saved for the document the tab was showing belongs to
+        // that document. Navigating somewhere else drops it; re-issuing the
+        // same address — which is what reactivating a discarded tab does —
+        // keeps it and restores it at `didFinish`.
+        if tab.url != url.absoluteString {
+            tab.pendingScrollRestore = false
+        }
+        tab.isOfflinePage = false
         tab.isHome = false
         tab.url = url.absoluteString
         tab.pendingUrl = url.absoluteString
@@ -603,6 +618,41 @@ public final class TabManager {
             webView.customUserAgent = identity.customUserAgent
         }
         webView.load(URLRequest(url: url))
+        return webView
+    }
+
+    /// Shows a saved web archive in a tab.
+    ///
+    /// This is the same tab lifecycle as `load(url:in:)`, with WebKit's
+    /// data-loading entry point in place of a request. The tab keeps the
+    /// address the page was saved from, and `isOfflinePage` tells the
+    /// navigation delegate not to overwrite it with the archive's synthetic
+    /// document URL.
+    @discardableResult
+    public func loadOfflineArchive(
+        data: Data,
+        baseURL: URL,
+        title: String,
+        in tab: BrowserTabState
+    ) -> WKWebView {
+        tab.isHome = false
+        tab.url = baseURL.absoluteString
+        tab.pendingUrl = baseURL.absoluteString
+        tab.title = title
+        tab.lastFailure = nil
+        tab.serverStatus = 0
+        tab.loadState = .requested
+        tab.isLoading = true
+        tab.estimatedProgress = 0
+        tab.pendingScrollRestore = false
+        tab.isOfflinePage = true
+        let webView = ensureWebView(for: tab)
+        webView.load(
+            data,
+            mimeType: "application/x-webarchive",
+            characterEncodingName: "utf-8",
+            baseURL: baseURL
+        )
         return webView
     }
 
@@ -684,9 +734,8 @@ public final class TabManager {
     /// Drops a tab's web view but keeps the tab, its URL and its title.
     ///
     /// The tab becomes `cold`; reactivating it loads the URL again. The scroll
-    /// offset is written to the tab first, so the information survives the
-    /// discard — nothing reads it back yet, so a reactivated tab currently
-    /// returns to the top of the document.
+    /// offset is written to the tab first and flagged for restore, so the
+    /// document comes back where the user left it rather than at its top.
     ///
     /// Returns whether there was a web view to release. The cap needs the
     /// answer: `activationOrder` records tabs in the order they were *activated*,
@@ -699,7 +748,13 @@ public final class TabManager {
         reason: TabDiscardReason = .memoryPressure
     ) -> Bool {
         guard let webView = webViews[tabId], let tab = tab(id: tabId) else { return false }
-        tab.scrollOffsetY = Double(webView.scrollView.contentOffset.y)
+        // Normalised against the top inset, which is the same space the scroll
+        // reporter and the host's observation use: at the document's own top
+        // the raw offset is `-contentInset.top`, not zero.
+        let scrollView = webView.scrollView
+        let documentOffset = Double(scrollView.contentOffset.y + scrollView.contentInset.top)
+        tab.scrollOffsetY = max(0, documentOffset)
+        tab.pendingScrollRestore = tab.scrollOffsetY > 1
         tab.lastDiscardReason = reason
         tab.runtimeState = .cold
         // The back/forward list lives in the web view, so it is discarded with
@@ -856,7 +911,7 @@ public final class TabManager {
             activeTabId: activeTabId,
             tabSequence: tabs.count
         )
-        try? sessionRepository.saveSession(snapshot)
+        try? sessionRepository.saveSession(snapshot, windowId: windowId)
     }
 
     /// Enters 无痕模式's browsing surface: the private home tab, created when

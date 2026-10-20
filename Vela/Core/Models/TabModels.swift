@@ -402,6 +402,17 @@ public final class BrowserTabState: Identifiable {
     public var lastCrashReason: TabCrashReason
     public var lastLoadedAt: Date?
     public var scrollOffsetY: Double
+    /// Set when the next document that finishes loading should be scrolled to
+    /// `scrollOffsetY`. Written when a web view is discarded or a session is
+    /// restored, consumed by `didFinish`.
+    ///
+    /// Runtime-only: a flag that survived to disk would make a tab restore a
+    /// position the user has since left.
+    public var pendingScrollRestore: Bool
+    /// Whether the document on screen came from an offline archive rather than
+    /// the network. A web archive loads with a synthetic document URL, and this
+    /// is what stops `didCommit` from replacing the tab's real address with it.
+    public var isOfflinePage: Bool
 
     /// A failed navigation keeps the last
     /// successfully rendered page so the error surface can offer "回到上一个正常页面"
@@ -448,6 +459,8 @@ public final class BrowserTabState: Identifiable {
         lastCrashReason: TabCrashReason = .none,
         lastLoadedAt: Date? = nil,
         scrollOffsetY: Double = 0,
+        pendingScrollRestore: Bool = false,
+        isOfflinePage: Bool = false,
         lastGoodUrl: String = "",
         lastGoodTitle: String = "",
         privacyMode: BrowserSessionPrivacyMode = .regular,
@@ -481,6 +494,8 @@ public final class BrowserTabState: Identifiable {
         self.lastCrashReason = lastCrashReason
         self.lastLoadedAt = lastLoadedAt
         self.scrollOffsetY = scrollOffsetY
+        self.pendingScrollRestore = pendingScrollRestore
+        self.isOfflinePage = isOfflinePage
         self.lastGoodUrl = lastGoodUrl
         self.lastGoodTitle = lastGoodTitle
         self.privacyMode = privacyMode
@@ -547,6 +562,8 @@ public final class BrowserTabState: Identifiable {
         lastGoodUrl = record.lastGoodUrl
         lastGoodTitle = record.lastGoodTitle
         scrollOffsetY = record.scrollOffsetY
+        pendingScrollRestore = record.scrollOffsetY > 1
+        isOfflinePage = false
         lastRestoreReason = restoreReason
         runtimeState = record.isHome ? .active : .cold
         loadState = .idle

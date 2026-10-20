@@ -63,6 +63,12 @@ struct BrowserShellView: View {
     @State private var showAddBookmarkChoice = false
     @State private var showShareSheet = false
     @State private var showFindBar = false
+    /// The page-translation panel.
+    @State private var showTranslation = false
+    /// The shelf of saved offline pages.
+    @State private var showOfflinePages = false
+    /// A one-line result from saving a page: "已保存" or the reason it failed.
+    @State private var offlineNotice: String?
     @State private var findQuery = ""
     /// The debounce behind the find field. Typing is what runs the search.
     @State private var findDebounceTask: Task<Void, Never>?
@@ -371,12 +377,12 @@ struct BrowserShellView: View {
             updateChromeForeground()
             // The hardware-keyboard menu is built by the app; this is the one
             // handler it can call into.
-            env.commands.register { command in
+            env.commands.register(owner: env.windowId) { command in
                 handleBrowserCommand(command)
             }
         }
         .onDisappear {
-            env.commands.unregister()
+            env.commands.unregister(owner: env.windowId)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.keyboardWillChangeFrameNotification)) { note in
             let end = (note.userInfo?[UIApplication.keyboardFrameEndUserInfoKey] as? NSValue)?
@@ -405,6 +411,9 @@ struct BrowserShellView: View {
         .onChange(of: tabManager.activeTabId) { _, _ in
             isReaderActive = false
             readerArticle = nil
+            // A translation belongs to the document it was applied to.
+            showTranslation = false
+            env.translation.reset()
             showFindBar = false
             findQuery = ""
             chromeHidden = false
@@ -421,6 +430,8 @@ struct BrowserShellView: View {
         }
         .onChange(of: activeTab?.url) { _, _ in
             // A new document is a fresh read: the chrome comes back for it.
+            showTranslation = false
+            env.translation.reset()
             chromeHidden = false
             scrollTracker.accumulation = 0
             syncAddressText()
@@ -526,6 +537,24 @@ struct BrowserShellView: View {
                 ShareSheet(items: [url])
             }
         }
+        .sheet(isPresented: $showTranslation) {
+            if let webView = activeWebView {
+                TranslationSheet(
+                    webView: webView,
+                    target: env.settings.translationSettings.target
+                )
+                .environment(env)
+                .browserAmbientSheet()
+            }
+        }
+        .sheet(isPresented: $showOfflinePages) {
+            NavigationStack {
+                OfflinePagesView(onOpen: openOfflinePage)
+            }
+            .environment(env)
+            .browserListSurface()
+            .browserAmbientSheet()
+        }
         .sheet(isPresented: $showMenu) {
             MenuPanelView(
                 tiles: env.settings.menuLayout.visibleTiles,
@@ -574,6 +603,18 @@ struct BrowserShellView: View {
             )
             .environment(env)
             .browserAmbientSheet()
+        }
+        .alert(
+            "离线页面",
+            isPresented: Binding(
+                get: { offlineNotice != nil },
+                set: { if !$0 { offlineNotice = nil } }
+            ),
+            presenting: offlineNotice
+        ) { _ in
+            Button("好") { offlineNotice = nil }
+        } message: { message in
+            Text(message)
         }
         .alert(
             "无法打开该地址",
@@ -1865,6 +1906,51 @@ struct BrowserShellView: View {
         }
     }
 
+    /// Saves the active page's archive, then reports the result in one line.
+    private func saveOfflinePage() {
+        guard let tab = activeTab, !tab.isHome,
+              let webView = tabManager.webView(for: tab.id) else { return }
+        let urlString = tab.url
+        let title = tab.title
+        let favicon = tab.faviconUrl
+        Task { @MainActor in
+            let result = await env.offlinePages.save(
+                webView: webView,
+                urlString: urlString,
+                title: title,
+                faviconUrl: favicon
+            )
+            switch result {
+            case .success:
+                offlineNotice = "页面已保存，可以在离线页面中打开。"
+            case let .failure(error):
+                offlineNotice = error.localizedDescription
+            }
+        }
+    }
+
+    /// Opens a saved archive in a fresh tab.
+    ///
+    /// The archive is handed to the tab's web view directly; the tab then owns
+    /// the document exactly as it owns a network page, so back/forward, find,
+    /// reader and translation all keep working.
+    private func openOfflinePage(_ page: OfflinePageRecord) {
+        showOfflinePages = false
+        guard let data = env.offlinePages.archiveData(for: page),
+              let url = URL(string: page.originalUrl) else {
+            offlineNotice = "离线文件已丢失，请重新保存这个页面。"
+            return
+        }
+        let tab = tabManager.createTab(openSource: .user)
+        tabManager.loadOfflineArchive(
+            data: data,
+            baseURL: url,
+            title: page.displayTitle,
+            in: tab
+        )
+        env.offlinePages.markOpened(page)
+    }
+
     /// Whether the menu's page-bound actions have something to act on.
     private var canActOnPage: Bool {
         guard let tab = activeTab, !tab.isHome else { return false }
@@ -1894,6 +1980,7 @@ struct BrowserShellView: View {
             case .bookmarks: showBookmarks = true
             case .history: showHistory = true
             case .downloads: showDownloads = true
+            case .offlinePages: showOfflinePages = true
             case .settings: showSettings = true
             case .bookshelf: showBookshelf = true
             case .passwords: showPasswords = true
@@ -1923,6 +2010,12 @@ struct BrowserShellView: View {
             // user asked the browser not to offer.
             guard env.settings.preferences.readerModeAvailable else { break }
             activateReaderMode()
+        case .translate:
+            showTranslation = true
+        case .saveOfflinePage:
+            saveOfflinePage()
+        case .offlinePages:
+            showOfflinePages = true
         case .novel:
             activateNovelMode()
         case .bookshelf:

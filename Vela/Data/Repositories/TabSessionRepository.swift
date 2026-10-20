@@ -126,6 +126,25 @@ public final class TabSessionRepository: @unchecked Sendable {
         )
     }
 
+    /// Deletes every window's session except the named ones.
+    ///
+    /// Called once at launch. A Stage Manager session that is not running any
+    /// more leaves its rows behind, and those rows must not be mistaken for a
+    /// window the next launch should restore — every window that *is* opened
+    /// gets the session belonging to its own identifier.
+    public func removeSessions(except windowIds: Set<String>) throws {
+        let rows = try database.query(
+            "SELECT DISTINCT window_id FROM \(BrowserSchema.tabSessionsTable)",
+            row: { $0.string(at: 0) }
+        )
+        for windowId in rows where !windowIds.contains(windowId) {
+            try database.execute(
+                "DELETE FROM \(BrowserSchema.tabSessionsTable) WHERE window_id = ?",
+                [.text(windowId)]
+            )
+        }
+    }
+
     // MARK: - Recently closed
 
     /// The list is capped so a

@@ -223,6 +223,10 @@ public final class BrowserWebCoordinator: NSObject {
     }
 
     private func handleScrollMessage(_ message: WKScriptMessage, tab: BrowserTabState, webView: WKWebView) {
+        // The reporter runs in every frame. A scrolling iframe reports its own
+        // `window.scrollY`, which has nothing to do with the tab's document and
+        // would overwrite the position the tab is supposed to restore.
+        guard message.frameInfo.isMainFrame else { return }
         guard let payload = message.body as? [String: Any],
               let offset = payload["offsetY"] as? Double else { return }
         tab.scrollOffsetY = offset
@@ -1199,7 +1203,8 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
 
             tab.isHome = false
             tab.loadState = .committed
-            if let url = webView.url {
+            if let url = webView.url,
+               !(tab.isOfflinePage && url.absoluteString.hasPrefix("about:")) {
                 tab.url = url.absoluteString
                 // The one write of `committedUrl`: a document arrived, and this
                 // is it. Everything else that changes `tab.url` is a request or a
@@ -1257,7 +1262,8 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             // over a working page after a successful retry.
             tab.lastFailure = nil
             tab.runtimeState = tab.id == self.tabManager?.activeTabId ? .active : .background
-            if let url = webView.url {
+            if let url = webView.url,
+               !(tab.isOfflinePage && url.absoluteString.hasPrefix("about:")) {
                 tab.url = url.absoluteString
                 tab.pendingUrl = ""
                 // The last-good pair is what the error surface offers as "go
@@ -1279,6 +1285,10 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             }
             tab.canGoBack = webView.canGoBack
             tab.canGoForward = webView.canGoForward
+            // A tab whose web view the pool let go comes back at the top of a
+            // fresh document; this is the one event that says the document is
+            // ready to be scrolled.
+            self.restoreScrollPosition(of: tab, in: webView)
             self.log(
                 tab: tab,
                 event: .finish,
@@ -1296,10 +1306,28 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         }
     }
 
+    /// Restores the position a discarded or restored tab was left at.
+    ///
+    /// The flag is consumed here, once, so an ordinary navigation later in the
+    /// same tab does not jump back to a place the user has already left.
+    @MainActor
+    private func restoreScrollPosition(of tab: BrowserTabState, in webView: WKWebView) {
+        guard tab.pendingScrollRestore else { return }
+        tab.pendingScrollRestore = false
+        guard tab.scrollOffsetY > 1 else { return }
+        webView.evaluateJavaScript(
+            WebPageScripts.scrollRestoreScript(offsetY: tab.scrollOffsetY),
+            completionHandler: nil
+        )
+    }
+
     /// Records a page title on the tab and in the history.
     @MainActor
     private func apply(title: String, to tab: BrowserTabState, in webView: WKWebView) {
         tab.title = title
+        // A saved page is not a visit; recording its title would edit the
+        // history row of the last time the user was actually online.
+        guard !tab.isOfflinePage else { return }
         guard let url = webView.url else { return }
         history.updateTitle(
             url: url,
