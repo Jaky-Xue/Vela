@@ -312,6 +312,13 @@ private struct BackgroundStyleSwatch: View {
                 Color(red: 0.67, green: 0.57, blue: 0.92),
                 Color(red: 0.58, green: 0.48, blue: 0.88)
             ]
+        case .colorful:
+            return [
+                Color(red: 1.00, green: 0.78, blue: 0.85),
+                Color(red: 0.64, green: 0.95, blue: 0.89),
+                Color(red: 0.60, green: 0.82, blue: 0.98),
+                Color(red: 0.82, green: 0.74, blue: 0.98)
+            ]
         }
     }
 }

@@ -108,6 +108,10 @@ struct NovelReaderView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // The reading surface runs under the home indicator. Ending it at
+            // the safe area left a strip of bare field below the paper — the
+            // blank band under the chapter the reader could do nothing with.
+            .ignoresSafeArea(edges: .bottom)
         }
         .overlay(alignment: .top) {
             if chromeVisible {
@@ -656,8 +660,14 @@ struct NovelReaderView: View {
               max-width: 680px;
               width: calc(100% - 24px);
               box-sizing: border-box;
-              margin: 8px auto 18px auto;
-              padding: 22px 22px 56px 22px;
+              margin: 8px auto;
+              /* The sheet reaches the bottom of the reading surface rather
+                 than stopping where the text does, so a short chapter is a
+                 page and not a card with a band of empty field under it. */
+              min-height: calc(100vh - 16px);
+              /* The surface runs under the home indicator now, so the last
+                 line has to clear it as well as the floating chapter bar. */
+              padding: 22px 22px calc(24px + env(safe-area-inset-bottom, 0px)) 22px;
               border-radius: 24px;
               background: \(paper);
               box-shadow: 0 18px 60px rgba(0, 0, 0, \(dark ? "0.35" : "0.10"));
@@ -827,6 +837,12 @@ private struct NovelChapterWebView: UIViewRepresentable {
             action: #selector(Coordinator.handleCenterTap(_:))
         )
         centerTap.cancelsTouchesInView = false
+        // WebKit installs its own recognizers on the page, and a tap beside
+        // them is cancelled the moment one of them wins. The reader opens with
+        // its controls hidden, so a tap that never reaches this handler leaves
+        // the chapter with no way to reach the next one; the coordinator
+        // allows the two families to recognise together.
+        centerTap.delegate = context.coordinator
         webView.addGestureRecognizer(centerTap)
 
         context.coordinator.webView = webView
@@ -885,7 +901,7 @@ private struct NovelChapterWebView: UIViewRepresentable {
     })();
     """
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, UIGestureRecognizerDelegate {
         let onProgress: (Double) -> Void
         var onCenterTap: () -> Void
         weak var webView: WKWebView?
@@ -911,6 +927,17 @@ private struct NovelChapterWebView: UIViewRepresentable {
                 && point.y <= bounds.height * 0.8
             guard inMiddleHorizontally && inMiddleVertically else { return }
             onCenterTap()
+        }
+
+        /// The page's own recognizers — WebKit's link and text taps — are
+        /// allowed to run alongside the reading tap. They do not compete for
+        /// the same outcome: one follows the copy's links, the other moves the
+        /// chrome, and a long press still selects text.
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

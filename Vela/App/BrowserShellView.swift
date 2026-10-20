@@ -775,6 +775,11 @@ struct BrowserShellView: View {
             .padding(.horizontal, 4)
             .frame(height: BrowserChrome.barHeight)
             .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
+            // The two clusters are fixed-size; only the field is
+            // flexible. Without the priority the field can take the
+            // width before the clusters are asked for theirs, which
+            // pushes them off the edges of the bar.
+            .layoutPriority(1)
 
             OmniboxView(
                 viewModel: omnibox,
@@ -807,6 +812,11 @@ struct BrowserShellView: View {
             .padding(.horizontal, 4)
             .frame(height: BrowserChrome.barHeight)
             .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
+            // The two clusters are fixed-size; only the field is
+            // flexible. Without the priority the field can take the
+            // width before the clusters are asked for theirs, which
+            // pushes them off the edges of the bar.
+            .layoutPriority(1)
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)

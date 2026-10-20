@@ -376,6 +376,27 @@ struct OmniboxTextField: UIViewRepresentable {
         }
     }
 
+    /// The field takes exactly the width the bar offers it.
+    ///
+    /// A `UITextField` answers a size query with an intrinsic width of its own,
+    /// and once it has been laid out it can answer with the bounds it already
+    /// has instead. In the iPad top bar — two fixed clusters around one field
+    /// that is meant to take whatever is left — that answer let the field claim
+    /// the whole bar: the sidebar and back buttons were pushed off the leading
+    /// edge and the menu off the trailing one, so the bar read as a field that
+    /// had lost its controls. The bar is the only thing that knows how much
+    /// room is left, so its proposal is the only right answer.
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: OmniboxUITextField,
+        context: Context
+    ) -> CGSize? {
+        CGSize(
+            width: proposal.width ?? 200,
+            height: proposal.height ?? (BrowserChrome.barHeight - 8)
+        )
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
     }

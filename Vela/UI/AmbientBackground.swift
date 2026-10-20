@@ -11,11 +11,13 @@
 //  page scrolled. The light here is fixed, with a neutral veil and a fine
 //  grain that keep the large gradients from banding.
 //
-//  Six fields, warm and cool, separated by hue rather than by saturation:
+//  Seven fields, warm and cool, separated by hue rather than by saturation:
 //  暖阳 (peach/orange), 晚霞 (coral/rose), 青柠 (yellow-green), 极光
-//  (mint/teal), 冰川 (azure) and 紫雾 (violet). The light bases are pale so
-//  text stays legible; each mesh carries enough chroma for the choice to be
-//  obvious at a glance.
+//  (mint/teal), 冰川 (azure), 紫雾 (violet) and 缤纷 (rose, mint, sky and
+//  violet together). The light bases are pale so text stays legible; each
+//  mesh carries enough chroma for the choice to be obvious at a glance.
+//  纯净, the palette surface, is the shipped default: a new install starts on
+//  the plain surface and the fields are a choice, not an imposition.
 //
 
 import SwiftUI
@@ -42,6 +44,8 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
     case glacier
     /// Lavender and violet: the cool dusk field.
     case violet
+    /// Rose, mint, sky and violet at once: the field with no single hue.
+    case colorful
 
     public var id: String { rawValue }
 
@@ -54,6 +58,7 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
         case .aurora: return "极光"
         case .glacier: return "冰川"
         case .violet: return "紫雾"
+        case .colorful: return "缤纷"
         }
     }
 
@@ -66,6 +71,7 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
         case .aurora: return "薄荷与青绿"
         case .glacier: return "冰蓝与天青"
         case .violet: return "薰衣草与紫罗兰"
+        case .colorful: return "玫红、薄荷、晴空与紫罗兰"
         }
     }
 
@@ -78,6 +84,7 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
         case .aurora: return "sparkles"
         case .glacier: return "snowflake"
         case .violet: return "moon.stars.fill"
+        case .colorful: return "paintpalette.fill"
         }
     }
 
@@ -89,16 +96,17 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
     /// Raw values that no longer name a case map to the field closest in
     /// role, so an existing choice is kept rather than reset: the old warm
     /// `amber` becomes 暖阳, and the older `dawn`/`midnight` pair becomes
-    /// 暖阳/冰川.
+    /// 暖阳/冰川. No value at all — what a fresh install has — resolves to
+    /// 纯净, which is the shipped default.
     public static func resolve(_ rawValue: String?) -> BrowserBackgroundStyle {
-        guard let rawValue else { return .sunrise }
+        guard let rawValue else { return .solid }
         if let style = BrowserBackgroundStyle(rawValue: rawValue) {
             return style
         }
         switch rawValue {
         case "amber", "dawn": return .sunrise
         case "midnight": return .glacier
-        default: return .sunrise
+        default: return .solid
         }
     }
 }
@@ -106,7 +114,7 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
 // MARK: - Environment
 
 private struct BrowserBackgroundStyleKey: EnvironmentKey {
-    static let defaultValue: BrowserBackgroundStyle = .sunrise
+    static let defaultValue: BrowserBackgroundStyle = .solid
 }
 
 extension EnvironmentValues {
@@ -297,6 +305,18 @@ struct AmbientBackgroundView: View {
                     Color(red: 0.925, green: 0.890, blue: 0.984),
                     Color(red: 0.961, green: 0.941, blue: 1.000)
                 ]
+        case .colorful:
+            return colorScheme == .dark
+                ? [
+                    Color(red: 0.129, green: 0.082, blue: 0.133),
+                    Color(red: 0.067, green: 0.114, blue: 0.141),
+                    Color(red: 0.110, green: 0.090, blue: 0.169)
+                ]
+                : [
+                    Color(red: 1.000, green: 0.965, blue: 0.973),
+                    Color(red: 0.941, green: 0.988, blue: 0.996),
+                    Color(red: 0.969, green: 0.957, blue: 1.000)
+                ]
         }
     }
 
@@ -467,6 +487,30 @@ struct AmbientBackgroundView: View {
                     Color(red: 0.847, green: 0.796, blue: 0.969),
                     Color(red: 0.733, green: 0.659, blue: 0.933),
                     Color(red: 0.961, green: 0.945, blue: 1.000)
+                ]
+        case .colorful:
+            return dark
+                ? [
+                    Color(red: 0.145, green: 0.086, blue: 0.129),
+                    Color(red: 0.290, green: 0.122, blue: 0.208),
+                    Color(red: 0.325, green: 0.180, blue: 0.110),
+                    Color(red: 0.086, green: 0.220, blue: 0.200),
+                    Color(red: 0.110, green: 0.220, blue: 0.365),
+                    Color(red: 0.180, green: 0.165, blue: 0.400),
+                    Color(red: 0.267, green: 0.161, blue: 0.365),
+                    Color(red: 0.365, green: 0.165, blue: 0.290),
+                    Color(red: 0.098, green: 0.110, blue: 0.180)
+                ]
+                : [
+                    Color(red: 1.000, green: 0.949, blue: 0.961),
+                    Color(red: 1.000, green: 0.831, blue: 0.878),
+                    Color(red: 1.000, green: 0.890, blue: 0.769),
+                    Color(red: 0.839, green: 0.973, blue: 0.957),
+                    Color(red: 0.733, green: 0.898, blue: 0.996),
+                    Color(red: 0.769, green: 0.741, blue: 0.988),
+                    Color(red: 0.910, green: 0.831, blue: 0.996),
+                    Color(red: 0.996, green: 0.800, blue: 0.898),
+                    Color(red: 0.953, green: 0.973, blue: 1.000)
                 ]
         }
     }
@@ -716,6 +760,33 @@ struct AmbientBackgroundView: View {
                 spec(
                     Color(red: 0.84, green: 0.80, blue: 0.98),
                     Color(red: 0.34, green: 0.28, blue: 0.60),
+                    x: 0.10, y: 0.86, diameter: 0.80,
+                    lightOpacity: 0.18, darkOpacity: 0.12
+                )
+            ]
+        case .colorful:
+            return [
+                spec(
+                    Color(red: 1.00, green: 0.78, blue: 0.85),
+                    Color(red: 0.78, green: 0.40, blue: 0.56),
+                    x: 0.14, y: 0.12, diameter: 1.20,
+                    lightOpacity: 0.34, darkOpacity: 0.22
+                ),
+                spec(
+                    Color(red: 0.64, green: 0.95, blue: 0.89),
+                    Color(red: 0.24, green: 0.62, blue: 0.55),
+                    x: 0.86, y: 0.28, diameter: 1.10,
+                    lightOpacity: 0.30, darkOpacity: 0.20
+                ),
+                spec(
+                    Color(red: 0.60, green: 0.82, blue: 0.98),
+                    Color(red: 0.22, green: 0.44, blue: 0.72),
+                    x: 0.74, y: 0.86, diameter: 1.15,
+                    lightOpacity: 0.30, darkOpacity: 0.20
+                ),
+                spec(
+                    Color(red: 0.82, green: 0.74, blue: 0.98),
+                    Color(red: 0.42, green: 0.32, blue: 0.72),
                     x: 0.10, y: 0.86, diameter: 0.80,
                     lightOpacity: 0.18, darkOpacity: 0.12
                 )
