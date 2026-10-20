@@ -63,6 +63,10 @@ struct VelaApp: App {
 private struct BrowserWindowRoot: View {
     @StateObject private var store: WindowEnvironmentStore
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var systemColorScheme
+    /// Bumped when any window sees the system appearance change, so every
+    /// window's body re-resolves its dynamic colours.
+    @State private var systemAppearanceRevision = 0
 
     @MainActor
     init(services: AppServices) {
@@ -73,6 +77,7 @@ private struct BrowserWindowRoot: View {
 
     var body: some View {
         windowSurface
+            .background(Color.clear.id(systemAppearanceRevision))
             .onOpenURL { url in
                 handleInboundUrl(url)
             }
@@ -121,6 +126,26 @@ private struct BrowserWindowRoot: View {
                 // pass, so the whole window — including a presented settings
                 // sheet — changes in the same frame as the choice.
                 mode.applyToAllWindows()
+            }
+            .onChange(of: systemColorScheme) { _, scheme in
+                // 跟随系统: UIKit updates the active window first. Tell every
+                // window — including a Stage Manager window that is not key —
+                // to re-render instead of waiting for its next activation.
+                guard environment.settings.appearanceMode == .system else { return }
+                // Off the update pass: every window, this one included,
+                // re-renders from the notification.
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .velaSystemAppearanceChanged,
+                        object: scheme
+                    )
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .velaSystemAppearanceChanged)) { _ in
+                systemAppearanceRevision &+= 1
+                if environment.settings.appearanceMode == .system {
+                    AppearanceMode.system.applyToAllWindows()
+                }
             }
             .onAppear {
                 environment.settings.appearanceMode.applyToAllWindows()

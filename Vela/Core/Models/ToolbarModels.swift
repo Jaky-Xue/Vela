@@ -67,7 +67,7 @@ enum ToolbarControl: String, CaseIterable, Codable, Sendable, Identifiable, Hash
         case .back: return "chevron.left"
         case .home: return "house"
         case .tabs: return "square.on.square"
-        case .menu: return "ellipsis"
+        case .menu: return "line.3.horizontal"
         case .bookmarks: return "book"
         case .history: return "clock.arrow.circlepath"
         case .downloads: return "arrow.down.circle"

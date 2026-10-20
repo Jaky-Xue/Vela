@@ -173,7 +173,7 @@ struct BrowserShellView: View {
 
     static let padSidebarWidth: CGFloat = 286
     /// The top bar's laid-out height: 46 for the glass row plus its 8/6 gaps.
-    static let padTopBarHeight: CGFloat = 60
+    static var padTopBarHeight: CGFloat { 8 + BrowserChrome.barHeight + 6 }
 
     /// Whether the shell draws the iPad layout.
     ///

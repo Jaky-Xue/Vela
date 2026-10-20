@@ -65,15 +65,6 @@ struct GeneralSettingsView: View {
             }
 
             Section {
-                Toggle("文章阅读", isOn: Binding(
-                    get: { env.settings.preferences.readerModeAvailable },
-                    set: { value in env.settings.update { $0.readerModeAvailable = value } }
-                ))
-            } header: {
-                Text("阅读")
-            }
-
-            Section {
                 ForEach(InterfaceLayoutMode.allCases) { mode in
                     Button {
                         env.settings.interfaceLayout = mode

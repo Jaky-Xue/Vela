@@ -81,9 +81,21 @@ public enum AppearanceMode: String, CaseIterable, Codable, Sendable, Identifiabl
             guard let windowScene = scene as? UIWindowScene else { continue }
             for window in windowScene.windows {
                 window.overrideUserInterfaceStyle = userInterfaceStyle
+                // A Stage Manager window that is not key may not redraw on the
+                // trait change alone; laying it out here resolves its dynamic
+                // colours in the same pass as the active window.
+                window.setNeedsLayout()
+                window.layoutIfNeeded()
             }
         }
     }
+}
+
+public extension Notification.Name {
+    /// Broadcast when the system appearance changes while 跟随系统 is active.
+    /// Every window observes it so an inactive Stage Manager window changes
+    /// with the active one.
+    static let velaSystemAppearanceChanged = Notification.Name("org.vela.system-appearance-changed")
 }
 
 /// Applies the user's appearance choice inside a presented sheet.
@@ -350,7 +362,7 @@ enum BrowserRadius {
     static let sheet: CGFloat = 20
     /// The address field. Rounder than a generic field because the omnibox is
     /// the one control the whole chrome is arranged around — at 22 pt on a
-    /// 46 pt bar it reads as a capsule without losing the straight edges that
+    /// 52 pt bar it reads as a capsule without losing the straight edges that
     /// keep a long URL from looking squeezed.
     static let omnibox: CGFloat = 22
     /// The floating bar the toolbar sits in, and every other panel that has to
@@ -389,10 +401,10 @@ enum BrowserChrome {
     static let barGap: CGFloat = 2
     /// The command bar's own height.
     ///
-    /// Forty-six rather than forty: at forty the field inside the glass read
-    /// thinner than the capsule around it and the address sat on a sliver.
-    /// The omnibox radius was drawn for this height.
-    static let barHeight: CGFloat = 46
+    /// Fifty-two rather than forty-six: the field inside the glass read too
+    /// thin against the capsule around it, and a search bar is a primary tap
+    /// target. The omnibox radius still reads as a capsule at this height.
+    static let barHeight: CGFloat = 52
     /// The chrome's total height measured below the status bar, from the top of
     /// the safe area to where the page begins. This is the number the web
     /// view's top content inset is set to, and the number every surface that

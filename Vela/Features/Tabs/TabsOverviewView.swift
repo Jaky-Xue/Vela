@@ -241,7 +241,7 @@ struct TabsOverviewView: View {
             }
             .disabled(visibleTabs.isEmpty)
         } label: {
-            headerCircle("ellipsis")
+            headerCircle("line.3.horizontal")
         }
         .accessibilityLabel("标签页操作")
     }

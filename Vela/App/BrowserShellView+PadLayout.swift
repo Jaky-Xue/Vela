@@ -139,7 +139,7 @@ extension BrowserShellView {
                     }
 
                     chromeButton(
-                        symbol: "ellipsis",
+                        symbol: "line.3.horizontal",
                         isEnabled: true,
                         label: "菜单",
                         foreground: padInk
