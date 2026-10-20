@@ -16,6 +16,10 @@ name: Build unsigned IPA
 # separately.
 
 on:
+  # Temporary: lets a push start the build while the dispatch API is
+  # unreachable. Removed in the follow-up commit.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       configuration:
