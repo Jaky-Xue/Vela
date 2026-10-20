@@ -105,8 +105,12 @@ enum NovelModeService {
     static func isLikelyNovel(_ url: String) -> Bool {
         guard let parsed = URL(string: url), parsed.host != nil else { return false }
         let path = parsed.path.lowercased()
-        if path.isEmpty || path == "/" { return false }
-        if path.contains("search") || path.contains("query") || path.contains("login") {
+        // Some novel sites are hash-routed SPAs: the chapter lives in the
+        // fragment (`#/book/2530/1.html`) and the path is just `/`.
+        let fragment = parsed.fragment?.lowercased() ?? ""
+        if (path.isEmpty || path == "/"), fragment.isEmpty { return false }
+        let route = path + "|" + fragment
+        if route.contains("search") || route.contains("query") || route.contains("login") {
             return false
         }
         return true

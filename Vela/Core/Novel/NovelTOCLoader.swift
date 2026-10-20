@@ -69,7 +69,14 @@ final class NovelTOCLoader: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard webView === self.webView else { return }
         Task { @MainActor [weak self] in
-            let entries = await NovelModeService.extractTOC(from: webView)
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            var entries = await NovelModeService.extractTOC(from: webView)
+            if entries == nil {
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                guard !Task.isCancelled else { return }
+                entries = await NovelModeService.extractTOC(from: webView)
+            }
             self?.finish(entries)
         }
     }

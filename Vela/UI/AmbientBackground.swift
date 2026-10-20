@@ -197,7 +197,10 @@ struct AmbientBackgroundView: View {
                 endPoint: .bottomTrailing
             )
             if style.usesAmbient {
-                tokens.surface.opacity(colorScheme == .dark ? 0.10 : 0.16)
+                // Neutral, not the palette surface: a warm palette (朱砂,
+                // 莫兰迪) would otherwise tint every cool field warm.
+                (colorScheme == .dark ? Color.black : Color.white)
+                    .opacity(colorScheme == .dark ? 0.08 : 0.10)
             }
         }
     }

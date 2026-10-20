@@ -1999,7 +1999,14 @@ struct BrowserShellView: View {
         }
 
         Task { @MainActor in
-            guard let extraction = await NovelModeService.extract(from: webView, url: tab.url) else {
+            var extraction = await NovelModeService.extract(from: webView, url: tab.url)
+            if extraction == nil {
+                // A hash-routed chapter may still be painting after the user
+                // opens the menu; one delayed retry catches that.
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                extraction = await NovelModeService.extract(from: webView, url: tab.url)
+            }
+            guard let extraction else {
                 novelNotice = "没能从这一页提取出正文。它可能不是章节页，或正文由脚本动态加载。"
                 return
             }
