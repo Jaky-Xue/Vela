@@ -205,7 +205,6 @@ public final class NovelLibraryService {
             lastError = error.localizedDescription
         }
     }
-}
 
     // MARK: - Table of contents
 
@@ -243,3 +242,4 @@ public final class NovelLibraryService {
         guard entries.indices.contains(target) else { return nil }
         return (entries[target], target)
     }
+}
