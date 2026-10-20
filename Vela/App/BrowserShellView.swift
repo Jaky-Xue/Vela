@@ -429,23 +429,6 @@ struct BrowserShellView: View {
         .onChange(of: activeTab?.loadState) { _, _ in
             updateChromeForeground()
         }
-        .onChange(of: findQuery) { _, query in
-            // Typing drives the search. The field used to bind the query and
-            // nothing ran until the next/previous button was pressed, so a
-            // search looked like it did nothing at all. The short pause keeps
-            // one document walk off every keystroke.
-            findDebounceTask?.cancel()
-            let text = query
-            findDebounceTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 180_000_000)
-                guard !Task.isCancelled else { return }
-                if text.isEmpty {
-                    env.webCoordinator.clearFindInPage()
-                } else {
-                    env.webCoordinator.findInPage(text, forward: true, reset: true)
-                }
-            }
-        }
         .onChange(of: env.settings.preferences.backgroundImageStamp) { _, _ in
             updateChromeForeground()
         }
@@ -1560,6 +1543,14 @@ struct BrowserShellView: View {
                         env.webCoordinator.clearFindInPage()
                     }
                 )
+                // Typing drives the search. The field used to bind the query
+                // and nothing ran until the next/previous button was pressed,
+                // so a search looked like it did nothing at all. The watcher
+                // sits on the bar rather than on the shell's root chain, which
+                // is already at the type checker's budget.
+                .onChange(of: findQuery) { _, query in
+                    scheduleFind(for: query)
+                }
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
@@ -1971,6 +1962,24 @@ struct BrowserShellView: View {
             reloadActiveTab()
         case .settings:
             showSettings = true
+        }
+    }
+
+    /// Searches the page as the find field is typed.
+    ///
+    /// A short pause keeps one document walk off every keystroke; an empty
+    /// query clears the highlights instead. `reset` starts a changed query at
+    /// its first match rather than carrying the previous query's position.
+    private func scheduleFind(for query: String) {
+        findDebounceTask?.cancel()
+        findDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            guard !Task.isCancelled else { return }
+            if query.isEmpty {
+                env.webCoordinator.clearFindInPage()
+            } else {
+                env.webCoordinator.findInPage(query, forward: true, reset: true)
+            }
         }
     }
 
