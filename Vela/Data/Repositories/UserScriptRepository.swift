@@ -63,6 +63,7 @@ public final class UserScriptRepository: @unchecked Sendable {
             description: statement.string(at: 4),
             iconUrl: statement.string(at: 5),
             source: statement.string(at: 6),
+            metadataBlock: statement.string(at: 28),
             sourceUrl: statement.string(at: 7),
             updateUrl: statement.string(at: 8),
             downloadUrl: statement.string(at: 9),
@@ -82,8 +83,7 @@ public final class UserScriptRepository: @unchecked Sendable {
             installSource: UserScriptInstallSource(rawValue: statement.string(at: 23)) ?? .paste,
             createdAt: Date(milliseconds: statement.int(at: 25)),
             updatedAt: Date(milliseconds: statement.int(at: 26)),
-            lastCheckedAt: statement.optionalInt(at: 27).map { Date(milliseconds: $0) },
-            metadataBlock: statement.string(at: 28)
+            lastCheckedAt: statement.optionalInt(at: 27).map { Date(milliseconds: $0) }
         )
     }
 
