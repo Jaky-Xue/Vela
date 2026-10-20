@@ -58,6 +58,13 @@ final class OfflineAndTranslationTests: XCTestCase {
         XCTAssertNil(settings.siteRules)
     }
 
+    func testLanguageBaseCodeTreatsChineseVariantsAsOneLanguage() {
+        XCTAssertEqual(TranslationTargetLanguage.baseCode(of: "zh-Hans"), "zh")
+        XCTAssertEqual(TranslationTargetLanguage.baseCode(of: "zh-CN"), "zh")
+        XCTAssertEqual(TranslationTargetLanguage.baseCode(of: "zh-Hant"), "zh")
+        XCTAssertEqual(TranslationTargetLanguage.baseCode(of: "en-US"), "en")
+    }
+
     func testTranslationTargetKeepsItsCodeAcrossProviders() {
         XCTAssertEqual(TranslationTargetLanguage.simplifiedChinese.googleCode, "zh-CN")
         XCTAssertEqual(TranslationTargetLanguage.simplifiedChinese.deepLCode, "ZH")

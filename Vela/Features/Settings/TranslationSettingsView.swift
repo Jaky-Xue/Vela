@@ -97,7 +97,7 @@ struct TranslationSettingsView: View {
             } header: {
                 Text("翻译为")
             } footer: {
-                Text("每次翻译都可以在翻译面板里临时改目标语言，这里选择的是默认值。")
+                Text("每次翻译都可以在翻译栏的选项菜单里临时改目标语言，这里选择的是默认值。")
             }
 
             if settings.provider.requiresAPIKey {
