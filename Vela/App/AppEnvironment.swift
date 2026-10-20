@@ -306,6 +306,20 @@ public final class AppEnvironment {
         return directory
     }
 
+    /// The rules a source contributes, as the text the compiler reads.
+    ///
+    /// System lists ship in the binary; a subscription's text is whatever was
+    /// last downloaded. `nil` means there is nothing to show — a subscription
+    /// that has never been fetched, or a name that no longer exists.
+    public func adBlockRuleText(sourceId: String) -> String? {
+        if let text = AdBlockBuiltInRules.filterLists[sourceId] {
+            return text
+        }
+        guard let text = try? String(contentsOf: Self.filterListUrl(sourceId: sourceId), encoding: .utf8),
+              !text.isEmpty else { return nil }
+        return text
+    }
+
     static func filterListUrl(sourceId: String) -> URL {
         let safe = sourceId.replacingOccurrences(of: "/", with: "_")
         return filterListDirectory.appendingPathComponent("\(safe).txt")

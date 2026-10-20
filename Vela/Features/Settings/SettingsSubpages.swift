@@ -17,6 +17,16 @@ struct AdBlockSettingsView: View {
 
     @State private var newRule = ""
     @State private var updatingSourceId: String?
+    /// The index of the local rule under edit, and its text.
+    @State private var editingRuleIndex: Int?
+    @State private var editingRuleText = ""
+
+    private var isEditingRule: Binding<Bool> {
+        Binding(
+            get: { editingRuleIndex != nil },
+            set: { if !$0 { editingRuleIndex = nil } }
+        )
+    }
 
     var body: some View {
         List {
@@ -69,39 +79,43 @@ struct AdBlockSettingsView: View {
 
             Section {
                 ForEach(env.settings.adBlockSettings.ruleSources) { source in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(source.name)
-                            if !source.lastError.isEmpty {
-                                Text(source.lastError)
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
-                            } else if let updated = source.lastUpdatedAt {
-                                Text("更新于 \(updated.formatted(date: .abbreviated, time: .shortened))")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            } else if source.sourceType == .system {
-                                Text("随 App 内置")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text("尚未下载")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    NavigationLink {
+                        AdBlockSourceRulesView(source: source)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(source.name)
+                                if !source.lastError.isEmpty {
+                                    Text(source.lastError)
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                } else if let updated = source.lastUpdatedAt {
+                                    Text("更新于 \(updated.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else if source.sourceType == .system {
+                                    Text("随 App 内置")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text("尚未下载")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
-                        }
-                        Spacer()
-                        if updatingSourceId == source.id {
-                            ProgressView()
-                        }
-                        Toggle("", isOn: Binding(
-                            get: { source.enabled },
-                            set: { value in
-                                env.settings.setRuleSourceEnabled(value, sourceId: source.id)
-                                Task { await env.refreshAdBlockRules() }
+                            Spacer()
+                            if updatingSourceId == source.id {
+                                ProgressView()
                             }
-                        ))
-                        .labelsHidden()
+                            Toggle("", isOn: Binding(
+                                get: { source.enabled },
+                                set: { value in
+                                    env.settings.setRuleSourceEnabled(value, sourceId: source.id)
+                                    Task { await env.refreshAdBlockRules() }
+                                }
+                            ))
+                            .labelsHidden()
+                        }
                     }
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         if source.sourceType == .remote {
@@ -166,9 +180,26 @@ struct AdBlockSettingsView: View {
             }
 
             Section {
-                ForEach(env.settings.adBlockSettings.preferences.localRules, id: \.self) { rule in
-                    Text(rule)
-                        .font(.system(size: 13, design: .monospaced))
+                ForEach(
+                    Array(env.settings.adBlockSettings.preferences.localRules.enumerated()),
+                    id: \.offset
+                ) { index, rule in
+                    Button {
+                        editingRuleText = rule
+                        editingRuleIndex = index
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(rule)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(.primary)
+                            Spacer(minLength: 0)
+                            Image(systemName: "pencil")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
                 .onDelete { offsets in
                     var rules = env.settings.adBlockSettings.preferences.localRules
@@ -196,7 +227,7 @@ struct AdBlockSettingsView: View {
             } header: {
                 Text("自定义规则")
             } footer: {
-                Text("支持 Adblock Plus 语法的常见写法，例如 ||example.com^ 拦截整站、##.ad-banner 隐藏元素。")
+                Text("支持 Adblock Plus 语法的常见写法，例如 ||example.com^ 拦截整站、##.ad-banner 隐藏元素。点按一条规则即可修改，左滑删除。")
             }
 
             Section {
@@ -222,11 +253,147 @@ struct AdBlockSettingsView: View {
                 Text("在页面菜单中选择「隐藏页面元素」，然后点选要去掉的元素。")
             }
         }
+        .sheet(isPresented: isEditingRule) {
+            NavigationStack {
+                Form {
+                    Section {
+                        TextField("规则", text: $editingRuleText, axis: .vertical)
+                            .font(.system(size: 14, design: .monospaced))
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .lineLimit(3...10)
+                    } footer: {
+                        Text("保存后会立即重新编译规则。")
+                    }
+                }
+                .navigationTitle("编辑自定义规则")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("取消") { editingRuleIndex = nil }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("保存") { saveEditedLocalRule() }
+                            .disabled(
+                                editingRuleText
+                                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                                    .isEmpty
+                            )
+                    }
+                }
+            }
+            .browserAmbientSheet()
+        }
         .navigationTitle("广告与内容过滤")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             Task { await env.refreshAdBlockRules() }
         }
+    }
+
+    /// Writes the edited rule back and recompiles. A rule deleted while the
+    /// editor was open leaves nothing to write, so the index is checked.
+    private func saveEditedLocalRule() {
+        guard let index = editingRuleIndex else { return }
+        var rules = env.settings.adBlockSettings.preferences.localRules
+        guard rules.indices.contains(index) else {
+            editingRuleIndex = nil
+            return
+        }
+        rules[index] = editingRuleText.trimmingCharacters(in: .whitespacesAndNewlines)
+        env.settings.setLocalAdBlockRules(rules)
+        editingRuleIndex = nil
+        editingRuleText = ""
+        Task { await env.refreshAdBlockRules() }
+    }
+}
+
+// MARK: - One source's rules
+
+/// The rule text a source contributes, searchable and copyable.
+///
+/// Until this existed the only number a user could see was "已加载规则";
+/// the rules themselves — the shipped lists and every subscription — were
+/// compiled and never readable. System and subscription rules are shown as
+/// they are: editing them would be overwritten by the next update, so the
+/// one edit offered is to copy a rule into the user's own rules.
+struct AdBlockSourceRulesView: View {
+    @Environment(AppEnvironment.self) private var env
+
+    let source: AdBlockCustomRuleSource
+
+    @State private var text: String?
+    @State private var query = ""
+
+    private var lines: [String] {
+        guard let text else { return [] }
+        return text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var visibleLines: [String] {
+        let needle = query.trimmingCharacters(in: .whitespaces)
+        guard !needle.isEmpty else { return lines }
+        return lines.filter { $0.localizedCaseInsensitiveContains(needle) }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                if text != nil, !lines.isEmpty {
+                    ForEach(Array(visibleLines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(isComment(line) ? Color.secondary : Color.primary)
+                            .textSelection(.enabled)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button {
+                                    addLocalRule(line)
+                                } label: {
+                                    Label("加入自定义规则", systemImage: "plus")
+                                }
+                                .tint(.blue)
+                            }
+                    }
+                } else {
+                    ContentUnavailableView(
+                        text == nil ? "还没有规则内容" : "没有规则",
+                        systemImage: "shield.slash",
+                        description: Text(
+                            source.sourceType == .remote
+                                ? "这个订阅还没有下载，请回到上一页更新它。"
+                                : "这个来源目前没有规则。"
+                        )
+                    )
+                }
+            } header: {
+                Text("共 \(visibleLines.count) 条")
+            } footer: {
+                Text("规则按原样显示，以 ! 或 [ 开头的是注释与元数据。向左轻扫一条规则，可以把它加入自定义规则后再修改。")
+            }
+        }
+        .navigationTitle(source.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, prompt: "搜索规则")
+        .task {
+            if text == nil {
+                text = env.adBlockRuleText(sourceId: source.id) ?? ""
+            }
+        }
+    }
+
+    private func isComment(_ line: String) -> Bool {
+        line.hasPrefix("!") || line.hasPrefix("[")
+    }
+
+    private func addLocalRule(_ line: String) {
+        var rules = env.settings.adBlockSettings.preferences.localRules
+        guard !rules.contains(line) else { return }
+        rules.append(line)
+        env.settings.setLocalAdBlockRules(rules)
+        Task { await env.refreshAdBlockRules() }
     }
 }
 

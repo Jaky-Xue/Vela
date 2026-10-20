@@ -53,6 +53,8 @@ struct BrowserShellView: View {
     @State private var showHistory = false
     @State private var showDownloads = false
     @State private var showSettings = false
+    /// Whether the menu's 广告过滤 tile has its settings open over the panel.
+    @State private var showAdBlockSettings = false
     @State private var showPasswords = false
     @State private var showBookshelf = false
     @State private var showMenu = false
@@ -535,6 +537,13 @@ struct BrowserShellView: View {
             )
             .environment(env)
             .browserAmbientSheet()
+            // Presented over the panel rather than after it: the user can
+            // manage rule sources and close the screen back to the menu.
+            .sheet(isPresented: $showAdBlockSettings) {
+                NavigationStack { AdBlockSettingsView() }
+                    .environment(env)
+                    .browserAmbientSheet()
+            }
         }
         .sheet(isPresented: $showAddBookmarkChoice) {
             AddBookmarkChoiceSheet(
@@ -1861,6 +1870,14 @@ struct BrowserShellView: View {
 
     /// Runs one tile from the menu panel.
     private func handleMenuAction(_ action: VelaMenuAction) {
+        // 广告过滤 opens its settings instead of toggling in place. The panel
+        // is not where rule sources or custom rules can be managed, and a
+        // toggle that dismissed the panel and changed nothing on screen is
+        // exactly what read as a button that did nothing.
+        if action == .adBlock {
+            showAdBlockSettings = true
+            return
+        }
         showMenu = false
         guard let tab = activeTab else {
             switch action {
@@ -1929,7 +1946,8 @@ struct BrowserShellView: View {
         case .leavePrivate:
             Task { await env.endPrivateSession() }
         case .adBlock:
-            toggleAdBlock()
+            // Handled above, before the panel is dismissed.
+            break
         case .reload:
             reloadActiveTab()
         case .settings:
