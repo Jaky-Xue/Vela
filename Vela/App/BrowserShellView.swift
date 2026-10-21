@@ -239,7 +239,7 @@ struct BrowserShellView: View {
         env.settings.preferences.backgroundImageStamp != nil
     }
 
-    var shellRoot: some View {
+    var shellBase: some View {
         ZStack {
             if showsBackgroundPictureAtRoot, let stamp = env.settings.preferences.backgroundImageStamp {
                 BackgroundPictureBackdrop(stamp: stamp)
@@ -261,6 +261,14 @@ struct BrowserShellView: View {
                 handleEdgeSwipeBack()
             }
         }
+    }
+
+    /// The full-screen layers that sit over the page: the phone command bar,
+    /// the floating tools, the tab overview, the scanner and the novel reader.
+    /// Kept apart from the base hierarchy so each expression the type checker
+    /// sees stays moderate.
+    var shellOverlays: some View {
+        shellBase
         .overlay(alignment: .bottom) {
             // The novel reader owns the screen while it is open: its own
             // header and chapter controls are the chrome. The iPad layout has
@@ -309,6 +317,11 @@ struct BrowserShellView: View {
         .animation(.snappy(duration: 0.2), value: showQRScanner)
         .overlay { novelReaderLayer }
         .animation(.snappy(duration: 0.24), value: novelSession?.id)
+    }
+
+    /// The shell's own alerts, split from the layers they cover.
+    var shellNotices: some View {
+        shellOverlays
         .alert(
             "无法进入小说模式",
             isPresented: Binding(
@@ -351,6 +364,12 @@ struct BrowserShellView: View {
                 """
             )
         }
+    }
+
+    /// Lifecycle and observation, split from the layers and notices so the
+    /// root chain the type checker sees is only a short composition.
+    var shellLifecycle: some View {
+        shellNotices
         // The keyboard never rearranges the shell. Keyboard avoidance applied
         // to the bar itself does not hold: the bottom-aligned overlay resolves
         // its position against the container's safe area, which still contains
@@ -431,6 +450,8 @@ struct BrowserShellView: View {
             }
         }
     }
+
+    var shellRoot: some View { shellLifecycle }
 
     var body: some View {
         presentations()

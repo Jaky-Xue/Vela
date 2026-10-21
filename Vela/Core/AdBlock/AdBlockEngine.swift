@@ -276,7 +276,7 @@ public final class AdBlockEngine {
         )
     }
 
-    private static func exceptionRules(for hosts: [String]) -> [ContentBlockerRule] {
+    nonisolated private static func exceptionRules(for hosts: [String]) -> [ContentBlockerRule] {
         hosts.compactMap { host in
             let normalized = host.lowercased().trimmingCharacters(in: .whitespaces)
             guard !normalized.isEmpty else { return nil }

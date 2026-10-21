@@ -310,10 +310,8 @@ final class BrowserHarness {
         let database = try SQLiteDatabase(path: ":memory:")
         let history = HistoryService(repository: HistoryRepository(database: database), settings: settings)
         self.history = history
-        let bookmarks = BookmarkService(repository: BookmarkRepository(database: database))
         let downloads = DownloadService(repository: DownloadRepository(database: database), settings: settings)
         let userScripts = UserScriptRepository(database: database)
-        let searchHistory = SearchHistoryRepository(database: database)
         let sessions = TabSessionRepository(database: database)
 
         // The same store the app uses. A temporary store of the test's own would

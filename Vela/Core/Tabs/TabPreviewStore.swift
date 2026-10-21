@@ -19,9 +19,6 @@ import UIKit
 /// tens of megabytes of decoded bitmap for a strip nobody is looking at.
 @MainActor
 final class TabPreviewStore {
-    /// The long edge kept. A card at its widest is a few hundred points; 720
-    /// pixels covers it even at 3x with room for the cover-crop.
-    private static let maximumEdge: CGFloat = 720
     /// How many pictures the folder keeps across sessions. Closed tabs delete
     /// theirs; this is the bound for tabs that vanished without a close.
     private static let maximumFiles = 80
@@ -108,7 +105,10 @@ final class TabPreviewStore {
         return String(safe) + ".jpg"
     }
 
-    private static func downscaled(_ image: UIImage) -> UIImage {
+    nonisolated private static func downscaled(_ image: UIImage) -> UIImage {
+        // A card at its widest is a few hundred points; 720 pixels covers it
+        // even at 3x with room for the cover-crop.
+        let maximumEdge: CGFloat = 720
         let longEdge = max(image.size.width, image.size.height)
         guard longEdge > maximumEdge, longEdge > 0 else { return image }
         let scale = maximumEdge / longEdge
