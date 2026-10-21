@@ -164,8 +164,8 @@ extension BrowserWebCoordinator {
             webView.evaluateJavaScript(script, completionHandler: nil)
             return
         }
-        webView.evaluateJavaScript(script, in: frame, in: .page) { [weak webView] _, error in
-            guard error != nil, let webView else { return }
+        webView.evaluateJavaScript(script, in: frame, in: .page) { [weak webView] result in
+            guard case .failure = result, let webView else { return }
             webView.evaluateJavaScript(script, completionHandler: nil)
         }
     }
