@@ -223,15 +223,19 @@ final class NovelPrivacyTests: XCTestCase {
 
     // MARK: - Subresources (real WebKit)
 
-    func testPrivateLoaderSubresourcesDoNotWriteTheDefaultStore() async throws {
-        let cookieName = "vela_sub_\(UUID().uuidString.prefix(8))"
+    func testPrivateLoaderCookiesDoNotWriteTheDefaultStore() async throws {
+        // A loader-configured web view must put everything it fetches into the
+        // private store: the response's cookie is the cheapest observable proof
+        // of which store the view is attached to. This deliberately loads the
+        // cookie-setting response as the main document rather than as an
+        // iframe: an off-window web view's subframe scheduling is not a product
+        // contract, and the earlier iframe version failed on CI for that reason
+        // (F-06). The store choice itself is the contract under test.
+        let cookieName = "vela_loader_\(UUID().uuidString.prefix(8))"
         let server = try LocalHTTPServer(routes: [
-            "/chapter": .html(
-                "<html><body><iframe src=\"/sub\"></iframe><p>chapter</p></body></html>"
-            ),
-            "/sub": LocalHTTPServer.Response(
+            "/chapter": LocalHTTPServer.Response(
                 headers: ["Set-Cookie": "\(cookieName)=1; Path=/"],
-                body: "<html><body>subresource</body></html>"
+                body: "<html><body>chapter</body></html>"
             )
         ])
         let base = try await server.start()
@@ -246,9 +250,9 @@ final class NovelPrivacyTests: XCTestCase {
         webView.load(URLRequest(url: URL(string: "/chapter", relativeTo: base)!))
 
         let arrived = await waitForCookie(named: cookieName, in: privateStore)
-        XCTAssertTrue(arrived, "the subresource cookie should land in the private store")
+        XCTAssertTrue(arrived, "the loader response's cookie should land in the private store")
         let leaked = await cookie(named: cookieName, in: WKWebsiteDataStore.default())
-        XCTAssertNil(leaked, "the subresource must not write into the regular profile")
+        XCTAssertNil(leaked, "the private loader must not write into the regular profile")
     }
 
     // MARK: - Cookie helpers
