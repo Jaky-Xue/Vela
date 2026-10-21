@@ -265,6 +265,11 @@ public final class SQLiteDatabase: @unchecked Sendable {
     }
 
     deinit {
+        // `close()` takes the lock; the deinit path closes the same handle and
+        // must obey the same exclusion rule even though, by ARC's rules, no
+        // other reference can be running a query at this point.
+        lock.lock()
+        defer { lock.unlock() }
         if let handle {
             sqlite3_close_v2(handle)
         }

@@ -396,13 +396,20 @@ final class TabManagerTests: XCTestCase {
     func testBackgroundOpenedTabsRespectTheLiveWebViewCap() {
         let manager = makeManager()
         _ = manager.createTab()
+        var newest: BrowserTabState?
         for index in 0..<(TabManager.maximumLiveWebViews + 3) {
-            _ = manager.openTab(
+            newest = manager.openTab(
                 url: URL(string: "https://bg\(index).example")!,
                 activate: false
             )
         }
         XCTAssertLessThanOrEqual(manager.liveWebViewCount, TabManager.maximumLiveWebViews)
+        if let newest {
+            XCTAssertNotNil(
+                manager.webView(for: newest.id),
+                "the tab just opened must not be the view the cap discards"
+            )
+        }
     }
 
     // MARK: - Session

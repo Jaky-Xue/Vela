@@ -33,7 +33,7 @@ final class NovelChapterLoader: NSObject, WKNavigationDelegate {
     /// navigation failure, or a page that does not look like a chapter.
     func load(
         urlString: String,
-        dataStore: WKWebsiteDataStore = .default()
+        dataStore: WKWebsiteDataStore
     ) async -> NovelExtraction? {
         finish(nil)
 

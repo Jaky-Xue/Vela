@@ -20,7 +20,7 @@ final class TabDocumentIdentityTests: XCTestCase {
         let identity = TabDocumentIdentity(tab: tab)
 
         XCTAssertTrue(identity.matches(tab))
-        XCTAssertFalse(identity.matches(nil))
+        XCTAssertFalse(identity.matches(nil as BrowserTabState?))
         XCTAssertFalse(
             identity.matches(
                 BrowserTabState(

@@ -627,7 +627,9 @@ public final class TabManager {
         // it as the newest entry and enforce the cap here, not only on the next
         // activation; the new view is last in the victim order and survives.
         touchActivationOrder(tab.id)
-        enforceLiveWebViewCap()
+        // The tab whose view was just created is never a victim: a background
+        // open must not hand the caller a view the cap discards immediately.
+        enforceLiveWebViewCap(keepingTabId: tab.id)
         return webView
     }
 
@@ -901,10 +903,10 @@ public final class TabManager {
     /// tab in it can already be cold, so a victim list built from it may contain
     /// entries with nothing to release — and crediting one of those as a freed
     /// web view is what let the pool stay over the cap.
-    private func enforceLiveWebViewCap() {
+    private func enforceLiveWebViewCap(keepingTabId: String? = nil) {
         guard webViews.count > Self.maximumLiveWebViews else { return }
 
-        let candidates = activationOrder.filter { $0 != activeTabId }
+        let candidates = activationOrder.filter { $0 != activeTabId && $0 != keepingTabId }
         let orderedVictims = candidates.filter { tab(id: $0)?.pinned != true }
             + candidates.filter { tab(id: $0)?.pinned == true }
 

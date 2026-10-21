@@ -956,3 +956,92 @@ B2 的待办，不声称已经解决。
 | 实际构建 | **未执行** |
 | 实际测试 | **未执行** |
 | 模拟器/设备 | **未执行** |
+
+---
+
+## 18. B3–B7 / C2 / D 实施记录（2026-10-21，用户授权接管全流程）
+
+用户最后的指令是接管 B、C、D、E 全流程并产出安装包。以下记录在 C1 之后实际落地的改动；
+验证结果单列在 §19，未运行的项目不写成“通过”。
+
+### 18.1 B3：标签关闭清理点
+
+- `TabManager` 新增 `onWillCloseTab`，在 `closeTab` 与 `closeAllTabs` 销毁 WebView **之前**调用。
+- `BrowserWebCoordinator.cleanupClosedTab(_:)`：
+  - 以 `"<tabId>|"` 前缀取消该标签所有 GM XHR 任务；
+  - 删除 `userScriptTabStates[tabId]` 与 `overlays.userScriptMenuCommands` 中该标签的命令；
+  - 调用 `history.clearTabChain(tabId:)`（原 C4 计划中的“接入关闭清理”）；
+  - 移除该 WebView 的导航 trace。
+- GM XHR 的任务键改为 `"<tabId>|<scriptId>|<requestId>"`；流式响应每 64 KiB 检查一次取消。
+- `AppEnvironment` 接线；`TabCloseCleanupTests` 验证任务被取消、状态/菜单被删除。
+
+### 18.2 B4：WebView 池上限在创建时执行
+
+- `TabManager.ensureWebView` 创建后调用 `touchActivationOrder(tab.id)` 与 `enforceLiveWebViewCap()`。
+- 后台批量打开不会再把池推过 `maximumLiveWebViews`；淘汰从最久未激活且不在新标签上的 WebView 开始。
+- `TabManagerTests.testBackgroundOpenedTabsRespectTheLiveWebViewCap` 覆盖。
+
+### 18.3 B5：异步结果校验文档身份
+
+- 新增 `TabDocumentIdentity`（`tabId + navigationSerial + committedUrl`）及 `matches(_:)`。
+- 阅读模式、广告开关、小说模式在 `await` 之后、写回之前校验身份；广告开关只在身份匹配时重载。
+- `TabDocumentIdentityTests` 覆盖相同文档、换标签、换导航序号、换提交 URL。
+
+### 18.4 B6：最近关闭恢复与 element-hide 重置
+
+- `TabManager.restoreRecentlyClosed(_:)`：按关闭时间倒序、按 id 去重、上限 `recentlyClosedLimit`。
+- `AppEnvironment.bootWindow` 在会话恢复后读取最近关闭；私密记录仅在私密会话实际打开
+  （有私密标签或“无痕模式”开关为开）时载入，否则清理；不保留标签页时两种模式都清理。
+- `AppServices.clearAllBrowsingData` 不再把 `manualElementHide` 重置为 `.default`。
+- `TabManagerTests` 覆盖恢复排序与上限。
+
+### 18.5 B7：私密标签页的图标隐私
+
+- `SiteIconView.candidates(host:faviconUrl:allowsThirdParty:)`：不允许第三方时排除 Google favicon
+  服务，也排除跨主机的显式 favicon；同主机显式图标、`apple-touch-icon*`、`favicon.ico` 保留。
+- 总览卡片、iPad 侧栏、Omnibox 建议行按标签/活动标签的隐私模式传入；
+  `OmniboxViewModel.activePrivacyMode` 提供当前模式。
+- `SiteIconCandidateTests` 覆盖普通/私密/跨主机显式图标三种路径（纯函数，无网络）。
+
+### 18.6 C2：依赖收窄（部分）
+
+- `BrowserWebCoordinator` 删除未使用的 `bookmarks`、`searchHistory`、`sessionRepository`
+  构造参数；`AppEnvironment` 与 `BrowserHarness` 同步。
+- 未做：把 `Core` 拆成 `Models/Logic/Runtime` 子目录；`AppEnvironment` 仍是服务定位器（R-19）。
+- C4 的死代码删除只完成了一部分：`AddressBarView.swift` 曾在 C2/D 提交中被删除，但
+  `AddressBarRejection` 与 `BrowserUrlResolver` 实际仍被 Shell/Home/Bookmarks/Omnibox 使用，
+  导致 CI 编译失败；该文件已恢复；它并非死代码（仍含 `AddressBarRejection`、`BrowserUrlResolver`、`ProgressRing`），C4 的“删除 `AddressBarView.swift`”一项应改为文件名/文档整理，而不是删除。
+
+### 18.7 D2 / D3 / D5：主线程与重复工作
+
+- **D2**：`AdBlockEngine.compile` 的纯解析/校验/JSON 编码移入 `Task.detached`；
+  `exceptionRules` 标记 `nonisolated`；WebKit store 的安装仍在主 actor。
+  解析结果类型 `ParsedRules` 为 `Sendable`；规则上限与错误语义不变。
+- **D3**：`TabPreviewStore.store` 将缩放与 JPEG 编码移入 `Task.detached`；缓存写入回到
+  `MainActor.run`，文件写入在后台；`downscaled` 标记 `nonisolated`。
+- **D5（部分）**：`beginNavigation` 删除第二次 `refreshUserScripts`；策略回调保留一次装配。
+  未做 `UserScriptService` 的启用集合/GM 值快照缓存。
+
+### 18.8 明确未做
+
+- F-03、F-04、F-06、F-07（严格关闭顺序、旧内存库释放、测试平台假设、首次建库主线程成本）；
+  F-05（SQLite `deinit` 加锁）与 F-08（novel loader 的 `dataStore` 必填）已在 §18.10 实现，待验证。
+- C3（导航动作与私密路由去重）、D1（性能基线）、D4（离线归档 I/O）、D6（进度与外壳重算解耦）、
+  D7（历史写入移出策略回调）、D8 的负缓存/并发上限；B0 崩溃采集。
+- 任何真机/模拟器 UI 验收；本机没有 Swift/Xcode 工具链，构建与测试只能依赖 GitHub Actions。
+
+### 18.9 新增/调整测试
+
+`NovelPrivacyTests`、`NovelBrowserRoutingTests`、`PrivateSessionLedgerTests`、
+`PrivateSessionStartTests`、`PrivateSessionStoreTests`、`TabCloseCleanupTests`、
+`SiteIconCandidateTests`、`TabDocumentIdentityTests`，以及 `TabManagerTests` 的最近关闭/池上限、
+`WebNavigationIntegrationTests` 的 B1 私密 store 用例。测试是否实际通过以 §19 的 CI 结果为准。
+
+### 18.10 额外的低风险修复（F-05 / F-08 / B4 收口）
+
+- **F-05**：`SQLiteDatabase.deinit` 与 `close()` 一样先取 `NSRecursiveLock` 再 `sqlite3_close_v2`；
+  不改变 `close()` 的语义。
+- **F-08**：`NovelChapterLoader.load` 与 `NovelTOCLoader.load` 的 `dataStore` 去掉 `.default()` 默认值，
+  让“私密调用忘记传 store”在编译期失败；现有唯一调用方 `NovelReaderView` 两处都已显式传入。
+- **B4 收口**：`enforceLiveWebViewCap(keepingTabId:)` 把刚创建 WebView 的标签排除在受害者之外；
+  `ensureWebView` 传入新标签 id，`activateTab` 走默认 nil。测试新增“最新后台标签仍有 WebView”的断言。

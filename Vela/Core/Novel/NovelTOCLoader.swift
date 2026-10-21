@@ -26,7 +26,7 @@ final class NovelTOCLoader: NSObject, WKNavigationDelegate {
 
     func load(
         urlString: String,
-        dataStore: WKWebsiteDataStore = .default()
+        dataStore: WKWebsiteDataStore
     ) async -> [NovelTOCEntry]? {
         finish(nil)
 

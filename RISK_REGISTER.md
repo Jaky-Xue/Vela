@@ -667,3 +667,32 @@
 - R-10~R-14 在没有测量前**不要改**；先完成 `OPTIMIZATION_ROADMAP.md` 的基线。
 - R-19~R-22 是阶段 C 的候选，按“关闭清理点 → 依赖收窄 → 死代码”顺序。
 - R-24/R-26 需要用户明确批准，因为它会新增一个诊断通道。
+
+---
+
+## 状态更新（2026-10-21，B3–B7 / C2 / D 之后）
+
+| 风险 | 当前状态 | 说明 |
+|---|---|---|
+| R-01 | 已修复（待验证） | 私密标签共享窗口内 `nonPersistent` store；结束/新会话轮换后清理；B1 集成测试 |
+| R-02 | 已修复（待验证） | 私密小说库改为 `:memory:`；loader 注入同一 store；`NovelPrivacyTests` |
+| R-03 | 已修复（待验证） | `onWillCloseTab` 清理 XHR/GM 状态/菜单/历史链/trace；`TabCloseCleanupTests` |
+| R-04 | 已修复（待验证） | 创建时执行池上限；`TabManagerTests` |
+| R-05 | 已修复（待验证） | `TabDocumentIdentity` 写回前校验；`TabDocumentIdentityTests` |
+| R-06 | 已修复（待验证） | 启动恢复最近关闭；`TabManagerTests` |
+| R-07 | 已修复（待验证） | 清除缓存不再重置手动隐藏 |
+| R-09 | 部分修复 | `beginNavigation` 重复装配已删除；快照缓存未做 |
+| R-10 | 部分修复 | 解析/编码移出主线程；单飞/合并与测量未做 |
+| R-11 | 部分修复 | 预览缩放/编码移出主线程；设备测量未做 |
+| R-16 | 部分修复 | 私密标签禁用第三方图标候选；负缓存/并发上限未做 |
+| R-19 | 部分修复 | coordinator 构造参数减少 3 个；目录拆分未做 |
+| R-20 | 部分修复 | 已有关闭清理点；仍未建立单一状态权威 |
+| R-22 | 部分修复 | `clearTabChain` 已接入；`AddressBarView.swift` 删除被回滚（其中仍含在用符号） |
+| R-28 | 已实现（待验证） | 私密阅读器路由到来源/新私密标签；`NovelBrowserRoutingTests` |
+| R-29 | 已实现（待验证） | 结束请求带代次；`PrivateSessionLedgerTests` |
+| R-30/R-31 | 未修复 | 旧阅读器/旧库释放顺序与迟到结束竞态仍在 |
+| R-32 | 部分修复 | `SQLiteDatabase.deinit` 加锁；私密库错误仍被 `reload()` 静默吞掉 |
+| R-33 | 部分缓解 | 新增 8 个测试文件/用例组；UI、真机、真实网络未覆盖 |
+
+“已修复（待验证）”指代码与静态检查完成，但构建/测试/设备验证以 CI 与真机结果为准；
+本机没有 Swift/Xcode 工具链。F-03~F-08 仍未处理。
