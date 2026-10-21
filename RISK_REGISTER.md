@@ -696,3 +696,14 @@
 
 “已修复（待验证）”指代码与静态检查完成，但构建/测试/设备验证以 CI 与真机结果为准；
 本机没有 Swift/Xcode 工具链。F-03~F-08 仍未处理。
+
+---
+
+## 翻译报障修复（2026-10-21，用户反馈后）
+
+| 问题 | 处理 | 状态 |
+|---|---|---|
+| 翻译服务返回 429 | `send` 对 429/5xx 重试 4 次并退避，解析 `Retry-After`，Google 批次间 350ms 间隔，浏览器 UA；最终提示更换服务商且保留已翻译段落 | 已实现；真实服务行为未验证 |
+| 页面语言识别异常 | 样本优先取正文容器并读取 `<html lang>`/content-language/og:locale；本地识别置信度 <0.5 时采用声明语言；语言代码归一化 | 已实现；真实混合页面未验证 |
+| 不同服务字段不适配 | Google 数组/字典/多位置检测字段；DeepL `detected_source_language`；OpenAI `message.content`/`text`/分片 | 已实现并有 `TranslationParsingTests` |
+| 小说字段适配 | 提取脚本读取 JSON-LD Book/Chapter/author，补充正文/标题选择器 | 已实现；真实站点未逐一验证 |

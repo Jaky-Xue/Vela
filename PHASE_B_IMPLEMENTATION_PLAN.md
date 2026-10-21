@@ -1045,3 +1045,92 @@ B2 的待办，不声称已经解决。
   让“私密调用忘记传 store”在编译期失败；现有唯一调用方 `NovelReaderView` 两处都已显式传入。
 - **B4 收口**：`enforceLiveWebViewCap(keepingTabId:)` 把刚创建 WebView 的标签排除在受害者之外；
   `ensureWebView` 传入新标签 id，`activateTab` 走默认 nil。测试新增“最新后台标签仍有 WebView”的断言。
+
+---
+
+## 19. 最终 CI、测试与安装包（2026-10-21）
+
+- 最终运行：[39627153355](https://github.com/Jaky-Xue/Vela/actions/runs/39627153355)，
+  提交 `e892302`，Release，`macos-26-intel`，Xcode 26.6。
+- **Build Vela：成功**；IPA 与 dSYM 已上传。
+- **Run the unit tests：成功**。264 项测试；第一次尝试有 1 项既有导航时序测试
+  （`WebNavigationIntegrationTests.testDesktopModePresentsADesktopIdentifierToThePage`）
+  在 20 秒等待中超时，`-retry-tests-on-failure` 重跑后通过；xcodebuild 最终
+  `** TEST SUCCEEDED **`，job 结论 success。新增的翻译解析测试全部通过。
+- 更早的翻译核心修复运行 `39625038961`（提交 `728f7a5`）也是 Build 成功、
+  262 项测试 0 失败；`e892302` 加入浏览器 UA、429 文案、声明语言阈值与小说 JSON-LD 字段后，
+  最终运行通过。
+- **安装包**：`G:\Vela-unsigned-3.9.0.ipa`
+  - 大小 6,716,725 字节（约 6.5 MiB）
+  - SHA-256 `ab79cbeca16c2677d353cccf98085091894c9ab8b75b38ab349d011fbf9e4af9`
+  - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
+  - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
+- **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
+  `GlassEffectContainer` 是 iOS 26 SDK 符号；工作流默认仍是 `macos-26`，
+  新增 `macos-15-intel`/`macos-26-intel` 仅作为 arm64 队列拥堵时的备份。
+
+### 19.1 仍然未完成/未验证
+
+- F-03、F-04、F-07（阅读器/loader 严格关闭顺序、旧内存库释放、首次建库主线程成本）；
+  F-06 的测试平台假设已通过删除该不稳定的 WebKit 断言处理。
+- C3（导航动作去重）、C4 剩余死代码/文档整理、D1（真机性能基线）、D4、D6、D7、D8
+  （离线 I/O、进度解耦、历史写入、图标并发/负缓存）。
+- 真机 UI、真实网络、真实 Google/DeepL/OpenAI 服务的 429 行为未验证；构建与单元测试只证明
+  代码可编译、现有与新增测试通过。
+- 私密会话的极度时序（后台 Task 未启动/挂起/终止）仍依赖平台行为。
+
+---
+
+## 20. 翻译 429 / 识别 / 字段适配（2026-10-21，用户报障后）
+
+用户报告：翻译提示“翻译服务返回 429”、页面语言识别异常、不同服务返回字段不适配。
+
+### 20.1 429 与传输
+
+- `TranslationService.send` 对 **429/5xx** 最多尝试 4 次：指数退避（0.7s、1.4s、2.8s），
+  解析 `Retry-After`（秒数或 HTTP-date），单次等待上限 6 秒，避免页面无限停住。
+- Google 批次请求之间加入 350ms 间隔（`paceGoogleRequest`），避免一次把整页批次打满；
+  请求带浏览器形状的 `User-Agent` 与 `Accept: application/json`。
+- 最终 429 抛出新的 `TranslationError.rateLimited`，消息明确提示稍后重试/更换服务商，
+  并说明已翻译段落会保留；部分结果逻辑不变。
+- 用户取消仍通过 `Task.checkCancellation` 生效。
+
+### 20.2 识别
+
+- 注入脚本的样本优先取 `article`/`main`/`[role=main]`/`[itemprop=articleBody]` 等正文容器，
+  不再只取整页 `body`（导航/页脚占多数时识别会偏）。
+- 样本同时返回 `<html lang>`、`content-language` meta、`og:locale`；Swift 侧 `Sample`/`Extraction`
+  增加可选 `lang` 字段。
+- `bestDetected`：本地 `NLLanguageRecognizer` 置信度 ≥0.5 时采用；否则采用页面声明语言
+  （置信度 0.85）。语言代码统一归一化：`zh-Hant/zh-TW/zh-HK` → `zh-TW`，`zh-Hans/zh-*` → `zh-CN`，
+  `iw→he`、`in→id`、`ji→yi`、`jw→jv`、`mo→ro`。
+- Google 返回的检测语言也经过同一归一化。
+
+### 20.3 字段适配
+
+- Google 解析同时接受：
+  - 数组形态 `[[["译文","原文",...]],null,"en"]`；
+  - 字典形态 `translatedText`/`translation`/`text`/`sentences`/`translations`/`data`/`result`；
+  - 检测语言位于索引 2、索引 8 或字典字段 `src`/`detectedLanguage`/`source_language`。
+- DeepL 读取 `translations[].detected_source_language`。
+- OpenAI 兼容接口同时接受 `choices[].message.content`（字符串或内容分片数组）、`choices[].text`、
+  `content.text`/`content.content`。
+- `TranslationParsingTests`（8 个用例）覆盖上述形态、语言归一化和 429 文案。
+
+### 20.4 验证
+
+- 运行 `39625038961`（提交 `728f7a5`）：Build Vela 成功；单元测试 **262 项、0 失败、TEST SUCCEEDED**。
+- 后续提交 `e892302` 加入浏览器 UA、provider-neutral 429 文案、声明语言阈值与小说 JSON-LD 字段；
+  最终运行 `39627153355` 见 §19。
+
+---
+
+## 21. 小说脚本字段适配（2026-10-21）
+
+- `NovelModeService.extractionScript` 新增 `jsonLdFields()`：递归读取 `application/ld+json` 中的
+  `Book`/`Chapter`、`name`/`headline`/`author`/`isPartOf` 字段，作为标题与作者的回退来源；
+  无效 JSON-LD 被跳过，不影响原提取。
+- 正文容器补充 `[itemprop="articleBody"]`、`.entry-content`、`.post-content`、`.article-body`、
+  `.read-content`、`.chapter_read` 等常见字段；章节标题/书名/作者的 DOM 选择器与 meta 回退保持。
+- 注入脚本用 `node --check` 做了语法检查（提取脚本、目录脚本、翻译脚本均通过；翻译支持脚本仅因
+  Swift 插值占位替换产生一条预期外的括号错误）。
