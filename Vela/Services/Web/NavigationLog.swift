@@ -56,6 +56,10 @@ public enum NavigationEvent: String, Codable, Sendable, CaseIterable {
     /// A universal link was cancelled and re-issued as a plain web load, so
     /// an installed app could not take the navigation.
     case appLink
+    /// The main thread stopped answering for long enough to be noticed. The
+    /// watchdog records this after the stall clears; the duration is in the
+    /// entry.
+    case hang
 }
 
 /// Whether the entry describes something that worked, something that did not, or
@@ -214,6 +218,28 @@ public final class NavigationLog {
         if entries.count > Self.capacity {
             entries.removeFirst(entries.count - Self.capacity)
         }
+    }
+
+    /// Records a main-thread stall. Kept separate from `record` so the
+    /// watchdog cannot be mistaken for a navigation event at the call site.
+    public func recordHang(
+        durationMs: Int,
+        tabId: String,
+        navigationSerial: Int,
+        phase: TabLoadState,
+        url: String
+    ) {
+        record(
+            tabId: tabId,
+            navigationSerial: navigationSerial,
+            event: .hang,
+            phase: phase,
+            url: url,
+            durationMs: durationMs,
+            errorDomain: "MainThread",
+            errorMessage: "主线程无响应",
+            outcome: .failure
+        )
     }
 
     public func clear() {

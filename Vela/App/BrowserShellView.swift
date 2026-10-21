@@ -178,6 +178,15 @@ struct BrowserShellView: View {
 
     var tabManager: TabManager { env.tabManager }
 
+    /// The shared navigation decisions; one value so the toolbar, menu and
+    /// hardware commands cannot drift apart.
+    var navigationActions: BrowserNavigationActions {
+        BrowserNavigationActions(
+            tabManager: env.tabManager,
+            webCoordinator: env.webCoordinator
+        )
+    }
+
     var activeTab: BrowserTabState? { tabManager.activeTab }
 
     static let padSidebarWidth: CGFloat = 286
@@ -396,9 +405,24 @@ struct BrowserShellView: View {
             env.commands.register(owner: env.windowId) { command in
                 handleBrowserCommand(command)
             }
+            // The environment ends a private session from the app's background
+            // hook as well as from this view. Taking the reader down here,
+            // synchronously before the tabs close, is what makes the reader's
+            // loader cancellation part of the shutdown order.
+            env.onPrivateSessionWillEnd = {
+                if novelSession?.isPrivateSession == true {
+                    novelSession = nil
+                }
+                if bookshelfIsPrivate {
+                    showBookshelf = false
+                    bookshelfLibrary = nil
+                    bookshelfIsPrivate = false
+                }
+            }
         }
         .onDisappear {
             env.commands.unregister(owner: env.windowId)
+            env.onPrivateSessionWillEnd = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.keyboardWillChangeFrameNotification)) { note in
             handleKeyboardFrameChange(note)
@@ -775,26 +799,15 @@ struct BrowserShellView: View {
 
     func goBack() {
         guard let tab = activeTab else { return }
-        if tab.isHome {
+        switch navigationActions.backStep(for: tab) {
+        case .none, .webView:
+            return
+        case let .opener(openerId):
+            tabManager.activateTab(id: openerId)
+        case .returnToPage:
             // Coming back out of the home surface, which is not a page.
             returnToPage(tab)
-            return
-        }
-        // WebKit is the authority here, not the button's own enabled state:
-        // the flags are a mirror of its list, and acting on the mirror
-        // instead of on the list is what would let a stale `true` issue a
-        // `goBack()` that does nothing. When there is genuinely nothing
-        // behind the page, the fallback is the tab that opened this one — a
-        // link opened into a new tab has an empty back list, and "back" from
-        // it means where the user came from — and the home surface last of
-        // all.
-        if !env.webCoordinator.goBack() {
-            let openerId = tab.openerTabId
-            if !openerId.isEmpty,
-               tabManager.tabs.contains(where: { $0.id == openerId }) {
-                tabManager.activateTab(id: openerId)
-                return
-            }
+        case .home:
             goHome(tab)
         }
     }
@@ -810,8 +823,7 @@ struct BrowserShellView: View {
     /// same tab. Now the reading tab keeps its place in the strip, and the
     /// start page opens beside it under the name 主页.
     func openHomeTab() {
-        guard activeTab?.isHome != true else { return }
-        tabManager.createTab(openSource: .user)
+        _ = navigationActions.openHomeTab(from: activeTab)
     }
 
     /// Returns a tab to the native home surface.
@@ -951,7 +963,7 @@ struct BrowserShellView: View {
                 // No tab on screen does not make the switch a tab factory:
                 // turning 无痕模式 on here materialises the private home it
                 // routes to, which is exactly what an empty browser needs.
-                env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
+                env.togglePrivateBrowsingMode()
             case .leavePrivate: break
             default: break
             }
@@ -1018,7 +1030,7 @@ struct BrowserShellView: View {
             // to regular and a private page yields the screen to the regular
             // home. The private tabs themselves stay either way — ending the
             // session is the 离开无痕模式 action, not this one.
-            env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
+            env.togglePrivateBrowsingMode()
         case .leavePrivate:
             let expectedGeneration = env.privateNovelSessionGeneration
             // Close the private reader (and shelf) before the session's data
@@ -1102,7 +1114,7 @@ struct BrowserShellView: View {
         case .findInPage:
             if canActOnPage { showFindBar = true }
         case .togglePrivate:
-            env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
+            env.togglePrivateBrowsingMode()
         case .nextTab:
             tabManager.switchTab(by: 1)
         case .previousTab:
@@ -1177,8 +1189,7 @@ struct BrowserShellView: View {
     }
 
     func reloadActiveTab() {
-        guard let tab = activeTab else { return }
-        _ = tabManager.reload(tab: tab)
+        _ = navigationActions.reload(activeTab)
     }
 
     // MARK: - Novel mode

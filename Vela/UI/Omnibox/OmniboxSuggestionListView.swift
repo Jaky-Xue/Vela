@@ -71,10 +71,10 @@ struct OmniboxSuggestionListView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 // A plain stack, deliberately not lazy: the suggestion set is a
-                // few dozen rows at most, and a lazy container cannot report a
-                // finite ideal height — which the self-sizing scroll view below
-                // depends on. The lazy version made the layout pass chase its
-                // own estimate and froze the app the moment the card opened.
+                // few dozen rows at most, and the height below is arithmetic
+                // over these pinned rows. A lazy container cannot answer that
+                // arithmetic, and its estimate made the layout pass chase its
+                // own answer and freeze when the card opened.
                 VStack(spacing: 0) {
                     ForEach(viewModel.groups) { group in
                         sectionHeader(group)
@@ -94,14 +94,14 @@ struct OmniboxSuggestionListView: View {
                     }
                 }
             }
-            // The card takes exactly the height its content needs, capped at
-            // the ceiling the shell proposes: a short list gets a short card
-            // and a long one scrolls. Nothing about the height is modelled,
-            // so nothing can drift out from under the card's own edge — which
-            // is what the List this replaced kept doing, its row arithmetic
-            // losing a few points on every surface and slicing the last row.
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxHeight: maxHeight, alignment: .top)
+            // The scroll view is given an explicit height instead of being
+            // asked for its ideal size. A `ScrollView` inside `fixedSize` has
+            // to answer a layout query whose answer depends on the content it
+            // is already laying out; on the search page that produced a
+            // re-entrant layout pass and froze the app the moment the top bar
+            // opened it. The height is arithmetic over the same pinned rows
+            // the card draws, so it cannot chase its own layout.
+            .frame(height: listHeight, alignment: .top)
             .scrollIndicators(.visible)
             .onChange(of: viewModel.highlightedId) { _, id in
                 // Keyboard navigation can walk past the card's edge, so the
@@ -112,6 +112,25 @@ struct OmniboxSuggestionListView: View {
                 }
             }
         }
+    }
+
+    /// The exact height of the rows the card will draw, capped by the shell's
+    /// budget. Headers and paused sections are counted the same way the stack
+    /// draws them; rows are pinned to `rowHeight`, so this is an exact answer
+    /// rather than an estimate.
+    private var listHeight: CGFloat {
+        var height: CGFloat = 0
+        var rows = 0
+        for group in viewModel.groups {
+            height += headerHeight
+            if !viewModel.isCollapsed(group.section) {
+                height += CGFloat(group.suggestions.count) * rowHeight
+                rows += group.suggestions.count
+            }
+        }
+        // Every row but the last is followed by a 0.5pt separator.
+        if rows > 0 { height += CGFloat(rows - 1) * 0.5 }
+        return min(height, maxHeight)
     }
 
     @ViewBuilder

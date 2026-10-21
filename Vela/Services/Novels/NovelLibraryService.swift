@@ -32,6 +32,16 @@ public final class NovelLibraryService {
         reload()
     }
 
+    /// Closes the shelf's database. Called for a retired private session after
+    /// the reader has had time to leave; ordinary shelves live for the process.
+    /// Reads and writes after this point fail quietly through the same paths
+    /// that already handle a database error.
+    public func close() {
+        repository.close()
+        tocCache.removeAll()
+        books = []
+    }
+
     public func reload() {
         do {
             books = try repository.allBooks()

@@ -19,6 +19,13 @@ public final class NovelRepository: @unchecked Sendable {
         self.database = database
     }
 
+    /// Releases the SQLite handle. A retired private shelf uses this once no
+    /// reader can still reach it; ordinary shelves live for the process and do
+    /// not need to call it.
+    public func close() {
+        database.close()
+    }
+
     private static let bookColumns = """
     id, title, author, source_url, current_chapter_url, current_chapter_title, \
     chapter_index, progress, added_at, updated_at, last_read_at

@@ -241,6 +241,19 @@ final class NovelPrivacyTests: XCTestCase {
         )
     }
 
+    func testClosingARetiredShelfReleasesItsDatabase() {
+        guard let service = InMemoryNovelLibrary.make() else {
+            return XCTFail("the private service could not be created")
+        }
+        _ = service.open(extraction(chapter: 1))
+        XCTAssertEqual(service.books.count, 1)
+
+        service.close()
+        XCTAssertTrue(service.books.isEmpty, "a retired shelf drops its published books")
+        service.reload()
+        XCTAssertTrue(service.books.isEmpty, "a closed database reads as an empty shelf, not a crash")
+    }
+
     // MARK: - Loader store (F-06)
     //
     // An earlier version of this file loaded a cookie-setting response through

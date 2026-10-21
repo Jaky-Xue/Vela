@@ -44,6 +44,16 @@ public final class AppEnvironment {
     /// writes can reach the regular novel tables.
     private var privateNovelService: NovelLibraryService?
 
+    /// Records stalls the navigation log cannot see: its entries are written by
+    /// WebKit callbacks, and those stop during a main-thread hang.
+    private var hangMonitor: MainThreadHangMonitor?
+
+    /// Called synchronously at the start of an accepted private-session end,
+    /// before tabs close. The shell uses it to take the private reader off the
+    /// hierarchy first, so the reader's loader tasks and library are part of
+    /// the shutdown's order rather than a later SwiftUI side effect.
+    public var onPrivateSessionWillEnd: (() -> Void)?
+
     /// Bumped when a private session begins and when it ends. A reader created
     /// in an earlier generation compares its captured value against this one
     /// before writing or closing; the value, not a bare "is private" flag,
@@ -110,6 +120,20 @@ public final class AppEnvironment {
         }
         services.bootOnce()
         bootWindow()
+
+        let monitor = MainThreadHangMonitor { [weak self] durationMs in
+            guard let self else { return }
+            let tab = self.tabManager.activeTab
+            self.navigationLog.recordHang(
+                durationMs: durationMs,
+                tabId: tab?.id ?? "",
+                navigationSerial: tab?.navigationSerial ?? 0,
+                phase: tab?.loadState ?? .idle,
+                url: tab?.url ?? ""
+            )
+        }
+        hangMonitor = monitor
+        monitor.start()
     }
 
     // MARK: - Shared services, forwarded
@@ -232,6 +256,21 @@ public final class AppEnvironment {
         }
     }
 
+    /// The one flip every 无痕模式 entry point uses. Keeping the expression here
+    /// means the menu, the toolbar, the hardware command and the empty-browser
+    /// menu cannot disagree about whether the current value was read before or
+    /// after the write.
+    public func togglePrivateBrowsingMode() {
+        setPrivateBrowsingMode(!(settings.preferences.privateBrowsingMode ?? false))
+    }
+
+    /// The mode the current strip presents: the active tab's own mode, or the
+    /// routing preference when no tab exists.
+    public var currentPrivacyMode: BrowserSessionPrivacyMode {
+        tabManager.activeTab?.privacyMode
+            ?? ((settings.preferences.privateBrowsingMode ?? false) ? .private : .regular)
+    }
+
     // MARK: - Ad-blocking, forwarded
 
     public func refreshAdBlockRules() async {
@@ -277,8 +316,23 @@ public final class AppEnvironment {
     /// empty in-memory shelf.
     private func beginPrivateSession() {
         privateNovelSessionGeneration &+= 1
+        let retiring = privateNovelService
         privateNovelService = nil
+        scheduleRetirement(of: retiring)
         webCoordinator.beginNewPrivateSession()
+    }
+
+    /// Closes a retired private shelf's database after the reader has had a
+    /// short grace period to leave the hierarchy. A service that is already
+    /// gone is skipped. The generation guards stop late writes before this
+    /// point; the delay only avoids pulling the handle out from under a view
+    /// that is still rendering its last frame.
+    private func scheduleRetirement(of service: NovelLibraryService?) {
+        guard let service else { return }
+        Task { @MainActor [weak service] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            service?.close()
+        }
     }
 
     /// Ends a private session: private tabs close, private records clear, and
@@ -305,9 +359,14 @@ public final class AppEnvironment {
             expectedGeneration: expectedGeneration,
             currentGeneration: privateNovelSessionGeneration,
             perform: {
+                // The reader first: its onDisappear cancels both loaders and
+                // releases the shelf before the tabs and store are torn down.
+                onPrivateSessionWillEnd?()
                 tabManager.endPrivateSession()
                 downloads.clearPrivateRecords()
+                let retiring = privateNovelService
                 privateNovelService = nil
+                scheduleRetirement(of: retiring)
             }
         ) else { return }
 

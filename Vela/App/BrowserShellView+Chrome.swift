@@ -277,7 +277,7 @@ extension BrowserShellView {
         case .adBlock:
             toggleAdBlock()
         case .privateMode:
-            env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
+            env.togglePrivateBrowsingMode()
         }
     }
 
@@ -455,9 +455,7 @@ extension BrowserShellView {
     /// both would show a number the overview it opens cannot match — 普通 16
     /// beside 无痕 3 is never 19.
     var tabCountForActiveMode: Int {
-        let mode = activeTab?.privacyMode
-            ?? ((env.settings.preferences.privateBrowsingMode ?? false) ? .private : .regular)
-        return tabManager.displayedTabCount(privacyMode: mode)
+        tabManager.displayedTabCount(privacyMode: env.currentPrivacyMode)
     }
 
     /// The tab switcher button: a page outline carrying the count inside it —
