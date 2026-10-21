@@ -52,13 +52,19 @@ final class TabPreviewStore {
     }
 
     func store(_ image: UIImage, for tabId: String) {
-        let prepared = Self.downscaled(image)
-        cache.setObject(prepared, forKey: tabId as NSString)
-        guard let directory,
-              let data = prepared.jpegData(compressionQuality: 0.72) else { return }
-        let url = directory.appendingPathComponent(Self.fileName(for: tabId))
-        Task.detached(priority: .utility) {
-            try? data.write(to: url, options: .atomic)
+        // The render and JPEG encode are the expensive half; the cache write
+        // must be on the main actor, and the file write stays off it.
+        Task.detached(priority: .utility) { [weak self] in
+            let prepared = Self.downscaled(image)
+            guard let data = prepared.jpegData(compressionQuality: 0.72) else { return }
+            let url = await MainActor.run { [weak self] () -> URL? in
+                self?.cache.setObject(prepared, forKey: tabId as NSString)
+                guard let directory = self?.directory else { return nil }
+                return directory.appendingPathComponent(Self.fileName(for: tabId))
+            }
+            if let url {
+                try? data.write(to: url, options: .atomic)
+            }
         }
     }
 

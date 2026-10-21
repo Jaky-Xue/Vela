@@ -408,13 +408,9 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         nextNavigationSerial += 1
         let url = webView.url?.absoluteString ?? tab.pendingUrl
 
-        // The policy callback attaches the scripts; attaching again here, at
-        // the start of the load itself, is the belt to that suspenders — a
-        // navigation that reached WebKit from a path without a policy pass
-        // still gets the page's scripts before its document is built.
-        if let target = URL(string: url) {
-            refreshUserScripts(webView: webView, tab: tab, url: target)
-        }
+        // The policy callback has already attached this navigation's scripts:
+        // rebuilding the set here repeated the repository reads and the script
+        // construction for every load.
         traces[ObjectIdentifier(webView)] = NavigationTrace(
             webView: webView,
             navigation: navigation,

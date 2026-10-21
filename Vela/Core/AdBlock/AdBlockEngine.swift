@@ -105,44 +105,25 @@ public final class AdBlockEngine {
             )
         }
 
-        var combined = ContentBlockerRuleAccumulator()
-
-        // Sources are concatenated in the caller's order so that "later list
-        // wins" behaves the way the subscription list is displayed.
-        for sourceId in orderedSourceIds {
-            guard let text = filterLists[sourceId] else { continue }
-            let result = AdBlockRuleCompiler.compile(
-                filterList: text,
-                exceptedHosts: [],
+        // Parsing and JSON encoding are pure and can be large; only the WebKit
+        // store install has to run on the main actor.
+        let parsed = try await Task.detached(priority: .utility) {
+            try Self.parse(
+                filterLists: filterLists,
+                orderedSourceIds: orderedSourceIds,
+                exceptedHosts: exceptedHosts,
                 includeCosmetic: includeCosmetic
             )
-            combined.append(result)
-        }
-
-        // Per-site exceptions are appended once, after every list, so they
-        // override all of them.
-        combined.rules.append(contentsOf: exceptionRules(for: exceptedHosts))
-
-        guard combined.rules.count <= AdBlockCompileResult.webKitRuleLimit else {
-            throw AdBlockError.ruleListTooLarge(count: combined.rules.count)
-        }
-
-        let json = try AdBlockRuleCompiler.encode(combined.rules)
-        let identifier = try await install(json: json)
-
-        // Cosmetic selectors are deduplicated: the same `.ad-banner` appears in
-        // most lists, and injecting it a hundred times would bloat the stylesheet
-        // for no benefit.
-        var seen = Set<String>()
-        let selectors = combined.cosmeticSelectors.filter { seen.insert($0).inserted }
+        }.value
+        let identifier = try await install(json: parsed.json)
 
         let compiled = AdBlockCompiledList(
             identifier: identifier,
-            ruleCount: combined.rules.count,
-            cosmeticSelectors: selectors,
-            unsupportedRuleCount: combined.unsupportedRuleCount,
-            invalidRuleCount: combined.invalidRuleCount,
-            sourceLineCount: combined.sourceLineCount
+            ruleCount: parsed.ruleCount,
+            cosmeticSelectors: parsed.cosmeticSelectors,
+            unsupportedRuleCount: parsed.unsupportedRuleCount,
+            invalidRuleCount: parsed.invalidRuleCount,
+            sourceLineCount: parsed.sourceLineCount
         )
 
         self.ruleCount = compiled.ruleCount
@@ -239,7 +220,63 @@ public final class AdBlockEngine {
 
     // MARK: - Per-site exceptions
 
-    private func exceptionRules(for hosts: [String]) -> [ContentBlockerRule] {
+    private struct ParsedRules: Sendable {
+        var json: String
+        var ruleCount: Int
+        var cosmeticSelectors: [String]
+        var unsupportedRuleCount: Int
+        var invalidRuleCount: Int
+        var sourceLineCount: Int
+    }
+
+    /// Parses, validates and encodes every list. Pure, so it runs off-main.
+    nonisolated private static func parse(
+        filterLists: [String: String],
+        orderedSourceIds: [String],
+        exceptedHosts: [String],
+        includeCosmetic: Bool
+    ) throws -> ParsedRules {
+        var combined = ContentBlockerRuleAccumulator()
+
+        // Sources are concatenated in the caller's order so that "later list
+        // wins" behaves the way the subscription list is displayed.
+        for sourceId in orderedSourceIds {
+            guard let text = filterLists[sourceId] else { continue }
+            let result = AdBlockRuleCompiler.compile(
+                filterList: text,
+                exceptedHosts: [],
+                includeCosmetic: includeCosmetic
+            )
+            combined.append(result)
+        }
+
+        // Per-site exceptions are appended once, after every list, so they
+        // override all of them.
+        combined.rules.append(contentsOf: exceptionRules(for: exceptedHosts))
+
+        guard combined.rules.count <= AdBlockCompileResult.webKitRuleLimit else {
+            throw AdBlockError.ruleListTooLarge(count: combined.rules.count)
+        }
+
+        let json = try AdBlockRuleCompiler.encode(combined.rules)
+
+        // Cosmetic selectors are deduplicated: the same `.ad-banner` appears in
+        // most lists, and injecting it a hundred times would bloat the stylesheet
+        // for no benefit.
+        var seen = Set<String>()
+        let selectors = combined.cosmeticSelectors.filter { seen.insert($0).inserted }
+
+        return ParsedRules(
+            json: json,
+            ruleCount: combined.rules.count,
+            cosmeticSelectors: selectors,
+            unsupportedRuleCount: combined.unsupportedRuleCount,
+            invalidRuleCount: combined.invalidRuleCount,
+            sourceLineCount: combined.sourceLineCount
+        )
+    }
+
+    private static func exceptionRules(for hosts: [String]) -> [ContentBlockerRule] {
         hosts.compactMap { host in
             let normalized = host.lowercased().trimmingCharacters(in: .whitespaces)
             guard !normalized.isEmpty else { return nil }

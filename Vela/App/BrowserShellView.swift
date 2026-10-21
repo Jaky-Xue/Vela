@@ -1181,8 +1181,6 @@ struct BrowserShellView: View {
             // reader into the next session's shelf.
             guard !isPrivate || generation == env.privateNovelSessionGeneration else { return }
             guard let opened = library.open(extraction) else {
-OLD
-repl($old, $new);
                 novelNotice = "这一章无法加入书架，请稍后再试。"
                 return
             }

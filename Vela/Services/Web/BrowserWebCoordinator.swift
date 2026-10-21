@@ -35,10 +35,7 @@ public final class BrowserWebCoordinator: NSObject {
     let adBlock: AdBlockEngine
     let history: HistoryService
     let downloads: DownloadService
-    let bookmarks: BookmarkService
     let userScripts: UserScriptRepository
-    let searchHistory: SearchHistoryRepository
-    let sessionRepository: TabSessionRepository
     weak var tabManager: TabManager?
 
     /// The structured record of what happened to each navigation. In memory
@@ -124,10 +121,7 @@ public final class BrowserWebCoordinator: NSObject {
         adBlock: AdBlockEngine,
         history: HistoryService,
         downloads: DownloadService,
-        bookmarks: BookmarkService,
         userScripts: UserScriptRepository,
-        searchHistory: SearchHistoryRepository,
-        sessionRepository: TabSessionRepository,
         navigationLog: NavigationLog
     ) {
         self.overlays = overlays
@@ -135,10 +129,7 @@ public final class BrowserWebCoordinator: NSObject {
         self.adBlock = adBlock
         self.history = history
         self.downloads = downloads
-        self.bookmarks = bookmarks
         self.userScripts = userScripts
-        self.searchHistory = searchHistory
-        self.sessionRepository = sessionRepository
         self.navigationLog = navigationLog
         super.init()
     }
@@ -159,6 +150,7 @@ public final class BrowserWebCoordinator: NSObject {
             userScriptXHRTasks.removeValue(forKey: key)?.cancel()
         }
         userScriptTabStates.removeValue(forKey: tab.id)
+        history.clearTabChain(tabId: tab.id)
         overlays.userScriptMenuCommands.removeAll { $0.tabId == tab.id }
         if let webView = tabManager?.webView(for: tab.id) {
             traces.removeValue(forKey: ObjectIdentifier(webView))

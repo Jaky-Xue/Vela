@@ -123,7 +123,8 @@ struct OmniboxSuggestionListView: View {
                 suggestion: suggestion,
                 query: viewModel.text,
                 isHighlighted: viewModel.highlightedId == suggestion.id,
-                rowHeight: rowHeight
+                rowHeight: rowHeight,
+                allowsThirdPartyLookup: allowsThirdPartyLookup
             )
         }
         .buttonStyle(.plain)
@@ -289,6 +290,7 @@ struct OmniboxSuggestionRow: View {
     var query: String
     var isHighlighted: Bool
     var rowHeight: CGFloat
+    var allowsThirdPartyLookup: Bool = true
 
     @Environment(\.browserPalette) private var palette
 

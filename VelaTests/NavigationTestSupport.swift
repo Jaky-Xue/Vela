@@ -341,10 +341,7 @@ final class BrowserHarness {
             adBlock: adBlock,
             history: history,
             downloads: downloads,
-            bookmarks: bookmarks,
             userScripts: userScripts,
-            searchHistory: searchHistory,
-            sessionRepository: sessions,
             navigationLog: navigationLog
         )
         self.coordinator = coordinator

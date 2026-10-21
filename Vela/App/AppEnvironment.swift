@@ -69,10 +69,7 @@ public final class AppEnvironment {
             adBlock: services.adBlock,
             history: services.history,
             downloads: services.downloads,
-            bookmarks: services.bookmarks,
             userScripts: services.userScriptRepository,
-            searchHistory: services.searchHistory,
-            sessionRepository: services.tabSessions,
             navigationLog: navigationLog
         )
         self.webCoordinator = coordinator
