@@ -24,7 +24,9 @@ enum InMemoryNovelLibrary {
     static func make() -> NovelLibraryService? {
         do {
             let database = try SQLiteDatabase(path: ":memory:")
-            for statement in BrowserSchema.creationStatements {
+            // Only the novel tables: the full schema creates bookmarks,
+            // history and downloads the private shelf never reads.
+            for statement in BrowserSchema.novelCreationStatements {
                 try database.execute(statement)
             }
             return NovelLibraryService(repository: NovelRepository(database: database))

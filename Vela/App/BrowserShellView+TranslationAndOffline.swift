@@ -161,19 +161,24 @@ extension BrowserShellView {
     /// reader and translation all keep working.
     func openOfflinePage(_ page: OfflinePageRecord) {
         showOfflinePages = false
-        guard let data = env.offlinePages.archiveData(for: page),
-              let url = URL(string: page.originalUrl) else {
+        guard let url = URL(string: page.originalUrl) else {
             offlineNotice = "离线文件已丢失，请重新保存这个页面。"
             return
         }
-        let tab = tabManager.createTab(openSource: .user)
-        tabManager.loadOfflineArchive(
-            data: data,
-            baseURL: url,
-            title: page.displayTitle,
-            in: tab
-        )
-        env.offlinePages.markOpened(page)
+        Task { @MainActor in
+            guard let data = await env.offlinePages.archiveData(for: page) else {
+                offlineNotice = "离线文件已丢失，请重新保存这个页面。"
+                return
+            }
+            let tab = tabManager.createTab(openSource: .user)
+            tabManager.loadOfflineArchive(
+                data: data,
+                baseURL: url,
+                title: page.displayTitle,
+                in: tab
+            )
+            env.offlinePages.markOpened(page)
+        }
     }
 
 }

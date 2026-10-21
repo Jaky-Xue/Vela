@@ -221,6 +221,26 @@ final class NovelPrivacyTests: XCTestCase {
         XCTAssertTrue(regularSession.isCurrent(in: regularSession))
     }
 
+    func testPrivateShelfSchemaContainsOnlyNovelTables() {
+        let statements = BrowserSchema.novelCreationStatements
+        XCTAssertEqual(statements.count, 7, "four tables and three indexes")
+        for table in [
+            BrowserSchema.novelBooksTable,
+            BrowserSchema.novelChaptersTable,
+            BrowserSchema.novelTOCEntriesTable,
+            BrowserSchema.novelTOCSourcesTable
+        ] {
+            XCTAssertTrue(
+                statements.contains { $0.contains(table) },
+                "the novel subset must keep \(table)"
+            )
+        }
+        XCTAssertFalse(
+            statements.contains { $0.contains(BrowserSchema.historyUrlsTable) },
+            "a private shelf must not build the browser's history tables"
+        )
+    }
+
     // MARK: - Loader store (F-06)
     //
     // An earlier version of this file loaded a cookie-setting response through

@@ -85,9 +85,35 @@ public final class OfflinePageService {
         let manifestURL = directory.appendingPathComponent("manifest.json")
         let previewURL = directory.appendingPathComponent("preview.png")
 
+        // A web archive is several megabytes. The write and the plist scan are
+        // deliberately off the main actor: the save sheet stays responsive
+        // while the files land on disk.
+        let previewData = preview?.pngData()
+        let resourceCount = await Task.detached(priority: .utility) {
+            Self.resourceCount(in: archive)
+        }.value
+        let manifest = OfflinePageManifest(
+            url: url.absoluteString,
+            title: title,
+            resourceCount: resourceCount,
+            totalBytes: Int64(archive.count)
+        )
+        let manifestData = try? JSONEncoder().encode(manifest)
+
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try archive.write(to: snapshotURL, options: .atomic)
+            try await Task.detached(priority: .utility) {
+                try FileManager.default.createDirectory(
+                    at: directory,
+                    withIntermediateDirectories: true
+                )
+                try archive.write(to: snapshotURL, options: .atomic)
+                if let previewData {
+                    try previewData.write(to: previewURL, options: .atomic)
+                }
+                if let manifestData {
+                    try manifestData.write(to: manifestURL, options: .atomic)
+                }
+            }.value
         } catch {
             let failure = OfflinePageError.writeFailed(error.localizedDescription)
             lastError = failure.localizedDescription
@@ -95,24 +121,11 @@ public final class OfflinePageService {
         }
 
         var previewPath: String?
-        if let preview, let png = preview.pngData() {
-            if (try? png.write(to: previewURL, options: .atomic)) != nil {
-                previewPath = previewURL.path
-            }
+        if previewData != nil {
+            previewPath = previewURL.path
         } else if let existing, let old = existing.previewImageUri,
                   FileManager.default.fileExists(atPath: old) {
             previewPath = old
-        }
-
-        let resourceCount = Self.resourceCount(in: archive)
-        let manifest = OfflinePageManifest(
-            url: url.absoluteString,
-            title: title,
-            resourceCount: resourceCount,
-            totalBytes: Int64(archive.count)
-        )
-        if let data = try? JSONEncoder().encode(manifest) {
-            try? data.write(to: manifestURL, options: .atomic)
         }
 
         let host = url.host ?? ""
@@ -152,9 +165,12 @@ public final class OfflinePageService {
     // MARK: - Reading
 
     /// The archive bytes for a saved page, or nil when the file has gone
-    /// missing since it was saved.
-    public func archiveData(for page: OfflinePageRecord) -> Data? {
-        try? Data(contentsOf: URL(fileURLWithPath: page.snapshotPath))
+    /// missing since it was saved. Read off the main actor: an archive can be
+    /// several megabytes and opening a page should not stall the list.
+    public func archiveData(for page: OfflinePageRecord) async -> Data? {
+        await Task.detached(priority: .utility) {
+            try? Data(contentsOf: URL(fileURLWithPath: page.snapshotPath))
+        }.value
     }
 
     /// Marks a page as opened. The list sorts by save time, so this is a badge
@@ -228,7 +244,7 @@ public final class OfflinePageService {
     /// every image, stylesheet and script that was captured. The count is read
     /// from there rather than guessed, because the list shows it next to the
     /// file size.
-    public static func resourceCount(in archive: Data) -> Int {
+    nonisolated public static func resourceCount(in archive: Data) -> Int {
         guard let plist = try? PropertyListSerialization.propertyList(
             from: archive,
             options: [],

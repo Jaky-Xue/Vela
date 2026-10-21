@@ -501,4 +501,21 @@ public enum BrowserSchema {
         )
         """
     ]
+
+    /// The subset a private, in-memory novel shelf needs.
+    ///
+    /// `creationStatements` creates every table the app owns (bookmarks,
+    /// history, downloads, …). A private novel library has no use for those,
+    /// and building them on the main actor for every private session is the
+    /// cost F-07 measured. Deriving the subset from the same statements keeps
+    /// the two in step: only the novel tables and their indexes are selected.
+    public static let novelCreationStatements: [String] = creationStatements.filter { statement in
+        let novelTables = [
+            novelBooksTable,
+            novelChaptersTable,
+            novelTOCEntriesTable,
+            novelTOCSourcesTable
+        ]
+        return novelTables.contains { statement.contains($0) }
+    }
 }

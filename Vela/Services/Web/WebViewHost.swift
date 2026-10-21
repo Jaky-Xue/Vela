@@ -145,6 +145,14 @@ struct WebViewHost: UIViewRepresentable {
         private(set) var observedWebView: WKWebView?
         private var offsetObservation: NSKeyValueObservation?
         private var progressObservation: NSKeyValueObservation?
+        /// Progress arrives on every WebKit tick. The shell is an observable
+        /// object, so writing each tick invalidates the whole view tree tens of
+        /// times a second. Deliver at most ten per second, except for the two
+        /// edges (start and finish) which must be immediate.
+        private var latestProgress: Double = 0
+        private var lastProgressDelivery: TimeInterval = 0
+        private var progressDeliveryTask: Task<Void, Never>?
+        private var progressHandler: ((Double) -> Void)?
 
         private var zoomedWebView: WKWebView?
         private var appliedGestureZoom: Bool?
@@ -156,6 +164,7 @@ struct WebViewHost: UIViewRepresentable {
         func observe(webView: WKWebView, onScroll: ((Double) -> Void)?, onProgress: ((Double) -> Void)?) {
             stopObserving()
             observedWebView = webView
+            progressHandler = onProgress
             // A different web view has its own scroll view and its own zoom.
             zoomedWebView = nil
             appliedGestureZoom = nil
@@ -191,9 +200,7 @@ struct WebViewHost: UIViewRepresentable {
                         self?.appliedGestureZoom = nil
                         self?.zoomedUrl = nil
                     }
-                    Task { @MainActor in
-                        onProgress(progress)
-                    }
+                    self?.receiveProgress(progress)
                 }
             }
         }
@@ -241,6 +248,11 @@ struct WebViewHost: UIViewRepresentable {
             offsetObservation = nil
             progressObservation?.invalidate()
             progressObservation = nil
+            progressDeliveryTask?.cancel()
+            progressDeliveryTask = nil
+            progressHandler = nil
+            latestProgress = 0
+            lastProgressDelivery = 0
             observedWebView = nil
             zoomedWebView = nil
             appliedGestureZoom = nil
@@ -248,9 +260,38 @@ struct WebViewHost: UIViewRepresentable {
             originalZoomRange = nil
         }
 
+        private func receiveProgress(_ progress: Double) {
+            guard progressHandler != nil else { return }
+            latestProgress = progress
+            let now = Date().timeIntervalSinceReferenceDate
+            let isEdge = progress <= 0.01 || progress >= 0.999
+            if isEdge || now - lastProgressDelivery >= 0.1 {
+                deliverProgress()
+            } else if progressDeliveryTask == nil {
+                progressDeliveryTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    guard !Task.isCancelled else { return }
+                    self?.progressDeliveryTask = nil
+                    self?.deliverProgress()
+                }
+            }
+        }
+
+        private func deliverProgress() {
+            progressDeliveryTask?.cancel()
+            progressDeliveryTask = nil
+            guard let handler = progressHandler else { return }
+            lastProgressDelivery = Date().timeIntervalSinceReferenceDate
+            let value = latestProgress
+            Task { @MainActor in
+                handler(value)
+            }
+        }
+
         deinit {
             offsetObservation?.invalidate()
             progressObservation?.invalidate()
+            progressDeliveryTask?.cancel()
         }
     }
 }

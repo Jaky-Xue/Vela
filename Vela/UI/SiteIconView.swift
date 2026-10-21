@@ -112,9 +112,10 @@ struct SiteIconView: View {
                 if fallback == nil { fallback = cached }
                 continue
             }
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let decoded = UIImage(data: data) else { continue }
-            let prepared = Self.trimmedToOpaqueBounds(decoded)
+            guard let prepared = await SiteIconLoader.shared.image(
+                for: url,
+                prepare: Self.trimmedToOpaqueBounds
+            ) else { continue }
             Self.iconCache.setObject(prepared, forKey: url.absoluteString as NSString)
             if max(prepared.size.width, prepared.size.height) >= Self.sharpIconEdge {
                 image = prepared
@@ -134,7 +135,7 @@ struct SiteIconView: View {
     /// Cropping to the opaque bounds makes every icon answer the tile at the
     /// same size. A fully opaque icon — the usual apple-touch-icon — has
     /// nothing to crop and is handed back untouched.
-    private static func trimmedToOpaqueBounds(_ image: UIImage) -> UIImage {
+    nonisolated fileprivate static func trimmedToOpaqueBounds(_ image: UIImage) -> UIImage {
         guard let cgImage = image.cgImage else { return image }
         let width = cgImage.width
         let height = cgImage.height
@@ -244,5 +245,81 @@ struct SiteIconView: View {
         }
         let hue = Double(hash % 360) / 360.0
         return Color(hue: hue, saturation: 0.45, brightness: 0.62)
+    }
+}
+
+// MARK: - Shared loader
+
+/// Coalesces favicon requests and remembers the URLs that failed.
+///
+/// A grid of tiles can ask for the same host's icon several times at once, and
+/// a site with no icon at any candidate URL used to be retried by every tile
+/// on every appearance. The actor keeps one in-flight request per URL and a
+/// bounded negative cache; the decoded-image cache remains in `SiteIconView`.
+actor SiteIconLoader {
+    static let shared = SiteIconLoader()
+
+    typealias Fetch = (URL) async -> UIImage?
+
+    private struct Failure {
+        let at: Date
+    }
+
+    private let fetch: Fetch
+    private var failures: [String: Failure] = [:]
+    private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    private let failureLifetime: TimeInterval = 15 * 60
+    private let maximumFailures = 256
+
+    init(fetch: @escaping Fetch = SiteIconLoader.defaultFetch) {
+        self.fetch = fetch
+    }
+
+    private static func defaultFetch(_ url: URL) async -> UIImage? {
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else {
+            return nil
+        }
+        return UIImage(data: data)
+    }
+
+    func image(
+        for url: URL,
+        prepare: @escaping (UIImage) -> UIImage
+    ) async -> UIImage? {
+        let key = url.absoluteString
+        if let failure = failures[key],
+           Date().timeIntervalSince(failure.at) < failureLifetime {
+            return nil
+        }
+        if let task = inFlight[key] {
+            return await task.value
+        }
+
+        let task = Task<UIImage?, Never> {
+            guard let decoded = await fetch(url) else { return nil }
+            return prepare(decoded)
+        }
+        inFlight[key] = task
+        let result = await task.value
+        inFlight[key] = nil
+
+        if let result {
+            failures.removeValue(forKey: key)
+            return result
+        }
+        failures[key] = Failure(at: Date())
+        pruneFailures()
+        return nil
+    }
+
+    private func pruneFailures() {
+        guard failures.count > maximumFailures else { return }
+        let cutoff = Date().addingTimeInterval(-failureLifetime)
+        failures = failures.filter { $0.value.at >= cutoff }
+        guard failures.count > maximumFailures else { return }
+        let keep = failures
+            .sorted { $0.value.at > $1.value.at }
+            .prefix(maximumFailures)
+        failures = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
     }
 }
