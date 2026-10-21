@@ -442,6 +442,21 @@ public final class TabManager {
         try? sessionRepository?.removeRecentlyClosed(id: id)
     }
 
+    /// Replaces the in-memory recently-closed list with records read at launch.
+    ///
+    /// The list is session state, but it is also persisted; a relaunch should
+    /// offer the same "reopen closed tab" entries it saved. The records are
+    /// deduplicated and capped by the same limit the live list uses.
+    public func restoreRecentlyClosed(_ records: [RecentlyClosedTabRecord]) {
+        var seen = Set<String>()
+        recentlyClosed = records
+            .sorted { $0.closedAt > $1.closedAt }
+            .filter { seen.insert($0.id).inserted }
+        if recentlyClosed.count > Self.recentlyClosedLimit {
+            recentlyClosed.removeLast(recentlyClosed.count - Self.recentlyClosedLimit)
+        }
+    }
+
     // MARK: - Closing
 
     /// Closes a tab, recording it in the recently-closed list.
@@ -608,6 +623,11 @@ public final class TabManager {
 
         webViews[tab.id] = webView
         tab.runtimeState = tab.id == activeTabId ? .active : .background
+        // A background tab opened without activation grows the pool too. Treat
+        // it as the newest entry and enforce the cap here, not only on the next
+        // activation; the new view is last in the victim order and survives.
+        touchActivationOrder(tab.id)
+        enforceLiveWebViewCap()
         return webView
     }
 

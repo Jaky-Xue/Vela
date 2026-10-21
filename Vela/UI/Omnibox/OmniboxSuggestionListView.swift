@@ -22,6 +22,9 @@ struct OmniboxSuggestionListView: View {
     /// `UIScreen`, because the shell already knows its own size and a screen
     /// measurement would be wrong inside a sheet on iPad.
     var maxHeight: CGFloat
+    /// A private set of suggestions must not send its hosts to a third-party
+    /// favicon service.
+    var allowsThirdPartyLookup: Bool = true
 
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
@@ -328,7 +331,11 @@ struct OmniboxSuggestionRow: View {
     @ViewBuilder
     private var leading: some View {
         if suggestion.hasSiteIdentity {
-            SiteIconView(host: suggestion.host, size: 26)
+            SiteIconView(
+                host: suggestion.host,
+                size: 26,
+                allowsThirdPartyLookup: allowsThirdPartyLookup
+            )
         } else {
             ZStack {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)

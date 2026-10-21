@@ -378,71 +378,19 @@ struct BrowserShellView: View {
             env.commands.unregister(owner: env.windowId)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.keyboardWillChangeFrameNotification)) { note in
-            let end = (note.userInfo?[UIApplication.keyboardFrameEndUserInfoKey] as? NSValue)?
-                .cgRectValue ?? .zero
-            let screenHeight = max(UIScreen.main.bounds.height, end.maxY)
-            // A docked keyboard runs from its top edge to the bottom of the
-            // screen, so the occlusion is that whole span. A floating keyboard
-            // — an iPad panel — does not: it covers only its own frame, and
-            // measuring to the screen bottom would credit it with occluding
-            // half the page and shrink the suggestion card for nothing.
-            let occlusion: CGFloat
-            if end.isEmpty {
-                occlusion = 0
-            } else if screenHeight - end.maxY < 40 {
-                occlusion = max(0, screenHeight - end.minY)
-            } else {
-                occlusion = end.height
-            }
-            // The keyboard's rise and fall are animated by the system with the
-            // same duration, so the card tracks it with a spring of its own
-            // rather than snapping between the two states.
-            withAnimation(Self.chromeAnimation) {
-                keyboardHeight = occlusion
-            }
+            handleKeyboardFrameChange(note)
         }
         .onChange(of: tabManager.activeTabId) { _, _ in
-            isReaderActive = false
-            readerArticle = nil
-            // A translation belongs to the document it was applied to. The
-            // service keeps one record per tab, so switching back can restore
-            // the bar rather than losing the fact that the page is translated.
-            translationBarDismissed = false
-            syncTranslationState()
-            showFindBar = false
-            findQuery = ""
-            chromeHidden = false
-            scrollTracker.accumulation = 0
-            env.webCoordinator.clearFindInPage()
-            omnibox.endEditing()
-            // The tab's back/forward flags were written when it last finished
-            // loading. If its web view was discarded and rebuilt since — which
-            // is what the live-web-view cap does to a background tab — the flags
-            // describe a web view that no longer exists, so they are re-read
-            // from the one that does.
-            env.webCoordinator.refreshNavigationAvailability()
-            syncAddressText()
+            handleActiveTabChanged()
         }
         .onChange(of: env.privateNovelSessionGeneration) { _, generation in
             handlePrivateNovelGeneration(generation)
         }
         .onChange(of: activeTab?.url) { _, _ in
-            // A new document is a fresh read: the chrome comes back for it.
-            translationBarDismissed = false
-            syncTranslationState()
-            chromeHidden = false
-            scrollTracker.accumulation = 0
-            syncAddressText()
-            updateChromeForeground()
+            handleActiveTabUrlChanged()
         }
         .onChange(of: activeTab?.loadState) { _, state in
-            // A reload can keep the same tab and URL; the navigation itself is
-            // what says the translated document is gone.
-            if let tab = activeTab,
-               state == .requested || state == .provisional {
-                env.translation.pageWillNavigate(tabId: tab.id)
-            }
-            updateChromeForeground()
+            handleActiveTabLoadStateChanged(state)
         }
         // Runs once the active page has finished loading (and again on a tab
         // or URL change): this is what recognises a foreign-language page and
@@ -666,6 +614,63 @@ struct BrowserShellView: View {
         }
         guard let session = novelSession, session.shouldClose(for: generation) else { return }
         novelSession = nil
+    }
+
+    // MARK: - Shell observers
+
+    /// The keyboard's rise and fall. The card tracks it; the chrome ignores it.
+    private func handleKeyboardFrameChange(_ note: Notification) {
+        let end = (note.userInfo?[UIApplication.keyboardFrameEndUserInfoKey] as? NSValue)?
+            .cgRectValue ?? .zero
+        let screenHeight = max(UIScreen.main.bounds.height, end.maxY)
+        // A docked keyboard runs from its top edge to the bottom of the screen,
+        // so the occlusion is that whole span. A floating keyboard — an iPad
+        // panel — covers only its own frame; measuring to the screen bottom
+        // would shrink the suggestion card for nothing.
+        let occlusion: CGFloat
+        if end.isEmpty {
+            occlusion = 0
+        } else if screenHeight - end.maxY < 40 {
+            occlusion = max(0, screenHeight - end.minY)
+        } else {
+            occlusion = end.height
+        }
+        withAnimation(Self.chromeAnimation) {
+            keyboardHeight = occlusion
+        }
+    }
+
+    /// The shell state that belongs to the tab on screen, not to the window.
+    private func handleActiveTabChanged() {
+        isReaderActive = false
+        readerArticle = nil
+        translationBarDismissed = false
+        syncTranslationState()
+        showFindBar = false
+        findQuery = ""
+        chromeHidden = false
+        scrollTracker.accumulation = 0
+        env.webCoordinator.clearFindInPage()
+        omnibox.endEditing()
+        env.webCoordinator.refreshNavigationAvailability()
+        syncAddressText()
+    }
+
+    private func handleActiveTabUrlChanged() {
+        translationBarDismissed = false
+        syncTranslationState()
+        chromeHidden = false
+        scrollTracker.accumulation = 0
+        syncAddressText()
+        updateChromeForeground()
+    }
+
+    private func handleActiveTabLoadStateChanged(_ state: TabLoadState) {
+        if let tab = activeTab,
+           state == .requested || state == .provisional {
+            env.translation.pageWillNavigate(tabId: tab.id)
+        }
+        updateChromeForeground()
     }
 
     // MARK: - Scrolling
@@ -1083,11 +1088,16 @@ struct BrowserShellView: View {
     func toggleAdBlock() {
         let enabled = env.settings.adBlockSettings.preferences.enabled
         env.settings.setAdBlockEnabled(!enabled)
-        Task {
+        let identity = activeTab.map { TabDocumentIdentity(tab: $0) }
+        Task { @MainActor in
             await env.refreshAdBlockRules()
             // Content rules only apply to a new document, so the page is
-            // reloaded to make the change visible.
-            guard let tab = tabManager.activeTab else { return }
+            // reloaded to make the change visible. Reload only the document
+            // the toggle was made on; a tab switch during the compile means
+            // the rules will apply on that tab's next load instead.
+            guard let identity,
+                  let tab = tabManager.tab(id: identity.tabId),
+                  identity.matches(activeTab) else { return }
             _ = tabManager.reload(tab: tab)
         }
     }
@@ -1095,8 +1105,13 @@ struct BrowserShellView: View {
     func activateReaderMode() {
         guard let tab = activeTab, !tab.isHome,
               let webView = tabManager.webView(for: tab.id) else { return }
+        let identity = TabDocumentIdentity(tab: tab)
         Task {
             let article = await ReaderModeService.extract(from: webView, url: tab.url)
+            // The extraction is asynchronous; a tab switch or a navigation
+            // while it runs means the article belongs to a document the user
+            // has left.
+            guard identity.matches(activeTab) else { return }
             if let article {
                 readerArticle = article
                 isReaderActive = true
@@ -1145,6 +1160,7 @@ struct BrowserShellView: View {
             return
         }
         let generation = env.privateNovelSessionGeneration
+        let identity = TabDocumentIdentity(tab: tab)
 
         Task { @MainActor in
             var extraction = await NovelModeService.extract(from: webView, url: tab.url)
@@ -1158,10 +1174,15 @@ struct BrowserShellView: View {
                 novelNotice = "没能从这一页提取出正文。它可能不是章节页，或正文由脚本动态加载。"
                 return
             }
+            // The extraction may finish after the tab has navigated or the
+            // user switched tabs; the result then belongs to another document.
+            guard identity.matches(activeTab) else { return }
             // A private session that ended during extraction must not open a
             // reader into the next session's shelf.
             guard !isPrivate || generation == env.privateNovelSessionGeneration else { return }
             guard let opened = library.open(extraction) else {
+OLD
+repl($old, $new);
                 novelNotice = "这一章无法加入书架，请稍后再试。"
                 return
             }

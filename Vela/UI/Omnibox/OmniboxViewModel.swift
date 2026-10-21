@@ -275,6 +275,9 @@ public final class OmniboxViewModel {
     // MARK: Suggestions
 
     public private(set) var groups: [OmniboxSuggestionGroup] = []
+    /// The privacy mode the current suggestion set was built for. The list
+    /// uses it to keep a private host away from third-party icon services.
+    public private(set) var activePrivacyMode: BrowserSessionPrivacyMode = .regular
     /// The rows of the expanded sections, in render order. Keyboard navigation
     /// walks this, so a collapsed section's rows are correctly unreachable.
     public private(set) var visibleSuggestions: [OmniboxSuggestion] = []
@@ -550,6 +553,7 @@ public final class OmniboxViewModel {
         refreshEngines()
 
         let privacyMode = tabManager.activeTab?.privacyMode ?? .regular
+        activePrivacyMode = privacyMode
         groups = engine.groups(for: input, privacyMode: privacyMode)
         rebuildVisibleSuggestions()
     }

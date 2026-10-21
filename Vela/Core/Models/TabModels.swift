@@ -593,6 +593,34 @@ public final class BrowserTabState: Identifiable {
     }
 }
 
+/// The document a delayed action was started for.
+///
+/// A tab id alone is not enough: the tab can navigate while a reader or an
+/// ad-block compile is in flight, and the result then belongs to a document
+/// the user has already left. The navigation serial and the committed URL are
+/// the identity the coordinator writes at commit/finish, so a task can check
+/// that the document it read is still the one on screen.
+public struct TabDocumentIdentity: Equatable, Sendable {
+    public let tabId: String
+    public let navigationSerial: Int
+    public let committedUrl: String
+
+    @MainActor
+    public init(tab: BrowserTabState) {
+        self.tabId = tab.id
+        self.navigationSerial = tab.navigationSerial
+        self.committedUrl = tab.committedUrl
+    }
+
+    @MainActor
+    public func matches(_ tab: BrowserTabState?) -> Bool {
+        guard let tab else { return false }
+        return tab.id == tabId
+            && tab.navigationSerial == navigationSerial
+            && tab.committedUrl == committedUrl
+    }
+}
+
 /// Deliberately excludes runtime fields (progress, back/forward availability,
 /// audio state): those are re-derived from the web view on restore, and
 /// persisting them is what makes a restored session show stale chrome.

@@ -374,6 +374,37 @@ final class TabManagerTests: XCTestCase {
         XCTAssertEqual(manager.tabs.map(\.id), [regular.id])
     }
 
+    // MARK: - Recently closed / pool creation
+
+    func testRestoringRecentlyClosedSortsAndCaps() {
+        let manager = makeManager()
+        let base = Date()
+        let records = (0..<30).map { index in
+            RecentlyClosedTabRecord(
+                title: "Tab \(index)",
+                url: "https://example.com/\(index)",
+                closedAt: base.addingTimeInterval(Double(index)),
+                privacyMode: .regular
+            )
+        }
+        manager.restoreRecentlyClosed(records)
+        XCTAssertEqual(manager.recentlyClosed.count, TabManager.recentlyClosedLimit)
+        XCTAssertEqual(manager.recentlyClosed.first?.title, "Tab 29")
+        XCTAssertEqual(manager.recentlyClosed.last?.title, "Tab 5")
+    }
+
+    func testBackgroundOpenedTabsRespectTheLiveWebViewCap() {
+        let manager = makeManager()
+        _ = manager.createTab()
+        for index in 0..<(TabManager.maximumLiveWebViews + 3) {
+            _ = manager.openTab(
+                url: URL(string: "https://bg\(index).example")!,
+                activate: false
+            )
+        }
+        XCTAssertLessThanOrEqual(manager.liveWebViewCount, TabManager.maximumLiveWebViews)
+    }
+
     // MARK: - Session
 
     func testSessionRoundTripsTheTabsAndTheActiveOne() {

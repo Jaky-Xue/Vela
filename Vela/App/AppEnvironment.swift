@@ -152,6 +152,24 @@ public final class AppEnvironment {
            let snapshot = try? tabSessions.loadSession(windowId: windowId) {
             tabManager.restoreSession(snapshot)
         }
+        // The recently-closed list is persisted, so a relaunch offers the
+        // entries it saved. Private entries are loaded only when a private
+        // session is actually open (restored tabs or the routing switch);
+        // otherwise they are stale private metadata and are cleared.
+        if tabManager.persistsSession {
+            var records = (try? tabSessions.recentlyClosed(privacyMode: .regular)) ?? []
+            let privateSessionIsOpen = !tabManager.privateTabs.isEmpty
+                || (settings.preferences.privateBrowsingMode ?? false)
+            if privateSessionIsOpen {
+                records += (try? tabSessions.recentlyClosed(privacyMode: .private)) ?? []
+            } else {
+                try? tabSessions.clearRecentlyClosed(privacyMode: .private)
+            }
+            tabManager.restoreRecentlyClosed(records)
+        } else {
+            try? tabSessions.clearRecentlyClosed(privacyMode: .regular)
+            try? tabSessions.clearRecentlyClosed(privacyMode: .private)
+        }
         if tabManager.tabs.isEmpty {
             // First launch, or a restore that produced nothing.
             let tab = tabManager.createTab()

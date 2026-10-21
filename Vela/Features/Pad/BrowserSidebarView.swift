@@ -138,7 +138,11 @@ struct BrowserSidebarView: View {
                             .foregroundStyle(palette.secondaryText)
                             .frame(width: 20, height: 20)
                     } else {
-                        SiteIconView(host: tab.displayHost, size: 20)
+                        SiteIconView(
+                            host: tab.displayHost,
+                            size: 20,
+                            allowsThirdPartyLookup: tab.privacyMode != .private
+                        )
                     }
                     VStack(alignment: .leading, spacing: 1) {
                         Text(tabTitle(tab))

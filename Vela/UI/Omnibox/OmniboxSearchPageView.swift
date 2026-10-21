@@ -36,7 +36,11 @@ struct OmniboxSearchPageView: View {
 
             fieldRowInGlassContainer
 
-            OmniboxSuggestionListView(viewModel: viewModel, maxHeight: cardMaxHeight)
+            OmniboxSuggestionListView(
+                viewModel: viewModel,
+                maxHeight: cardMaxHeight,
+                allowsThirdPartyLookup: viewModel.activePrivacyMode != .private
+            )
                 .padding(.horizontal, BrowserChrome.sideInset)
                 .padding(.top, 14)
                 .opacity(viewModel.text.isEmpty && viewModel.groups.isEmpty ? 0 : 1)

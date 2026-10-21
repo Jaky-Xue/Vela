@@ -309,6 +309,5 @@ public final class AppServices {
             }
         }
 
-        settings.updateManualElementHide { $0 = .default }
     }
 }

@@ -20,6 +20,10 @@ struct SiteIconView: View {
     var host: String
     var size: CGFloat = 28
     var faviconUrl: String?
+    /// Whether the icon may be fetched from a third-party favicon service.
+    /// A private tab passes false: its host must not be sent to Google just to
+    /// draw a tile.
+    var allowsThirdPartyLookup: Bool = true
     /// The tile's corner radius, when the caller owns the shape the tile sits
     /// in — the home's favourites pass their chosen shape through here. `nil`
     /// keeps the component's own proportion of the size.
@@ -98,7 +102,7 @@ struct SiteIconView: View {
     private func loadIcon() async {
         image = nil
         var fallback: UIImage?
-        for candidate in candidateUrls {
+        for candidate in Self.candidates(host: host, faviconUrl: faviconUrl, allowsThirdParty: allowsThirdPartyLookup) {
             guard let url = candidate else { continue }
             if let cached = Self.iconCache.object(forKey: url.absoluteString as NSString) {
                 if max(cached.size.width, cached.size.height) >= Self.sharpIconEdge {
@@ -189,16 +193,33 @@ struct SiteIconView: View {
     /// rendition it holds — 128-256 pixels for the sites that matter — and
     /// the site's own `.ico` is kept as the last resort for a network where
     /// the service cannot be reached.
-    private var candidateUrls: [URL?] {
+    /// The candidate sources, in order. The third-party favicon service is
+    /// included only when the caller allows it; an explicit page icon is kept
+    /// only when it is local to the page's host or third-party lookups are
+    /// allowed.
+    static func candidates(
+        host: String,
+        faviconUrl: String?,
+        allowsThirdParty: Bool
+    ) -> [URL?] {
         var urls: [URL?] = []
-        if let faviconUrl, !faviconUrl.isEmpty {
-            urls.append(URL(string: faviconUrl))
-        }
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedHost = trimmed.lowercased()
+
+        if let faviconUrl, !faviconUrl.isEmpty,
+           let url = URL(string: faviconUrl) {
+            let iconHost = url.host?.lowercased()
+            if allowsThirdParty || iconHost == nil || iconHost == normalizedHost {
+                urls.append(url)
+            }
+        }
+
         if !trimmed.isEmpty, trimmed.contains(".") {
             urls.append(URL(string: "https://\(trimmed)/apple-touch-icon.png"))
             urls.append(URL(string: "https://\(trimmed)/apple-touch-icon-precomposed.png"))
-            urls.append(URL(string: "https://www.google.com/s2/favicons?sz=256&domain=\(trimmed)"))
+            if allowsThirdParty {
+                urls.append(URL(string: "https://www.google.com/s2/favicons?sz=256&domain=\(trimmed)"))
+            }
             urls.append(URL(string: "https://\(trimmed)/favicon.ico"))
         }
         return urls

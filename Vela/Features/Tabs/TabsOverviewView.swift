@@ -427,7 +427,8 @@ struct TabsOverviewView: View {
                                 SiteIconView(
                                     host: tab.displayHost,
                                     size: 16,
-                                    faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl
+                                    faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl,
+                                    allowsThirdPartyLookup: tab.privacyMode != .private
                                 )
                             }
                             Text(tab.displayHost.isEmpty ? tab.displayTitle : tab.displayHost)
@@ -658,7 +659,8 @@ private struct TabCard: View {
                     SiteIconView(
                         host: tab.displayHost,
                         size: 15,
-                        faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl
+                        faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl,
+                        allowsThirdPartyLookup: tab.privacyMode != .private
                     )
                 }
                 Text(tab.displayTitle)
@@ -735,7 +737,11 @@ private struct TabCard: View {
                         .font(.system(size: 24))
                         .foregroundStyle(palette.secondaryText.opacity(0.45))
                 } else {
-                    SiteIconView(host: tab.displayHost, size: 32)
+                    SiteIconView(
+                        host: tab.displayHost,
+                        size: 32,
+                        allowsThirdPartyLookup: tab.privacyMode != .private
+                    )
                 }
             }
         }
