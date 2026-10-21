@@ -1050,19 +1050,18 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39627153355](https://github.com/Jaky-Xue/Vela/actions/runs/39627153355)，
-  提交 `e892302`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39693612319](https://github.com/Jaky-Xue/Vela/actions/runs/39693612319)，
+  提交 `d6c0106`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。264 项测试；第一次尝试有 1 项既有导航时序测试
-  （`WebNavigationIntegrationTests.testDesktopModePresentsADesktopIdentifierToThePage`）
-  在 20 秒等待中超时，`-retry-tests-on-failure` 重跑后通过；xcodebuild 最终
-  `** TEST SUCCEEDED **`，job 结论 success。新增的翻译解析测试全部通过。
-- 更早的翻译核心修复运行 `39625038961`（提交 `728f7a5`）也是 Build 成功、
-  262 项测试 0 失败；`e892302` 加入浏览器 UA、429 文案、声明语言阈值与小说 JSON-LD 字段后，
-  最终运行通过。
+- **Run the unit tests：成功**。267 项测试；第一次尝试有 1 项既有导航时序测试
+  （`WebNavigationIntegrationTests.testOpeningALinkInANewTabLeavesTheCurrentTabAlone`）
+  超时，`-retry-tests-on-failure` 重跑后通过；xcodebuild 最终
+  `** TEST SUCCEEDED **`，job 结论 success。本轮新增的 schema/图标加载测试通过。
+- 更早的运行 `39627153355`（翻译修复 + 小说 JSON-LD）也是 Build 成功、264 项测试最终通过；
+  本轮 `d6c0106` 加入 F-07/D4/D6/D8 性能修复后再次通过。
 - **安装包**：`G:\Vela-unsigned-3.9.0.ipa`
-  - 大小 6,716,725 字节（约 6.5 MiB）
-  - SHA-256 `ab79cbeca16c2677d353cccf98085091894c9ab8b75b38ab349d011fbf9e4af9`
+  - 大小 6,738,188 字节（约 6.4 MiB）
+  - SHA-256 `ac1c34fab8ba1cb3a2ff4b826a59039b8c0f87ee137e848464d9d7019796ef2b`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
@@ -1121,7 +1120,7 @@ B2 的待办，不声称已经解决。
 
 - 运行 `39625038961`（提交 `728f7a5`）：Build Vela 成功；单元测试 **262 项、0 失败、TEST SUCCEEDED**。
 - 后续提交 `e892302` 加入浏览器 UA、provider-neutral 429 文案、声明语言阈值与小说 JSON-LD 字段；
-  最终运行 `39627153355` 见 §19。
+  最终运行 `39693612319` 见 §19。
 
 ---
 
@@ -1134,3 +1133,41 @@ B2 的待办，不声称已经解决。
   `.read-content`、`.chapter_read` 等常见字段；章节标题/书名/作者的 DOM 选择器与 meta 回退保持。
 - 注入脚本用 `node --check` 做了语法检查（提取脚本、目录脚本、翻译脚本均通过；翻译支持脚本仅因
   Swift 插值占位替换产生一条预期外的括号错误）。
+
+---
+
+## 22. 剩余性能项（F-07 / D4 / D6 / D8，2026-10-22）
+
+### 22.1 F-07：私密小说库只建小说表
+
+- `BrowserSchema.novelCreationStatements` 从完整 `creationStatements` 中筛出小说四表与三个索引
+  （共 7 条），`InMemoryNovelLibrary.make()` 只执行这一子集，不再为每次私密会话在主 actor 上
+  创建书签/历史/下载等无关表。
+- 仍是主 actor 上的 7 条 SQLite 语句；F-07 的“首次建库主线程成本”只得到显著缩小，没有完全移出主线程。
+- `NovelPrivacyTests.testPrivateShelfSchemaContainsOnlyNovelTables` 覆盖。
+
+### 22.2 D4：离线归档 I/O
+
+- 保存：archive、preview、manifest 的目录创建与写入放入 `Task.detached`；
+  `resourceCount` 的 plist 扫描也放入后台。`preview.pngData()` 仍在主 actor 上编码。
+- 打开：`archiveData(for:)` 改为 async 并在后台读取；`openOfflinePage` 在 `Task { @MainActor in … }`
+  中等待读取后再创建标签。
+- 未做真实大文件耗时测量。
+
+### 22.3 D6：进度更新与外壳重算
+
+- `WebViewHost.Coordinator` 对 `estimatedProgress` 做 10 Hz 节流：开始（≤0.01）与结束（≥0.999）
+  立即送达，其余最多每 100ms 一次；`stopObserving` 取消待发送任务。
+- 这减少 `BrowserTabState.estimatedProgress` 写入和 `@Observable` 外壳重算次数；没有做 SwiftUI
+  update 计数或帧率测量。
+
+### 22.4 D8：图标请求收敛与负缓存
+
+- 新增 `SiteIconLoader` actor：同一 URL 的并发请求共享一个 in-flight fetch；失败 URL 负缓存 15 分钟，
+  上限 256 条并淘汰最旧；`fetch` 可注入，便于测试。
+- `SiteIconView` 仍保留解码图 `NSCache`；私密第三方面板策略不变（候选列表先过滤）。
+- `SiteIconLoaderTests` 覆盖失败记忆与并发合并。
+
+### 22.5 验证
+
+- 构建与测试结果见 §19 的最终运行（本轮提交 `d6c0106`）。

@@ -707,3 +707,15 @@
 | 页面语言识别异常 | 样本优先取正文容器并读取 `<html lang>`/content-language/og:locale；本地识别置信度 <0.5 时采用声明语言；语言代码归一化 | 已实现；真实混合页面未验证 |
 | 不同服务字段不适配 | Google 数组/字典/多位置检测字段；DeepL `detected_source_language`；OpenAI `message.content`/`text`/分片 | 已实现并有 `TranslationParsingTests` |
 | 小说字段适配 | 提取脚本读取 JSON-LD Book/Chapter/author，补充正文/标题选择器 | 已实现；真实站点未逐一验证 |
+
+---
+
+## 性能修复状态（2026-10-22）
+
+| 风险 | 状态 | 说明 |
+|---|---|---|
+| R-11 | 部分修复 | 预览缩放/编码已在后台；未做真机帧率测量 |
+| R-12 | 部分修复 | 离线 archive/preview/manifest 写入与 archive 读取在后台；preview PNG 编码仍在主线程 |
+| R-14 | 部分修复 | `WebViewHost` 进度 10 Hz 节流；未做 SwiftUI 更新计数 |
+| R-16 | 部分修复 | 私密图标候选过滤（B7）+ in-flight 合并/失败负缓存；未做真实抓包 |
+| F-07 | 部分修复 | 私密小说库只建 7 条小说表/索引，仍在主 actor；未完全异步建库 |
