@@ -126,6 +126,11 @@ public final class TabManager {
     /// second private tab to a live session does not.
     public var onPrivateSessionStarted: (() -> Void)?
 
+    /// Fired before a tab is destroyed by `closeTab` or `closeAllTabs`.
+    /// The coordinator cancels the tab's user-script work and drops the
+    /// state keyed by the tab id.
+    public var onWillCloseTab: ((BrowserTabState) -> Void)?
+
     public var activeTab: BrowserTabState? {
         tabs.first { $0.id == activeTabId }
     }
@@ -451,6 +456,7 @@ public final class TabManager {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let closing = tabs[index]
         let mode = closing.privacyMode
+        onWillCloseTab?(closing)
 
         if !closing.isHome {
             let record = RecentlyClosedTabRecord(
@@ -498,6 +504,9 @@ public final class TabManager {
     ) {
         let doomed = tabs.filter { $0.privacyMode == privacyMode }.map(\.id)
         for id in doomed {
+            if let tab = tab(id: id) {
+                onWillCloseTab?(tab)
+            }
             previews.remove(id)
             destroyWebView(for: id)
         }

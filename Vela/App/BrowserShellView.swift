@@ -307,32 +307,7 @@ struct BrowserShellView: View {
             }
         }
         .animation(.snappy(duration: 0.2), value: showQRScanner)
-        .overlay {
-            // The novel reader is a layer for the same rotation reason the
-            // overview is: the chapter must keep its own geometry when the
-            // window turns.
-            if let session = novelSession {
-                NovelReaderView(
-                    book: session.book,
-                    initialChapter: session.chapter,
-                    library: session.library,
-                    isPrivateSession: session.isPrivateSession,
-                    sessionGeneration: session.sessionGeneration,
-                    onClose: {
-                        if session.isCurrent(in: novelSession) {
-                            novelSession = nil
-                        }
-                    },
-                    onOpenInBrowser: { url in
-                        guard session.isCurrent(in: novelSession) else { return }
-                        novelSession = nil
-                        openInBrowser(url, for: session)
-                    }
-                )
-                .transition(.opacity)
-                .zIndex(40)
-            }
-        }
+        .overlay { novelReaderLayer }
         .animation(.snappy(duration: 0.24), value: novelSession?.id)
         .alert(
             "无法进入小说模式",
@@ -449,15 +424,7 @@ struct BrowserShellView: View {
             syncAddressText()
         }
         .onChange(of: env.privateNovelSessionGeneration) { _, generation in
-            // The private session changed (began or ended). Close a reader/shelf
-            // from an earlier generation; a regular reader is not touched.
-            if bookshelfIsPrivate, bookshelfGeneration != generation {
-                showBookshelf = false
-                bookshelfLibrary = nil
-                bookshelfIsPrivate = false
-            }
-            guard let session = novelSession, session.shouldClose(for: generation) else { return }
-            novelSession = nil
+            handlePrivateNovelGeneration(generation)
         }
         .onChange(of: activeTab?.url) { _, _ in
             // A new document is a fresh read: the chrome comes back for it.
@@ -656,6 +623,49 @@ struct BrowserShellView: View {
         omnibox.onCommitText = { input in
             submitAddressBar(input)
         }
+    }
+
+    /// The novel reader layer.
+    ///
+    /// Kept out of the root modifier chain: that chain is already at the type
+    /// checker's budget, and the reader's closures are large.
+    @ViewBuilder
+    var novelReaderLayer: some View {
+        if let session = novelSession {
+            NovelReaderView(
+                book: session.book,
+                initialChapter: session.chapter,
+                library: session.library,
+                isPrivateSession: session.isPrivateSession,
+                sessionGeneration: session.sessionGeneration,
+                onClose: {
+                    if session.isCurrent(in: novelSession) {
+                        novelSession = nil
+                    }
+                },
+                onOpenInBrowser: { url in
+                    guard session.isCurrent(in: novelSession) else { return }
+                    novelSession = nil
+                    openInBrowser(url, for: session)
+                }
+            )
+            .transition(.opacity)
+            .zIndex(40)
+        }
+    }
+
+    /// Closes a reader or shelf left behind by an earlier private generation.
+    ///
+    /// A regular reader always answers false, so a private session's begin/end
+    /// never dismisses it.
+    private func handlePrivateNovelGeneration(_ generation: Int) {
+        if bookshelfIsPrivate, bookshelfGeneration != generation {
+            showBookshelf = false
+            bookshelfLibrary = nil
+            bookshelfIsPrivate = false
+        }
+        guard let session = novelSession, session.shouldClose(for: generation) else { return }
+        novelSession = nil
     }
 
     // MARK: - Scrolling

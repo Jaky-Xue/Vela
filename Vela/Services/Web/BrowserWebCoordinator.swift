@@ -147,6 +147,24 @@ public final class BrowserWebCoordinator: NSObject {
         self.tabManager = tabManager
     }
 
+    /// Releases the per-tab work a user script left behind.
+    ///
+    /// Called from `TabManager.onWillCloseTab`. XHR tasks are keyed by tab so
+    /// a closed tab's requests stop instead of holding its web view until a
+    /// timeout; the GM tab state and menu commands belong to the document and
+    /// are meaningless without it.
+    func cleanupClosedTab(_ tab: BrowserTabState) {
+        let prefix = "\(tab.id)|"
+        for key in Array(userScriptXHRTasks.keys) where key.hasPrefix(prefix) {
+            userScriptXHRTasks.removeValue(forKey: key)?.cancel()
+        }
+        userScriptTabStates.removeValue(forKey: tab.id)
+        overlays.userScriptMenuCommands.removeAll { $0.tabId == tab.id }
+        if let webView = tabManager?.webView(for: tab.id) {
+            traces.removeValue(forKey: ObjectIdentifier(webView))
+        }
+    }
+
     // MARK: - Element picker
 
     /// Arms the picker on the page already on screen.

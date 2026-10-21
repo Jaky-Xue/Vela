@@ -94,7 +94,7 @@ extension BrowserWebCoordinator {
 
         case "xhrAbort":
             guard let requestId = payload["requestId"] as? String else { return }
-            let key = "\(scriptId)|\(requestId)"
+            let key = "\(tab.id)|\(scriptId)|\(requestId)"
             userScriptXHRTasks.removeValue(forKey: key)?.cancel()
             resolveUserScript(
                 scriptId: scriptId,
@@ -215,6 +215,9 @@ extension BrowserWebCoordinator {
             if buffer.count > 24_000_000 {
                 throw URLError(.dataLengthExceedsMaximum)
             }
+            if buffer.count % 65_536 == 0 {
+                try Task.checkCancellation()
+            }
             let now = Date()
             if buffer.count - lastReportedCount >= 512
                 || now.timeIntervalSince(lastReportedAt) >= 0.12 {
@@ -293,7 +296,7 @@ extension BrowserWebCoordinator {
         let timeoutMilliseconds = (payload["timeout"] as? NSNumber)?.doubleValue ?? 0
         let user = payload["user"] as? String ?? ""
         let password = payload["password"] as? String ?? ""
-        let key = "\(scriptId)|\(requestId)"
+        let key = "\(tab.id)|\(scriptId)|\(requestId)"
 
         userScriptXHRTasks[key]?.cancel()
         let task = Task { @MainActor [weak self] in

@@ -88,6 +88,9 @@ public final class AppEnvironment {
         tabManager.onPrivateSessionStarted = { [weak self] in
             self?.beginPrivateSession()
         }
+        tabManager.onWillCloseTab = { [weak coordinator] tab in
+            coordinator?.cleanupClosedTab(tab)
+        }
         coordinator.userScriptOpenTabHandler = { [weak self] url, active, privacyMode in
             self?.tabManager.openTab(
                 url: url,
