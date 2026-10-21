@@ -748,6 +748,13 @@ public enum UserScriptInjector {
               return promiseCall(api.GM_getResourceURL(name));
             },
             xmlHttpRequest: function (details) {
+              // The promise form still has to run the callbacks the caller
+              // supplied. A script may hand `GM.xmlHttpRequest` its
+              // `onload`/`onerror` handlers and ignore the returned promise —
+              // the streaming `GM_fetch` polyfill Immersive Translate ships is
+              // one — and replacing those handlers with the promise setters
+              // left such a script waiting on a response it never hears about,
+              // which presents as a translation that loads forever.
               return new Promise(function (resolve, reject) {
                 var copy = {};
                 for (var key in details) {
@@ -755,10 +762,28 @@ public enum UserScriptInjector {
                     copy[key] = details[key];
                   }
                 }
-                copy.onload = resolve;
-                copy.onerror = reject;
-                copy.ontimeout = reject;
-                copy.onabort = reject;
+                function runCallback(callback, value) {
+                  if (typeof callback !== 'function') { return; }
+                  try {
+                    callback(value);
+                  } catch (_error) {}
+                }
+                copy.onload = function (response) {
+                  resolve(response);
+                  runCallback(details.onload, response);
+                };
+                copy.onerror = function (response) {
+                  reject(response);
+                  runCallback(details.onerror, response);
+                };
+                copy.ontimeout = function (response) {
+                  reject(response);
+                  runCallback(details.ontimeout, response);
+                };
+                copy.onabort = function (response) {
+                  reject(response);
+                  runCallback(details.onabort, response);
+                };
                 api.GM_xmlhttpRequest(copy);
               });
             },
@@ -770,8 +795,18 @@ public enum UserScriptInjector {
                     copy[key] = details[key];
                   }
                 }
-                copy.onload = resolve;
-                copy.onerror = reject;
+                copy.onload = function (result) {
+                  resolve(result);
+                  if (typeof details.onload === 'function') {
+                    try { details.onload(result); } catch (_error) {}
+                  }
+                };
+                copy.onerror = function (error) {
+                  reject(error);
+                  if (typeof details.onerror === 'function') {
+                    try { details.onerror(error); } catch (_error) {}
+                  }
+                };
                 api.GM_download(copy);
               });
             },

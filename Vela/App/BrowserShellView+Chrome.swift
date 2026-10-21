@@ -133,6 +133,14 @@ extension BrowserShellView {
 
     var toolbarLayout: ToolbarLayout { env.settings.toolbarLayout }
 
+    /// The bar stops growing at a thumb-sized width. On a phone the screen is
+    /// narrower than this and nothing changes; on an iPad — where the phone
+    /// layout can still be chosen — an unbounded field stretched across the
+    /// whole window read as a slab rather than an address bar. The overlay
+    /// centres the capped bar, so the field keeps a sensible length and the
+    /// controls stay within reach.
+    static let commandBarMaxWidth: CGFloat = 720
+
     var commandBarContent: some View {
         // Six points between the pieces rather than eight, and four of padding
         // inside each cluster: the field is the bar's subject, and every point
@@ -160,6 +168,7 @@ extension BrowserShellView {
                 toolbarCluster(toolbarLayout.trailing)
             }
         }
+        .frame(maxWidth: Self.commandBarMaxWidth)
     }
 
     /// One side of the omnibox, as the user arranged it.
@@ -170,6 +179,12 @@ extension BrowserShellView {
             }
         }
         .padding(.horizontal, 4)
+        // A cluster holding one 34-point control would otherwise be 42 points
+        // wide against a 52-point bar: a capsule taller than it is wide, which
+        // reads as a squashed circle. Holding the cluster to at least the bar's
+        // height makes a lone control a circle, and changes nothing once a
+        // second control widens the cluster past that.
+        .frame(minWidth: BrowserChrome.barHeight)
         .frame(height: BrowserChrome.barHeight)
         .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
     }

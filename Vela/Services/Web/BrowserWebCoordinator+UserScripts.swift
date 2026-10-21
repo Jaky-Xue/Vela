@@ -16,6 +16,12 @@ extension BrowserWebCoordinator {
         guard let payload = message.body as? [String: Any],
               let type = payload["type"] as? String,
               let scriptId = payload["scriptId"] as? String else { return }
+        // The bootstrap runs in every frame, and each frame keeps its own
+        // resolver table. An answer has to go back to the frame that asked:
+        // evaluating it in the handful of places below always targeted the
+        // main frame, so a request a script made inside an iframe was answered
+        // into a table that never held it, and the caller waited forever.
+        let frame = message.frameInfo
 
         switch type {
         case "setValue":
@@ -81,10 +87,10 @@ extension BrowserWebCoordinator {
             userScriptOpenTabHandler?(url, payload["active"] as? Bool ?? true, tab.privacyMode)
 
         case "download":
-            handleUserScriptDownload(payload, tab: tab, webView: webView)
+            handleUserScriptDownload(payload, tab: tab, webView: webView, frame: frame)
 
         case "xhr":
-            handleUserScriptXHR(payload, tab: tab, webView: webView)
+            handleUserScriptXHR(payload, tab: tab, webView: webView, frame: frame)
 
         case "xhrAbort":
             guard let requestId = payload["requestId"] as? String else { return }
@@ -94,11 +100,12 @@ extension BrowserWebCoordinator {
                 scriptId: scriptId,
                 requestId: requestId,
                 payload: ["aborted": true],
-                in: webView
+                in: webView,
+                frame: frame
             )
 
         case "cookie":
-            handleUserScriptCookie(payload, tab: tab, webView: webView)
+            handleUserScriptCookie(payload, tab: tab, webView: webView, frame: frame)
 
         case "getTab":
             guard let requestId = payload["requestId"] as? String else { return }
@@ -106,7 +113,8 @@ extension BrowserWebCoordinator {
                 scriptId: scriptId,
                 requestId: requestId,
                 payload: ["json": userScriptTabStates[tab.id] ?? "null"],
-                in: webView
+                in: webView,
+                frame: frame
             )
 
         case "saveTab":
@@ -120,7 +128,8 @@ extension BrowserWebCoordinator {
                 scriptId: scriptId,
                 requestId: requestId,
                 payload: ["tabs": userScriptTabStates],
-                in: webView
+                in: webView,
+                frame: frame
             )
 
         default:
@@ -130,12 +139,20 @@ extension BrowserWebCoordinator {
 
     // MARK: - User-script runtime
 
-    /// Resolves an asynchronous userscript API call in the page.
+    /// Resolves an asynchronous userscript API call in the frame that made it.
+    ///
+    /// The answer has to land in the caller's own `__velaUserScriptBridge`:
+    /// every frame installs its own resolver table, and a request made from a
+    /// subframe has no entry in the main frame's. When the frame is no longer
+    /// addressable — a navigation replaced it while the request was in flight —
+    /// the main frame is the best remaining guess, and the call there simply
+    /// finds no resolver.
     private func resolveUserScript(
         scriptId: String,
         requestId: String,
         payload: [String: Any],
-        in webView: WKWebView
+        in webView: WKWebView,
+        frame: WKFrameInfo? = nil
     ) {
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
@@ -143,14 +160,22 @@ extension BrowserWebCoordinator {
         window.__velaUserScriptBridge && window.__velaUserScriptBridge.resolve &&
         window.__velaUserScriptBridge.resolve(\(jsonLiteral(scriptId)), \(jsonLiteral(requestId)), \(json));
         """
-        webView.evaluateJavaScript(script, completionHandler: nil)
+        guard let frame else {
+            webView.evaluateJavaScript(script, completionHandler: nil)
+            return
+        }
+        webView.evaluateJavaScript(script, in: frame, in: .page) { [weak webView] _, error in
+            guard error != nil, let webView else { return }
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
     }
 
     /// Starts a `GM_download` through the browser's own transfer engine.
     private func handleUserScriptDownload(
         _ payload: [String: Any],
         tab: BrowserTabState,
-        webView: WKWebView
+        webView: WKWebView,
+        frame: WKFrameInfo?
     ) {
         guard let scriptId = payload["scriptId"] as? String,
               let requestId = payload["requestId"] as? String else { return }
@@ -160,7 +185,8 @@ extension BrowserWebCoordinator {
                 scriptId: scriptId,
                 requestId: requestId,
                 payload: ["error": "无效的下载地址"],
-                in: webView
+                in: webView,
+                frame: frame
             )
             return
         }
@@ -175,7 +201,8 @@ extension BrowserWebCoordinator {
             scriptId: scriptId,
             requestId: requestId,
             payload: ["taskId": task.guid],
-            in: webView
+            in: webView,
+            frame: frame
         )
     }
 
@@ -187,7 +214,8 @@ extension BrowserWebCoordinator {
     private func handleUserScriptXHR(
         _ payload: [String: Any],
         tab: BrowserTabState,
-        webView: WKWebView
+        webView: WKWebView,
+        frame: WKFrameInfo?
     ) {
         guard let scriptId = payload["scriptId"] as? String,
               let requestId = payload["requestId"] as? String,
@@ -276,14 +304,16 @@ extension BrowserWebCoordinator {
                     scriptId: scriptId,
                     requestId: requestId,
                     payload: result,
-                    in: webView
+                    in: webView,
+                    frame: frame
                 )
             } catch is CancellationError {
                 self.resolveUserScript(
                     scriptId: scriptId,
                     requestId: requestId,
                     payload: ["aborted": true],
-                    in: webView
+                    in: webView,
+                    frame: frame
                 )
             } catch {
                 let nsError = error as NSError
@@ -296,7 +326,8 @@ extension BrowserWebCoordinator {
                         "error": error.localizedDescription,
                         "timeout": timedOut
                     ],
-                    in: webView
+                    in: webView,
+                    frame: frame
                 )
             }
             self.userScriptXHRTasks.removeValue(forKey: key)
@@ -332,7 +363,8 @@ extension BrowserWebCoordinator {
     private func handleUserScriptCookie(
         _ payload: [String: Any],
         tab: BrowserTabState,
-        webView: WKWebView
+        webView: WKWebView,
+        frame: WKFrameInfo?
     ) {
         guard let scriptId = payload["scriptId"] as? String,
               let requestId = payload["requestId"] as? String,
@@ -372,7 +404,8 @@ extension BrowserWebCoordinator {
                     scriptId: scriptId,
                     requestId: requestId,
                     payload: ["cookies": filtered.map(Self.cookieJSON)],
-                    in: webView
+                    in: webView,
+                    frame: frame
                 )
 
             case "set":
@@ -382,7 +415,8 @@ extension BrowserWebCoordinator {
                         scriptId: scriptId,
                         requestId: requestId,
                         payload: ["error": "Cookie 缺少 name 或 value"],
-                        in: webView
+                        in: webView,
+                        frame: frame
                     )
                     return
                 }
@@ -404,7 +438,8 @@ extension BrowserWebCoordinator {
                         scriptId: scriptId,
                         requestId: requestId,
                         payload: ["error": "Cookie 缺少 domain 或 url"],
-                        in: webView
+                        in: webView,
+                        frame: frame
                     )
                     return
                 }
@@ -423,7 +458,8 @@ extension BrowserWebCoordinator {
                         scriptId: scriptId,
                         requestId: requestId,
                         payload: ["error": "Cookie 属性无效"],
-                        in: webView
+                        in: webView,
+                        frame: frame
                     )
                     return
                 }
@@ -432,7 +468,8 @@ extension BrowserWebCoordinator {
                     scriptId: scriptId,
                     requestId: requestId,
                     payload: [:],
-                    in: webView
+                    in: webView,
+                    frame: frame
                 )
 
             case "delete":
@@ -463,7 +500,8 @@ extension BrowserWebCoordinator {
                     scriptId: scriptId,
                     requestId: requestId,
                     payload: [:],
-                    in: webView
+                    in: webView,
+                    frame: frame
                 )
 
             default:
@@ -471,7 +509,8 @@ extension BrowserWebCoordinator {
                     scriptId: scriptId,
                     requestId: requestId,
                     payload: ["error": "未知的 Cookie 操作"],
-                    in: webView
+                    in: webView,
+                    frame: frame
                 )
             }
         }

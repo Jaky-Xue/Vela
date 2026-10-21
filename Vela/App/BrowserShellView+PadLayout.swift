@@ -116,6 +116,7 @@ extension BrowserShellView {
                     }
                 }
                 .padding(.horizontal, 4)
+                .frame(minWidth: BrowserChrome.barHeight)
                 .frame(height: BrowserChrome.barHeight)
                 .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
 
@@ -143,6 +144,7 @@ extension BrowserShellView {
                     }
                 }
                 .padding(.horizontal, 4)
+                .frame(minWidth: BrowserChrome.barHeight)
                 .frame(height: BrowserChrome.barHeight)
                 .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
             }
@@ -175,7 +177,10 @@ extension BrowserShellView {
     /// the number is exact rather than an estimate.
     static func padClusterWidth(controlCount: Int) -> CGFloat {
         let count = max(controlCount, 1)
-        return 8 + CGFloat(count) * 34 + CGFloat(count - 1) * 2
+        // A lone control is drawn in a circle as wide as the bar, so the
+        // cluster's measured width has that floor too — otherwise the field's
+        // share is overstated and the row runs past the window's edge.
+        return max(8 + CGFloat(count) * 34 + CGFloat(count - 1) * 2, BrowserChrome.barHeight)
     }
 
     @ViewBuilder

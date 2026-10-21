@@ -133,4 +133,32 @@ final class UserScriptTests: XCTestCase {
         XCTAssertTrue(source.contains("tab-1"))
         XCTAssertTrue(source.contains("bridge.resolve = function"))
     }
+
+    func testPromiseFormRequestStillRunsTheScriptCallbacks() throws {
+        // Immersive Translate's streaming `GM_fetch` polyfill hands
+        // `GM.xmlHttpRequest` its `onload`/`onerror` handlers and never looks
+        // at the returned promise. The promise wrapper used to replace those
+        // handlers with its own setters, so the script never heard that a
+        // response had arrived and its translation stayed on "loading"
+        // forever.
+        let script = InstalledUserScriptState(
+            name: "Callback Test",
+            version: "1.0",
+            source: "window.__velaBodyRan = true;",
+            matches: ["*://*/*"],
+            grants: [.gmXmlhttpRequest],
+            runAt: .documentEnd
+        )
+        let built = UserScriptInjector.makeUserScripts(
+            for: [script],
+            url: try XCTUnwrap(URL(string: "https://example.com/")),
+            valuesByScriptId: [:],
+            tabId: "tab-1"
+        )
+        let source = try XCTUnwrap(built.scripts.first?.source)
+        XCTAssertTrue(source.contains("runCallback(details.onload, response)"))
+        XCTAssertTrue(source.contains("runCallback(details.onerror, response)"))
+        XCTAssertTrue(source.contains("runCallback(details.ontimeout, response)"))
+        XCTAssertTrue(source.contains("runCallback(details.onabort, response)"))
+    }
 }
