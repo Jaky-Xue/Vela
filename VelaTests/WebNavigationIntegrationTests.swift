@@ -751,6 +751,243 @@ final class WebNavigationIntegrationTests: XCTestCase {
         XCTAssertEqual(tab.loadState, .finished)
         XCTAssertEqual(tab.title, "Page One")
     }
+
+    // MARK: - Private data store
+
+    func testPrivateTabsShareOneDataStore() async {
+        let first = harness.tabManager.openTab(url: url("/one"), privacyMode: .private)
+        await waitForSettled(first, expectingTitle: "Page One")
+        let second = harness.tabManager.openTab(url: url("/two"), privacyMode: .private)
+        await waitForSettled(second, expectingTitle: "Page Two")
+
+        guard let firstView = harness.tabManager.webView(for: first.id),
+              let secondView = harness.tabManager.webView(for: second.id) else {
+            return XCTFail("the private tabs have no web views")
+        }
+        XCTAssertTrue(
+            firstView.configuration.websiteDataStore === secondView.configuration.websiteDataStore,
+            "private tabs in one window must share one data store"
+        )
+
+        let regular = harness.open(url("/one"))
+        await waitForSettled(regular, expectingTitle: "Page One")
+        guard let regularView = harness.tabManager.webView(for: regular.id) else {
+            return XCTFail("the regular tab has no web view")
+        }
+        XCTAssertFalse(
+            regularView.configuration.websiteDataStore === firstView.configuration.websiteDataStore,
+            "a regular tab must not use the private store"
+        )
+    }
+
+    func testPrivateTabsShareCookies() async {
+        let first = harness.tabManager.openTab(url: url("/one"), privacyMode: .private)
+        await waitForSettled(first, expectingTitle: "Page One")
+        guard let firstView = harness.tabManager.webView(for: first.id) else {
+            return XCTFail("the first private tab has no web view")
+        }
+
+        // A cookie left by an earlier run must not satisfy the assertion on its
+        // own: the private store is fresh per harness, but removing the name
+        // first keeps the test honest if that ever changes.
+        let store = harness.coordinator.privateWebsiteDataStore()
+        await removeCookies(named: "vela_private", in: store)
+        _ = try? await firstView.evaluateJavaScript(
+            "document.cookie = 'vela_private=shared; path=/';"
+        )
+
+        // The cookie store is updated asynchronously; wait for the shared store
+        // to see it before opening the second tab, so the test measures sharing
+        // rather than a set/cookie-store race.
+        let appeared = await waitForCookie(named: "vela_private", in: store)
+        XCTAssertTrue(appeared, "the cookie should land in the shared private store")
+
+        let second = harness.tabManager.openTab(url: url("/two"), privacyMode: .private)
+        await waitForSettled(second, expectingTitle: "Page Two")
+        guard let secondView = harness.tabManager.webView(for: second.id) else {
+            return XCTFail("the second private tab has no web view")
+        }
+        let value = try? await secondView.evaluateJavaScript("document.cookie")
+        XCTAssertTrue(
+            (value as? String ?? "").contains("vela_private=shared"),
+            "the second private tab should see the first tab's cookie: \(value as? String ?? "nil")"
+        )
+    }
+
+    func testEndingAPrivateSessionClearsItsStore() async {
+        let privateTab = harness.tabManager.openTab(url: url("/one"), privacyMode: .private)
+        await waitForSettled(privateTab, expectingTitle: "Page One")
+        guard let privateView = harness.tabManager.webView(for: privateTab.id) else {
+            return XCTFail("the private tab has no web view")
+        }
+        let privateStore = harness.coordinator.privateWebsiteDataStore()
+        await removeCookies(named: "vela_private", in: privateStore)
+        _ = try? await privateView.evaluateJavaScript(
+            "document.cookie = 'vela_private=1; path=/';"
+        )
+        let sawPrivateCookie = await waitForCookie(named: "vela_private", in: privateStore)
+        XCTAssertTrue(sawPrivateCookie)
+
+        let regular = harness.open(url("/one"))
+        await waitForSettled(regular, expectingTitle: "Page One")
+        guard let regularView = harness.tabManager.webView(for: regular.id) else {
+            return XCTFail("the regular tab has no web view")
+        }
+        let regularStore = regularView.configuration.websiteDataStore
+        await removeCookies(named: "vela_regular", in: regularStore)
+        _ = try? await regularView.evaluateJavaScript(
+            "document.cookie = 'vela_regular=kept; path=/';"
+        )
+        let sawRegularCookie = await waitForCookie(named: "vela_regular", in: regularStore)
+        XCTAssertTrue(sawRegularCookie)
+
+        // What `AppEnvironment.endPrivateSession` does: close the private tabs,
+        // then empty the store those tabs shared.
+        harness.tabManager.endPrivateSession()
+        await harness.coordinator.clearPrivateWebsiteData()
+
+        let privateCookie = await cookie(named: "vela_private", in: privateStore)
+        XCTAssertNil(privateCookie, "ending the session must empty the private store")
+        let regularCookie = await cookie(named: "vela_regular", in: regularStore)
+        XCTAssertNotNil(regularCookie, "the regular store must be untouched")
+    }
+
+    // MARK: - Private store rotation
+
+    func testANewPrivateSessionGetsAFreshStoreAfterEnding() async {
+        let first = harness.tabManager.openTab(url: url("/one"), privacyMode: .private)
+        await waitForSettled(first, expectingTitle: "Page One")
+        guard let firstView = harness.tabManager.webView(for: first.id) else {
+            return XCTFail("the first private tab has no web view")
+        }
+        let firstStore = firstView.configuration.websiteDataStore
+
+        harness.tabManager.endPrivateSession()
+        await harness.coordinator.clearPrivateWebsiteData()
+
+        let second = harness.tabManager.openTab(url: url("/two"), privacyMode: .private)
+        await waitForSettled(second, expectingTitle: "Page Two")
+        guard let secondView = harness.tabManager.webView(for: second.id) else {
+            return XCTFail("the second private tab has no web view")
+        }
+        XCTAssertFalse(
+            firstStore === secondView.configuration.websiteDataStore,
+            "a session that starts after cleanup must get a fresh store"
+        )
+    }
+
+    func testClearingTheOldStoreDoesNotAffectTheNewSession() async {
+        let first = harness.tabManager.openTab(url: url("/one"), privacyMode: .private)
+        await waitForSettled(first, expectingTitle: "Page One")
+        guard let firstView = harness.tabManager.webView(for: first.id) else {
+            return XCTFail("the first private tab has no web view")
+        }
+        let oldStore = firstView.configuration.websiteDataStore
+        await removeCookies(named: "vela_old_session", in: oldStore)
+        _ = try? await firstView.evaluateJavaScript(
+            "document.cookie = 'vela_old_session=1; path=/';"
+        )
+        let oldCookieArrived = await waitForCookie(named: "vela_old_session", in: oldStore)
+        XCTAssertTrue(oldCookieArrived)
+
+        // End the session and retire its store, but leave the asynchronous clear
+        // pending while a new private session starts. This is the race the
+        // rotation exists for: the new session must not wait for the old clear,
+        // and the old clear must not touch the new session.
+        harness.tabManager.endPrivateSession()
+        guard let retiredStore = harness.coordinator.takePrivateWebsiteDataStoreForCleanup() else {
+            return XCTFail("the ended session had no store to retire")
+        }
+        XCTAssertTrue(retiredStore === oldStore)
+
+        let second = harness.tabManager.openTab(url: url("/two"), privacyMode: .private)
+        await waitForSettled(second, expectingTitle: "Page Two")
+        guard let secondView = harness.tabManager.webView(for: second.id) else {
+            return XCTFail("the new private tab has no web view")
+        }
+        let newStore = secondView.configuration.websiteDataStore
+        XCTAssertFalse(
+            newStore === retiredStore,
+            "the new session must not reuse the retired store"
+        )
+        await removeCookies(named: "vela_new_session", in: newStore)
+        _ = try? await secondView.evaluateJavaScript(
+            "document.cookie = 'vela_new_session=2; path=/';"
+        )
+        let newCookieArrived = await waitForCookie(named: "vela_new_session", in: newStore)
+        XCTAssertTrue(newCookieArrived)
+
+        await harness.coordinator.clearPrivateWebsiteData(retiredStore)
+
+        let oldCookie = await cookie(named: "vela_old_session", in: retiredStore)
+        XCTAssertNil(oldCookie, "the retired store must be emptied")
+        let newCookie = await cookie(named: "vela_new_session", in: newStore)
+        XCTAssertNotNil(newCookie, "clearing the retired store must not touch the new session")
+    }
+
+    func testDuplicatePrivateStoreCleanupIsANoOp() async {
+        let first = harness.tabManager.openTab(url: url("/one"), privacyMode: .private)
+        await waitForSettled(first, expectingTitle: "Page One")
+        guard let firstView = harness.tabManager.webView(for: first.id) else {
+            return XCTFail("the private tab has no web view")
+        }
+        let firstStore = firstView.configuration.websiteDataStore
+
+        harness.tabManager.endPrivateSession()
+        await harness.coordinator.clearPrivateWebsiteData()
+        await harness.coordinator.clearPrivateWebsiteData()
+
+        XCTAssertNil(
+            harness.coordinator.takePrivateWebsiteDataStoreForCleanup(),
+            "a duplicate cleanup must not invent a store"
+        )
+
+        let second = harness.tabManager.openTab(url: url("/two"), privacyMode: .private)
+        await waitForSettled(second, expectingTitle: "Page Two")
+        guard let secondView = harness.tabManager.webView(for: second.id) else {
+            return XCTFail("the new private tab has no web view")
+        }
+        XCTAssertFalse(firstStore === secondView.configuration.websiteDataStore)
+    }
+
+    // MARK: - Privacy test helpers
+
+    private func allCookies(in store: WKWebsiteDataStore) async -> [HTTPCookie] {
+        await withCheckedContinuation { continuation in
+            store.httpCookieStore.getAllCookies { cookies in
+                continuation.resume(returning: cookies)
+            }
+        }
+    }
+
+    private func cookie(named name: String, in store: WKWebsiteDataStore) async -> HTTPCookie? {
+        let cookies = await allCookies(in: store)
+        return cookies.first { $0.name == name }
+    }
+
+    private func removeCookies(named name: String, in store: WKWebsiteDataStore) async {
+        let cookies = await allCookies(in: store)
+        for cookie in cookies where cookie.name == name {
+            await withCheckedContinuation { continuation in
+                store.httpCookieStore.delete(cookie) {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    private func waitForCookie(
+        named name: String,
+        in store: WKWebsiteDataStore,
+        timeout: TimeInterval = 5
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if await cookie(named: name, in: store) != nil { return true }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        return await cookie(named: name, in: store) != nil
+    }
 }
 
 /// The host list that decides which navigations are rewritten onto the web

@@ -56,13 +56,25 @@ extension BrowserShellView {
             .browserAmbientSheet()
         }
         .sheet(isPresented: $showBookshelf) {
-            NovelBookshelfView { book in
-                showBookshelf = false
-                // A resumed book that still has its chapter cached opens
-                // instantly; otherwise the reader loads it itself.
-                openNovel(book, chapter: env.novels.cachedChapter(book: book))
+            if let library = bookshelfLibrary {
+                NovelBookshelfView(library: library) { book in
+                    showBookshelf = false
+                    // A resumed book that still has its chapter cached opens
+                    // instantly; otherwise the reader loads it itself.
+                    openNovel(
+                        book,
+                        chapter: library.cachedChapter(book: book),
+                        sourceTabId: bookshelfSourceTabId,
+                        library: library,
+                        isPrivateSession: bookshelfIsPrivate,
+                        sessionGeneration: bookshelfGeneration
+                    )
+                }
+                .environment(env)
+            } else {
+                Text("无法打开书架。")
+                    .padding()
             }
-            .environment(env)
         }
         .sheet(isPresented: $showShareSheet) {
             if let tab = activeTab, let url = URL(string: tab.url) {

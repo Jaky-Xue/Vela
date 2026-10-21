@@ -93,6 +93,18 @@ public final class BrowserWebCoordinator: NSObject {
     var traces: [ObjectIdentifier: NavigationTrace] = [:]
     var nextNavigationSerial = 1
 
+    /// The non-persistent data store every private tab in this window shares.
+    ///
+    /// Created on the first private web view and reused for the rest of the
+    /// window's private session. `WKWebsiteDataStore.nonPersistent()` returns a
+    /// new store on every call, so building one per configuration gave every
+    /// private tab its own cookie jar: a link opened from a private tab arrived
+    /// logged out, and the end-of-session cleanup had no store to clear. One
+    /// store per window makes the window's private tabs one session; the window
+    /// is also the unit whose tabs, `windowId` and end-of-session cleanup are
+    /// already scoped together.
+    private var sharedPrivateDataStore: WKWebsiteDataStore?
+
     /// The URLs this coordinator is re-issuing to strip their app-link
     /// permission.
     ///
@@ -661,13 +673,91 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         }
     }
 
+    // MARK: - Private browsing data
+
+    /// The store private tabs in this window share, created on first use.
+    ///
+    /// The store belongs to one private session: `takePrivateWebsiteDataStoreForCleanup`
+    /// removes it when that session ends or the next one begins, so the next
+    /// private page creates a fresh instance. A web view from the ended session
+    /// keeps its own reference to the old store, which is why the cleanup
+    /// targets the taken instance rather than whatever the property points at
+    /// next.
+    func privateWebsiteDataStore() -> WKWebsiteDataStore {
+        if let sharedPrivateDataStore { return sharedPrivateDataStore }
+        let store = WKWebsiteDataStore.nonPersistent()
+        sharedPrivateDataStore = store
+        return store
+    }
+
+    /// Removes the current private store from service and returns it.
+    ///
+    /// Rotation happens before the store is emptied, not after: a private tab
+    /// created while the old store is still being cleared must never be handed
+    /// the store that is being emptied. The returned instance is the exact
+    /// object the previous session's web views used, so the caller clears the
+    /// right one even though `sharedPrivateDataStore` is already nil.
+    ///
+    /// A nil answer means no private web view was materialised in this window,
+    /// or a concurrent end has already taken the store; in both cases there is
+    /// nothing for this caller to clear.
+    func takePrivateWebsiteDataStoreForCleanup() -> WKWebsiteDataStore? {
+        let store = sharedPrivateDataStore
+        sharedPrivateDataStore = nil
+        return store
+    }
+
+    /// Removes every kind of data from a store taken by
+    /// `takePrivateWebsiteDataStoreForCleanup`.
+    ///
+    /// The private tabs must already be closed (`TabManager.endPrivateSession`)
+    /// before this runs: this is the store those web views used, and clearing it
+    /// while they were still loading would cancel their requests.
+    func clearPrivateWebsiteData(_ store: WKWebsiteDataStore) async {
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        await withCheckedContinuation { continuation in
+            store.removeData(
+                ofTypes: types,
+                modifiedSince: Date(timeIntervalSince1970: 0)
+            ) {
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Ends the current private session's storage: the store is taken out of
+    /// service first, then emptied.
+    ///
+    /// Lifecycle constraint: the retired store is unreachable from new sessions
+    /// but its `removeData` may still be in flight when this returns to the
+    /// caller's Task. If the process is suspended or killed before WebKit calls
+    /// the completion handler, the retired store's memory is released with the
+    /// process and no new session can read it. A strict wipe before process
+    /// death would need a background task or a cleanup gate, which this method
+    /// deliberately does not add.
+    func clearPrivateWebsiteData() async {
+        guard let store = takePrivateWebsiteDataStoreForCleanup() else { return }
+        await clearPrivateWebsiteData(store)
+    }
+
+    /// Starts a new private session's storage.
+    ///
+    /// The current store, if any, is taken out of service and emptied; the next
+    /// private web view creates a fresh one. The old store is unreachable from
+    /// the new session even while its clear is still running.
+    func beginNewPrivateSession() {
+        guard let store = takePrivateWebsiteDataStoreForCleanup() else { return }
+        Task { await clearPrivateWebsiteData(store) }
+    }
+
     /// Builds the configuration for a tab.
     ///
     /// The two decisions that matter:
     ///
-    /// * Data store. A private tab gets `WKWebsiteDataStore.nonPersistent()`,
+    /// * Data store. Private tabs share this window's non-persistent store,
     ///   which is what makes private mode real on iOS: cookies, cache and local
-    ///   storage live in a store that is discarded with the session.
+    ///   storage live in a store that is emptied when the session ends. An
+    ///   ordinary tab keeps the default store.
     /// * Content rules. The compiled `WKContentRuleList` is attached here, per
     ///   navigation, because a list compiled after a web view existed is not
     ///   picked up retroactively.
@@ -675,7 +765,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         let configuration = WKWebViewConfiguration()
 
         configuration.websiteDataStore = tab.privacyMode == .private
-            ? WKWebsiteDataStore.nonPersistent()
+            ? privateWebsiteDataStore()
             : WKWebsiteDataStore.default()
 
         let controller = WKUserContentController()

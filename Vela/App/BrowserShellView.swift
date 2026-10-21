@@ -57,6 +57,15 @@ struct BrowserShellView: View {
     @State var showAdBlockSettings = false
     @State var showPasswords = false
     @State var showBookshelf = false
+    /// The service the presented shelf belongs to. Captured when the sheet
+    /// opens, so a tab switch behind it cannot swap the shelf's database.
+    @State var bookshelfLibrary: NovelLibraryService?
+    @State var bookshelfIsPrivate = false
+    @State var bookshelfGeneration = 0
+    /// The tab the shelf was opened from. A private shelf's reader uses it as
+    /// the source for "open in browser"; it is never inferred from the active
+    /// tab later.
+    @State var bookshelfSourceTabId = ""
     @State var showMenu = false
     /// Whether the iPad layout's sidebar drawer is open.
     @State var showPadSidebar = false
@@ -306,10 +315,18 @@ struct BrowserShellView: View {
                 NovelReaderView(
                     book: session.book,
                     initialChapter: session.chapter,
-                    onClose: { novelSession = nil },
+                    library: session.library,
+                    isPrivateSession: session.isPrivateSession,
+                    sessionGeneration: session.sessionGeneration,
+                    onClose: {
+                        if session.isCurrent(in: novelSession) {
+                            novelSession = nil
+                        }
+                    },
                     onOpenInBrowser: { url in
+                        guard session.isCurrent(in: novelSession) else { return }
                         novelSession = nil
-                        openInBrowser(url)
+                        openInBrowser(url, for: session)
                     }
                 )
                 .transition(.opacity)
@@ -430,6 +447,17 @@ struct BrowserShellView: View {
             // from the one that does.
             env.webCoordinator.refreshNavigationAvailability()
             syncAddressText()
+        }
+        .onChange(of: env.privateNovelSessionGeneration) { _, generation in
+            // The private session changed (began or ended). Close a reader/shelf
+            // from an earlier generation; a regular reader is not touched.
+            if bookshelfIsPrivate, bookshelfGeneration != generation {
+                showBookshelf = false
+                bookshelfLibrary = nil
+                bookshelfIsPrivate = false
+            }
+            guard let session = novelSession, session.shouldClose(for: generation) else { return }
+            novelSession = nil
         }
         .onChange(of: activeTab?.url) { _, _ in
             // A new document is a fresh read: the chrome comes back for it.
@@ -854,7 +882,7 @@ struct BrowserShellView: View {
             case .downloads: showDownloads = true
             case .offlinePages: showOfflinePages = true
             case .settings: showSettings = true
-            case .bookshelf: showBookshelf = true
+            case .bookshelf: openBookshelf()
             case .passwords: showPasswords = true
             case .scanQRCode:
                 showQRScanner = true
@@ -903,7 +931,7 @@ struct BrowserShellView: View {
         case .novel:
             activateNovelMode()
         case .bookshelf:
-            showBookshelf = true
+            openBookshelf()
         case .passwords:
             showPasswords = true
         case .hideElements:
@@ -931,7 +959,19 @@ struct BrowserShellView: View {
             // session is the 离开无痕模式 action, not this one.
             env.setPrivateBrowsingMode(!(env.settings.preferences.privateBrowsingMode ?? false))
         case .leavePrivate:
-            Task { await env.endPrivateSession() }
+            let expectedGeneration = env.privateNovelSessionGeneration
+            // Close the private reader (and shelf) before the session's data
+            // is torn down. The generation guard also stops a late callback
+            // from writing after the environment invalidates the session.
+            if novelSession?.isPrivateSession == true {
+                novelSession = nil
+            }
+            if bookshelfIsPrivate {
+                showBookshelf = false
+                bookshelfLibrary = nil
+                bookshelfIsPrivate = false
+            }
+            Task { await env.endPrivateSession(expectedGeneration: expectedGeneration) }
         case .adBlock:
             // Handled above, before the panel is dismissed.
             break
@@ -1086,6 +1126,16 @@ struct BrowserShellView: View {
             return
         }
 
+        // Bind the shelf to the tab's session before extraction starts: the
+        // private service belongs to this private session, and the reader
+        // must keep using it even if the environment later drops its reference.
+        let isPrivate = tab.privacyMode == .private
+        guard let library = env.novelLibrary(privateMode: isPrivate) else {
+            novelNotice = "私密模式下无法创建独立的小说存储。"
+            return
+        }
+        let generation = env.privateNovelSessionGeneration
+
         Task { @MainActor in
             var extraction = await NovelModeService.extract(from: webView, url: tab.url)
             if extraction == nil {
@@ -1098,25 +1148,93 @@ struct BrowserShellView: View {
                 novelNotice = "没能从这一页提取出正文。它可能不是章节页，或正文由脚本动态加载。"
                 return
             }
-            guard let opened = env.novels.open(extraction) else {
+            // A private session that ended during extraction must not open a
+            // reader into the next session's shelf.
+            guard !isPrivate || generation == env.privateNovelSessionGeneration else { return }
+            guard let opened = library.open(extraction) else {
                 novelNotice = "这一章无法加入书架，请稍后再试。"
                 return
             }
-            openNovel(opened.book, chapter: opened.chapter)
+            openNovel(
+                opened.book,
+                chapter: opened.chapter,
+                sourceTabId: tab.id,
+                library: library,
+                isPrivateSession: isPrivate,
+                sessionGeneration: generation
+            )
         }
     }
 
-    func openNovel(_ book: NovelBook, chapter: NovelChapter?) {
-        novelSession = NovelSession(book: book, chapter: chapter)
+    func openNovel(
+        _ book: NovelBook,
+        chapter: NovelChapter?,
+        sourceTabId: String,
+        library: NovelLibraryService,
+        isPrivateSession: Bool,
+        sessionGeneration: Int
+    ) {
+        // A late open from an ended private session must not resurrect a
+        // reader into the session that replaced it.
+        guard !isPrivateSession || sessionGeneration == env.privateNovelSessionGeneration else { return }
+        novelSession = NovelSession(
+            book: book,
+            chapter: chapter,
+            sourceTabId: sourceTabId,
+            isPrivateSession: isPrivateSession,
+            sessionGeneration: sessionGeneration,
+            library: library
+        )
     }
 
-    /// Opens a chapter in the active tab and leaves the reader. Used from the
-    /// reader's own "在浏览器中打开" action, where the chapter is a page the
-    /// user may need the original site to render.
-    func openInBrowser(_ url: URL) {
-        if let tab = activeTab {
+    /// Opens the shelf for the active tab's session.
+    ///
+    /// The library is captured now so a tab switch behind the sheet cannot
+    /// swap the database under it, and a private shelf never falls back to the
+    /// regular one when its in-memory database cannot be created.
+    func openBookshelf() {
+        let isPrivate = activeTab?.privacyMode == .private
+        guard let library = env.novelLibrary(privateMode: isPrivate) else {
+            novelNotice = "私密模式下无法创建独立的小说存储。"
+            return
+        }
+        bookshelfIsPrivate = isPrivate
+        bookshelfGeneration = env.privateNovelSessionGeneration
+        bookshelfSourceTabId = activeTab?.id ?? ""
+        bookshelfLibrary = library
+        showBookshelf = true
+    }
+
+    /// Opens a chapter in the browser on behalf of a novel session.
+    ///
+    /// The target is decided from the session, not from whatever tab happens
+    /// to be active: a private reader may only use its own live private source
+    /// tab or a new private tab. A stale private session is refused. The
+    /// regular path keeps the previous behaviour exactly.
+    func openInBrowser(_ url: URL, for session: NovelSession) {
+        let target = NovelBrowserRouting.target(
+            isPrivateSession: session.isPrivateSession,
+            sessionGeneration: session.sessionGeneration,
+            currentGeneration: env.privateNovelSessionGeneration,
+            sourceTabId: session.sourceTabId,
+            tabs: tabManager.tabs.map { (id: $0.id, privacyMode: $0.privacyMode) },
+            activeTabId: activeTab?.id
+        )
+        switch target {
+        case .refuse:
+            return
+        case let .existingTab(id):
+            guard let tab = tabManager.tab(id: id) else { return }
+            // Issue the request before activation: activating a cold tab would
+            // otherwise fetch its old URL first, only for this load to replace it.
             navigate(to: url, in: tab)
-        } else {
+            tabManager.activateTab(id: tab.id)
+        case .newPrivateTab:
+            tabManager.openTab(url: url, privacyMode: .private, openSource: .user)
+        case let .activeTab(id):
+            guard let tab = tabManager.tab(id: id) else { return }
+            navigate(to: url, in: tab)
+        case .newRegularTab:
             let tab = tabManager.createTab(openSource: .user)
             navigate(to: url, in: tab)
         }
@@ -1302,6 +1420,36 @@ struct NovelSession: Identifiable, Equatable {
     let id = UUID()
     var book: NovelBook
     var chapter: NovelChapter?
+    /// The tab the reader was opened from. A private reader's "open in
+    /// browser" uses it as the only allowed existing target.
+    let sourceTabId: String
+    /// Whether this reader was opened from a private tab. The shelf and the
+    /// chapter/TOC loaders are chosen from this at presentation time.
+    let isPrivateSession: Bool
+    /// The environment's private-session generation when the reader opened.
+    /// A later end bumps the environment; this reader is then stale.
+    let sessionGeneration: Int
+    /// The shelf this reader reads and writes through. Held here rather than
+    /// resolved from the environment on every call: a reader from an ended
+    /// session must keep writing to its own in-memory database, never to the
+    /// one a new session creates.
+    let library: NovelLibraryService
+
+    static func == (lhs: NovelSession, rhs: NovelSession) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    /// Whether a close request from this session still refers to the session
+    /// on screen. A late close from an old reader must not dismiss a new one.
+    func isCurrent(in current: NovelSession?) -> Bool {
+        current?.id == id
+    }
+
+    /// Whether this session must close because its private generation changed.
+    /// A regular reader always answers false.
+    func shouldClose(for generation: Int) -> Bool {
+        isPrivateSession && sessionGeneration != generation
+    }
 }
 
 // MARK: - Background picture

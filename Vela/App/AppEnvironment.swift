@@ -39,6 +39,17 @@ public final class AppEnvironment {
     /// The page translation panel's state.
     public let translation: TranslationService
 
+    /// The private session's novel shelf, created on demand and dropped when
+    /// the session ends. It runs on its own in-memory database, so nothing it
+    /// writes can reach the regular novel tables.
+    private var privateNovelService: NovelLibraryService?
+
+    /// Bumped when a private session begins and when it ends. A reader created
+    /// in an earlier generation compares its captured value against this one
+    /// before writing or closing; the value, not a bare "is private" flag,
+    /// keeps a late callback from touching the session that replaced it.
+    public private(set) var privateNovelSessionGeneration = 0
+
     public init(
         services: AppServices,
         windowId: String = TabSessionRepository.defaultWindowId
@@ -74,6 +85,9 @@ public final class AppEnvironment {
         self.translation = TranslationService()
 
         coordinator.attach(tabManager: tabManager)
+        tabManager.onPrivateSessionStarted = { [weak self] in
+            self?.beginPrivateSession()
+        }
         coordinator.userScriptOpenTabHandler = { [weak self] url, active, privacyMode in
             self?.tabManager.openTab(
                 url: url,
@@ -218,10 +232,39 @@ public final class AppEnvironment {
         await services.clearAllBrowsingData(includeWebKitData: includeWebKitData)
     }
 
+    // MARK: - Novel services
+
+    /// The shelf a reading session should use.
+    ///
+    /// Ordinary sessions share the process-wide service. A private session gets
+    /// a service over a fresh in-memory database: the same NovelLibraryService
+    /// and schema, a different SQLite file. `nil` means the in-memory database
+    /// could not be created; callers must not fall back to the regular service.
+    public func novelLibrary(privateMode: Bool) -> NovelLibraryService? {
+        guard privateMode else { return services.novels }
+        if let privateNovelService { return privateNovelService }
+        guard let service = InMemoryNovelLibrary.make() else { return nil }
+        privateNovelService = service
+        return service
+    }
+
     // MARK: - Private session
 
+    /// Starts a new private session's identity and storage.
+    ///
+    /// TabManager fires this when the first private tab of a session is
+    /// appended. The generation bumps so readers and shelves from the previous
+    /// session close; the private novel service is dropped and the old WebKit
+    /// store is retired. The next private page creates a fresh store and an
+    /// empty in-memory shelf.
+    private func beginPrivateSession() {
+        privateNovelSessionGeneration &+= 1
+        privateNovelService = nil
+        webCoordinator.beginNewPrivateSession()
+    }
+
     /// Ends a private session: private tabs close, private records clear, and
-    /// WebKit's ephemeral store goes with them.
+    /// the non-persistent WebKit store those tabs shared is emptied.
     ///
     /// The profile database is deliberately untouched. Nothing private is in
     /// it to begin with — the history repository suppresses private-boundary
@@ -231,16 +274,50 @@ public final class AppEnvironment {
     /// it would do is take the regular profile's bookmarks, history and
     /// downloads with it, which is not a cleanup but a deletion of data the
     /// user never asked to lose.
-    public func endPrivateSession() async {
-        tabManager.endPrivateSession()
-        downloads.clearPrivateRecords()
-
-        let privateStore = WKWebsiteDataStore.nonPersistent()
-        let types = WKWebsiteDataStore.allWebsiteDataTypes()
-        await withCheckedContinuation { continuation in
-            privateStore.removeData(ofTypes: types, modifiedSince: Date(timeIntervalSince1970: 0)) {
-                continuation.resume()
+    ///
+    /// Ends the private session identified by `expectedGeneration`.
+    ///
+    /// The caller captures the generation when it decides to end. A delayed or
+    /// duplicate request whose generation no longer matches returns without
+    /// closing tabs, clearing downloads, releasing the novel service or
+    /// touching the store. The generation is advanced only by the run that is
+    /// allowed to end the session.
+    public func endPrivateSession(expectedGeneration: Int) async {
+        guard let nextGeneration = PrivateSessionLedger.end(
+            expectedGeneration: expectedGeneration,
+            currentGeneration: privateNovelSessionGeneration,
+            perform: {
+                tabManager.endPrivateSession()
+                downloads.clearPrivateRecords()
+                privateNovelService = nil
             }
-        }
+        ) else { return }
+
+        privateNovelSessionGeneration = nextGeneration
+
+        // The tabs are gone. `clearPrivateWebsiteData` takes this session's
+        // store out of service before emptying it, so a private tab created
+        // while the cleanup is in flight gets a fresh store instead of sharing
+        // the one being cleared.
+        await webCoordinator.clearPrivateWebsiteData()
+    }
+}
+
+/// The private-session generation rule.
+///
+/// A caller captures the generation when it decides to end the session. Only
+/// that exact session may run the end; a delayed request from an older session
+/// returns nil and touches nothing. The returned value is the next generation,
+/// which the caller assigns before starting the asynchronous store cleanup.
+enum PrivateSessionLedger {
+    @MainActor
+    static func end(
+        expectedGeneration: Int,
+        currentGeneration: Int,
+        perform: () -> Void
+    ) -> Int? {
+        guard expectedGeneration == currentGeneration else { return nil }
+        perform()
+        return currentGeneration &+ 1
     }
 }

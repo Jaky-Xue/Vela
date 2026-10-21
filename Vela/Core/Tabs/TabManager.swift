@@ -119,6 +119,13 @@ public final class TabManager {
     /// cleared and no new one is written.
     public var persistsSession = true
 
+    /// Fired when the first private tab of a new session is appended.
+    ///
+    /// The environment rotates its private novel service and private WebKit
+    /// store here. Only a strip that had no private tabs triggers it; adding a
+    /// second private tab to a live session does not.
+    public var onPrivateSessionStarted: (() -> Void)?
+
     public var activeTab: BrowserTabState? {
         tabs.first { $0.id == activeTabId }
     }
@@ -243,6 +250,11 @@ public final class TabManager {
         openerTabId: String = "",
         openSource: BrowserTabOpenSource = .user
     ) -> BrowserTabState {
+        if privacyMode == .private,
+           !tabs.contains(where: { $0.privacyMode == .private }) {
+            onPrivateSessionStarted?()
+        }
+
         let tab = BrowserTabState(
             isHome: true,
             runtimeState: .cold,

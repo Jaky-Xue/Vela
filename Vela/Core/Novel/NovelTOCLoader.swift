@@ -6,7 +6,8 @@
 //
 //  Kept separate from `NovelChapterLoader` because the two parse different
 //  documents and a TOC load should never interfere with the chapter the reader
-//  is showing. Both use a non-persistent web view, so neither writes cookies.
+//  is showing. Their data store is injected: ordinary reading shares the
+//  browser's session, while a private reader uses the window's private store.
 //
 
 import Foundation
@@ -17,10 +18,16 @@ final class NovelTOCLoader: NSObject, WKNavigationDelegate {
     private var webView: WKWebView?
     private var continuation: CheckedContinuation<[NovelTOCEntry]?, Never>?
     private var timeoutTask: Task<Void, Never>?
+    /// The extraction poll started by `didFinish`; `finish` cancels it so a
+    /// reader that closes does not leave a loop running against a released view.
+    private var pollingTask: Task<Void, Never>?
     /// The off-window container the web view is parked in while it renders.
     private weak var renderingHost: UIView?
 
-    func load(urlString: String) async -> [NovelTOCEntry]? {
+    func load(
+        urlString: String,
+        dataStore: WKWebsiteDataStore = .default()
+    ) async -> [NovelTOCEntry]? {
         finish(nil)
 
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -30,11 +37,10 @@ final class NovelTOCLoader: NSObject, WKNavigationDelegate {
             return nil
         }
 
-        let configuration = WKWebViewConfiguration()
-        // The catalog is built by the site's own script from an API response;
-        // it needs the cookies and local storage the browser already has.
-        configuration.websiteDataStore = .default()
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        // The store is injected: ordinary reading shares the default session,
+        // while a private reader passes the window's private store so loading
+        // the catalog cannot write into the regular profile.
+        let configuration = NovelLoaderConfiguration.make(dataStore: dataStore)
 
         let webView = WKWebView(
             frame: CGRect(x: 0, y: 0, width: 1024, height: 2048),
@@ -62,6 +68,8 @@ final class NovelTOCLoader: NSObject, WKNavigationDelegate {
     private func finish(_ entries: [NovelTOCEntry]?) {
         timeoutTask?.cancel()
         timeoutTask = nil
+        pollingTask?.cancel()
+        pollingTask = nil
         guard let continuation else { return }
         self.continuation = nil
         detachOffscreen()
@@ -106,7 +114,8 @@ final class NovelTOCLoader: NSObject, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard webView === self.webView else { return }
-        Task { @MainActor [weak self] in
+        pollingTask?.cancel()
+        pollingTask = Task { @MainActor [weak self] in
             // A catalog on a hash-routed site is usually built from an API
             // response after the shell loads. Poll, and give the list time to
             // populate, rather than reading an empty `#app` once.

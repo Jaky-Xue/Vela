@@ -257,7 +257,7 @@ extension BrowserShellView {
         case .novel:
             activateNovelMode()
         case .bookshelf:
-            showBookshelf = true
+            openBookshelf()
         case .passwords:
             showPasswords = true
         case .share:

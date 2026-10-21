@@ -30,6 +30,14 @@ struct NovelReaderView: View {
     var onClose: () -> Void
     var onOpenInBrowser: (URL) -> Void
 
+    /// The shelf this reading session belongs to. Held here rather than looked
+    /// up from the environment per call: a reader from an ended private
+    /// session must keep writing to its own in-memory database, never to the
+    /// one a newer session creates.
+    private let library: NovelLibraryService
+    private let isPrivateSession: Bool
+    private let sessionGeneration: Int
+
     @State private var currentBook: NovelBook
     @State private var chapter: NovelChapter?
     @State private var isLoading = false
@@ -59,9 +67,15 @@ struct NovelReaderView: View {
     init(
         book: NovelBook,
         initialChapter: NovelChapter?,
+        library: NovelLibraryService,
+        isPrivateSession: Bool,
+        sessionGeneration: Int,
         onClose: @escaping () -> Void,
         onOpenInBrowser: @escaping (URL) -> Void
     ) {
+        self.library = library
+        self.isPrivateSession = isPrivateSession
+        self.sessionGeneration = sessionGeneration
         self.onClose = onClose
         self.onOpenInBrowser = onOpenInBrowser
         _currentBook = State(initialValue: book)
@@ -84,6 +98,12 @@ struct NovelReaderView: View {
                         html: styledHtml(for: chapter),
                         initialProgress: progressBox.value,
                         isPaged: pageMode == .paged,
+                        dataStore: {
+                            NovelReaderDisplayDataStore.resolve(
+                                isPrivateSession: isPrivateSession,
+                                privateStore: env.webCoordinator.privateWebsiteDataStore()
+                            )
+                        },
                         onProgress: handleProgress,
                         onCenterTap: toggleChrome
                     )
@@ -130,6 +150,16 @@ struct NovelReaderView: View {
         .onDisappear {
             saveNow()
             loader.cancel()
+            tocLoader.cancel()
+        }
+        .onChange(of: env.privateNovelSessionGeneration) { _, generation in
+            // The private session ended. Stop both loads and let the shell
+            // close this reader; the generation checks above already stop any
+            // late write into the session that replaced it.
+            guard isPrivateSession, sessionGeneration != generation else { return }
+            loader.cancel()
+            tocLoader.cancel()
+            onClose()
         }
         .onChange(of: scenePhase) { _, phase in
             // The reader is not necessarily removed from the hierarchy when
@@ -367,7 +397,21 @@ struct NovelReaderView: View {
 
     // MARK: - Loading
 
+    /// Whether this reader still belongs to the live private session.
+    private var isSessionCurrent: Bool {
+        !isPrivateSession || sessionGeneration == env.privateNovelSessionGeneration
+    }
+
+    /// The store the chapter and TOC loaders use for this session.
+    private var loaderDataStore: WKWebsiteDataStore {
+        NovelLoaderDataStore.resolve(
+            isPrivateSession: isPrivateSession,
+            privateStore: env.webCoordinator.privateWebsiteDataStore()
+        )
+    }
+
     private func prepare() async {
+        guard isSessionCurrent else { return }
         if let stored = env.settings.preferences.readerFontSize, stored >= 12, stored <= 40 {
             fontSize = stored
         }
@@ -376,13 +420,13 @@ struct NovelReaderView: View {
             appearance = stored
         }
         pageMode = NovelPageMode.resolve(env.settings.preferences.novelPageMode)
-        tocEntries = env.novels.tocEntries(bookId: currentBook.id)
+        tocEntries = library.tocEntries(bookId: currentBook.id)
 
         if chapter != nil {
             progress = currentBook.progress
             progressBox.value = currentBook.progress
             saveNow()
-        } else if let cached = env.novels.cachedChapter(book: currentBook) {
+        } else if let cached = library.cachedChapter(book: currentBook) {
             chapter = cached
             progress = currentBook.progress
             progressBox.value = currentBook.progress
@@ -400,8 +444,9 @@ struct NovelReaderView: View {
 
     /// Loads the cached TOC, or fetches it from the book's TOC page once.
     private func loadTOCIfNeeded(force: Bool = false) async {
+        guard isSessionCurrent else { return }
         if force {
-            tocEntries = env.novels.tocEntries(bookId: currentBook.id)
+            tocEntries = library.tocEntries(bookId: currentBook.id)
         }
         guard tocEntries.isEmpty, !isLoadingTOC else { return }
 
@@ -410,35 +455,39 @@ struct NovelReaderView: View {
         // route still points at the book's directory, so derive it and keep
         // it — the next visit does not have to guess again.
         let chapterURL = chapter?.url ?? currentBook.currentChapterUrl
-        var source = env.novels.tocSource(bookId: currentBook.id) ?? ""
+        var source = library.tocSource(bookId: currentBook.id) ?? ""
         if source.isEmpty, let derived = NovelURLRoute.catalogURL(for: chapterURL) {
             source = derived
-            env.novels.saveTOCSource(bookId: currentBook.id, url: derived)
+            library.saveTOCSource(bookId: currentBook.id, url: derived)
         }
         guard !source.isEmpty else { return }
 
         isLoadingTOC = true
-        var result = await tocLoader.load(urlString: source)
+        defer { isLoadingTOC = false }
+        let dataStore = loaderDataStore
+        var result = await tocLoader.load(urlString: source, dataStore: dataStore)
+        guard isSessionCurrent else { return }
         if result == nil || result?.isEmpty == true,
            let derived = NovelURLRoute.catalogURL(for: chapterURL),
            derived != source {
-            result = await tocLoader.load(urlString: derived)
+            result = await tocLoader.load(urlString: derived, dataStore: dataStore)
+            guard isSessionCurrent else { return }
             if let entries = result, !entries.isEmpty {
-                env.novels.saveTOCSource(bookId: currentBook.id, url: derived)
+                library.saveTOCSource(bookId: currentBook.id, url: derived)
             }
         }
-        isLoadingTOC = false
 
         if let entries = result, !entries.isEmpty {
             tocEntries = entries
-            env.novels.saveTOC(bookId: currentBook.id, entries: entries)
+            library.saveTOC(bookId: currentBook.id, entries: entries)
         }
     }
 
     private func load(url: String, index: Int, restoring: Double = 0) async {
+        guard isSessionCurrent else { return }
         guard !isLoading, !url.isEmpty else { return }
 
-        if let cached = env.novels.chapter(bookId: currentBook.id, url: url) {
+        if let cached = library.chapter(bookId: currentBook.id, url: url) {
             chapter = cached
             progress = restoring
             progressBox.value = restoring
@@ -451,8 +500,10 @@ struct NovelReaderView: View {
 
         isLoading = true
         statusMessage = nil
-        let extraction = await loader.load(urlString: url)
+        let dataStore = loaderDataStore
+        let extraction = await loader.load(urlString: url, dataStore: dataStore)
         isLoading = false
+        guard isSessionCurrent else { return }
 
         guard let extraction else {
             statusMessage = "网络或页面结构让这一章无法载入。"
@@ -463,7 +514,7 @@ struct NovelReaderView: View {
             return
         }
 
-        let stored = env.novels.store(extraction, bookId: currentBook.id, index: max(index, 0))
+        let stored = library.store(extraction, bookId: currentBook.id, index: max(index, 0))
             ?? NovelChapter(
                 bookId: currentBook.id,
                 index: max(index, 0),
@@ -500,7 +551,7 @@ struct NovelReaderView: View {
         if offset < 0, !chapter.previousUrl.isEmpty {
             return (chapter.previousUrl, max(0, chapter.index - 1))
         }
-        if let neighbor = env.novels.tocNeighbor(
+        if let neighbor = library.tocNeighbor(
             bookId: currentBook.id,
             url: chapter.url,
             offset: offset
@@ -520,6 +571,7 @@ struct NovelReaderView: View {
     }
 
     private func goNext() {
+        guard isSessionCurrent else { return }
         guard !isLoading, let target = neighborTarget(offset: 1) else { return }
         saveNow()
         Task { @MainActor in
@@ -528,6 +580,7 @@ struct NovelReaderView: View {
     }
 
     private func goPrevious() {
+        guard isSessionCurrent else { return }
         guard !isLoading, let target = neighborTarget(offset: -1) else { return }
         saveNow()
         Task { @MainActor in
@@ -575,6 +628,7 @@ struct NovelReaderView: View {
     }
 
     private func openCurrentInBrowser() {
+        guard isSessionCurrent else { return }
         let urlString = chapter?.url ?? currentBook.currentChapterUrl
         guard let url = URL(string: urlString) else { return }
         saveNow()
@@ -584,6 +638,7 @@ struct NovelReaderView: View {
     // MARK: - Position
 
     private func handleProgress(_ value: Double) {
+        guard isSessionCurrent else { return }
         let fraction = min(max(value, 0), 1)
         progressBox.value = fraction
 
@@ -597,13 +652,14 @@ struct NovelReaderView: View {
         let now = Date()
         guard now.timeIntervalSince(lastSavedAt) > 2 else { return }
         lastSavedAt = now
-        env.novels.updateProgress(bookId: currentBook.id, progress: fraction)
+        library.updateProgress(bookId: currentBook.id, progress: fraction)
     }
 
     private func saveNow() {
+        guard isSessionCurrent else { return }
         guard let chapter else { return }
         let fraction = progressBox.value
-        env.novels.markPosition(bookId: currentBook.id, chapter: chapter, progress: fraction)
+        library.markPosition(bookId: currentBook.id, chapter: chapter, progress: fraction)
         currentBook.progress = fraction
         currentBook.currentChapterUrl = chapter.url
         currentBook.currentChapterTitle = chapter.title
@@ -798,12 +854,16 @@ private struct NovelChapterWebView: UIViewRepresentable {
     var html: String
     var initialProgress: Double
     var isPaged: Bool
+    /// Resolved once, when the web view is built. Private reading keeps remote
+    /// images and other subresources in the session's private store; normal
+    /// reading keeps the existing ephemeral store.
+    var dataStore: () -> WKWebsiteDataStore
     var onProgress: (Double) -> Void
     var onCenterTap: () -> Void
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = dataStore()
 
         let controller = WKUserContentController()
         controller.add(

@@ -5,9 +5,10 @@
 //  Loads a chapter URL off-screen, for the next-chapter and resume paths.
 //
 //  The browser tab's own web view cannot be used for this: navigating it would
-//  move the page behind the reader and overwrite the tab's history. A private,
-//  non-persistent web view fetches the chapter, runs the extractor, and is
-//  released — no cookies are written, and the reader keeps its own position.
+//  move the page behind the reader and overwrite the tab's history. An
+//  off-screen web view fetches the chapter, runs the extractor, and is
+//  released. Its data store is injected: the default session for ordinary
+//  reading, the window's private store for private reading.
 //
 //  The view is small and never added to the hierarchy; WebKit still lays out
 //  and executes a detached view, which is all the extractor needs.
@@ -17,16 +18,23 @@ import Foundation
 import UIKit
 import WebKit
 
-final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var webView: WKWebView?
+final class NovelChapterLoader: NSObject, WKNavigationDelegate {
+    private var webView: WKWebView?
     private var continuation: CheckedContinuation<NovelExtraction?, Never>?
     private var timeoutTask: Task<Void, Never>?
+    /// The extraction poll started by `didFinish`; `finish` cancels it so a
+    /// reader that closes does not leave a loop running against a released view.
+    private var pollingTask: Task<Void, Never>?
     /// The off-window container the web view is parked in while it renders.
     private weak var renderingHost: UIView?
     private var targetUrl = ""
 
     /// Loads and extracts one chapter. Resolves to `nil` on a bad URL, a
     /// navigation failure, or a page that does not look like a chapter.
-    func load(urlString: String) async -> NovelExtraction? {
+    func load(
+        urlString: String,
+        dataStore: WKWebsiteDataStore = .default()
+    ) async -> NovelExtraction? {
         finish(nil)
 
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -36,13 +44,10 @@ final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var 
             return nil
         }
 
-        let configuration = WKWebViewConfiguration()
-        // The site's reader is an app: it fetches the chapter with the session
-        // it established while the user browsed. A non-persistent store starts
-        // blank, so the chapter opened from the live tab worked while the next
-        // one loaded an empty shell. Share the browser's store instead.
-        configuration.websiteDataStore = .default()
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        // The store is injected: ordinary reading shares the default session,
+        // while a private reader passes the window's private store so the
+        // chapter request cannot write into the regular profile.
+        let configuration = NovelLoaderConfiguration.make(dataStore: dataStore)
 
         let webView = WKWebView(
             frame: CGRect(x: 0, y: 0, width: 1024, height: 2048),
@@ -75,6 +80,8 @@ final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var 
     private func finish(_ extraction: NovelExtraction?) {
         timeoutTask?.cancel()
         timeoutTask = nil
+        pollingTask?.cancel()
+        pollingTask = nil
         guard let continuation else { return }
         self.continuation = nil
         detachOffscreen()
@@ -123,7 +130,8 @@ final class NovelChapterLoader: NSObject, WKNavigationDelegate {    private var 
         // extraction and the shelf should both use the page that actually
         // loaded, or a return visit would re-run the redirect every time.
         let url = webView.url?.absoluteString ?? targetUrl
-        Task { @MainActor [weak self] in
+        pollingTask?.cancel()
+        pollingTask = Task { @MainActor [weak self] in
             // Hash-routed sites paint the chapter after didFinish — and some
             // paint it behind two or three network round-trips. Poll for the
             // extraction instead of trusting a single delay.

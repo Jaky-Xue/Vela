@@ -162,7 +162,8 @@ private struct BrowserWindowRoot: View {
                     // the ephemeral store must not be the thing that survives.
                     if !environment.tabManager.privateTabs.isEmpty {
                         let env = environment
-                        Task { await env.endPrivateSession() }
+                        let expectedGeneration = environment.privateNovelSessionGeneration
+                        Task { await env.endPrivateSession(expectedGeneration: expectedGeneration) }
                     }
                     // Queued transfers start now so they ride the background
                     // session instead of waiting for a foreground the user may

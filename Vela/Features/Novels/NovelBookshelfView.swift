@@ -14,17 +14,26 @@ import Foundation
 import SwiftUI
 
 struct NovelBookshelfView: View {
-    @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
+
+    /// The shelf this presentation belongs to. The shell captures it when the
+    /// sheet opens: an ordinary shelf reads the durable library, a private one
+    /// reads the session's in-memory library.
+    var library: NovelLibraryService
 
     /// Opens a book in the reader. The shell owns the reader layer, so the
     /// shelf reports the choice and dismisses itself.
     var onOpen: (NovelBook) -> Void
 
+    init(library: NovelLibraryService, onOpen: @escaping (NovelBook) -> Void) {
+        self.library = library
+        self.onOpen = onOpen
+    }
+
     @State private var pendingDeletion: NovelBook?
 
-    private var books: [NovelBook] { env.novels.books }
+    private var books: [NovelBook] { library.books }
 
     var body: some View {
         NavigationStack {
@@ -85,7 +94,7 @@ struct NovelBookshelfView: View {
                 presenting: pendingDeletion
             ) { book in
                 Button("移出", role: .destructive) {
-                    env.novels.delete(bookId: book.id)
+                    library.delete(bookId: book.id)
                     pendingDeletion = nil
                 }
                 Button("取消", role: .cancel) { pendingDeletion = nil }
