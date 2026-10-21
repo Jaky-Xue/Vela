@@ -132,6 +132,26 @@ final class UserScriptTests: XCTestCase {
         XCTAssertTrue(source.contains("GM_getResourceURL"))
         XCTAssertTrue(source.contains("tab-1"))
         XCTAssertTrue(source.contains("bridge.resolve = function"))
+        XCTAssertTrue(source.contains("reportProgress"))
+    }
+
+    func testMetadataKeepsTheScriptIcon() throws {
+        // The list draws the author's own `@icon` rather than the brace glyph;
+        // the parser has to carry the URL through untouched.
+        let text = """
+        // ==UserScript==
+        // @name Icon Test
+        // @namespace vela.tests
+        // @match https://example.com/*
+        // @icon https://example.com/icon.png
+        // @grant none
+        // ==/UserScript==
+        console.log('body');
+        """
+        let result = UserScriptParser.parse(text)
+        XCTAssertTrue(result.valid)
+        let candidate = try XCTUnwrap(result.candidate)
+        XCTAssertEqual(candidate.iconUrl, "https://example.com/icon.png")
     }
 
     func testPromiseFormRequestStillRunsTheScriptCallbacks() throws {

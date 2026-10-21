@@ -196,11 +196,7 @@ struct UserScriptsView: View {
 
     private func row(_ script: InstalledUserScriptState) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "curlybraces")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .background(Color.orange, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            UserScriptIcon(urlString: script.iconUrl)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(script.displayName)
@@ -777,5 +773,50 @@ struct UserScriptDetailView: View {
         defer { isRefreshingDependencies = false }
         let warnings = await env.userScripts.refreshDependencies(for: current)
         notice = warnings.isEmpty ? "依赖已更新。" : warnings.joined(separator: "\n")
+    }
+}
+
+/// A script's own `@icon`, with the brace glyph as the fallback.
+///
+/// The metadata is what the author chose to represent the script, so the list
+/// shows it when there is one. The fallback is the same glyph the list used
+/// for every script before: a script whose icon URL is missing, malformed or
+/// unreachable still gets a tile rather than an empty square.
+private struct UserScriptIcon: View {
+    let urlString: String
+
+    private var iconURL: URL? {
+        guard let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "https" || scheme == "http" else { return nil }
+        return url
+    }
+
+    var body: some View {
+        Group {
+            if let iconURL {
+                AsyncImage(url: iconURL) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        glyph
+                    }
+                }
+            } else {
+                glyph
+            }
+        }
+        .frame(width: 28, height: 28)
+        .background(Color.orange, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .accessibilityHidden(true)
+    }
+
+    private var glyph: some View {
+        Image(systemName: "curlybraces")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
     }
 }

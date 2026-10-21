@@ -170,6 +170,64 @@ extension BrowserWebCoordinator {
         }
     }
 
+    /// Reports a streaming request's body so far to the waiting script.
+    private func resolveUserScriptProgress(
+        scriptId: String,
+        requestId: String,
+        payload: [String: Any],
+        in webView: WKWebView,
+        frame: WKFrameInfo?
+    ) {
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let script = """
+        window.__velaUserScriptBridge && window.__velaUserScriptBridge.reportProgress &&
+        window.__velaUserScriptBridge.reportProgress(\(jsonLiteral(scriptId)), \(jsonLiteral(requestId)), \(json));
+        """
+        guard let frame else {
+            webView.evaluateJavaScript(script, completionHandler: nil)
+            return
+        }
+        webView.evaluateJavaScript(script, in: frame, in: .page) { [weak webView] result in
+            guard case .failure = result, let webView else { return }
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
+    }
+
+    /// Sends one userscript request. With progress requested the body is
+    /// yielded as the server sends it; otherwise the whole response is taken
+    /// in one go, which is cheaper and is what most scripts want.
+    private func streamUserScriptRequest(
+        _ request: URLRequest,
+        reportsProgress: Bool,
+        onProgress: ((Data, HTTPURLResponse?) -> Void)?
+    ) async throws -> (Data, URLResponse) {
+        guard reportsProgress, let onProgress else {
+            return try await URLSession.shared.data(for: request)
+        }
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let http = response as? HTTPURLResponse
+        var buffer = Data()
+        var lastReportedCount = 0
+        var lastReportedAt = Date.distantPast
+        for try await byte in bytes {
+            buffer.append(byte)
+            if buffer.count > 24_000_000 {
+                throw URLError(.dataLengthExceedsMaximum)
+            }
+            let now = Date()
+            if buffer.count - lastReportedCount >= 512
+                || now.timeIntervalSince(lastReportedAt) >= 0.12 {
+                lastReportedCount = buffer.count
+                lastReportedAt = now
+                onProgress(buffer, http)
+                try Task.checkCancellation()
+            }
+        }
+        onProgress(buffer, http)
+        return (buffer, response)
+    }
+
     /// Starts a `GM_download` through the browser's own transfer engine.
     private func handleUserScriptDownload(
         _ payload: [String: Any],
@@ -225,6 +283,11 @@ extension BrowserWebCoordinator {
         let method = (payload["method"] as? String ?? "GET").uppercased()
         let responseType = payload["responseType"] as? String ?? ""
         let anonymous = payload["anonymous"] as? Bool ?? false
+        // A script that passed `onprogress` expects the body in increments
+        // while the response is still arriving — that is what lets a
+        // streaming translator paint each sentence as it comes back rather
+        // than after the whole answer closes.
+        let reportsProgress = payload["progress"] as? Bool ?? false
         let headers = payload["headers"] as? [String: Any] ?? [:]
         let body = payload["data"] as? String ?? ""
         let timeoutMilliseconds = (payload["timeout"] as? NSNumber)?.doubleValue ?? 0
@@ -274,7 +337,40 @@ extension BrowserWebCoordinator {
                     request.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
                 }
 
-                let (data, response) = try await URLSession.shared.data(for: request)
+                var progress: ((Data, HTTPURLResponse?) -> Void)?
+                if reportsProgress {
+                    progress = { [weak self] buffer, response in
+                        guard let self else { return }
+                        // A chunk can end in the middle of a UTF-8 sequence;
+                        // skipping that tick leaves the text valid, and the
+                        // next cumulative report carries the character.
+                        guard let text = String(data: buffer, encoding: .utf8), !text.isEmpty else { return }
+                        let status = response?.statusCode ?? 0
+                        let headerLines = (response?.allHeaderFields ?? [:])
+                            .map { "\($0.key): \($0.value)" }
+                            .joined(separator: "\n")
+                        self.resolveUserScriptProgress(
+                            scriptId: scriptId,
+                            requestId: requestId,
+                            payload: [
+                                "status": status,
+                                "statusText": response.map {
+                                    HTTPURLResponse.localizedString(forStatusCode: $0.statusCode)
+                                } ?? "",
+                                "responseHeaders": headerLines,
+                                "finalUrl": response?.url?.absoluteString ?? url.absoluteString,
+                                "responseText": text
+                            ],
+                            in: webView,
+                            frame: frame
+                        )
+                    }
+                }
+                let (data, response) = try await streamUserScriptRequest(
+                    request,
+                    reportsProgress: reportsProgress,
+                    onProgress: progress
+                )
                 try Task.checkCancellation()
                 if data.count > 24_000_000 {
                     throw URLError(.dataLengthExceedsMaximum)

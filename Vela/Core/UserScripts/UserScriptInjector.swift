@@ -172,6 +172,11 @@ public enum UserScriptInjector {
           var bridge = window.\(bridgeGlobalName);
           bridge.resolvers = bridge.resolvers || {};
           bridge.resolvers[SCRIPT_ID] = bridge.resolvers[SCRIPT_ID] || {};
+          // Progress handlers live beside the resolvers, keyed the same way.
+          // A streaming request reports its body while it is still arriving;
+          // the resolver only fires once, at the end.
+          bridge.progressHandlers = bridge.progressHandlers || {};
+          bridge.progressHandlers[SCRIPT_ID] = bridge.progressHandlers[SCRIPT_ID] || {};
           bridge.menuCommands = bridge.menuCommands || {};
           if (typeof bridge.resolve !== 'function') {
             bridge.resolve = function (scriptId, requestId, payload) {
@@ -179,8 +184,21 @@ public enum UserScriptInjector {
               var resolver = table[requestId];
               if (!resolver) { return; }
               delete table[requestId];
+              var progressTable = bridge.progressHandlers[scriptId] || {};
+              delete progressTable[requestId];
               try {
                 resolver(payload || {});
+              } catch (_error) {
+              }
+            };
+          }
+          if (typeof bridge.reportProgress !== 'function') {
+            bridge.reportProgress = function (scriptId, requestId, payload) {
+              var table = bridge.progressHandlers[scriptId] || {};
+              var handler = table[requestId];
+              if (!handler) { return; }
+              try {
+                handler(payload || {});
               } catch (_error) {
               }
             };
@@ -605,6 +623,26 @@ public enum UserScriptInjector {
                 post({ type: 'xhrAbort', scriptId: SCRIPT_ID, requestId: requestId });
               }
             };
+            // The native side sends the body in increments when the script
+            // asked for progress, which is what makes a streaming service's
+            // output appear while the response is still open.
+            var reportsProgress = typeof details.onprogress === 'function';
+            if (reportsProgress) {
+              bridge.progressHandlers[SCRIPT_ID][requestId] = function (payload) {
+                var values = responseValue(details, payload);
+                try {
+                  details.onprogress({
+                    readyState: 3,
+                    status: payload.status || 0,
+                    statusText: payload.statusText || '',
+                    responseHeaders: payload.responseHeaders || '',
+                    responseText: values.responseText,
+                    response: values.response,
+                    finalUrl: payload.finalUrl || details.url
+                  });
+                } catch (_error) {}
+              };
+            }
             expectResolution(requestId, function (payload) {
               var values = responseValue(details, payload);
               var response = {
@@ -645,7 +683,8 @@ public enum UserScriptInjector {
               timeout: Number(details.timeout) || 0,
               anonymous: !!details.anonymous,
               user: details.user || '',
-              password: details.password || ''
+              password: details.password || '',
+              progress: reportsProgress
             });
             return handle;
           };

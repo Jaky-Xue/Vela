@@ -133,13 +133,14 @@ extension BrowserShellView {
 
     var toolbarLayout: ToolbarLayout { env.settings.toolbarLayout }
 
-    /// The bar stops growing at a thumb-sized width. On a phone the screen is
-    /// narrower than this and nothing changes; on an iPad — where the phone
-    /// layout can still be chosen — an unbounded field stretched across the
-    /// whole window read as a slab rather than an address bar. The overlay
-    /// centres the capped bar, so the field keeps a sensible length and the
-    /// controls stay within reach.
-    static let commandBarMaxWidth: CGFloat = 720
+    /// The bar stops growing well before the window's edge. On a phone the
+    /// screen is narrower than this and nothing changes; on an iPad — where
+    /// the phone layout can still be chosen — an unbounded field stretched
+    /// edge to edge read as a slab, while a 720-point cap left the bar
+    /// floating as a narrow island in landscape. The overlay centres the
+    /// capped bar, so the field keeps a useful length and still keeps an
+    /// inset on both sides.
+    static let commandBarMaxWidth: CGFloat = 960
 
     var commandBarContent: some View {
         // Six points between the pieces rather than eight, and four of padding
