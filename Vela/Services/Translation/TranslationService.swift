@@ -679,6 +679,14 @@ public final class TranslationService {
             "application/x-www-form-urlencoded; charset=utf-8",
             forHTTPHeaderField: "Content-Type"
         )
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // The key-less endpoint is friendlier to a browser-shaped client than
+        // to URLSession's default identifier; this also keeps a proxy that
+        // filters unknown clients from answering 403/429 immediately.
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            forHTTPHeaderField: "User-Agent"
+        )
         request.httpBody = "q=\(formEncode(wrappedHTML))".data(using: .utf8)
 
         await paceGoogleRequest()
@@ -920,7 +928,10 @@ public final class TranslationService {
                 sentences = entries.compactMap { firstString(in: $0) }
             }
             if sentences.isEmpty {
-                for key in ["translatedText", "translation", "text", "result", "data"] {
+                for key in [
+                    "translatedText", "translation", "text", "translations",
+                    "result", "data"
+                ] {
                     if let text = firstString(in: root[key]) {
                         sentences = [text]
                         break
@@ -952,7 +963,10 @@ public final class TranslationService {
             }
         }
         if let dictionary = value as? [String: Any] {
-            for key in ["translatedText", "translation", "text", "sentences", "data", "result"] {
+            for key in [
+                "translatedText", "translation", "text", "sentences",
+                "translations", "data", "result"
+            ] {
                 if let text = firstString(in: dictionary[key]) { return text }
             }
         }
@@ -1016,7 +1030,9 @@ public final class TranslationService {
         languageTag: String?
     ) -> DetectedPageLanguage? {
         let recognized = recognize(sample)
-        if let recognized, recognized.confidence >= 0.3 {
+        // A declared language is a page-level statement; reserve the local
+        // recogniser's answer for samples it is actually sure about.
+        if let recognized, recognized.confidence >= 0.5 {
             return recognized
         }
         if let declared = detected(fromLanguageTag: languageTag) {
@@ -1029,7 +1045,7 @@ public final class TranslationService {
         guard let raw = tag?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty else { return nil }
         let first = raw.split(whereSeparator: { $0 == "," || $0 == ";" })
-            .first.map(String.init) ?? raw
+            .first.map { String($0) } ?? raw
         let code = normalizedLanguageCode(first)
         guard isLanguageCode(code) else { return nil }
         return DetectedPageLanguage(

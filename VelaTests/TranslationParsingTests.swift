@@ -56,6 +56,13 @@ final class TranslationParsingTests: XCTestCase {
         XCTAssertNil(TranslationService.detected(fromLanguageTag: "123"))
     }
 
+    func testRateLimitedMessageIsActionable() {
+        let message = TranslationError.rateLimited(12).localizedDescription
+        XCTAssertTrue(message.contains("429"))
+        XCTAssertTrue(message.contains("12"))
+        XCTAssertTrue(message.contains("服务商"))
+    }
+
     func testOpenAIContentShapes() {
         let message: [String: Any] = ["message": ["content": "你好"]]
         XCTAssertEqual(TranslationService.openAIContent(from: message), "你好")

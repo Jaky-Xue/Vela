@@ -354,7 +354,7 @@ public enum TranslationError: LocalizedError {
             if let retryAfter, retryAfter > 0 {
                 return "翻译服务限流（429）。请约 \(Int(retryAfter.rounded(.up))) 秒后重试，或在设置中更换翻译服务商。已翻译的段落会保留。"
             }
-            return "翻译服务限流（429）。Google 公共接口暂时限制请求，请稍后重试，或在设置中更换翻译服务商。已翻译的段落会保留。"
+            return "翻译服务限流（429）。请稍后重试，或在设置中更换翻译服务商。已翻译的段落会保留。"
         case let .badResponse(message):
             return "翻译服务返回了无法解析的内容。\n\(message)"
         case .alignment:
