@@ -366,9 +366,13 @@ struct BrowserShellView: View {
         }
     }
 
-    /// Lifecycle and observation, split from the layers and notices so the
-    /// root chain the type checker sees is only a short composition.
-    var shellLifecycle: some View {
+    /// The effects and observers that keep the chrome in step with the page.
+    ///
+    /// The chain is split every few modifiers on purpose: a single expression
+    /// carrying the whole hierarchy, the layers, the notices and every observer
+    /// outgrew the type checker's budget, and the failure surfaced at whichever
+    /// modifier happened to be last. Each group below is a moderate expression.
+    var shellInteractions: some View {
         shellNotices
         // The keyboard never rearranges the shell. Keyboard avoidance applied
         // to the bar itself does not hold: the bottom-aligned overlay resolves
@@ -399,6 +403,12 @@ struct BrowserShellView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.keyboardWillChangeFrameNotification)) { note in
             handleKeyboardFrameChange(note)
         }
+    }
+
+    /// The observers that follow the active document, plus the translation
+    /// offer that runs when a page settles.
+    var shellTabObservers: some View {
+        shellInteractions
         .onChange(of: tabManager.activeTabId) { _, _ in
             handleActiveTabChanged()
         }
@@ -415,11 +425,14 @@ struct BrowserShellView: View {
         // or URL change): this is what recognises a foreign-language page and
         // offers to translate it, the way Chrome's translate bubble does.
         .task(id: translationDetectionKey) {
-            guard !translationDetectionKey.isEmpty else { return }
-            translationBarDismissed = false
-            syncTranslationState()
-            await offerTranslationIfNeeded()
+            await detectTranslationIfNeeded()
         }
+    }
+
+    /// The observers that follow appearance and scene state rather than the
+    /// document.
+    var shellAppearanceObservers: some View {
+        shellTabObservers
         .onChange(of: env.settings.preferences.backgroundImageStamp) { _, _ in
             updateChromeForeground()
         }
@@ -437,21 +450,11 @@ struct BrowserShellView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            // Ending a private session is VelaApp's rule for backgrounding, and
-            // it destroys every private tab and web view. The overview must not
-            // still be presenting them when that runs: dismissing the cover
-            // here, synchronously in the same update the cleanup task is
-            // scheduled in, is what keeps a full-screen cover from showing a
-            // tab strip and an active tab that are deleted from underneath it
-            // before the app is even back on screen.
-            guard phase == .background, showTabsOverview else { return }
-            if !tabManager.privateTabs.isEmpty || tabManager.activeTab == nil {
-                showTabsOverview = false
-            }
+            handleScenePhaseChanged(phase)
         }
     }
 
-    var shellRoot: some View { shellLifecycle }
+    var shellRoot: some View { shellAppearanceObservers }
 
     var body: some View {
         presentations()
@@ -692,6 +695,26 @@ struct BrowserShellView: View {
             env.translation.pageWillNavigate(tabId: tab.id)
         }
         updateChromeForeground()
+    }
+
+    /// The translation offer for the page that just settled. A method rather
+    /// than a closure in the root chain, for the type checker's benefit.
+    @MainActor
+    private func detectTranslationIfNeeded() async {
+        guard !translationDetectionKey.isEmpty else { return }
+        translationBarDismissed = false
+        syncTranslationState()
+        await offerTranslationIfNeeded()
+    }
+
+    /// Yields the iPad sidebar's page and dismisses the overview before a
+    /// background transition ends the private session whose tabs it shows.
+    @MainActor
+    private func handleScenePhaseChanged(_ phase: ScenePhase) {
+        guard phase == .background, showTabsOverview else { return }
+        if !tabManager.privateTabs.isEmpty || tabManager.activeTab == nil {
+            showTabsOverview = false
+        }
     }
 
     // MARK: - Scrolling

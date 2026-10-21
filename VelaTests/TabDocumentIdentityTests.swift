@@ -14,8 +14,8 @@ final class TabDocumentIdentityTests: XCTestCase {
     func testIdentityMatchesOnlyTheSameDocument() {
         let tab = BrowserTabState(
             id: "tab",
-            committedUrl: "https://example.com/article",
-            navigationSerial: 7
+            navigationSerial: 7,
+            committedUrl: "https://example.com/article"
         )
         let identity = TabDocumentIdentity(tab: tab)
 
@@ -25,8 +25,8 @@ final class TabDocumentIdentityTests: XCTestCase {
             identity.matches(
                 BrowserTabState(
                     id: "other",
-                    committedUrl: "https://example.com/article",
-                    navigationSerial: 7
+                    navigationSerial: 7,
+                    committedUrl: "https://example.com/article"
                 )
             )
         )

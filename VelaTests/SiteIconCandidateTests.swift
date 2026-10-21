@@ -9,6 +9,7 @@
 import XCTest
 @testable import Vela
 
+@MainActor
 final class SiteIconCandidateTests: XCTestCase {
     private func strings(_ urls: [URL?]) -> Set<String> {
         Set(urls.compactMap { $0?.absoluteString })

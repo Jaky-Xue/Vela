@@ -21,6 +21,8 @@ private final class StartStubConfigurationProvider: BrowserWebViewConfigurationP
         BrowserWebIdentity(applicationNameForUserAgent: "VelaTests/1.0")
     }
 
+    func applyForcedZoom(to webView: WKWebView) {}
+
     var navigationDelegate: WKNavigationDelegate? { nil }
     var uiDelegate: WKUIDelegate? { nil }
 }
