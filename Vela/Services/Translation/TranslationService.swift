@@ -80,6 +80,12 @@ public final class TranslationService {
     /// an older generation stops at its next boundary.
     private var generation = 0
 
+    /// Google's key-less endpoint is shared and rate-limits bursts. Requests
+    /// are spaced, and a 429/5xx answer is retried with backoff before the page
+    /// is told the translation failed.
+    private var lastGoogleRequestAt: Date?
+    private static let googleMinimumInterval: TimeInterval = 0.35
+
     private struct DynamicWork {
         let payload: String
         let webView: WKWebView
@@ -240,7 +246,7 @@ public final class TranslationService {
         let previousTab = syncedTabId
         let previousUrl = syncedUrl
 
-        let language = Self.recognize(sample.sample)
+        let language = Self.bestDetected(sample: sample.sample, languageTag: sample.lang)
         guard syncedTabId == previousTab, syncedUrl == previousUrl else { return }
 
         detectedUrl = sample.url
@@ -314,7 +320,8 @@ public final class TranslationService {
         // The first extraction's sample is the best language evidence we have;
         // keep it even when the page was translated from the menu rather than
         // from an offer.
-        if detected == nil, let language = Self.recognize(extraction.sample) {
+        if detected == nil,
+           let language = Self.bestDetected(sample: extraction.sample, languageTag: extraction.lang) {
             detected = language
             detectedUrl = extraction.url
         }
@@ -475,6 +482,9 @@ public final class TranslationService {
         let sample: String
         let url: String
         let title: String
+        /// `<html lang>`, the content-language meta, or `og:locale`. Used when
+        /// the local recogniser is unsure about a short or mixed sample.
+        let lang: String?
     }
 
     private struct DynamicPayload: Decodable {
@@ -484,6 +494,7 @@ public final class TranslationService {
     private struct Sample: Decodable {
         let sample: String
         let url: String
+        let lang: String?
     }
 
     private func fail(_ run: Int, _ message: String) {
@@ -616,13 +627,20 @@ public final class TranslationService {
             )
 
         case .deepL:
-            let values = try await deepL(units.map(\.html), settings: settings, target: target)
-            guard values.count == units.count else { throw TranslationError.alignment }
+            let result = try await deepL(
+                units.map(\.html),
+                settings: settings,
+                target: target
+            )
+            guard result.values.count == units.count else { throw TranslationError.alignment }
             var map: [Int: String] = [:]
-            for (unit, value) in zip(units, values) {
+            for (unit, value) in zip(units, result.values) {
                 map[unit.id] = value
             }
-            return BatchResult(payload: .units(map), detectedLanguage: nil)
+            return BatchResult(
+                payload: .units(map),
+                detectedLanguage: result.detectedLanguage
+            )
 
         case .openAICompatible:
             let values = try await openAI(units.map(\.html), settings: settings, target: target)
@@ -663,34 +681,17 @@ public final class TranslationService {
         )
         request.httpBody = "q=\(formEncode(wrappedHTML))".data(using: .utf8)
 
+        await paceGoogleRequest()
         let data = try await send(request)
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [Any],
-              let sentences = root.first as? [Any] else {
-            throw TranslationError.badResponse(String(data: data.prefix(240), encoding: .utf8) ?? "")
-        }
-
-        let html = sentences.compactMap { entry -> String? in
-            guard let sentence = entry as? [Any], let text = sentence.first as? String else {
-                return nil
-            }
-            return text
-        }.joined()
-        guard !html.isEmpty else {
-            throw TranslationError.badResponse(String(data: data.prefix(240), encoding: .utf8) ?? "")
-        }
-
-        // The third element is the language the service decided the text was
-        // written in. It is more reliable than a local sample for short or
-        // mixed pages.
-        let detected = root.count > 2 ? root[2] as? String : nil
-        return (html, detected)
+        let parsed = try Self.parseGoogleResponse(data)
+        return (parsed.html, parsed.detectedLanguage)
     }
 
     private func deepL(
         _ htmlUnits: [String],
         settings: TranslationSettings,
         target: TranslationTargetLanguage
-    ) async throws -> [String] {
+    ) async throws -> (values: [String], detectedLanguage: String?) {
         guard let url = URL(string: settings.resolvedEndpoint) else {
             throw TranslationError.failed("翻译接口地址无效。")
         }
@@ -718,7 +719,8 @@ public final class TranslationService {
         }
         let values = translations.compactMap { $0["text"] as? String }
         guard values.count == htmlUnits.count else { throw TranslationError.alignment }
-        return values
+        let detected = translations.first?["detected_source_language"] as? String
+        return (values, detected)
     }
 
     private func openAI(
@@ -768,8 +770,7 @@ public final class TranslationService {
         let data = try await send(request)
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = root["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
-              let content = message["content"] as? String else {
+              let content = Self.openAIContent(from: choices.first) else {
             throw TranslationError.badResponse(String(data: data.prefix(240), encoding: .utf8) ?? "")
         }
 
@@ -785,19 +786,89 @@ public final class TranslationService {
     /// Sends a request and turns a non-2xx answer into an error whose message
     /// names the status. `URLSession` itself treats 4xx/5xx as a successful
     /// transfer, so without this a rejected key would arrive as a decode error.
+    ///
+    /// 429 and 5xx are retried with exponential backoff before the failure is
+    /// surfaced. The Google endpoint is key-less and shared, so a burst of
+    /// paragraph batches is exactly what makes it answer 429; pacing and
+    /// retries turn a rate-limited page into a slower translation instead of a
+    /// failed one.
     private func send(_ request: URLRequest) async throws -> Data {
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw TranslationError.failed(error.localizedDescription)
+        let maximumAttempts = 4
+        var lastStatus = 0
+        var lastRetryAfter: TimeInterval?
+
+        for attempt in 0..<maximumAttempts {
+            try Task.checkCancellation()
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await URLSession.shared.data(for: request)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                if attempt + 1 < maximumAttempts {
+                    try await Self.sleepBeforeRetry(attempt: attempt, retryAfter: nil)
+                    continue
+                }
+                throw TranslationError.failed(error.localizedDescription)
+            }
+
+            guard let http = response as? HTTPURLResponse else { return data }
+            if (200...299).contains(http.statusCode) { return data }
+
+            lastStatus = http.statusCode
+            lastRetryAfter = Self.retryAfter(from: http)
+            let retryable = http.statusCode == 429 || (500...599).contains(http.statusCode)
+            if retryable, attempt + 1 < maximumAttempts {
+                try await Self.sleepBeforeRetry(attempt: attempt, retryAfter: lastRetryAfter)
+                continue
+            }
+            break
         }
-        if let http = response as? HTTPURLResponse,
-           !(200...299).contains(http.statusCode) {
-            throw TranslationError.http(http.statusCode)
+
+        if lastStatus == 429 {
+            throw TranslationError.rateLimited(lastRetryAfter)
         }
-        return data
+        throw TranslationError.http(lastStatus)
+    }
+
+    /// Spaces Google requests so a long page does not fire a dozen batches in
+    /// the same instant.
+    private func paceGoogleRequest() async {
+        if let lastGoogleRequestAt {
+            let elapsed = Date().timeIntervalSince(lastGoogleRequestAt)
+            if elapsed < Self.googleMinimumInterval {
+                let nanoseconds = UInt64(
+                    (Self.googleMinimumInterval - elapsed) * 1_000_000_000
+                )
+                try? await Task.sleep(nanoseconds: nanoseconds)
+            }
+        }
+        lastGoogleRequestAt = Date()
+    }
+
+    private static func sleepBeforeRetry(
+        attempt: Int,
+        retryAfter: TimeInterval?
+    ) async throws {
+        // A provider can ask for a long wait; a browser-side translation
+        // should not freeze for a minute. Cap the wait at six seconds and let
+        // the next attempt decide whether the limit has cleared.
+        let backoff = pow(2, Double(attempt)) * 0.7
+        let seconds = max(0.2, min(6, max(backoff, retryAfter ?? 0)))
+        try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+    }
+
+    private static func retryAfter(from response: HTTPURLResponse) -> TimeInterval? {
+        guard let raw = response.value(forHTTPHeaderField: "Retry-After")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !raw.isEmpty else { return nil }
+        if let seconds = TimeInterval(raw) { return seconds }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        guard let date = formatter.date(from: raw) else { return nil }
+        return max(0, date.timeIntervalSinceNow)
     }
 
     private func formEncode(_ value: String) -> String {
@@ -818,6 +889,182 @@ public final class TranslationService {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - Provider response adaptation
+
+    /// Reads the several shapes the key-less endpoint can return.
+    ///
+    /// The common answer is `[[["translated", "original", ...]], null, "en"]`,
+    /// but proxies and compatible endpoints sometimes return a dictionary with
+    /// `translatedText`, `translation` or a nested `data` field, and the
+    /// detected language can sit at index 2, index 8 or inside a dictionary.
+    /// The page's text is the only required field; detection is best effort.
+    nonisolated static func parseGoogleResponse(
+        _ data: Data
+    ) throws -> (html: String, detectedLanguage: String?) {
+        let object = try? JSONSerialization.jsonObject(with: data)
+        var sentences: [String] = []
+        var detected: String?
+
+        if let root = object as? [Any] {
+            if let entries = root.first as? [Any] {
+                sentences = entries.compactMap { entry in
+                    guard let values = entry as? [Any] else { return nil }
+                    return firstString(in: values)
+                }
+            } else if let text = firstString(in: root) {
+                sentences = [text]
+            }
+            detected = googleDetectedLanguage(from: root)
+        } else if let root = object as? [String: Any] {
+            if let entries = root["sentences"] as? [[Any]] {
+                sentences = entries.compactMap { firstString(in: $0) }
+            }
+            if sentences.isEmpty {
+                for key in ["translatedText", "translation", "text", "result", "data"] {
+                    if let text = firstString(in: root[key]) {
+                        sentences = [text]
+                        break
+                    }
+                }
+            }
+            detected = (root["src"] as? String)
+                ?? (root["detectedLanguage"] as? String)
+                ?? (root["source_language"] as? String)
+                ?? (root["detected_source_language"] as? String)
+        }
+
+        let html = sentences.joined()
+        guard !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw TranslationError.badResponse(
+                String(data: data.prefix(240), encoding: .utf8) ?? ""
+            )
+        }
+        return (html, detected)
+    }
+
+    nonisolated private static func firstString(in value: Any?) -> String? {
+        if let text = value as? String {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+        }
+        if let array = value as? [Any] {
+            for item in array {
+                if let text = firstString(in: item) { return text }
+            }
+        }
+        if let dictionary = value as? [String: Any] {
+            for key in ["translatedText", "translation", "text", "sentences", "data", "result"] {
+                if let text = firstString(in: dictionary[key]) { return text }
+            }
+        }
+        return nil
+    }
+
+    nonisolated private static func googleDetectedLanguage(from root: [Any]) -> String? {
+        for index in [2, 8] where root.count > index {
+            if let code = languageCodeCandidate(root[index]) { return code }
+        }
+        return nil
+    }
+
+    nonisolated private static func languageCodeCandidate(_ value: Any?) -> String? {
+        if let text = value as? String, isLanguageCode(text) { return text }
+        if let array = value as? [Any] {
+            for item in array {
+                if let code = languageCodeCandidate(item) { return code }
+            }
+        }
+        if let dictionary = value as? [String: Any] {
+            for key in ["language", "code", "src", "detectedLanguage"] {
+                if let code = languageCodeCandidate(dictionary[key]) { return code }
+            }
+        }
+        return nil
+    }
+
+    nonisolated private static func isLanguageCode(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (2...16).contains(trimmed.count) else { return false }
+        return trimmed.range(
+            of: #"^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})?$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    /// Chat-completions servers disagree about where the answer lives: the
+    /// documented shape is `message.content`, older completions use `text`,
+    /// and some multimodal endpoints return an array of content parts.
+    nonisolated static func openAIContent(from choice: [String: Any]?) -> String? {
+        guard let choice else { return nil }
+        if let text = choice["text"] as? String, !text.isEmpty { return text }
+        let message = choice["message"] as? [String: Any]
+        if let text = message?["content"] as? String, !text.isEmpty { return text }
+        if let parts = message?["content"] as? [[String: Any]] {
+            let joined = parts.compactMap { $0["text"] as? String }.joined()
+            return joined.isEmpty ? nil : joined
+        }
+        if let content = message?["content"] as? [String: Any] {
+            return (content["text"] as? String) ?? (content["content"] as? String)
+        }
+        return nil
+    }
+
+    /// Chooses between the on-device recogniser and the document's declared
+    /// language. A two-word sample can confuse the recogniser; the page's own
+    /// `lang` / content-language / `og:locale` field does not depend on length.
+    private static func bestDetected(
+        sample: String,
+        languageTag: String?
+    ) -> DetectedPageLanguage? {
+        let recognized = recognize(sample)
+        if let recognized, recognized.confidence >= 0.3 {
+            return recognized
+        }
+        if let declared = detected(fromLanguageTag: languageTag) {
+            return declared
+        }
+        return recognized
+    }
+
+    nonisolated static func detected(fromLanguageTag tag: String?) -> DetectedPageLanguage? {
+        guard let raw = tag?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        let first = raw.split(whereSeparator: { $0 == "," || $0 == ";" })
+            .first.map(String.init) ?? raw
+        let code = normalizedLanguageCode(first)
+        guard isLanguageCode(code) else { return nil }
+        return DetectedPageLanguage(
+            code: code,
+            displayName: displayName(forCode: code),
+            confidence: 0.85
+        )
+    }
+
+    nonisolated static func normalizedLanguageCode(_ raw: String) -> String {
+        var code = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: "-")
+            .lowercased()
+        if let separator = code.firstIndex(of: "-") {
+            let base = String(code[..<separator])
+            let rest = String(code[code.index(after: separator)...])
+            if base == "zh" {
+                let traditional = rest.contains("hant")
+                    || rest.contains("tw") || rest.contains("hk")
+                    || rest.contains("mo")
+                return traditional ? "zh-TW" : "zh-CN"
+            }
+            code = base
+        }
+        switch code {
+        case "iw": return "he"
+        case "in": return "id"
+        case "ji": return "yi"
+        case "jw": return "jv"
+        case "mo": return "ro"
+        case "zh": return "zh-CN"
+        default: return code
+        }
+    }
+
     // MARK: - Recognition
 
     private static func recognize(_ text: String) -> DetectedPageLanguage? {
@@ -828,14 +1075,16 @@ public final class TranslationService {
         recognizer.processString(String(trimmed.prefix(1_200)))
         guard let language = recognizer.dominantLanguage else { return nil }
         let confidence = recognizer.languageHypotheses(withMaximum: 1)[language] ?? 0
+        let code = normalizedLanguageCode(language.rawValue)
         return DetectedPageLanguage(
-            code: language.rawValue,
-            displayName: displayName(forCode: language.rawValue),
+            code: code,
+            displayName: displayName(forCode: code),
             confidence: confidence
         )
     }
 
     private func updateDetected(code: String, target: TranslationTargetLanguage) {
+        let code = Self.normalizedLanguageCode(code)
         if TranslationTargetLanguage.baseCode(of: code)
             == TranslationTargetLanguage.baseCode(of: target.googleCode) {
             detected = nil
@@ -851,7 +1100,7 @@ public final class TranslationService {
         }
     }
 
-    private static func displayName(forCode code: String) -> String {
+    nonisolated private static func displayName(forCode code: String) -> String {
         switch TranslationTargetLanguage.baseCode(of: code) {
         case "en": return "英语"
         case "ja": return "日语"

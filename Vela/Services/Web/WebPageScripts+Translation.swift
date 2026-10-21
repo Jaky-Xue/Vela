@@ -44,6 +44,23 @@ extension WebPageScripts {
       var MAX_UNITS = 600;
       var MAX_CHARS = 90000;
 
+      /// The document's declared language fields. Some sites set only the
+      /// `<html lang>` attribute, others only a content-language meta or an
+      /// Open Graph locale; the recogniser uses whichever is present when the
+      /// page's visible text is too short to identify reliably.
+      function declaredLanguage() {
+        try {
+          var html = document.documentElement.getAttribute('lang') || '';
+          var meta = document.querySelector(
+            'meta[http-equiv="content-language" i], meta[name="language" i]'
+          );
+          var og = document.querySelector('meta[property="og:locale"]');
+          return String(html || (meta && meta.content) || (og && og.content) || '');
+        } catch (_error) {
+          return '';
+        }
+      }
+
       function textOf(element) {
         return (element.textContent || '').replace(/\\s+/g, ' ').trim();
       }
@@ -116,7 +133,8 @@ extension WebPageScripts {
           units: units,
           sample: sample,
           url: String(window.location.href || ''),
-          title: document.title || ''
+          title: document.title || '',
+          lang: declaredLanguage()
         };
       };
 
@@ -329,16 +347,48 @@ extension WebPageScripts {
     /// its text. Used by the translation bar's automatic offer.
     public static let textSampleScript = """
     (function () {
-      var body = document.body || document.documentElement;
-      var sample = '';
-      try {
-        sample = (body.innerText || body.textContent || '')
-          .replace(/\\s+/g, ' ').trim().slice(0, 1200);
-      } catch (_error) {
+      function textOf(element) {
+        return ((element && (element.innerText || element.textContent)) || '')
+          .replace(/\\s+/g, ' ').trim();
       }
+
+      /// The document's declared language, if it has one. This is a stronger
+      /// signal than a two-word sample and covers pages whose body text is
+      /// mostly navigation or numbers.
+      function declaredLanguage() {
+        try {
+          var html = document.documentElement.getAttribute('lang') || '';
+          var meta = document.querySelector(
+            'meta[http-equiv="content-language" i], meta[name="language" i]'
+          );
+          var og = document.querySelector('meta[property="og:locale"]');
+          return String(html || (meta && meta.content) || (og && og.content) || '');
+        } catch (_error) {
+          return '';
+        }
+      }
+
+      // Prefer the article body when the site marks one; body text on a
+      // navigation-heavy page is mostly menu labels and footer links.
+      var selectors = [
+        'article', 'main', '[role="main"]', '[itemprop="articleBody"]',
+        '.article-content', '.article-body', '.post-content', '.entry-content',
+        '.read-content', '#content', '.content'
+      ];
+      var best = '';
+      for (var i = 0; i < selectors.length; i++) {
+        var nodes = document.querySelectorAll(selectors[i]);
+        for (var j = 0; j < nodes.length; j++) {
+          var text = textOf(nodes[j]);
+          if (text.length > best.length) { best = text; }
+        }
+      }
+      var body = document.body || document.documentElement;
+      var sample = best.length >= 200 ? best : textOf(body);
       return JSON.stringify({
-        sample: sample,
-        url: String(window.location.href || '')
+        sample: sample.slice(0, 1200),
+        url: String(window.location.href || ''),
+        lang: declaredLanguage()
       });
     })();
     """
