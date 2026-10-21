@@ -419,7 +419,9 @@ struct BrowserShellView: View {
             handleActiveTabUrlChanged()
         }
         .onChange(of: activeTab?.loadState) { _, state in
-            handleActiveTabLoadStateChanged(state)
+            if let state {
+                handleActiveTabLoadStateChanged(state)
+            }
         }
         // Runs once the active page has finished loading (and again on a tab
         // or URL change): this is what recognises a foreign-language page and
