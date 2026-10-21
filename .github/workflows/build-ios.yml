@@ -27,13 +27,14 @@ on:
           - Release
           - Debug
       runner:
-        description: "Runner image. macos-26 ships Xcode 26 and the iOS 26 SDK; macos-15 ships Xcode 16 and the iOS 18 SDK."
+        description: "Runner image. macos-26 ships Xcode 26 and the iOS 26 SDK; macos-15 ships Xcode 16 and the iOS 18 SDK. macos-15-intel is the x64 fallback when the arm64 pool is backed up."
         required: true
         default: macos-26
         type: choice
         options:
           - macos-26
           - macos-15
+          - macos-15-intel
 
 jobs:
   build:
