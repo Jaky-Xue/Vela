@@ -1050,18 +1050,18 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39693612319](https://github.com/Jaky-Xue/Vela/actions/runs/39693612319)，
-  提交 `d6c0106`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39697904104](https://github.com/Jaky-Xue/Vela/actions/runs/39697904104)，
+  提交 `492c81d`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。267 项测试；第一次尝试有 1 项既有导航时序测试
-  （`WebNavigationIntegrationTests.testOpeningALinkInANewTabLeavesTheCurrentTabAlone`）
+- **Run the unit tests：成功**。275 项测试；第一次尝试有 1 项既有导航时序测试
+  （`WebNavigationIntegrationTests.testAFollowedLinkLoadsInTheSameTabAndUpdatesTheUrl`）
   超时，`-retry-tests-on-failure` 重跑后通过；xcodebuild 最终
-  `** TEST SUCCEEDED **`，job 结论 success。本轮新增的 schema/图标加载测试通过。
-- 更早的运行 `39627153355`（翻译修复 + 小说 JSON-LD）也是 Build 成功、264 项测试最终通过；
-  本轮 `d6c0106` 加入 F-07/D4/D6/D8 性能修复后再次通过。
+  `** TEST SUCCEEDED **`，job 结论 success。
+- 本轮 `473d744`（C3/F-03/F-04 + 卡顿诊断）此前一次运行 `39696430174` 为 274 项测试、0 失败；
+  `492c81d` 加入卡顿“最后操作”上下文后再次通过。
 - **安装包**：`G:\Vela-unsigned-3.9.0.ipa`
-  - 大小 6,738,188 字节（约 6.4 MiB）
-  - SHA-256 `ac1c34fab8ba1cb3a2ff4b826a59039b8c0f87ee137e848464d9d7019796ef2b`
+  - 大小 6,754,096 字节（约 6.4 MiB）
+  - SHA-256 `638ba507a93d31a110aaa9a2020854fb0102d7a9d4d677ce17c0030a27508593`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
@@ -1171,3 +1171,64 @@ B2 的待办，不声称已经解决。
 ### 22.5 验证
 
 - 构建与测试结果见 §19 的最终运行（本轮提交 `d6c0106`）。
+
+---
+
+## 23. C3 / F-03 / F-04（2026-10-22）
+
+### 23.1 C3：导航与私密路由去重
+
+- 新增 `BrowserNavigationActions`（`Vela/App/BrowserNavigationActions.swift`）：
+  - `backStep(for:)` 统一“WebKit 后退 / 打开者标签 / 返回主页 / 回网页”的决策；
+  - `reload(_:)`、`openHomeTab(from:)` 统一刷新与主页打开规则。
+  - 工具栏、菜单、硬件命令、总览最终都落到这三个方法，不再各自判断 WebKit 历史与主页状态。
+- `AppEnvironment` 新增 `togglePrivateBrowsingMode()` 与 `currentPrivacyMode`；
+  菜单、工具栏、硬件命令、空浏览器菜单四处重复的取反表达式统一调用它，
+  标签计数也改用 `currentPrivacyMode`。
+- 测试：`BrowserNavigationActionsTests` 覆盖主页空操作、从页面回主页、home surface 后退、
+  opener 回退、无标签刷新。
+- 仍未合并的是“界面展示动作”（哪个 sheet/overlay 出现），那部分仍由 shell 的视图状态决定。
+
+### 23.2 F-03：退役私密书架的数据库释放
+
+- `NovelRepository.close()` / `NovelLibraryService.close()`：关闭 SQLite handle、清空 TOC 缓存与 books。
+- 私密会话结束或新私密会话开始时，旧 `NovelLibraryService` 被摘除，并在 2 秒宽限期后关闭；
+  阅读器/旧任务的代次守卫在这之前已阻止迟到写入。普通书架不关闭。
+- 测试：`NovelPrivacyTests.testClosingARetiredShelfReleasesItsDatabase`。
+- 仍是“延迟释放”而非即时；旧视图若在宽限期内仍渲染，关闭后读取会按空书架处理。
+
+### 23.3 F-04：私密结束顺序
+
+- `AppEnvironment.endPrivateSession` 在接受结束请求后，先同步调用 `onPrivateSessionWillEnd`；
+  shell 在该回调里移除私密阅读器/书架；`NovelReaderView.onDisappear` 取消 chapter/TOC loader；
+  然后才关闭标签、清下载、摘除并延迟关闭书架服务、清 WebKit store。
+- 代次失效仍是最先发生的同步动作；这缩小了“阅读器还在、库已被摘除”的窗口，
+  但 SwiftUI 实际移除视图、旧库物理释放和 WebKit `removeData` 仍不是严格同步完成。
+- 未新增端到端 AppEnvironment 测试；`PrivateSessionLedgerTests` 仍覆盖代次决策。
+
+---
+
+## 24. 顶栏卡顿与诊断（2026-10-22，用户报障后）
+
+用户报告：点击顶栏后整个应用卡顿、无法操作，加载诊断捕捉不到。
+
+### 24.1 可能的卡顿源与修复
+
+- 搜索建议卡片原来的 `ScrollView` 依赖 `fixedSize(horizontal:false, vertical:true)` 让 SwiftUI
+  询问其“理想高度”；该高度又取决于正在布局的内容。代码注释早已记录 lazy 版本会追自己的估计并冻结。
+  本轮把 `OmniboxSuggestionListView` 改为**显式计算高度**（header + 固定行高 + 分隔线，cap 到预算），
+  `ScrollView` 只拿显式 frame，不再参与理想高度回问。这是最可疑的自激布局路径。
+- 顶栏点击会打开搜索页并触发键盘高度更新、搜索建议刷新与玻璃容器布局；这些状态仍在主 actor 上。
+  本环境没有真机/模拟器，无法复现确认；修复后需要用户在实际设备上验证是否消失。
+
+### 24.2 卡顿诊断
+
+- 新增 `MainThreadHangMonitor`：后台队列每 0.5s 向主 actor 发心跳；主线程恢复后，
+  若间隔 ≥2s 且 <20s，记录一次卡顿；前后台切换会重置心跳，避免把挂起误报为卡顿。
+- `NavigationEvent` 新增 `hang`，`NavigationLog.recordHang` 写入脱敏后的 URL、当前标签、phase 与持续时间；
+  诊断页会显示 `MainThread 0 · 主线程无响应` 与毫秒数。
+- 记录最后一次 shell 操作（地址栏、工具栏、菜单、快捷键）作为卡顿上下文，诊断条目会带
+  “最后操作：地址栏”这类提示；测试 `HangDiagnosticsTests` 覆盖。
+- 限制：不采样被阻塞线程的堆栈（从看门狗挂起线程风险高），因此只能定位“何时、在哪个页面卡了多久”，
+  不能直接给出阻塞函数；需要结合用户操作与页面复现。
+- 测试：`HangDiagnosticsTests` 覆盖记录、脱敏与关闭诊断时不写入。

@@ -719,3 +719,15 @@
 | R-14 | 部分修复 | `WebViewHost` 进度 10 Hz 节流；未做 SwiftUI 更新计数 |
 | R-16 | 部分修复 | 私密图标候选过滤（B7）+ in-flight 合并/失败负缓存；未做真实抓包 |
 | F-07 | 部分修复 | 私密小说库只建 7 条小说表/索引，仍在主 actor；未完全异步建库 |
+
+---
+
+## 生命周期与卡顿修复（2026-10-22）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| F-03 | 部分修复 | 退役私密书架在 2 秒宽限期后 `close()` 数据库；旧阅读器仍可能短暂持有服务对象 |
+| F-04 | 部分修复 | `onPrivateSessionWillEnd` 在关闭标签前同步移除阅读器；onDisappear 取消 loader；SwiftUI 移除与 `removeData` 仍非严格同步 |
+| C3 | 部分修复 | back/reload/home 与私密开关已统一；界面展示动作仍在 shell |
+| 顶栏卡顿 | 待验证 | 建议建议列表改为显式高度，去掉 self-sizing ScrollView；真机未复现/验证 |
+| 卡顿诊断 | 已实现 | `MainThreadHangMonitor` 记录 ≥2s 卡顿、页面、持续时间与最后操作；不采样阻塞堆栈 |

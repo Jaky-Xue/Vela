@@ -169,6 +169,10 @@
   菜单、工具栏、硬件命令、总览、侧栏都调用它。私密路由只保留 `TabManager` 中的解析。
 - **验收**：新增一个入口不需要复制分支；现有行为测试全绿。
 - **注意**：这是重构中最容易引入回归的一项，应放在 B/C 之后、有测试保护时做。
+- **状态（2026-10-22）**：新增 `BrowserNavigationActions` 统一 back/reload/home；
+  `AppEnvironment.togglePrivateBrowsingMode/currentPrivacyMode` 统一私密路由开关与标签计数；
+  `BrowserNavigationActionsTests` 覆盖。find/private 的完整动作集合与界面展示动作仍在 shell，
+  未达到“所有入口一个值类型”的最终形态。
 
 ### C4：死代码与文档清理
 
