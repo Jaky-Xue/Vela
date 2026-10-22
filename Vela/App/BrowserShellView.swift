@@ -472,6 +472,7 @@ struct BrowserShellView: View {
             // The iPad top bar yields to the search page, and an open tab
             // drawer must not sit over that page.
             if editing {
+                env.noteInteraction("地址栏")
                 showPadSidebar = false
             }
         }
@@ -939,6 +940,7 @@ struct BrowserShellView: View {
 
     /// Runs one tile from the menu panel.
     func handleMenuAction(_ action: VelaMenuAction) {
+        env.noteInteraction("菜单:\(action.rawValue)")
         // 广告过滤 opens its settings instead of toggling in place. The panel
         // is not where rule sources or custom rules can be managed, and a
         // toggle that dismissed the panel and changed nothing on screen is
@@ -1094,6 +1096,7 @@ struct BrowserShellView: View {
 
     /// Runs one hardware-keyboard command from the app's menu bar.
     func handleBrowserCommand(_ command: BrowserCommand) {
+        env.noteInteraction("快捷键:\(command.rawValue)")
         switch command {
         case .newTab:
             tabManager.createTab(openSource: .user)

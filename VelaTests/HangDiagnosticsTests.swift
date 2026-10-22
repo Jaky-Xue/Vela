@@ -18,13 +18,16 @@ final class HangDiagnosticsTests: XCTestCase {
             tabId: "tab",
             navigationSerial: 7,
             phase: .finished,
-            url: "https://example.com/article?token=secret#part"
+            url: "https://example.com/article?token=secret#part",
+            note: "地址栏"
         )
 
         let entry = log.entries.last
         XCTAssertEqual(entry?.event, .hang)
         XCTAssertEqual(entry?.durationMs, 2_400)
         XCTAssertEqual(entry?.outcome, .failure)
+        XCTAssertEqual(entry?.errorDomain, "MainThread")
+        XCTAssertTrue(entry?.errorMessage.contains("地址栏") == true)
         XCTAssertEqual(entry?.url, "https://example.com/article?<1 个参数>#<片段>")
         XCTAssertFalse(log.report().contains("secret"))
     }

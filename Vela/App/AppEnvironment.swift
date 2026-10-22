@@ -54,6 +54,15 @@ public final class AppEnvironment {
     /// the shutdown's order rather than a later SwiftUI side effect.
     public var onPrivateSessionWillEnd: (() -> Void)?
 
+    /// The last shell action, used as context when the hang watchdog records a
+    /// stall. The watchdog cannot sample the blocked stack safely; knowing the
+    /// page and the control that preceded the stall is the next best clue.
+    public private(set) var lastInteraction = ""
+
+    public func noteInteraction(_ label: String) {
+        lastInteraction = label
+    }
+
     /// Bumped when a private session begins and when it ends. A reader created
     /// in an earlier generation compares its captured value against this one
     /// before writing or closing; the value, not a bare "is private" flag,
@@ -129,7 +138,8 @@ public final class AppEnvironment {
                 tabId: tab?.id ?? "",
                 navigationSerial: tab?.navigationSerial ?? 0,
                 phase: tab?.loadState ?? .idle,
-                url: tab?.url ?? ""
+                url: tab?.url ?? "",
+                note: self.lastInteraction
             )
         }
         hangMonitor = monitor

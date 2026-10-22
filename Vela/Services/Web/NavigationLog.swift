@@ -227,8 +227,12 @@ public final class NavigationLog {
         tabId: String,
         navigationSerial: Int,
         phase: TabLoadState,
-        url: String
+        url: String,
+        note: String = ""
     ) {
+        let message = note.isEmpty
+            ? "主线程无响应"
+            : "主线程无响应（最后操作：\(note)）"
         record(
             tabId: tabId,
             navigationSerial: navigationSerial,
@@ -237,7 +241,7 @@ public final class NavigationLog {
             url: url,
             durationMs: durationMs,
             errorDomain: "MainThread",
-            errorMessage: "主线程无响应",
+            errorMessage: message,
             outcome: .failure
         )
     }

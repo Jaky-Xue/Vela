@@ -234,6 +234,7 @@ extension BrowserShellView {
     }
 
     func performToolbarControl(_ control: ToolbarControl) {
+        env.noteInteraction("工具栏:\(control.rawValue)")
         switch control {
         case .back:
             goBack()
