@@ -238,7 +238,7 @@ extension BrowserShellView {
                 OmniboxSearchPageView(
                     viewModel: omnibox,
                     keyboardHeight: keyboardHeight,
-                    cardMaxHeight: omniboxCardHeight,
+                    cardMaxHeight: searchPageCardHeight,
                     topGap: searchPageTopGap
                 )
                 .transition(.opacity)
@@ -258,6 +258,19 @@ extension BrowserShellView {
         let screenHeight = safeRectHeight + safeTop + safeBottom
         let available = screenHeight - keyboardHeight
         return min(max(56, available * 0.3), 320)
+    }
+
+    /// The search page's list budget, separate from the phone card's.
+    ///
+    /// The phone budget ends just above the command bar. The search page owns
+    /// the whole screen and has already spent `searchPageTopGap` and the field
+    /// height above the list; using the phone budget there made the list taller
+    /// than the space it had, which is what pushed the field off the top.
+    var searchPageCardHeight: CGFloat {
+        let screenHeight = safeRectHeight + safeTop + safeBottom
+        let available = screenHeight - keyboardHeight
+            - searchPageTopGap - BrowserChrome.barHeight - 14
+        return min(max(120, available), BrowserMetrics.omniboxCardMaxHeight)
     }
 
     @ViewBuilder

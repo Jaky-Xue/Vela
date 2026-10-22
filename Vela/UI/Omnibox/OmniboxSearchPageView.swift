@@ -30,11 +30,16 @@ struct OmniboxSearchPageView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        // Top-aligned rather than two Spacers around the field. When the
+        // suggestion list was taller than the space left after padding for the
+        // keyboard, the flexible spacers collapsed and the fixed-height field
+        // was pushed above the screen — the list then started under the status
+        // bar with no address field at all. A fixed top inset and a top-aligned
+        // frame keep the field on screen; the list is bounded by the shell's
+        // card budget and scrolls inside it.
         VStack(spacing: 0) {
-            Spacer(minLength: 0)
-                .frame(maxHeight: topGap)
-
             fieldRowInGlassContainer
+                .padding(.top, topGap)
 
             OmniboxSuggestionListView(
                 viewModel: viewModel,
@@ -47,8 +52,8 @@ struct OmniboxSearchPageView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.bottom, keyboardHeight)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.bottom, max(0, keyboardHeight))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // The field is painted over whatever page happens to be behind the
         // shell, so a veil over that page would just be the page's colour at
         // 90% opacity. The search page draws the ambient field itself instead,
