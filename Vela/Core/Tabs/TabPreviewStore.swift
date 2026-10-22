@@ -48,7 +48,7 @@ final class TabPreviewStore {
         return image
     }
 
-    func store(_ image: UIImage, for tabId: String) {
+    func store(_ image: UIImage, for tabId: String, persistToDisk: Bool = true) {
         // The render and JPEG encode are the expensive half; the cache write
         // must be on the main actor, and the file write stays off it.
         Task.detached(priority: .utility) { [weak self] in
@@ -56,7 +56,7 @@ final class TabPreviewStore {
             guard let data = prepared.jpegData(compressionQuality: 0.72) else { return }
             let url = await MainActor.run { [weak self] () -> URL? in
                 self?.cache.setObject(prepared, forKey: tabId as NSString)
-                guard let directory = self?.directory else { return nil }
+                guard persistToDisk, let directory = self?.directory else { return nil }
                 return directory.appendingPathComponent(Self.fileName(for: tabId))
             }
             if let url {

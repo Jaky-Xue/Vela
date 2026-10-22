@@ -24,6 +24,13 @@ public final class HistoryService {
     /// The visit id currently in the foreground, per tab. Kept per tab so
     /// switching between two tabs does not attribute the wrong duration.
     private var currentVisitByTab: [String: String] = [:]
+    /// One serial queue for the database work. The visit id is generated
+    /// before the write, so the next navigation's chain does not have to wait
+    /// for this one to return from SQLite.
+    private let writeQueue = DispatchQueue(
+        label: "org.vela.browser.history-writer",
+        qos: .utility
+    )
 
     public init(repository: HistoryRepository, settings: SettingsService) {
         self.repository = repository
@@ -78,35 +85,37 @@ public final class HistoryService {
             currentVisitByTab[tabId] = nil
             return
         }
+        // A private navigation returns nil from the repository and must not
+        // leave a chain behind; skipping the enqueue also keeps the private
+        // URL out of a background queue.
+        guard boundary.persists else {
+            currentVisitByTab[tabId] = nil
+            return
+        }
+
         let previousVisitId = currentVisitByTab[tabId]
-        do {
-            guard let entry = try repository.recordVisit(
-                url: url.absoluteString,
+        // Generate the id here, not in the repository: the next navigation can
+        // chain to this visit before the serial writer has reached SQLite.
+        let visitId = UUID().uuidString
+        currentVisitByTab[tabId] = visitId
+
+        let repository = self.repository
+        let rawUrl = url.absoluteString
+        writeQueue.async {
+            _ = try? repository.recordVisit(
+                url: rawUrl,
                 title: title,
                 transition: transition,
                 boundary: boundary,
                 sessionId: tabId,
-                fromVisitId: previousVisitId
-            ) else {
-                // A private-mode navigation returns nil and records nothing.
-                // Clearing the per-tab chain here keeps a later regular
-                // navigation from being attributed to a private one's duration.
-                currentVisitByTab[tabId] = nil
-                return
-            }
-
-            // The repository returns the URL row, not the visit row. The visit
-            // id for the chain is read back from the newest visit of that URL.
-            if let latest = try repository.visits(forUrlId: entry.id, limit: 1).first {
-                currentVisitByTab[tabId] = latest.id
-            }
-            // The published lists are deliberately not refreshed here. This runs
-            // on every page load, and re-querying the day groups each time would
-            // put a full scan on the navigation path for a list no one is
-            // looking at. Every screen that shows history reloads in `onAppear`.
-        } catch {
-            // A history write must never surface as a browsing failure.
+                fromVisitId: previousVisitId,
+                visitId: visitId
+            )
         }
+        // The published lists are deliberately not refreshed here. This runs
+        // on every page load, and re-querying the day groups each time would
+        // put a full scan on the navigation path for a list no one is looking
+        // at. Every screen that shows history reloads in `onAppear`.
     }
 
     /// Updates the title of the visit in progress, once the page reports it.
@@ -120,10 +129,16 @@ public final class HistoryService {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        guard let existingTitle = try? repository.title(forUrl: url.absoluteString),
-              existingTitle != trimmed else { return }
-        guard let urlId = try? repository.urlId(forUrl: url.absoluteString) else { return }
-        try? repository.updateTitle(urlId: urlId, title: trimmed)
+        // Same serial queue as the record, so the title update cannot overtake
+        // the insert it belongs to.
+        let repository = self.repository
+        let rawUrl = url.absoluteString
+        writeQueue.async {
+            guard let existingTitle = try? repository.title(forUrl: rawUrl),
+                  existingTitle != trimmed else { return }
+            guard let urlId = try? repository.urlId(forUrl: rawUrl) else { return }
+            try? repository.updateTitle(urlId: urlId, title: trimmed)
+        }
         // No reload: this fires on every page finish, and the history list
         // reloads in `onAppear` when someone is actually looking at it.
     }

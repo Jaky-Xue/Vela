@@ -82,7 +82,8 @@ public final class HistoryRepository: @unchecked Sendable {
         transition: HistoryTransition = .link,
         boundary: BrowserDataBoundary,
         sessionId: String = "",
-        fromVisitId: String? = nil
+        fromVisitId: String? = nil,
+        visitId: String? = nil
     ) throws -> HistoryUrl? {
         guard boundary.persists else { return nil }
         guard let normalized = HistoryUrlNormalizer.normalize(rawUrl),
@@ -177,6 +178,7 @@ public final class HistoryRepository: @unchecked Sendable {
         }
 
         let visit = HistoryVisit(
+            id: visitId ?? UUID().uuidString,
             urlId: urlRow.id,
             visitedAt: now,
             fromVisitId: fromVisitId,

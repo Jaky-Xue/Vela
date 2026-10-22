@@ -183,7 +183,11 @@ public final class TabManager {
 
     /// Keeps a page picture for the overview, downscaled to card size.
     public func storePreview(_ image: UIImage, for tabId: String) {
-        previews.store(image, for: tabId)
+        previews.store(
+            image,
+            for: tabId,
+            persistToDisk: tab(id: tabId)?.privacyMode != .private
+        )
     }
 
     /// Takes a picture of a live tab's page and keeps it for the overview.
@@ -196,7 +200,8 @@ public final class TabManager {
         webView.takeSnapshot(with: nil) { [weak self] image, _ in
             guard let image else { return }
             Task { @MainActor in
-                self?.previews.store(image, for: tabId)
+                let isPrivate = self?.tab(id: tabId)?.privacyMode == .private
+                self?.previews.store(image, for: tabId, persistToDisk: !isPrivate)
             }
         }
     }

@@ -268,6 +268,9 @@ actor SiteIconLoader {
     private let fetch: Fetch
     private var failures: [String: Failure] = [:]
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    private let maximumConcurrent = 6
+    private var activeFetches = 0
+    private var waitingFetches: [CheckedContinuation<Void, Never>] = []
     private let failureLifetime: TimeInterval = 15 * 60
     private let maximumFailures = 256
 
@@ -295,8 +298,11 @@ actor SiteIconLoader {
             return await task.value
         }
 
-        let task = Task<UIImage?, Never> {
-            guard let decoded = await fetch(url) else { return nil }
+        let task = Task<UIImage?, Never> { [weak self] in
+            await self?.acquireFetchSlot()
+            let decoded = await fetch(url)
+            await self?.releaseFetchSlot()
+            guard let decoded else { return nil }
             return prepare(decoded)
         }
         inFlight[key] = task
@@ -310,6 +316,26 @@ actor SiteIconLoader {
         failures[key] = Failure(at: Date())
         pruneFailures()
         return nil
+    }
+
+    private func acquireFetchSlot() async {
+        if activeFetches < maximumConcurrent {
+            activeFetches += 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waitingFetches.append(continuation)
+        }
+    }
+
+    private func releaseFetchSlot() {
+        if waitingFetches.isEmpty {
+            activeFetches = max(0, activeFetches - 1)
+        } else {
+            // Hand the slot directly to the next waiter; activeFetches stays
+            // the same.
+            waitingFetches.removeFirst().resume()
+        }
     }
 
     private func pruneFailures() {

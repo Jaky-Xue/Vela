@@ -116,12 +116,22 @@ public final class SettingsService {
     }
 
     private static func load<T: Decodable>(_ type: T.Type, key: String, from defaults: UserDefaults) -> T? {
-        guard let data = defaults.data(forKey: key) else { return nil }
-        return try? JSONDecoder().decode(type, from: data)
+        if let data = defaults.data(forKey: key),
+           let value = try? JSONDecoder().decode(type, from: data) {
+            return value
+        }
+        // A document written by a newer build, or one damaged by a partial
+        // write, must not reset every setting with it. The backup is the last
+        // successfully encoded document for this key.
+        guard let backup = defaults.data(forKey: key + ".backup") else { return nil }
+        return try? JSONDecoder().decode(type, from: backup)
     }
 
     private func persist<T: Encodable>(_ value: T, key: String) {
         guard let data = try? encoder.encode(value) else { return }
+        if let existing = defaults.data(forKey: key) {
+            defaults.set(existing, forKey: key + ".backup")
+        }
         defaults.set(data, forKey: key)
     }
 
