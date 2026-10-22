@@ -359,7 +359,7 @@ extension BrowserShellView {
                             handleScroll(offset: offset)
                         },
                         onProgress: { progress in
-                            tab.estimatedProgress = progress
+                            env.tabManager.updateProgress(progress, id: tab.id)
                         }
                     )
                     .id("web-\(tab.id)")

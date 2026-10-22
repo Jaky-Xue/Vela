@@ -166,6 +166,31 @@ public final class TabManager {
         webViews[tabId]
     }
 
+    /// The tab-owned half of leaving a page for the native home surface.
+    /// View state (find bar, reader overlay) stays with the shell; the tab's
+    /// own fields are written here so there is one authority for them.
+    public func showHome(_ tab: BrowserTabState) {
+        tab.isHome = true
+        tab.isLoading = false
+        tab.estimatedProgress = 0
+        persistSession()
+    }
+
+    /// The tab-owned half of returning from home to the page it kept.
+    @discardableResult
+    public func showPage(_ tab: BrowserTabState, currentURL: String?) -> Bool {
+        if let currentURL, !currentURL.isEmpty { tab.url = currentURL }
+        guard !tab.url.isEmpty else { return false }
+        tab.isHome = false
+        return true
+    }
+
+    /// Progress is a tab fact, but only this manager should publish it; the
+    /// shell's web-view host calls through here.
+    public func updateProgress(_ progress: Double, id: String) {
+        tab(id: id)?.estimatedProgress = progress
+    }
+
     /// The last picture each tab's page showed, for the overview's cards.
     ///
     /// The live pool keeps eight pages; the rest are cold and have no view to

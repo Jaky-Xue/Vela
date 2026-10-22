@@ -861,13 +861,10 @@ struct BrowserShellView: View {
         showFindBar = false
         findQuery = ""
         env.webCoordinator.clearFindInPage()
-        tab.isHome = true
-        tab.isLoading = false
-        tab.estimatedProgress = 0
+        tabManager.showHome(tab)
         chromeHidden = false
         scrollTracker.lastOffset = 0
         scrollTracker.accumulation = 0
-        tabManager.persistSession()
         syncAddressText()
     }
 
@@ -878,11 +875,8 @@ struct BrowserShellView: View {
     /// anything else knows about it, and the tab's copy would otherwise restore
     /// the address of an earlier document.
     func returnToPage(_ tab: BrowserTabState) {
-        if let current = tabManager.webView(for: tab.id)?.url?.absoluteString, !current.isEmpty {
-            tab.url = current
-        }
-        guard !tab.url.isEmpty else { return }
-        tab.isHome = false
+        let current = tabManager.webView(for: tab.id)?.url?.absoluteString
+        guard tabManager.showPage(tab, currentURL: current) else { return }
         // The flags were last written when the tab was on this page, but the web
         // view may have been rebuilt since; re-reading them is what keeps the
         // forward button honest the moment the page reappears.
