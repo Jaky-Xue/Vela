@@ -690,12 +690,13 @@
 | R-22 | 部分修复 | `clearTabChain` 已接入；`AddressBarView.swift` 删除被回滚（其中仍含在用符号） |
 | R-28 | 已实现（待验证） | 私密阅读器路由到来源/新私密标签；`NovelBrowserRoutingTests` |
 | R-29 | 已实现（待验证） | 结束请求带代次；`PrivateSessionLedgerTests` |
-| R-30/R-31 | 未修复 | 旧阅读器/旧库释放顺序与迟到结束竞态仍在 |
+| R-30/R-31 | 已由 F-03/F-04 修复 | reader 只持弱书架；两阶段结束同步取消 reader、取旧 store，异步只清旧 store |
 | R-32 | 部分修复 | `SQLiteDatabase.deinit` 加锁；私密库错误仍被 `reload()` 静默吞掉 |
 | R-33 | 部分缓解 | 新增 8 个测试文件/用例组；UI、真机、真实网络未覆盖 |
 
 “已修复（待验证）”指代码与静态检查完成，但构建/测试/设备验证以 CI 与真机结果为准；
-本机没有 Swift/Xcode 工具链。F-03~F-08 仍未处理。
+本机没有 Swift/Xcode 工具链。F-03/F-04 见“生命周期与卡顿修复”，F-05/F-07 仍部分修复，
+F-06/F-08 已处理或改写测试。
 
 ---
 
