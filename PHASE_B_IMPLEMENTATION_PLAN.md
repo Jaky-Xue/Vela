@@ -1050,16 +1050,16 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39743019454](https://github.com/Jaky-Xue/Vela/actions/runs/39743019454)，
-  提交 `f8a9cde`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39746666656](https://github.com/Jaky-Xue/Vela/actions/runs/39746666656)，
+  提交 `7b73830`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。277 项测试、0 失败、无重试，`** TEST SUCCEEDED **`。
-- 本轮新增：搜索页移到 shell 根 overlay（不再受内容列的键盘避让影响）、
-  搜索框固定屏幕 18%、引擎/取消 overlay 控件；系统离线翻译与 405/429 回退保留；
-  版本 **3.9.7 (10)**。
-- **安装包**：`G:\Vela-unsigned-3.9.7.ipa`
-  - 大小 6,795,296 字节（约 6.5 MiB）
-  - SHA-256 `fd5b72d8606e8c082d025b2d0cb60f1297a86e0b77718da735c854bffc6061d1`
+- **Run the unit tests：成功**。279 项测试；第一次尝试有 2 项既有导航时序测试失败，
+  `-retry-tests-on-failure` 重跑后通过；最终 `** TEST SUCCEEDED **`。
+- 本轮在 3.9.7 根 overlay 基础上：overlay 改为顶部对齐、移除 `safeAreaPadding(.top)`、
+  top gap 加入状态栏 inset；版本 **3.9.8 (11)**。
+- **安装包**：`G:\Vela-unsigned-3.9.8.ipa`
+  - 大小 6,794,813 字节（约 6.5 MiB）
+  - SHA-256 `c7bbf65f5f4541fede94f56819224984af98c3e12f0ec23e464806735364c00c`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
