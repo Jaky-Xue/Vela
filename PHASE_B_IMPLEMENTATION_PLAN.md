@@ -1050,16 +1050,16 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39725275871](https://github.com/Jaky-Xue/Vela/actions/runs/39725275871)，
-  提交 `76bbaa8`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39730183313](https://github.com/Jaky-Xue/Vela/actions/runs/39730183313)，
+  提交 `382a880`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。280 项测试；第一次尝试有 PublicWebSmoke 与两项既有导航时序测试
-  超时，`-retry-tests-on-failure` 重跑后通过；xcodebuild 最终 `** TEST SUCCEEDED **`。
-- 本轮新增：搜索页字段显式宽度与 safe-top、设置页按用途重新分组；版本 **3.9.3 (6)**。
-  更早的 3.9.2 包含翻译 405 的 GET/单单元回退。
-- **安装包**：`G:\Vela-unsigned-3.9.3.ipa`
-  - 大小 6,776,123 字节（约 6.5 MiB）
-  - SHA-256 `054c463decae6e1b44cf0c8147c31ab74563866c8512668ada1c2631486b26cc`
+- **Run the unit tests：成功**。278 项测试；第一次尝试有 4 项 PublicWebSmoke 外网测试超时，
+  `-retry-tests-on-failure` 重跑后通过；xcodebuild 最终 `** TEST SUCCEEDED **`。
+- 本轮新增：浮动键盘不再驱动页面缩放/动画、搜索字段显式宽度与 safe-top、设置顶层五组、
+  通用/外观内部合并相关分区；版本 **3.9.4 (7)**。更早的 3.9.2 包含翻译 405 的 GET/单单元回退。
+- **安装包**：`G:\Vela-unsigned-3.9.4.ipa`
+  - 大小 6,775,510 字节（约 6.5 MiB）
+  - SHA-256 `ffbc623d5baa76063fe7b9ae26fa5175792c099d2d5b044d0484a967689fa039`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
@@ -1331,3 +1331,14 @@ B2 的待办，不声称已经解决。
 - **C3 展示动作**：导航动作已统一；sheet/overlay 的“显示哪个界面”仍属于 shell 的视图状态，
   没有改成单一动作值类型。
 - **R-17**：备份回退只能保住上一份可解码文档；单个字段类型错误仍会让当前文档整体回退。
+
+### 25.5 设置界面布局（3.9.3 / 3.9.4）
+
+- 顶层设置从四个松散分组重排为五个目的明确的组：
+  搜索与网页、浏览与界面、内容与扩展、隐私与安全、诊断与关于。
+- 通用页把“强制网页缩放”和“全局顶部保护”合并为“页面显示与缩放”一节；
+  启动/标签页、历史记录、界面布局各自独立。
+- 外观页把“自定义背景图片”和“全局背景样式”合并为“背景”一节；
+  外观模式/预览、配色、背景、无痕模式按用途顺序排列。
+- 其余子页保持现有分区（搜索引擎、网页标识、翻译、用户脚本等本身已按任务分组），
+  不再为了统一而强行改成相同行数。
