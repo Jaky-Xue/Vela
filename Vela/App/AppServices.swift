@@ -38,6 +38,9 @@ public final class AppServices {
     /// The keyboard commands' dispatch point, shared by every window because
     /// the app's `Commands` menu is a property of the app.
     public let commands: BrowserCommandCenter
+    /// Crashes and hangs reported by MetricKit, plus the last uncaught
+    /// exception reason. This is process-wide, like the rest of the services.
+    public let crashDiagnostics: CrashDiagnosticsService
 
     /// Set when the database could not be opened. Every window shows the same
     /// error, because there is only one database.
@@ -45,6 +48,8 @@ public final class AppServices {
 
     private var didBoot = false
     private var allocatedWindowCount = 0
+    private var adBlockRefreshInFlight: Task<Void, Never>?
+    private var adBlockRefreshRequested = false
 
     public init() {
         let database = BrowserDatabase.shared
@@ -53,6 +58,7 @@ public final class AppServices {
         let settings = SettingsService()
         self.settings = settings
         self.commands = BrowserCommandCenter()
+        self.crashDiagnostics = CrashDiagnosticsService()
 
         // The picture used to belong to the home alone; it is the shell's
         // background now. Carrying it over at launch keeps the picture an
@@ -188,6 +194,27 @@ public final class AppServices {
     /// nothing until the user refreshes it. The built-in lists are always
     /// available because they ship in the binary.
     public func refreshAdBlockRules() async {
+        // Rapid toggles and subscription refreshes used to start overlapping
+        // compiles. One compile runs; requests that arrive while it is in
+        // flight are folded into one follow-up pass.
+        if let inFlight = adBlockRefreshInFlight {
+            adBlockRefreshRequested = true
+            await inFlight.value
+            return
+        }
+        repeat {
+            adBlockRefreshRequested = false
+            let task = Task { [weak self] in
+                guard let self else { return }
+                await self.performAdBlockRefresh()
+            }
+            adBlockRefreshInFlight = task
+            await task.value
+            adBlockRefreshInFlight = nil
+        } while adBlockRefreshRequested
+    }
+
+    private func performAdBlockRefresh() async {
         let adBlockSettings = settings.adBlockSettings
         var filterLists: [String: String] = AdBlockBuiltInRules.filterLists
 
@@ -229,7 +256,16 @@ public final class AppServices {
               let url = URL(string: source.url), !source.url.isEmpty else { return }
 
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode) else {
+                throw URLError(.badServerResponse)
+            }
+            // A subscription is text; a multi-megabyte response is either a
+            // mistake or a redirect to something that is not a filter list.
+            guard data.count <= 20 * 1024 * 1024 else {
+                throw URLError(.dataLengthExceedsMaximum)
+            }
             guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
             try Self.writeFilterList(text, sourceId: id)
 

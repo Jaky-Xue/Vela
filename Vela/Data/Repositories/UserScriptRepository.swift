@@ -14,9 +14,28 @@ import Foundation
 
 public final class UserScriptRepository: @unchecked Sendable {
     private let database: SQLiteDatabase
+    /// The injector asks for the enabled set and each script's values on every
+    /// navigation. These caches turn that into one query per change instead of
+    /// one query set per page; the lock covers reads from the main actor and
+    /// the rare background dependency refresh.
+    private let cacheLock = NSLock()
+    private var enabledCache: [InstalledUserScriptState]?
+    private var valuesCache: [String: [String: String]] = [:]
 
     public init(database: SQLiteDatabase) {
         self.database = database
+    }
+
+    private func invalidateEnabledCache() {
+        cacheLock.lock()
+        enabledCache = nil
+        cacheLock.unlock()
+    }
+
+    private func invalidateValues(scriptId: String) {
+        cacheLock.lock()
+        valuesCache.removeValue(forKey: scriptId)
+        cacheLock.unlock()
     }
 
     private static let columns = """
@@ -128,6 +147,7 @@ public final class UserScriptRepository: @unchecked Sendable {
                 .text(script.metadataBlock)
             ]
         )
+        invalidateEnabledCache()
     }
 
     private func nextPosition(excluding id: String) throws -> Int {
@@ -158,13 +178,24 @@ public final class UserScriptRepository: @unchecked Sendable {
     /// injector's per-navigation query is the cheap one; a user with a large
     /// script collection pays nothing for the disabled half.
     public func enabledScripts() throws -> [InstalledUserScriptState] {
-        try database.query(
+        cacheLock.lock()
+        if let enabledCache {
+            cacheLock.unlock()
+            return enabledCache
+        }
+        cacheLock.unlock()
+
+        let scripts = try database.query(
             """
             SELECT \(Self.columns) FROM \(BrowserSchema.userScriptsTable)
             WHERE enabled = 1 ORDER BY position ASC, created_at ASC
             """,
             row: script(from:)
         )
+        cacheLock.lock()
+        enabledCache = scripts
+        cacheLock.unlock()
+        return scripts
     }
 
     public func script(id: String) throws -> InstalledUserScriptState? {
@@ -180,6 +211,7 @@ public final class UserScriptRepository: @unchecked Sendable {
             "UPDATE \(BrowserSchema.userScriptsTable) SET enabled = ?, updated_at = ? WHERE id = ?",
             [.integer(enabled ? 1 : 0), .integer(Date().milliseconds), .text(id)]
         )
+        invalidateEnabledCache()
     }
 
     /// Removes a script and its value store together.
@@ -197,6 +229,8 @@ public final class UserScriptRepository: @unchecked Sendable {
                 [.text(id)]
             )
         }
+        invalidateEnabledCache()
+        invalidateValues(scriptId: id)
     }
 
     public func setLastChecked(id: String, at date: Date = Date()) throws {
@@ -234,6 +268,7 @@ public final class UserScriptRepository: @unchecked Sendable {
             """,
             [.text(scriptId), .text(key), .text(jsonValue), .integer(Date().milliseconds)]
         )
+        invalidateValues(scriptId: scriptId)
     }
 
     public func value(key: String, scriptId: String) throws -> String? {
@@ -249,13 +284,24 @@ public final class UserScriptRepository: @unchecked Sendable {
     /// Every stored key for a script, as a JSON object. Backs `GM_listValues`
     /// and the bulk read `GM_getValues` performs.
     public func allValues(scriptId: String) throws -> [String: String] {
+        cacheLock.lock()
+        if let cached = valuesCache[scriptId] {
+            cacheLock.unlock()
+            return cached
+        }
+        cacheLock.unlock()
+
         let rows = try database.query(
             """
             SELECT key, value FROM \(BrowserSchema.userScriptValuesTable) WHERE script_id = ?
             """,
             [.text(scriptId)]
         ) { ($0.string(at: 0), $0.string(at: 1)) }
-        return Dictionary(uniqueKeysWithValues: rows)
+        let values = Dictionary(uniqueKeysWithValues: rows)
+        cacheLock.lock()
+        valuesCache[scriptId] = values
+        cacheLock.unlock()
+        return values
     }
 
     public func removeValue(key: String, scriptId: String) throws {
@@ -266,6 +312,7 @@ public final class UserScriptRepository: @unchecked Sendable {
             """,
             [.text(scriptId), .text(key)]
         )
+        invalidateValues(scriptId: scriptId)
     }
 
     public func removeAllValues(scriptId: String) throws {
@@ -273,5 +320,6 @@ public final class UserScriptRepository: @unchecked Sendable {
             "DELETE FROM \(BrowserSchema.userScriptValuesTable) WHERE script_id = ?",
             [.text(scriptId)]
         )
+        invalidateValues(scriptId: scriptId)
     }
 }

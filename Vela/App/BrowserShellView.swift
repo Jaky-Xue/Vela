@@ -442,6 +442,9 @@ struct BrowserShellView: View {
         .onChange(of: activeTab?.url) { _, _ in
             handleActiveTabUrlChanged()
         }
+        .onChange(of: activeTab?.pendingUrl) { _, _ in
+            syncAddressText()
+        }
         .onChange(of: activeTab?.loadState) { _, state in
             if let state {
                 handleActiveTabLoadStateChanged(state)
@@ -597,7 +600,11 @@ struct BrowserShellView: View {
 
     var displayUrl: String {
         guard let tab = activeTab else { return "" }
-        return tab.isHome ? "" : tab.url
+        if tab.isHome { return "" }
+        // A redirect updates `pendingUrl` before the new document commits.
+        // Showing only `url` left the field on the address the user typed
+        // while the browser was already somewhere else (R-23).
+        return tab.pendingUrl.isEmpty ? tab.url : tab.pendingUrl
     }
 
     /// Pushes the active tab's address into the omnibox.

@@ -53,7 +53,10 @@ struct NavigationDiagnosticsView: View {
 
             Section {
                 Button {
-                    UIPasteboard.general.string = env.navigationLog.report()
+                    let crash = env.services.crashDiagnostics.reportText
+                    UIPasteboard.general.string = env.navigationLog.report() + "
+
+" + crash
                     didCopy = true
                     Task {
                         try? await Task.sleep(for: .seconds(2))
@@ -62,14 +65,22 @@ struct NavigationDiagnosticsView: View {
                 } label: {
                     Label(didCopy ? "已复制" : "复制诊断信息", systemImage: didCopy ? "checkmark" : "doc.on.doc")
                 }
-                .disabled(entries.isEmpty)
+                .disabled(entries.isEmpty && !env.services.crashDiagnostics.hasAnyReport)
 
                 Button(role: .destructive) {
                     env.navigationLog.clear()
+                    env.services.crashDiagnostics.clear()
                 } label: {
                     Label("清空记录", systemImage: "trash")
                 }
-                .disabled(entries.isEmpty)
+                .disabled(entries.isEmpty && !env.services.crashDiagnostics.hasAnyReport)
+            }
+
+            Section("崩溃与卡顿") {
+                Text(env.services.crashDiagnostics.reportText)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(palette.secondaryText)
+                    .textSelection(.enabled)
             }
 
             if entries.isEmpty {

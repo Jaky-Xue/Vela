@@ -606,13 +606,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         }
         controller.addUserScript(
             WKUserScript(
-                source: WebPageScripts.pageMetricsReporter,
-                injectionTime: .atDocumentEnd,
-                forMainFrameOnly: false
-            )
-        )
-        controller.addUserScript(
-            WKUserScript(
                 source: WebPageScripts.scrollReporter,
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: false

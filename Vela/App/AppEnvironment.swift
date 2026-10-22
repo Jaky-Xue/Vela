@@ -187,6 +187,14 @@ public final class AppEnvironment {
         // entries it saved. Private entries are loaded only when a private
         // session is actually open (restored tabs or the routing switch);
         // otherwise they are stale private metadata and are cleared.
+        // A process can die before the private-session end hook runs. Private
+        // download records and files have no business surviving that, so a
+        // launch with no private session clears them before any window reads
+        // the shared download service.
+        if tabManager.privateTabs.isEmpty,
+           !(settings.preferences.privateBrowsingMode ?? false) {
+            downloads.clearPrivateRecords()
+        }
         if tabManager.persistsSession {
             var records = (try? tabSessions.recentlyClosed(privacyMode: .regular)) ?? []
             let privateSessionIsOpen = !tabManager.privateTabs.isEmpty
