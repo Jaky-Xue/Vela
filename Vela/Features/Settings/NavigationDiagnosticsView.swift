@@ -54,9 +54,7 @@ struct NavigationDiagnosticsView: View {
             Section {
                 Button {
                     let crash = env.services.crashDiagnostics.reportText
-                    UIPasteboard.general.string = env.navigationLog.report() + "
-
-" + crash
+                    UIPasteboard.general.string = env.navigationLog.report() + "\n\n" + crash
                     didCopy = true
                     Task {
                         try? await Task.sleep(for: .seconds(2))
