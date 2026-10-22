@@ -1050,16 +1050,16 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39736545625](https://github.com/Jaky-Xue/Vela/actions/runs/39736545625)，
-  提交 `f99106c`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39743019454](https://github.com/Jaky-Xue/Vela/actions/runs/39743019454)，
+  提交 `f8a9cde`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。279 项测试；第一次尝试有 2 项既有导航时序测试超时，
-  `-retry-tests-on-failure` 重跑后通过；最终 `** TEST SUCCEEDED **`。
-- 本轮新增：系统离线翻译（iOS 18 Translation 框架）+ Google 405/429 自动回退；
-  搜索框位置完全独立于键盘、引擎/取消 overlay 控件；版本 **3.9.6 (9)**。
-- **安装包**：`G:\Vela-unsigned-3.9.6.ipa`
-  - 大小 6,795,503 字节（约 6.5 MiB）
-  - SHA-256 `be8d7cc2f173cf50c1ba417d9cab3bcb50e82ad9231cea839c9ace40db5be12d`
+- **Run the unit tests：成功**。277 项测试、0 失败、无重试，`** TEST SUCCEEDED **`。
+- 本轮新增：搜索页移到 shell 根 overlay（不再受内容列的键盘避让影响）、
+  搜索框固定屏幕 18%、引擎/取消 overlay 控件；系统离线翻译与 405/429 回退保留；
+  版本 **3.9.7 (10)**。
+- **安装包**：`G:\Vela-unsigned-3.9.7.ipa`
+  - 大小 6,795,296 字节（约 6.5 MiB）
+  - SHA-256 `fd5b72d8606e8c082d025b2d0cb60f1297a86e0b77718da735c854bffc6061d1`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
@@ -1360,7 +1360,9 @@ B2 的待办，不声称已经解决。
 
 ### 27.2 搜索页位置与键盘
 
-- 搜索框位置固定为屏幕高度 18%（120–260pt），完全不读取键盘高度。
+- 搜索页从 `contentSurface`（会受键盘避让影响的列）移到 **shell 根 overlay**，
+  显式 `.ignoresSafeArea(.keyboard)`；搜索框位置固定为屏幕高度 18%（120–260pt），
+  完全不读取键盘高度。
 - 搜索框是 overlay；文本字段左右 padding，引擎切换与“取消”是 overlay 控件，固定可见。
 - 列表列使用独立高度预算；只有停靠键盘会缩短列表底部，搜索框不移动。
 - 浮动键盘遮挡固定为 0；每帧通知相同值直接返回，不再套动画。
