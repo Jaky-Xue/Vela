@@ -538,7 +538,30 @@ public final class TranslationService {
         target: TranslationTargetLanguage,
         to webView: WKWebView
     ) async throws -> (applied: Int, detectedLanguage: String?) {
-        let result = try await requestBatch(batch, settings: settings, target: target)
+        let result: BatchResult
+        do {
+            result = try await requestBatch(batch, settings: settings, target: target)
+        } catch {
+            // A POST-hostile proxy can still reject even the GET fallback for
+            // a large wrapped batch. Single units are small enough for the
+            // query form, and each one carries its own wrapper id.
+            if batch.count > 1,
+               let translationError = error as? TranslationError,
+               case let .http(status) = translationError,
+               status == 405 {
+                var ids: [Int] = []
+                var detected: String?
+                for unit in batch {
+                    let single = try await requestBatch([unit], settings: settings, target: target)
+                    ids.append(contentsOf: try await apply(single.payload, to: webView))
+                    detected = detected ?? single.detectedLanguage
+                }
+                let unique = Set(ids)
+                guard !unique.isEmpty else { throw TranslationError.scriptUnavailable }
+                return (unique.count, detected)
+            }
+            throw error
+        }
         var ids = try await apply(result.payload, to: webView)
 
         if Set(ids).count < batch.count {
@@ -689,6 +712,59 @@ public final class TranslationService {
         )
         request.httpBody = "q=\(formEncode(wrappedHTML))".data(using: .utf8)
 
+        await paceGoogleRequest()
+        do {
+            let data = try await send(request)
+            let parsed = try Self.parseGoogleResponse(data)
+            return (parsed.html, parsed.detectedLanguage)
+        } catch {
+            // Some proxies and VPN exits answer 405 to a POST even though the
+            // endpoint accepts one elsewhere. The same endpoint accepts the
+            // query as GET; retry that shape before failing the page.
+            if let translationError = error as? TranslationError,
+               case let .http(status) = translationError,
+               status == 405 {
+                return try await googleGET(
+                    wrappedHTML,
+                    settings: settings,
+                    target: target
+                )
+            }
+            throw error
+        }
+    }
+
+    /// The GET shape of the key-less endpoint, used when POST is rejected.
+    /// A query string has a much smaller budget than a form body; callers
+    /// split a batch into single units when a page is too large for this.
+    private func googleGET(
+        _ wrappedHTML: String,
+        settings: TranslationSettings,
+        target: TranslationTargetLanguage
+    ) async throws -> (html: String, detectedLanguage: String?) {
+        guard var components = URLComponents(string: settings.resolvedEndpoint) else {
+            throw TranslationError.failed("翻译接口地址无效。")
+        }
+        var items = components.queryItems ?? []
+        items.append(URLQueryItem(name: "client", value: "gtx"))
+        items.append(URLQueryItem(name: "sl", value: "auto"))
+        items.append(URLQueryItem(name: "tl", value: target.googleCode))
+        items.append(URLQueryItem(name: "dt", value: "t"))
+        items.append(URLQueryItem(name: "q", value: wrappedHTML))
+        components.queryItems = items
+        guard let url = components.url, url.absoluteString.count <= 8_000 else {
+            // Large enough that the server would reject the request line; let
+            // applyBatch split it into single units.
+            throw TranslationError.http(405)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            forHTTPHeaderField: "User-Agent"
+        )
         await paceGoogleRequest()
         let data = try await send(request)
         let parsed = try Self.parseGoogleResponse(data)

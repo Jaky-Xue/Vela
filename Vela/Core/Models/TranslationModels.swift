@@ -349,6 +349,9 @@ public enum TranslationError: LocalizedError {
         case .scriptUnavailable:
             return "无法在页面中执行脚本。页面可能已经离开。"
         case let .http(status):
+            if status == 405 {
+                return "翻译接口返回 405（不接受当前请求方法）。已自动尝试兼容请求；若仍失败，可能是当前网络/VPN 拦截了该接口，请更换网络或服务商。"
+            }
             return "翻译服务返回了 \(status)。请检查密钥、接口地址或稍后重试。"
         case let .rateLimited(retryAfter):
             if let retryAfter, retryAfter > 0 {
