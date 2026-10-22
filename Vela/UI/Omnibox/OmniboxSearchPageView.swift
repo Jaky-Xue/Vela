@@ -30,27 +30,31 @@ struct OmniboxSearchPageView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        // Top-aligned rather than two Spacers around the field. When the
-        // suggestion list was taller than the space left after padding for the
-        // keyboard, the flexible spacers collapsed and the fixed-height field
-        // was pushed above the screen — the list then started under the status
-        // bar with no address field at all. A fixed top inset and a top-aligned
-        // frame keep the field on screen; the list is bounded by the shell's
-        // card budget and scrolls inside it.
-        VStack(spacing: 0) {
+        // The field is an overlay pinned to the top gap, and the list begins
+        // below a spacer of exactly its height. The previous top-aligned stack
+        // could still let a tall list displace the field when the keyboard
+        // changed the proposed height; an overlay cannot be displaced by its
+        // sibling. This is the layout that must hold on every keyboard shape,
+        // including the floating iPad keyboard in the report.
+        ZStack(alignment: .top) {
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: topGap + BrowserChrome.barHeight + 14)
+
+                OmniboxSuggestionListView(
+                    viewModel: viewModel,
+                    maxHeight: cardMaxHeight,
+                    allowsThirdPartyLookup: viewModel.activePrivacyMode != .private
+                )
+                    .padding(.horizontal, BrowserChrome.sideInset)
+                    .opacity(viewModel.text.isEmpty && viewModel.groups.isEmpty ? 0 : 1)
+
+                Spacer(minLength: 0)
+            }
+
             fieldRowInGlassContainer
                 .padding(.top, topGap)
-
-            OmniboxSuggestionListView(
-                viewModel: viewModel,
-                maxHeight: cardMaxHeight,
-                allowsThirdPartyLookup: viewModel.activePrivacyMode != .private
-            )
-                .padding(.horizontal, BrowserChrome.sideInset)
-                .padding(.top, 14)
-                .opacity(viewModel.text.isEmpty && viewModel.groups.isEmpty ? 0 : 1)
-
-            Spacer(minLength: 0)
+                .zIndex(1)
         }
         .padding(.bottom, max(0, keyboardHeight))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

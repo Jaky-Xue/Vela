@@ -29,7 +29,13 @@ enum InMemoryNovelLibrary {
             for statement in BrowserSchema.novelCreationStatements {
                 try database.execute(statement)
             }
-            return NovelLibraryService(repository: NovelRepository(database: database))
+            let service = NovelLibraryService(repository: NovelRepository(database: database))
+            // The schema can be created and the first query still fail (a
+            // corrupt handle, an unavailable page cache). Returning a service
+            // with a published error would make a private shelf look empty
+            // rather than broken; the caller's nil path reports it instead.
+            guard service.lastError == nil else { return nil }
+            return service
         } catch {
             return nil
         }

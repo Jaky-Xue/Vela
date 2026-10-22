@@ -39,10 +39,15 @@ extension WebPageScripts {
         CAPTION: 1, SUMMARY: 1, LABEL: 1, BUTTON: 1, DIV: 1, ARTICLE: 1,
         SECTION: 1, MAIN: 1, ASIDE: 1, HEADER: 1, FOOTER: 1, NAV: 1,
         FORM: 1, FIELDSET: 1, LEGEND: 1, ADDRESS: 1, DETAILS: 1,
-        DIALOG: 1, OUTPUT: 1
+        DIALOG: 1, OUTPUT: 1, UL: 1, OL: 1, TABLE: 1, THEAD: 1,
+        TBODY: 1, TFOOT: 1, TR: 1, DL: 1, FIGURE: 1, CENTER: 1
       };
-      var MAX_UNITS = 600;
-      var MAX_CHARS = 90000;
+      // Long articles and documentation pages routinely exceed the old
+      // 600-block / 90k-character ceiling. The provider batches still cap the
+      // request size; these limits only decide how much of the document is
+      // eligible for the first pass.
+      var MAX_UNITS = 1200;
+      var MAX_CHARS = 180000;
 
       /// The document's declared language fields. Some sites set only the
       /// `<html lang>` attribute, others only a content-language meta or an
@@ -94,6 +99,7 @@ extension WebPageScripts {
       function walk(element, units, state, onlyNew) {
         if (!element || element.nodeType !== 1) { return; }
         if (SKIP[element.nodeName] || element.isContentEditable) { return; }
+        if (element.hidden === true) { return; }
         // An element that is already a unit was translated as a whole; new
         // content inside it would need a fresh block, which is rare enough to
         // leave for the next full translation.
@@ -111,6 +117,16 @@ extension WebPageScripts {
         for (var child = element.firstElementChild; child; child = child.nextElementSibling) {
           walk(child, units, state, onlyNew);
         }
+        // Open shadow roots are where a growing number of sites put their
+        // article text. querySelectorAll never crosses this boundary, so walk
+        // it explicitly; the registry holds the element, and the writer sets
+        // its text/HTML exactly as it does for light DOM.
+        if (element.shadowRoot) {
+          var shadowChildren = element.shadowRoot.children;
+          for (var shadowIndex = 0; shadowIndex < shadowChildren.length; shadowIndex++) {
+            walk(shadowChildren[shadowIndex], units, state, onlyNew);
+          }
+        }
       }
 
       window.__velaExtractUnits = function (root, onlyNew) {
@@ -119,6 +135,20 @@ extension WebPageScripts {
         try {
           walk(root || document.body || document.documentElement, units, state, onlyNew === true);
         } catch (_error) {
+        }
+        // Same-origin embedded documents (documentation frames, embedded
+        // readers) are part of the page a person sees. Cross-origin frames
+        // throw on access and are skipped.
+        if (onlyNew !== true) {
+          try {
+            var frames = document.querySelectorAll('iframe');
+            for (var frameIndex = 0; frameIndex < frames.length; frameIndex++) {
+              var frameBody = frames[frameIndex].contentDocument &&
+                              frames[frameIndex].contentDocument.body;
+              if (frameBody) { walk(frameBody, units, state, false); }
+            }
+          } catch (_frameError) {
+          }
         }
         var sample = '';
         if (onlyNew !== true) {
@@ -178,12 +208,16 @@ extension WebPageScripts {
       /// longer has the same shape, in which case the caller falls back to
       /// replacing the block's innerHTML.
       function mergeText(original, translatedRoot) {
-        if (signature(original) !== signature(translatedRoot)) { return false; }
         var originals = collectText(original);
         var translated = collectText(translatedRoot);
         if (originals.length === 0 || originals.length !== translated.length) {
           return false;
         }
+        // An equal number of text nodes is the condition that matters for
+        // preserving the page's elements and listeners. Providers routinely
+        // change tag nesting between paragraphs; requiring the old shape
+        // signature made those units fall back to a whole-block innerHTML
+        // replacement, which recreated links and buttons.
         for (var i = 0; i < originals.length; i++) {
           if (originals[i].__velaOriginalText === undefined) {
             originals[i].__velaOriginalText = originals[i].nodeValue;
