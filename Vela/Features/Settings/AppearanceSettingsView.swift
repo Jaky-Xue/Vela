@@ -106,10 +106,6 @@ struct AppearanceSettingsView: View {
                         Label("移除图片", systemImage: "trash")
                     }
                 }
-            } header: {
-                Text("背景")
-            }
-
                 ForEach(BrowserBackgroundStyle.allCases) { style in
                     Button {
                         env.settings.backgroundStyle = style
@@ -131,6 +127,8 @@ struct AppearanceSettingsView: View {
                         }
                     }
                 }
+            } header: {
+                Text("背景")
             } footer: {
                 Text("背景作用于主页、设置、书架与浮层，玻璃工具栏会折射它。网页本身保持网站自己的颜色；选择自定义图片时，下方样式暂不显示。")
             }
