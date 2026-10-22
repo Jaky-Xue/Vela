@@ -30,11 +30,11 @@ struct NovelReaderView: View {
     var onClose: () -> Void
     var onOpenInBrowser: (URL) -> Void
 
-    /// The shelf this reading session belongs to. Held here rather than looked
-    /// up from the environment per call: a reader from an ended private
-    /// session must keep writing to its own in-memory database, never to the
-    /// one a newer session creates.
-    private let library: NovelLibraryService
+    /// The session-owned work: both loaders and a weak reference to the shelf.
+    private let runtime: NovelReaderRuntime
+    /// The shelf, while the session still owns it. The reader borrows it so a
+    /// view that outlives the session cannot keep the database alive.
+    private var library: NovelLibraryService? { runtime.library }
     private let isPrivateSession: Bool
     private let sessionGeneration: Int
 
@@ -54,8 +54,6 @@ struct NovelReaderView: View {
     @State private var fontSize: Double = 19
     @State private var appearance: NovelReadingAppearance = .system
     @State private var pageMode: NovelPageMode = .scroll
-    @State private var loader = NovelChapterLoader()
-    @State private var tocLoader = NovelTOCLoader()
     @State private var tocEntries: [NovelTOCEntry] = []
     @State private var isLoadingTOC = false
     @State private var showTOC = false
@@ -67,13 +65,13 @@ struct NovelReaderView: View {
     init(
         book: NovelBook,
         initialChapter: NovelChapter?,
-        library: NovelLibraryService,
+        runtime: NovelReaderRuntime,
         isPrivateSession: Bool,
         sessionGeneration: Int,
         onClose: @escaping () -> Void,
         onOpenInBrowser: @escaping (URL) -> Void
     ) {
-        self.library = library
+        self.runtime = runtime
         self.isPrivateSession = isPrivateSession
         self.sessionGeneration = sessionGeneration
         self.onClose = onClose
@@ -149,16 +147,14 @@ struct NovelReaderView: View {
         .task { await prepare() }
         .onDisappear {
             saveNow()
-            loader.cancel()
-            tocLoader.cancel()
+            runtime.cancel()
         }
         .onChange(of: env.privateNovelSessionGeneration) { _, generation in
             // The private session ended. Stop both loads and let the shell
             // close this reader; the generation checks above already stop any
             // late write into the session that replaced it.
             guard isPrivateSession, sessionGeneration != generation else { return }
-            loader.cancel()
-            tocLoader.cancel()
+            runtime.cancel()
             onClose()
         }
         .onChange(of: scenePhase) { _, phase in
@@ -411,7 +407,7 @@ struct NovelReaderView: View {
     }
 
     private func prepare() async {
-        guard isSessionCurrent else { return }
+        guard isSessionCurrent, let library else { return }
         if let stored = env.settings.preferences.readerFontSize, stored >= 12, stored <= 40 {
             fontSize = stored
         }
@@ -444,7 +440,7 @@ struct NovelReaderView: View {
 
     /// Loads the cached TOC, or fetches it from the book's TOC page once.
     private func loadTOCIfNeeded(force: Bool = false) async {
-        guard isSessionCurrent else { return }
+        guard isSessionCurrent, let library else { return }
         if force {
             tocEntries = library.tocEntries(bookId: currentBook.id)
         }
@@ -465,12 +461,12 @@ struct NovelReaderView: View {
         isLoadingTOC = true
         defer { isLoadingTOC = false }
         let dataStore = loaderDataStore
-        var result = await tocLoader.load(urlString: source, dataStore: dataStore)
+        var result = await runtime.tocLoader.load(urlString: source, dataStore: dataStore)
         guard isSessionCurrent else { return }
         if result == nil || result?.isEmpty == true,
            let derived = NovelURLRoute.catalogURL(for: chapterURL),
            derived != source {
-            result = await tocLoader.load(urlString: derived, dataStore: dataStore)
+            result = await runtime.tocLoader.load(urlString: derived, dataStore: dataStore)
             guard isSessionCurrent else { return }
             if let entries = result, !entries.isEmpty {
                 library.saveTOCSource(bookId: currentBook.id, url: derived)
@@ -484,7 +480,7 @@ struct NovelReaderView: View {
     }
 
     private func load(url: String, index: Int, restoring: Double = 0) async {
-        guard isSessionCurrent else { return }
+        guard isSessionCurrent, let library else { return }
         guard !isLoading, !url.isEmpty else { return }
 
         if let cached = library.chapter(bookId: currentBook.id, url: url) {
@@ -501,7 +497,7 @@ struct NovelReaderView: View {
         isLoading = true
         statusMessage = nil
         let dataStore = loaderDataStore
-        let extraction = await loader.load(urlString: url, dataStore: dataStore)
+        let extraction = await runtime.chapterLoader.load(urlString: url, dataStore: dataStore)
         isLoading = false
         guard isSessionCurrent else { return }
 
@@ -551,7 +547,7 @@ struct NovelReaderView: View {
         if offset < 0, !chapter.previousUrl.isEmpty {
             return (chapter.previousUrl, max(0, chapter.index - 1))
         }
-        if let neighbor = library.tocNeighbor(
+        if let neighbor = library?.tocNeighbor(
             bookId: currentBook.id,
             url: chapter.url,
             offset: offset
@@ -652,11 +648,11 @@ struct NovelReaderView: View {
         let now = Date()
         guard now.timeIntervalSince(lastSavedAt) > 2 else { return }
         lastSavedAt = now
-        library.updateProgress(bookId: currentBook.id, progress: fraction)
+        library?.updateProgress(bookId: currentBook.id, progress: fraction)
     }
 
     private func saveNow() {
-        guard isSessionCurrent else { return }
+        guard isSessionCurrent, let library else { return }
         guard let chapter else { return }
         let fraction = progressBox.value
         library.markPosition(bookId: currentBook.id, chapter: chapter, progress: fraction)

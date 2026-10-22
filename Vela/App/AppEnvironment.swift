@@ -364,29 +364,64 @@ public final class AppEnvironment {
     /// closing tabs, clearing downloads, releasing the novel service or
     /// touching the store. The generation is advanced only by the run that is
     /// allowed to end the session.
-    public func endPrivateSession(expectedGeneration: Int) async {
+    /// The handle from the synchronous half of a private-session end.
+    ///
+    /// The retired store is captured before the asynchronous half starts, so a
+    /// new private session cannot have its fresh store mistaken for the one
+    /// being emptied.
+    struct PrivateSessionEndToken {
+        let generation: Int
+        let retiredStore: WKWebsiteDataStore?
+    }
+
+    /// Synchronously invalidates the session, closes the reader, closes tabs,
+    /// clears private download records, retires the WebKit store and releases
+    /// the shelf. Only the store's `removeData` is left for the async half.
+    ///
+    /// Kept separate from `endPrivateSession` so a caller that needs the exact
+    /// order can hold the token while it updates UI, then finish.
+    @discardableResult
+    func beginEndPrivateSession(expectedGeneration: Int) -> PrivateSessionEndToken? {
+        var retiredStore: WKWebsiteDataStore?
         guard let nextGeneration = PrivateSessionLedger.end(
             expectedGeneration: expectedGeneration,
             currentGeneration: privateNovelSessionGeneration,
             perform: {
-                // The reader first: its onDisappear cancels both loaders and
-                // releases the shelf before the tabs and store are torn down.
+                // Cancels both novel loaders and drops the reader's weak shelf
+                // reference before tabs or the store are touched.
                 onPrivateSessionWillEnd?()
                 tabManager.endPrivateSession()
                 downloads.clearPrivateRecords()
+                retiredStore = webCoordinator.takePrivateWebsiteDataStoreForCleanup()
                 let retiring = privateNovelService
                 privateNovelService = nil
                 scheduleRetirement(of: retiring)
             }
-        ) else { return }
+        ) else { return nil }
 
         privateNovelSessionGeneration = nextGeneration
+        return PrivateSessionEndToken(
+            generation: nextGeneration,
+            retiredStore: retiredStore
+        )
+    }
 
-        // The tabs are gone. `clearPrivateWebsiteData` takes this session's
-        // store out of service before emptying it, so a private tab created
-        // while the cleanup is in flight gets a fresh store instead of sharing
-        // the one being cleared.
-        await webCoordinator.clearPrivateWebsiteData()
+    /// Empties the store captured at the start of the end. Safe to call after a
+    /// new private session has begun: the token names the old store, not
+    /// whatever is current.
+    func finishEndPrivateSession(_ token: PrivateSessionEndToken) async {
+        guard let store = token.retiredStore else { return }
+        await webCoordinator.clearPrivateWebsiteData(store)
+    }
+
+    /// Ends a private session. The synchronous half runs to completion before
+    /// the first suspension; the asynchronous half only clears the store that
+    /// was retired in that same turn.
+    public func endPrivateSession(expectedGeneration: Int) async {
+        guard let token = beginEndPrivateSession(expectedGeneration: expectedGeneration) else {
+            return
+        }
+        await finishEndPrivateSession(token)
     }
 }
 

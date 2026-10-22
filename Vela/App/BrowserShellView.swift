@@ -411,7 +411,7 @@ struct BrowserShellView: View {
             // loader cancellation part of the shutdown order.
             env.onPrivateSessionWillEnd = {
                 if novelSession?.isPrivateSession == true {
-                    novelSession = nil
+                    closeNovelSession()
                 }
                 if bookshelfIsPrivate {
                     showBookshelf = false
@@ -634,17 +634,17 @@ struct BrowserShellView: View {
             NovelReaderView(
                 book: session.book,
                 initialChapter: session.chapter,
-                library: session.library,
+                runtime: session.runtime,
                 isPrivateSession: session.isPrivateSession,
                 sessionGeneration: session.sessionGeneration,
                 onClose: {
                     if session.isCurrent(in: novelSession) {
-                        novelSession = nil
+                        closeNovelSession()
                     }
                 },
                 onOpenInBrowser: { url in
                     guard session.isCurrent(in: novelSession) else { return }
-                    novelSession = nil
+                    closeNovelSession()
                     openInBrowser(url, for: session)
                 }
             )
@@ -664,6 +664,7 @@ struct BrowserShellView: View {
             bookshelfIsPrivate = false
         }
         guard let session = novelSession, session.shouldClose(for: generation) else { return }
+        session.runtime.cancel()
         novelSession = nil
     }
 
@@ -825,6 +826,14 @@ struct BrowserShellView: View {
     /// start page opens beside it under the name 主页.
     func openHomeTab() {
         _ = navigationActions.openHomeTab(from: activeTab)
+    }
+
+    /// Takes the reader (and its loaders) down before dropping the session.
+    /// The runtime cancel is synchronous, so the database can be released even
+    /// if SwiftUI has not removed the view yet.
+    func closeNovelSession() {
+        novelSession?.runtime.cancel()
+        novelSession = nil
     }
 
     /// Returns a tab to the native home surface.
@@ -1039,7 +1048,7 @@ struct BrowserShellView: View {
             // is torn down. The generation guard also stops a late callback
             // from writing after the environment invalidates the session.
             if novelSession?.isPrivateSession == true {
-                novelSession = nil
+                closeNovelSession()
             }
             if bookshelfIsPrivate {
                 showBookshelf = false
@@ -1108,7 +1117,7 @@ struct BrowserShellView: View {
             let mode = activeTab?.privacyMode ?? .regular
             _ = tabManager.reopenLastClosedTab(privacyMode: mode)
         case .focusAddressBar:
-            novelSession = nil
+            closeNovelSession()
             omnibox.beginEditing()
         case .reload:
             reloadActiveTab()
@@ -1518,11 +1527,30 @@ struct NovelSession: Identifiable, Equatable {
     /// The environment's private-session generation when the reader opened.
     /// A later end bumps the environment; this reader is then stale.
     let sessionGeneration: Int
-    /// The shelf this reader reads and writes through. Held here rather than
-    /// resolved from the environment on every call: a reader from an ended
-    /// session must keep writing to its own in-memory database, never to the
-    /// one a new session creates.
+    /// The shelf this session owns. It stays here so a reader opened from this
+    /// session keeps using this database, never the one a newer session makes;
+    /// the reader itself only gets a weak reference through `runtime`.
     let library: NovelLibraryService
+    /// The reader's cancellable work, owned by the session so the synchronous
+    /// session-end hook can stop it before tabs and the store are torn down.
+    let runtime: NovelReaderRuntime
+
+    init(
+        book: NovelBook,
+        chapter: NovelChapter?,
+        sourceTabId: String,
+        isPrivateSession: Bool,
+        sessionGeneration: Int,
+        library: NovelLibraryService
+    ) {
+        self.book = book
+        self.chapter = chapter
+        self.sourceTabId = sourceTabId
+        self.isPrivateSession = isPrivateSession
+        self.sessionGeneration = sessionGeneration
+        self.library = library
+        self.runtime = NovelReaderRuntime(library: library)
+    }
 
     static func == (lhs: NovelSession, rhs: NovelSession) -> Bool {
         lhs.id == rhs.id
