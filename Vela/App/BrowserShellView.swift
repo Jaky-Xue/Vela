@@ -1224,14 +1224,15 @@ struct BrowserShellView: View {
         // private service belongs to this private session, and the reader
         // must keep using it even if the environment later drops its reference.
         let isPrivate = tab.privacyMode == .private
-        guard let library = env.novelLibrary(privateMode: isPrivate) else {
-            novelNotice = "私密模式下无法创建独立的小说存储。"
-            return
-        }
         let generation = env.privateNovelSessionGeneration
         let identity = TabDocumentIdentity(tab: tab)
 
         Task { @MainActor in
+            guard let library = await env.novelLibrary(privateMode: isPrivate) else {
+                novelNotice = "私密模式下无法创建独立的小说存储。"
+                return
+            }
+            guard !isPrivate || generation == env.privateNovelSessionGeneration else { return }
             var extraction = await NovelModeService.extract(from: webView, url: tab.url)
             if extraction == nil {
                 // A hash-routed chapter may still be painting after the user
@@ -1292,15 +1293,20 @@ struct BrowserShellView: View {
     /// regular one when its in-memory database cannot be created.
     func openBookshelf() {
         let isPrivate = activeTab?.privacyMode == .private
-        guard let library = env.novelLibrary(privateMode: isPrivate) else {
-            novelNotice = "私密模式下无法创建独立的小说存储。"
-            return
+        let generation = env.privateNovelSessionGeneration
+        let sourceTabId = activeTab?.id ?? ""
+        Task { @MainActor in
+            guard let library = await env.novelLibrary(privateMode: isPrivate) else {
+                novelNotice = "私密模式下无法创建独立的小说存储。"
+                return
+            }
+            guard !isPrivate || generation == env.privateNovelSessionGeneration else { return }
+            bookshelfIsPrivate = isPrivate
+            bookshelfGeneration = generation
+            bookshelfSourceTabId = sourceTabId
+            bookshelfLibrary = library
+            showBookshelf = true
         }
-        bookshelfIsPrivate = isPrivate
-        bookshelfGeneration = env.privateNovelSessionGeneration
-        bookshelfSourceTabId = activeTab?.id ?? ""
-        bookshelfLibrary = library
-        showBookshelf = true
     }
 
     /// Opens a chapter in the browser on behalf of a novel session.

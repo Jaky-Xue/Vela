@@ -88,7 +88,14 @@ public final class OfflinePageService {
         // A web archive is several megabytes. The write and the plist scan are
         // deliberately off the main actor: the save sheet stays responsive
         // while the files land on disk.
-        let previewData = preview?.pngData()
+        let previewData: Data?
+        if let preview {
+            previewData = await Task.detached(priority: .utility) {
+                preview.pngData()
+            }.value
+        } else {
+            previewData = nil
+        }
         let resourceCount = await Task.detached(priority: .utility) {
             Self.resourceCount(in: archive)
         }.value

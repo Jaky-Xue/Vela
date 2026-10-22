@@ -307,10 +307,23 @@ public final class AppEnvironment {
     /// a service over a fresh in-memory database: the same NovelLibraryService
     /// and schema, a different SQLite file. `nil` means the in-memory database
     /// could not be created; callers must not fall back to the regular service.
-    public func novelLibrary(privateMode: Bool) -> NovelLibraryService? {
+    public func novelLibrary(privateMode: Bool) async -> NovelLibraryService? {
         guard privateMode else { return services.novels }
         if let privateNovelService { return privateNovelService }
-        guard let service = InMemoryNovelLibrary.make() else { return nil }
+
+        // The in-memory schema is created off-main. If the session ends while
+        // it is being built, the result belongs to no session: close it rather
+        // than installing a shelf into the next one.
+        let generation = privateNovelSessionGeneration
+        guard let service = await InMemoryNovelLibrary.makeAsync() else { return nil }
+        guard generation == privateNovelSessionGeneration else {
+            service.close()
+            return nil
+        }
+        if let existing = privateNovelService {
+            service.close()
+            return existing
+        }
         privateNovelService = service
         return service
     }
