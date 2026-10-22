@@ -10,6 +10,7 @@
 import XCTest
 @testable import Vela
 
+@MainActor
 final class WindowSessionTests: XCTestCase {
     func testWindowsKeepSeparateSessions() throws {
         let database = try SQLiteDatabase(path: ":memory:")
