@@ -1050,18 +1050,15 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39719808188](https://github.com/Jaky-Xue/Vela/actions/runs/39719808188)，
-  提交 `da933b2`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39722128134](https://github.com/Jaky-Xue/Vela/actions/runs/39722128134)，
+  提交 `aedd3ac`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。277 项测试、0 失败、无重试，
-  xcodebuild 最终 `** TEST SUCCEEDED **`，job 结论 success。
-- 本轮完成：崩溃/MetricKit 诊断、未捕获异常记录、D7 历史后台串行写、D2 单飞与订阅限制、
-  D5 用户脚本快照缓存、R-08 无用度量脚本移除、R-15 私密预览/下载启动清理、R-17 设置备份、
-  R-18 多窗口会话测试、R-23 重定向地址栏、C1 标签状态写入收归 TabManager、
-  搜索页字段 overlay、翻译提取覆盖增强、F-07 异步建库、D4 预览编码后台。
+- **Run the unit tests：成功**。278 项测试；第一次尝试有 1 项既有导航时序测试超时，
+  `-retry-tests-on-failure` 重跑后通过；xcodebuild 最终 `** TEST SUCCEEDED **`。
+- 本轮在上一批审计收口之上增加：翻译 405 的 GET 回退与单单元拆分、405 专用错误文案。
 - **安装包**：`G:\Vela-unsigned-3.9.1.ipa`
-  - 大小 6,768,581 字节（约 6.5 MiB）
-  - SHA-256 `0cab7738a161722a7010982be6e1e62f0cfa8aa3f676ad305e3c46190845b91f`
+  - 大小 6,773,923 字节（约 6.5 MiB）
+  - SHA-256 `ffbe55692215f998ba9fd7e5aec9d6f1d4ea22d7576e007ba75959f23484f8db`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
@@ -1092,6 +1089,9 @@ B2 的待办，不声称已经解决。
   请求带浏览器形状的 `User-Agent` 与 `Accept: application/json`。
 - 最终 429 抛出新的 `TranslationError.rateLimited`，消息明确提示稍后重试/更换服务商，
   并说明已翻译段落会保留；部分结果逻辑不变。
+- **405**：部分 VPN/代理拒绝对 `translate_a/single` 的 POST。Google 请求在收到 405 后改用
+  GET 查询重试；整批 GET URL 超过 8k 时，`applyBatch` 把批次拆成单个 unit 再请求。
+  405 的提示明确说明可能是当前网络/VPN 拦截。
 - 用户取消仍通过 `Task.checkCancellation` 生效。
 
 ### 20.2 识别
