@@ -691,7 +691,7 @@
 | R-28 | 已实现（待验证） | 私密阅读器路由到来源/新私密标签；`NovelBrowserRoutingTests` |
 | R-29 | 已实现（待验证） | 结束请求带代次；`PrivateSessionLedgerTests` |
 | R-30/R-31 | 已由 F-03/F-04 修复 | reader 只持弱书架；两阶段结束同步取消 reader、取旧 store，异步只清旧 store |
-| R-32 | 部分修复 | `SQLiteDatabase.deinit` 加锁；私密库错误仍被 `reload()` 静默吞掉 |
+| R-32 | 已修复 | `deinit` 加锁；`InMemoryNovelLibrary` 检查 `lastError`，失败返回 nil |
 | R-33 | 部分缓解 | 新增 8 个测试文件/用例组；UI、真机、真实网络未覆盖 |
 
 “已修复（待验证）”指代码与静态检查完成，但构建/测试/设备验证以 CI 与真机结果为准；
@@ -716,10 +716,10 @@ F-06/F-08 已处理或改写测试。
 | 风险 | 状态 | 说明 |
 |---|---|---|
 | R-11 | 部分修复 | 预览缩放/编码已在后台；未做真机帧率测量 |
-| R-12 | 部分修复 | 离线 archive/preview/manifest 写入与 archive 读取在后台；preview PNG 编码仍在主线程 |
+| R-12 | 已修复 | 离线 archive/preview/manifest 读写与 preview PNG 编码均在后台 |
 | R-14 | 部分修复 | `WebViewHost` 进度 10 Hz 节流；未做 SwiftUI 更新计数 |
 | R-16 | 部分修复 | 私密图标候选过滤（B7）+ in-flight 合并/失败负缓存；未做真实抓包 |
-| F-07 | 部分修复 | 私密小说库只建 7 条小说表/索引，仍在主 actor；未完全异步建库 |
+| F-07 | 已修复 | 私密小说库的 7 条 DDL 在 Task.detached 中执行；环境按代次安装服务 |
 
 ---
 

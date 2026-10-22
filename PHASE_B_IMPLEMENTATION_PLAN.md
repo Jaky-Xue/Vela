@@ -1050,16 +1050,17 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39701366693](https://github.com/Jaky-Xue/Vela/actions/runs/39701366693)，
-  提交 `be8ae06`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39708794611](https://github.com/Jaky-Xue/Vela/actions/runs/39708794611)，
+  提交 `1b32c56`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。275 项测试、0 失败、无重试，
-  xcodebuild 最终 `** TEST SUCCEEDED **`，job 结论 success。
-- 本轮 `be8ae06` 完成 F-03（reader runtime 弱书架）与 F-04（两阶段私密结束）；
-  前一次运行 `39699462082` 的 274 项 0 失败覆盖搜索页布局修复。
-- **安装包**：`G:\Vela-unsigned-3.9.0.ipa`
-  - 大小 6,753,033 字节（约 6.4 MiB）
-  - SHA-256 `8559fad824524cd897eb013b144ad831df1092a5b6d35a1177c10d296b70a709`
+- **Run the unit tests：成功**。277 项测试；第一次尝试有 1 项既有导航时序测试
+  （`testDesktopModePresentsADesktopIdentifierToThePage`）20 秒超时，
+  `-retry-tests-on-failure` 重跑后通过；xcodebuild 最终 `** TEST SUCCEEDED **`。
+- 本轮完成：搜索页字段 overlay/去玻璃容器、翻译提取覆盖增强、F-07 异步建库、D4 预览编码后台、
+  F-05 私密库错误可见、C4 两个无引用类型删除，并将版本提升为 **3.9.1 (4)**。
+- **安装包**：`G:\Vela-unsigned-3.9.1.ipa`
+  - 大小 6,754,772 字节（约 6.4 MiB）
+  - SHA-256 `ea7b64e4c83c53fca4874d49fdc0aeb5eb9d7fd96328fb1dd3d03afe2f725e17`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
