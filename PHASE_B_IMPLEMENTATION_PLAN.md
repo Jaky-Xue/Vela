@@ -1050,15 +1050,15 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39722128134](https://github.com/Jaky-Xue/Vela/actions/runs/39722128134)，
-  提交 `aedd3ac`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39723807985](https://github.com/Jaky-Xue/Vela/actions/runs/39723807985)，
+  提交 `3b98b1c`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。278 项测试；第一次尝试有 1 项既有导航时序测试超时，
-  `-retry-tests-on-failure` 重跑后通过；xcodebuild 最终 `** TEST SUCCEEDED **`。
-- 本轮在上一批审计收口之上增加：翻译 405 的 GET 回退与单单元拆分、405 专用错误文案。
-- **安装包**：`G:\Vela-unsigned-3.9.1.ipa`
-  - 大小 6,773,923 字节（约 6.5 MiB）
-  - SHA-256 `ffbe55692215f998ba9fd7e5aec9d6f1d4ea22d7576e007ba75959f23484f8db`
+- **Run the unit tests：成功**。277 项测试、0 失败、无重试，`** TEST SUCCEEDED **`。
+- 本轮在审计收口之上增加：翻译 405 的 GET 回退与单单元拆分、405 专用错误文案；
+  版本提升为 **3.9.2 (5)**，以便与已安装的 3.9.1 区分。
+- **安装包**：`G:\Vela-unsigned-3.9.2.ipa`
+  - 大小 6,773,925 字节（约 6.5 MiB）
+  - SHA-256 `577a1de190d3d6fef26848ec52db55349433c9f347acffab349f9a5505379d12`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
@@ -1287,7 +1287,7 @@ B2 的待办，不声称已经解决。
 - `InMemoryNovelLibrary` 在返回前检查 `service.lastError`，初始化失败返回 nil，不再静默显示空书架。
 - 删除确认无引用的 `SyncProviderId`、`BrowserTabMutationResult`；`AddressBarView.swift` 仍包含在用的
   `BrowserUrlResolver`/`AddressBarRejection`/`ProgressRing`，不能按文件名删除。
-- 版本提升为 **3.9.1 (Build 4)**，避免与之前的 3.9.0 包混淆。
+- 版本提升为 **3.9.2 (Build 5)**，避免与之前的 3.9.0/3.9.1 包混淆。
 
 ---
 
