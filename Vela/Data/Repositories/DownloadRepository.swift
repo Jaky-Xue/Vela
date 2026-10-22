@@ -191,9 +191,8 @@ public final class DownloadRepository: @unchecked Sendable {
         )
     }
 
-    /// Deletes every private-mode record. Called when a private session ends —
-    /// ported from `BrowserPrivateSessionCleanupCoordinator`, which clears
-    /// private download records along with the rest of the private surface.
+    /// Deletes every private-mode record. Called when a private session ends,
+    /// alongside the rest of the private surface.
     public func clearPrivateRecords() throws {
         try database.execute(
             "DELETE FROM \(BrowserSchema.downloadsTable) WHERE privacy_mode = 'private'"

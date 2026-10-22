@@ -432,7 +432,7 @@ public final class BrowserTabState: Identifiable {
     public var muted: Bool
     public var audible: Bool
 
-    /// Loading progress in 0...1, surfaced by `BrowserLoadingProgressCoordinator`.
+    /// Loading progress in 0...1, surfaced by the web view host and navigation bridge.
     public var estimatedProgress: Double
     public var isLoading: Bool
     public var canGoBack: Bool
@@ -644,8 +644,8 @@ public struct TabRecord: Codable, Equatable, Sendable, Identifiable {
 ///
 /// Private tabs are persisted too, but only with their URL and title — the
 /// session file lives in the app container and the point of private mode is to
-/// leave no browsing data behind after the session ends, which
-/// `BrowserPrivateSessionCleanupCoordinator` enforces on quit.
+/// leave no browsing data behind after the session ends, which the environment's
+/// private-session end path enforces.
 public struct BrowserSessionSnapshot: Codable, Equatable, Sendable {
     public var tabs: [TabRecord]
     public var activeTabId: String

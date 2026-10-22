@@ -11,8 +11,8 @@ Aira Browser 3.7.4 → Vela 的逐模块对照。
 | | Aira 3.7.4 | Vela |
 |---|---|---|
 | 语言 | ArkTS (`.ets`) | Swift 5 |
-| 文件数 | 1,727 | 47 |
-| 代码行数 | 565,081 | 16,340 |
+| 文件数 | 1,727 | 137 |
+| 代码行数 | 565,081 | 45,171 |
 | UI 框架 | ArkUI（声明式） | SwiftUI |
 | 状态管理 | `@State` / `@Provide` / `@Observed` + 模块级单例 | `@Published` / `@EnvironmentObject` + 组合根 |
 | 持久化 | ArkData `relationalStore`（SQLite） | 系统 libsqlite3 |
