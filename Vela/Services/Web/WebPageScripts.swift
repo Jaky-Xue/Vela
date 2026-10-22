@@ -607,6 +607,95 @@ public enum WebPageScripts {
         """
     }
 
+    // MARK: - Scroll
+
+    /// Reports scroll offset and direction.
+    public static let scrollReporter = """
+    (function () {
+      if (window.__velaScrollReporterInstalled === true) { return; }
+      window.__velaScrollReporterInstalled = true;
+
+      var lastY = window.scrollY || 0;
+      var lastEmitAt = 0;
+      var ticking = false;
+
+      function emit() {
+        ticking = false;
+        try {
+          var y = window.scrollY || 0;
+          var delta = y - lastY;
+          // A distance threshold plus a time gate keeps the script bridge quiet
+          // during a fling: the chrome only needs to know which side of its
+          // threshold the accumulated movement is on, not every frame.
+          if (Math.abs(delta) < 8) { return; }
+          var now = Date.now();
+          // Reaching the top is always reported: a thinned-out final frame
+          // must not leave the bar hidden on a page the user has returned to
+          // the start of.
+          if (y > 0 && now - lastEmitAt < 70) { return; }
+          lastEmitAt = now;
+          if (window.webkit && window.webkit.messageHandlers &&
+              window.webkit.messageHandlers.\(Handler.scroll.rawValue)) {
+            window.webkit.messageHandlers.\(Handler.scroll.rawValue).postMessage({
+              offsetY: y,
+              deltaY: delta,
+              direction: delta > 0 ? 'down' : 'up',
+              atTop: y <= 0
+            });
+          }
+          lastY = y;
+        } catch (_error) {
+        }
+      }
+
+      window.addEventListener('scroll', function () {
+        if (ticking) { return; }
+        ticking = true;
+        window.requestAnimationFrame(emit);
+      }, { passive: true });
+    })();
+    """
+
+    /// Puts a restored tab back where the user left it.
+    ///
+    /// Called once after a discarded tab's page has finished loading. Two
+    /// animation frames after the call let layout settle first — scrolling a
+    /// document whose height is still being computed is silently clamped to
+    /// the height it had at that instant.
+    public static func scrollRestoreScript(offsetY: Double) -> String {
+        let target = max(0, Int(offsetY.rounded()))
+        return """
+        (function () {
+          try {
+            var target = \(target);
+            function apply() {
+              try { window.scrollTo(0, target); } catch (_error) {}
+            }
+            apply();
+            if (window.requestAnimationFrame) {
+              window.requestAnimationFrame(function () {
+                apply();
+                window.requestAnimationFrame(apply);
+              });
+            }
+            // Late images and lazy content can grow the document after the
+            // first frames; one more pass keeps a restored position from
+            // being clamped to a height the page had only for a moment.
+            window.setTimeout(apply, 320);
+          } catch (_error) {
+          }
+        })();
+        """
+    }
+
+    // MARK: - Find in page
+
+    /// The in-page find script.
+    ///
+    /// It highlights with the CSS Custom Highlight API — ranges, not elements —
+    /// so a search never rewrites the page's DOM. The earlier version wrapped
+    /// every match in a `mark` element and unwrapped it again on the next
+    /// keystroke; on a framework-rendered page that mutates text nodes React or
     /// Vue still hold references to, and the page can stop updating after a
     /// search. Highlights leave the document untouched.
     ///
