@@ -254,6 +254,31 @@ final class NovelPrivacyTests: XCTestCase {
         XCTAssertTrue(service.books.isEmpty, "a closed database reads as an empty shelf, not a crash")
     }
 
+    func testReaderRuntimeDoesNotKeepTheShelfAlive() {
+        var library: NovelLibraryService? = InMemoryNovelLibrary.make()
+        guard let opened = library?.open(extraction(chapter: 1)) else {
+            return XCTFail("the private service could not open the chapter")
+        }
+        weak var weakLibrary = library
+        var session: NovelSession? = NovelSession(
+            book: opened.book,
+            chapter: opened.chapter,
+            sourceTabId: "tab",
+            isPrivateSession: true,
+            sessionGeneration: 1,
+            library: library!
+        )
+        let runtime = session?.runtime
+        library = nil
+
+        XCTAssertNotNil(weakLibrary, "the session owns the shelf while it exists")
+        XCTAssertNotNil(runtime?.library)
+
+        runtime?.cancel()
+        session = nil
+        XCTAssertNil(weakLibrary, "a cancelled reader must not keep the in-memory shelf alive")
+    }
+
     // MARK: - Loader store (F-06)
     //
     // An earlier version of this file loaded a cookie-setting response through

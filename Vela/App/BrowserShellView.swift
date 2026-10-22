@@ -1535,6 +1535,7 @@ struct NovelSession: Identifiable, Equatable {
     /// session-end hook can stop it before tabs and the store are torn down.
     let runtime: NovelReaderRuntime
 
+    @MainActor
     init(
         book: NovelBook,
         chapter: NovelChapter?,
