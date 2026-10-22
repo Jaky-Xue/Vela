@@ -111,21 +111,15 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .tint(.accentColor)
-            } header: {
-                Text("强制网页缩放")
-            } footer: {
-                Text("缩放比例由双指手势决定，不再使用固定倍率滑块。关闭后不再强制放开页面的缩放限制。")
-            }
 
-            Section {
                 Toggle("全局顶部保护", isOn: Binding(
                     get: { env.settings.preferences.topProtectionEnabled },
                     set: { value in env.settings.update { $0.topProtection = value } }
                 ))
             } header: {
-                Text("页面显示")
+                Text("页面显示与缩放")
             } footer: {
-                Text("开启后，页面内容只从系统状态栏下方开始，不再滚动到时钟底下。")
+                Text("双指缩放由手势决定；顶部保护让页面从状态栏下方开始，不再滚动到时钟底下。")
             }
         }
         .navigationTitle("通用")

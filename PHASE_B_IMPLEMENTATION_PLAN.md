@@ -1260,6 +1260,10 @@ B2 的待办，不声称已经解决。
   `Color.clear` 精确留出 `topGap + 字段高度 + 14`，列表不可能反向推动字段。
 - 搜索页字段不再包在单视图的 `GlassEffectContainer` 中：字段自己的 floating chrome 已提供玻璃，
   去掉容器的尺寸协商，避免容器在键盘/overlay 组合下把字段布局成零尺寸。
+- **浮动态键盘（根因）**：iPad 浮动键盘被拖动时每帧都发 `keyboardWillChangeFrame`。
+  shell 过去把浮动键盘的高度当作底部 inset，并且每帧 `withAnimation` 写 `keyboardHeight`，
+  于是搜索页跟着键盘拖动、整个外壳每帧重排。现在只有**停靠键盘**才设置底部遮挡；
+  浮动键盘遮挡固定为 0；相同值直接返回；写状态不再套动画。停靠/取消停靠仍会更新一次。
 - 列表预算仍使用 `searchPageCardHeight`（扣除顶部间距、字段与键盘），并滚动。
 
 ### 25.2 翻译页面提取增强

@@ -107,16 +107,9 @@ struct AppearanceSettingsView: View {
                     }
                 }
             } header: {
-                Text("自定义背景图片")
-            } footer: {
-                Text(
-                    backgroundImageStamp == nil
-                        ? "选择一张图片作为全局背景，主页、顶部栏与设置界面都会使用它。"
-                        : "当前使用自定义图片；移除后会回到下方选择的背景样式。"
-                )
+                Text("背景")
             }
 
-            Section {
                 ForEach(BrowserBackgroundStyle.allCases) { style in
                     Button {
                         env.settings.backgroundStyle = style
@@ -138,10 +131,8 @@ struct AppearanceSettingsView: View {
                         }
                     }
                 }
-            } header: {
-                Text("全局背景")
             } footer: {
-                Text("背景作用于主页、设置、书架与浮层，玻璃工具栏会折射它。网页本身保持网站自己的颜色。选择了自定义图片时，这里的样式暂不显示。")
+                Text("背景作用于主页、设置、书架与浮层，玻璃工具栏会折射它。网页本身保持网站自己的颜色；选择自定义图片时，下方样式暂不显示。")
             }
 
             Section {
