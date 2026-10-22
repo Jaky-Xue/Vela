@@ -255,9 +255,12 @@ extension BrowserShellView {
     /// of the space the keyboard leaves, which is where the reference search
     /// pages place it and where a thumb can still reach the cancel button.
     var searchPageTopGap: CGFloat {
-        let screenHeight = safeRectHeight + safeTop + safeBottom
-        let available = screenHeight - keyboardHeight
-        return min(max(56, available * 0.3), 320)
+        // Deliberately independent of the keyboard. A floating keyboard sends
+        // frame updates while it is dragged; deriving the field's position from
+        // that value made the whole page follow the keyboard. The field sits at
+        // a stable fraction of the screen and the keyboard is only an overlay.
+        let screenHeight = max(safeRectHeight + safeTop + safeBottom, 320)
+        return min(max(120, screenHeight * 0.18), 260)
     }
 
     /// The search page's list budget, separate from the phone card's.

@@ -51,12 +51,14 @@ struct OmniboxSearchPageView: View {
 
                 Spacer(minLength: 0)
             }
+            // The list column, not the page, ends above a docked keyboard.
+            // The field is an overlay and never moves with the keyboard.
+            .padding(.bottom, max(0, keyboardHeight))
 
             fieldRowInGlassContainer
                 .padding(.top, topGap)
                 .zIndex(1)
         }
-        .padding(.bottom, max(0, keyboardHeight))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // The page is drawn over the content surface, which can already sit
         // under the status bar while the top chrome is hidden. Add the safe
@@ -80,64 +82,51 @@ struct OmniboxSearchPageView: View {
     /// The field, with the engine switcher on its leading edge and the way out
     /// on its trailing edge.
     private var fieldRow: some View {
-        GeometryReader { geometry in
-            // The bridged UITextField reports an intrinsic width of its own;
-            // inside an unconstrained HStack it claimed the whole row and
-            // pushed the engine switcher and 取消 off both edges. State the
-            // field's share, as the iPad top bar already does.
-            let engineWidth: CGFloat = 30
-            let cancelWidth: CGFloat = 44
-            let spacing: CGFloat = 20
-            let sidePadding: CGFloat = 28
-            let fieldWidth = max(
-                60,
-                geometry.size.width - engineWidth - cancelWidth - spacing - sidePadding
+        ZStack {
+            // The bridged UITextField reports an intrinsic width and will
+            // otherwise claim the whole row. Give it the middle by padding,
+            // and paint the two fixed controls over the ends.
+            OmniboxTextField(
+                text: Binding(
+                    get: { viewModel.text },
+                    set: { viewModel.setText($0) }
+                ),
+                isEditing: viewModel.isEditing,
+                placeholder: "搜索或输入网址",
+                onSubmit: { viewModel.submit() },
+                onMoveHighlight: { viewModel.moveHighlight(by: $0) },
+                onEscape: { viewModel.cancel() },
+                onBeginEditing: { viewModel.beginEditing() },
+                grabsFocus: true,
+                palette: palette,
+                colorScheme: colorScheme
             )
+            .padding(.leading, 44)
+            .padding(.trailing, 58)
 
             HStack(spacing: 10) {
                 engineSwitcher
-                    .frame(width: engineWidth)
+                    .frame(width: 30)
 
-                OmniboxTextField(
-                    text: Binding(
-                        get: { viewModel.text },
-                        set: { viewModel.setText($0) }
-                    ),
-                    isEditing: viewModel.isEditing,
-                    placeholder: "搜索或输入网址",
-                    onSubmit: { viewModel.submit() },
-                    onMoveHighlight: { viewModel.moveHighlight(by: $0) },
-                    onEscape: { viewModel.cancel() },
-                    onBeginEditing: { viewModel.beginEditing() },
-                    grabsFocus: true,
-                    palette: palette,
-                    colorScheme: colorScheme
-                )
-                .frame(width: fieldWidth)
+                Spacer(minLength: 0)
 
-                // Always present: the search page covers the page the user
-                // came from, and the command bar with it — this button is the
-                // way back.
                 Button("取消") { viewModel.cancel() }
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(palette.accent)
-                    .frame(width: cancelWidth)
+                    .frame(width: 44)
             }
             .padding(.leading, 14)
             .padding(.trailing, 14)
-            .frame(width: geometry.size.width, height: BrowserChrome.barHeight)
-            // The same floating glass as the command bar, so the search field is
-            // the bar lifted off the page rather than a second kind of control.
-            .browserFloatingChrome(
-                radius: BrowserRadius.omnibox,
-                material: .regularMaterial,
-                tintStrength: 0.35,
-                elevation: .floating,
-                interactive: false
-            )
         }
         .frame(height: BrowserChrome.barHeight)
         .padding(.horizontal, BrowserChrome.sideInset)
+        .browserFloatingChrome(
+            radius: BrowserRadius.omnibox,
+            material: .regularMaterial,
+            tintStrength: 0.35,
+            elevation: .floating,
+            interactive: false
+        )
         .animation(.easeOut(duration: 0.15), value: viewModel.text.isEmpty)
     }
 
