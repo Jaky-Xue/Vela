@@ -27,6 +27,7 @@ import Foundation
 /// changing the endpoint and model.
 public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case google
+    case appleSystem
     case deepL
     case openAICompatible
 
@@ -35,6 +36,7 @@ public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable
     public var displayName: String {
         switch self {
         case .google: return "Google 翻译"
+        case .appleSystem: return "系统翻译（离线）"
         case .deepL: return "DeepL"
         case .openAICompatible: return "OpenAI 兼容接口"
         }
@@ -42,20 +44,25 @@ public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable
 
     public var summary: String {
         switch self {
-        case .google: return "免密钥的公共接口，直接可用。"
+        case .google: return "免密钥的公共接口；网络受限时自动尝试系统离线翻译。"
+        case .appleSystem: return "使用 iOS 内置离线翻译，不经过 VPN 或第三方接口；首次使用需下载语言包。"
         case .deepL: return "需要 DeepL API 密钥，免费版与 Pro 版都支持。"
         case .openAICompatible: return "任何兼容 /chat/completions 的服务，可填自建地址。"
         }
     }
 
     public var requiresAPIKey: Bool {
-        self != .google
+        switch self {
+        case .google, .appleSystem: return false
+        case .deepL, .openAICompatible: return true
+        }
     }
 
     /// The endpoint used when the settings document leaves it blank.
     public var defaultEndpoint: String {
         switch self {
         case .google: return "https://translate.googleapis.com/translate_a/single"
+        case .appleSystem: return ""
         case .deepL: return "https://api-free.deepl.com/v2/translate"
         case .openAICompatible: return "https://api.openai.com/v1"
         }
@@ -63,7 +70,7 @@ public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable
 
     public var defaultModel: String {
         switch self {
-        case .google, .deepL: return ""
+        case .google, .appleSystem, .deepL: return ""
         case .openAICompatible: return "gpt-4o-mini"
         }
     }
@@ -77,8 +84,10 @@ public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable
     var batchCharacterLimit: Int {
         switch self {
         // Google is sent a POST body, not a query string, so a batch can hold
-        // several paragraphs. The other two have their own per-request caps.
+        // several paragraphs. Apple's on-device session has its own sensible
+        // per-request size; the others have their own caps.
         case .google: return 12_000
+        case .appleSystem: return 8_000
         case .deepL: return 24_000
         case .openAICompatible: return 8_000
         }
@@ -87,6 +96,7 @@ public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable
     var batchItemLimit: Int {
         switch self {
         case .google: return 50
+        case .appleSystem: return 40
         case .deepL: return 40
         case .openAICompatible: return 30
         }
@@ -129,6 +139,21 @@ public enum TranslationTargetLanguage: String, Codable, CaseIterable, Identifiab
 
     /// The Google code, which is also the value stored in settings.
     public var googleCode: String { rawValue }
+
+    /// BCP-47 spelling for Apple's Translation framework.
+    public var appleTranslationCode: String {
+        switch self {
+        case .simplifiedChinese: return "zh-Hans"
+        case .traditionalChinese: return "zh-Hant"
+        case .english: return "en"
+        case .japanese: return "ja"
+        case .korean: return "ko"
+        case .french: return "fr"
+        case .german: return "de"
+        case .spanish: return "es"
+        case .russian: return "ru"
+        }
+    }
 
     /// DeepL's spelling. DeepL grew `ZH-HANS`/`ZH-HANT`; the older `ZH` still
     /// means Simplified, which is the safer choice for a traditional-Chinese
@@ -315,7 +340,7 @@ public struct TranslationSettings: Codable, Equatable, Sendable {
     /// a model name.
     public var isUsable: Bool {
         switch provider {
-        case .google:
+        case .google, .appleSystem:
             return true
         case .deepL:
             return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

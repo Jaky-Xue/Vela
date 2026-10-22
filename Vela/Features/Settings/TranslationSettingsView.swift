@@ -149,6 +149,7 @@ struct TranslationSettingsView: View {
                 }
             }
 
+            if settings.provider != .appleSystem {
             Section {
                 TextField(
                     providerPlaceholder,
@@ -181,6 +182,7 @@ struct TranslationSettingsView: View {
             } footer: {
                 Text(endpointFooter)
             }
+            }
 
             Section("说明") {
                 LabeledContent("当前状态", value: settings.isUsable ? "可以使用" : "缺少凭据")
@@ -196,6 +198,7 @@ struct TranslationSettingsView: View {
     private func symbol(for provider: TranslationProviderKind) -> String {
         switch provider {
         case .google: return "globe"
+        case .appleSystem: return "translate"
         case .deepL: return "character.book.closed"
         case .openAICompatible: return "cpu"
         }
@@ -204,6 +207,7 @@ struct TranslationSettingsView: View {
     private var providerPlaceholder: String {
         switch settings.provider {
         case .google: return TranslationProviderKind.google.defaultEndpoint
+        case .appleSystem: return ""
         case .deepL: return TranslationProviderKind.deepL.defaultEndpoint
         case .openAICompatible: return TranslationProviderKind.openAICompatible.defaultEndpoint
         }
@@ -212,7 +216,9 @@ struct TranslationSettingsView: View {
     private var endpointFooter: String {
         switch settings.provider {
         case .google:
-            return "留空使用 Google 的公共接口。该接口无需密钥，但在某些网络下可能无法访问。"
+            return "留空使用 Google 的公共接口。该接口无需密钥；网络受限时会自动尝试系统离线翻译。"
+        case .appleSystem:
+            return "系统翻译不经过网络接口；首次使用会自动下载语言包。"
         case .deepL:
             return "留空使用免费版地址。Pro 账户请改为 https://api.deepl.com/v2/translate。"
         case .openAICompatible:

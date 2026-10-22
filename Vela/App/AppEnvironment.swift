@@ -38,6 +38,8 @@ public final class AppEnvironment {
     public let navigationLog: NavigationLog
     /// The page translation panel's state.
     public let translation: TranslationService
+    /// The on-device translation bridge, when the OS provides the framework.
+    public private(set) var appleTranslationBridge: (any AppleTranslationBridging)?
 
     /// The private session's novel shelf, created on demand and dropped when
     /// the session ends. It runs on its own in-memory database, so nothing it
@@ -99,6 +101,11 @@ public final class AppEnvironment {
             windowId: windowId
         )
         self.translation = TranslationService()
+        if #available(iOS 18.0, *) {
+            let bridge = AppleTranslationBridge()
+            appleTranslationBridge = bridge
+            translation.appleBridge = bridge
+        }
 
         coordinator.attach(tabManager: tabManager)
         tabManager.onPrivateSessionStarted = { [weak self] in

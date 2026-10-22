@@ -270,6 +270,18 @@ struct BrowserShellView: View {
                 handleEdgeSwipeBack()
             }
         }
+        // The Translation framework hands sessions to a SwiftUI modifier, so
+        // its host must live in the hierarchy even though it draws nothing.
+        .overlay { appleTranslationHost }
+    }
+
+    /// The invisible host that gives the on-device translator a session.
+    @ViewBuilder
+    var appleTranslationHost: some View {
+        if #available(iOS 18.0, *),
+           let bridge = env.appleTranslationBridge as? AppleTranslationBridge {
+            AppleTranslationHost(bridge: bridge)
+        }
     }
 
     /// The full-screen layers that sit over the page: the phone command bar,

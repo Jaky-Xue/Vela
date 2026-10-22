@@ -96,6 +96,10 @@ public final class TranslationService {
     private var dynamicWork: [DynamicWork] = []
     private var dynamicWorkerActive = false
 
+    /// Optional on-device fallback. Assigned by the environment when the OS
+    /// provides the Translation framework.
+    var appleBridge: (any AppleTranslationBridging)?
+
     public init() {}
 
     // MARK: - Queries
@@ -643,11 +647,42 @@ public final class TranslationService {
             let wrapped = units.map {
                 "<div data-vela-unit=\"\($0.id)\">\($0.html)</div>"
             }.joined()
-            let result = try await google(wrapped, settings: settings, target: target)
-            return BatchResult(
-                payload: .wrappedHTML(result.html),
-                detectedLanguage: result.detectedLanguage
-            )
+            do {
+                let result = try await google(wrapped, settings: settings, target: target)
+                return BatchResult(
+                    payload: .wrappedHTML(result.html),
+                    detectedLanguage: result.detectedLanguage
+                )
+            } catch {
+                // When Google is blocked by the network, the on-device
+                // translation engine is the fallback that keeps page
+                // translation working without a VPN.
+                if let translationError = error as? TranslationError,
+                   case let .http(status) = translationError,
+                   status == 405 || status == 429,
+                   let appleBridge,
+                   let values = try? await appleBridge.translate(units.map(\.html), target: target),
+                   values.count == units.count {
+                    var map: [Int: String] = [:]
+                    for (unit, value) in zip(units, values) {
+                        map[unit.id] = value
+                    }
+                    return BatchResult(payload: .units(map), detectedLanguage: nil)
+                }
+                throw error
+            }
+
+        case .appleSystem:
+            guard let appleBridge else {
+                throw TranslationError.failed("系统翻译需要 iOS 18 或更高版本。")
+            }
+            let values = try await appleBridge.translate(units.map(\.html), target: target)
+            guard values.count == units.count else { throw TranslationError.alignment }
+            var map: [Int: String] = [:]
+            for (unit, value) in zip(units, values) {
+                map[unit.id] = value
+            }
+            return BatchResult(payload: .units(map), detectedLanguage: nil)
 
         case .deepL:
             let result = try await deepL(
