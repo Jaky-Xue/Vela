@@ -1050,16 +1050,16 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39699462082](https://github.com/Jaky-Xue/Vela/actions/runs/39699462082)，
-  提交 `c18926b`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39701366693](https://github.com/Jaky-Xue/Vela/actions/runs/39701366693)，
+  提交 `be8ae06`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。274 项测试、0 失败、无重试，
+- **Run the unit tests：成功**。275 项测试、0 失败、无重试，
   xcodebuild 最终 `** TEST SUCCEEDED **`，job 结论 success。
-- 前一次运行 `39696430174`（C3/F-03/F-04 + 卡顿诊断）为 274 项 0 失败；
-  `492c81d` 加入卡顿“最后操作”上下文、`c18926b` 修复搜索页字段被列表挤出的布局后，本轮再次通过。
+- 本轮 `be8ae06` 完成 F-03（reader runtime 弱书架）与 F-04（两阶段私密结束）；
+  前一次运行 `39699462082` 的 274 项 0 失败覆盖搜索页布局修复。
 - **安装包**：`G:\Vela-unsigned-3.9.0.ipa`
-  - 大小 6,753,671 字节（约 6.4 MiB）
-  - SHA-256 `848d9beef7aa890f3b057d633b9f04c49ae21b166b11291c40c03386d6690d05`
+  - 大小 6,753,033 字节（约 6.4 MiB）
+  - SHA-256 `8559fad824524cd897eb013b144ad831df1092a5b6d35a1177c10d296b70a709`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
@@ -1187,22 +1187,32 @@ B2 的待办，不声称已经解决。
   opener 回退、无标签刷新。
 - 仍未合并的是“界面展示动作”（哪个 sheet/overlay 出现），那部分仍由 shell 的视图状态决定。
 
-### 23.2 F-03：退役私密书架的数据库释放
+### 23.2 F-03：阅读器不再强持有书架
 
-- `NovelRepository.close()` / `NovelLibraryService.close()`：关闭 SQLite handle、清空 TOC 缓存与 books。
-- 私密会话结束或新私密会话开始时，旧 `NovelLibraryService` 被摘除，并在 2 秒宽限期后关闭；
-  阅读器/旧任务的代次守卫在这之前已阻止迟到写入。普通书架不关闭。
-- 测试：`NovelPrivacyTests.testClosingARetiredShelfReleasesItsDatabase`。
-- 仍是“延迟释放”而非即时；旧视图若在宽限期内仍渲染，关闭后读取会按空书架处理。
+- 新增 `NovelReaderRuntime`：chapter/TOC loader 与一个 **weak** 书架引用由 `NovelSession` 持有；
+  `NovelReaderView` 只通过 runtime 借用书架，不再强持有 `NovelLibraryService`。
+- 会话结束/新会话开始时，环境的 `privateNovelService` 被摘除；shell 在同步结束回调里
+  `runtime.cancel()`，同时取消两个 loader 并清空弱引用。此后即使 SwiftUI 还没移除旧视图，
+  书架的唯一强引用也已消失，内存 SQLite 可 deinit。
+- `NovelRepository.close()` / `NovelLibraryService.close()` 仍保留，用于显式退役/测试；环境对旧服务
+  还有一个 2 秒弱引用退休任务，作为有多余强引用时的兜底，不再是把持数据库的主路径。
+- 测试：`NovelPrivacyTests.testReaderRuntimeDoesNotKeepTheShelfAlive` 断言运行时弱引用在会话释放后
+  `nil`；`testClosingARetiredShelfReleasesItsDatabase` 覆盖显式 close。
 
-### 23.3 F-04：私密结束顺序
+### 23.3 F-04：两阶段结束与严格同步前半段
 
-- `AppEnvironment.endPrivateSession` 在接受结束请求后，先同步调用 `onPrivateSessionWillEnd`；
-  shell 在该回调里移除私密阅读器/书架；`NovelReaderView.onDisappear` 取消 chapter/TOC loader；
-  然后才关闭标签、清下载、摘除并延迟关闭书架服务、清 WebKit store。
-- 代次失效仍是最先发生的同步动作；这缩小了“阅读器还在、库已被摘除”的窗口，
-  但 SwiftUI 实际移除视图、旧库物理释放和 WebKit `removeData` 仍不是严格同步完成。
-- 未新增端到端 AppEnvironment 测试；`PrivateSessionLedgerTests` 仍覆盖代次决策。
+- `AppEnvironment` 拆出：
+  - `beginEndPrivateSession(expectedGeneration:)`：同一主 actor 同步执行——代次失效、
+    `onPrivateSessionWillEnd`（shell 取消 reader runtime、移除阅读器/书架）、关闭私密标签、
+    清私密下载、**取出旧 WebKit store**、摘除旧书架服务；返回带旧 store 的 token。
+  - `finishEndPrivateSession(token)`：只对 token 里的旧 store 执行 `removeData`，
+    不会误清一个已经开始的新私密会话的 store。
+  - `endPrivateSession(expectedGeneration:)` 内部就是 begin + await finish；旧调用方无需改动。
+- 阅读器 loader 的取消不再依赖 `onDisappear`/SwiftUI 更新：同步回调直接 `runtime.cancel()`。
+- 剩余的非同步部分只有 WebKit `removeData` 本身和 SwiftUI 实际销毁视图；数据安全与资源归属
+  不再依赖它们，代次守卫仍阻止迟到写入。
+- 未新增 AppEnvironment 端到端测试（需要完整 AppServices/数据库宿主）；`PrivateSessionLedgerTests`
+  覆盖代次决策，`BrowserNavigationActionsTests` 覆盖导航动作。
 
 ---
 

@@ -726,8 +726,8 @@
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| F-03 | 部分修复 | 退役私密书架在 2 秒宽限期后 `close()` 数据库；旧阅读器仍可能短暂持有服务对象 |
-| F-04 | 部分修复 | `onPrivateSessionWillEnd` 在关闭标签前同步移除阅读器；onDisappear 取消 loader；SwiftUI 移除与 `removeData` 仍非严格同步 |
+| F-03 | 已修复 | reader 只持弱书架；会话/环境是唯一强引用，结束回调取消 loader 并释放书架；测试覆盖弱引用释放 |
+| F-04 | 已修复 | 两阶段 `beginEndPrivateSession`/`finishEndPrivateSession`：同步失效/取消阅读器/关标签/取旧 store，异步只清旧 store；SwiftUI 销毁视图不再承担顺序 |
 | C3 | 部分修复 | back/reload/home 与私密开关已统一；界面展示动作仍在 shell |
 | 顶栏卡顿 | 待验证 | 建议建议列表改为显式高度，去掉 self-sizing ScrollView；真机未复现/验证 |
 | 卡顿诊断 | 已实现 | `MainThreadHangMonitor` 记录 ≥2s 卡顿、页面、持续时间与最后操作；不采样阻塞堆栈 |
