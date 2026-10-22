@@ -65,17 +65,12 @@ struct OmniboxSearchPageView: View {
         .background { AmbientBackgroundView() }
     }
 
-    /// The field's glass rides one coordinated layer, the same rotation rule
-    /// the command bar follows.
-    @ViewBuilder
+    /// The field is one glass control, not a coordinated group. Keeping it out
+    /// of a `GlassEffectContainer` avoids the container's size negotiation on
+    /// the search page; the field's own floating chrome already supplies the
+    /// glass, and the field is pinned as an overlay above the list.
     private var fieldRowInGlassContainer: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: 0) {
-                fieldRow
-            }
-        } else {
-            fieldRow
-        }
+        fieldRow
     }
 
     /// The field, with the engine switcher on its leading edge and the way out

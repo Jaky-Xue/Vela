@@ -1244,3 +1244,45 @@ B2 的待办，不声称已经解决。
 - 限制：不采样被阻塞线程的堆栈（从看门狗挂起线程风险高），因此只能定位“何时、在哪个页面卡了多久”，
   不能直接给出阻塞函数；需要结合用户操作与页面复现。
 - 测试：`HangDiagnosticsTests` 覆盖记录、脱敏与关闭诊断时不写入。
+
+---
+
+## 25. 搜索页二次修复、翻译提取增强与收尾（2026-10-22）
+
+### 25.1 搜索页字段仍被挤出的第二次修复
+
+- 用户截图显示：搜索页列表顶到状态栏，地址字段再次消失。上一版只是把 `Spacer` 换成顶部对齐，
+  但 VStack 在“列表 + 键盘”超过可用高度时仍可能压缩/推走字段。
+- 现在字段是 **ZStack 的 overlay**，绝对固定在 `topGap`；列表放在独立 VStack 中，前面用
+  `Color.clear` 精确留出 `topGap + 字段高度 + 14`，列表不可能反向推动字段。
+- 搜索页字段不再包在单视图的 `GlassEffectContainer` 中：字段自己的 floating chrome 已提供玻璃，
+  去掉容器的尺寸协商，避免容器在键盘/overlay 组合下把字段布局成零尺寸。
+- 列表预算仍使用 `searchPageCardHeight`（扣除顶部间距、字段与键盘），并滚动。
+
+### 25.2 翻译页面提取增强
+
+- 单元上限从 600 段/90k 字符提升到 **1200 段/180k 字符**。
+- BLOCK 增加 `UL/OL/TABLE/THEAD/TBODY/TFOOT/TR/DL/FIGURE/CENTER`。
+- 支持 **open shadow root** 内的正文（querySelectorAll 不跨边界）。
+- 支持 **同源 iframe** 内的正文；跨源访问失败被忽略。
+- 跳过 `hidden` 元素。
+- 新增 `coverageFallback`：块遍历后，对仍未被任何 unit 覆盖的可见文本节点，把其父元素补为 unit；
+  有祖先已覆盖检查、BODY/HTML 排除、3000 节点与 600 unit 上限，避免重复和卡顿。
+- `mergeText` 不再要求标签形状完全一致：文本节点数量相同即可原位替换，保留原页面元素/监听器；
+  只有数量不一致才回退整块 innerHTML。
+- 注入脚本通过 `node --check`（翻译支持脚本仅因 Swift 插值占位替换报预期外错误）。
+
+### 25.3 F-07 / D4 收口
+
+- `InMemoryNovelLibrary.makeAsync()` 在 `Task.detached` 中创建 `:memory:` SQLite 并执行 7 条小说 DDL；
+  `AppEnvironment.novelLibrary(privateMode:)` 改为 async，检查会话代次并把并发结果关掉，避免把旧服务
+  装进新会话；`activateNovelMode`/`openBookshelf` 在 Task 中等库建好再继续。
+- 主 actor 只保留 `NovelLibraryService.init` 的 reload 查询（小）。
+- 离线保存的 `preview.pngData()` 编码移入后台；D4 的 archive/preview/manifest 读写均不再占主线程。
+
+### 25.4 F-05 与 C4 收尾
+
+- `InMemoryNovelLibrary` 在返回前检查 `service.lastError`，初始化失败返回 nil，不再静默显示空书架。
+- 删除确认无引用的 `SyncProviderId`、`BrowserTabMutationResult`；`AddressBarView.swift` 仍包含在用的
+  `BrowserUrlResolver`/`AddressBarRejection`/`ProgressRing`，不能按文件名删除。
+- 版本提升为 **3.9.1 (Build 4)**，避免与之前的 3.9.0 包混淆。
