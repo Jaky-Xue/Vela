@@ -20,7 +20,7 @@ struct SettingsView: View {
 
     var body: some View {
         List {
-            Section {
+            Section("搜索与网页") {
                 NavigationLink {
                     SearchEngineSettingsView()
                 } label: {
@@ -33,11 +33,72 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
+                    TranslationSettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "character.bubble",
+                        tint: .blue,
+                        title: "网页翻译",
+                        detail: env.settings.translationSettings.provider.displayName
+                    )
+                }
+
+                NavigationLink {
+                    UserAgentSettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "safari",
+                        tint: .brown,
+                        title: "网页标识",
+                        detail: userAgentDetail
+                    )
+                }
+            }
+
+            Section("浏览与界面") {
+                NavigationLink {
                     AppearanceSettingsView()
                 } label: {
                     settingsRow(icon: "paintpalette", tint: .purple, title: "外观")
                 }
 
+                NavigationLink {
+                    GeneralSettingsView()
+                } label: {
+                    settingsRow(icon: "gearshape", tint: .gray, title: "通用")
+                }
+
+                NavigationLink {
+                    HomeSettingsView()
+                } label: {
+                    settingsRow(icon: "house", tint: .indigo, title: "主页")
+                }
+
+                NavigationLink {
+                    ToolbarSettingsView()
+                } label: {
+                    settingsRow(icon: "dock.rectangle", tint: .teal, title: "工具栏")
+                }
+
+                NavigationLink {
+                    MenuSettingsView()
+                } label: {
+                    settingsRow(icon: "square.grid.2x2", tint: .orange, title: "菜单面板")
+                }
+
+                NavigationLink {
+                    DownloadSettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "arrow.down.circle",
+                        tint: .blue,
+                        title: "下载",
+                        detail: "\(env.downloads.activeCount) 个进行中"
+                    )
+                }
+            }
+
+            Section("内容与扩展") {
                 NavigationLink {
                     AdBlockSettingsView()
                 } label: {
@@ -105,64 +166,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("浏览") {
-                NavigationLink {
-                    GeneralSettingsView()
-                } label: {
-                    settingsRow(icon: "gearshape", tint: .gray, title: "通用")
-                }
-
-                NavigationLink {
-                    HomeSettingsView()
-                } label: {
-                    settingsRow(icon: "house", tint: .indigo, title: "主页")
-                }
-
-                NavigationLink {
-                    ToolbarSettingsView()
-                } label: {
-                    settingsRow(icon: "dock.rectangle", tint: .teal, title: "工具栏")
-                }
-
-                NavigationLink {
-                    MenuSettingsView()
-                } label: {
-                    settingsRow(icon: "square.grid.2x2", tint: .orange, title: "菜单面板")
-                }
-
-                NavigationLink {
-                    DownloadSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "arrow.down.circle",
-                        tint: .blue,
-                        title: "下载",
-                        detail: "\(env.downloads.activeCount) 个进行中"
-                    )
-                }
-
-                NavigationLink {
-                    UserAgentSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "safari",
-                        tint: .brown,
-                        title: "网页标识",
-                        detail: userAgentDetail
-                    )
-                }
-
-                NavigationLink {
-                    TranslationSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "character.bubble",
-                        tint: .blue,
-                        title: "网页翻译",
-                        detail: env.settings.translationSettings.provider.displayName
-                    )
-                }
-
+            Section("诊断与关于") {
                 NavigationLink {
                     NavigationDiagnosticsView()
                 } label: {
@@ -173,9 +177,7 @@ struct SettingsView: View {
                         detail: "\(env.navigationLog.entries.count) 条记录"
                     )
                 }
-            }
 
-            Section {
                 NavigationLink {
                     AboutView()
                 } label: {
