@@ -1050,18 +1050,16 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39697904104](https://github.com/Jaky-Xue/Vela/actions/runs/39697904104)，
-  提交 `492c81d`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39699462082](https://github.com/Jaky-Xue/Vela/actions/runs/39699462082)，
+  提交 `c18926b`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。275 项测试；第一次尝试有 1 项既有导航时序测试
-  （`WebNavigationIntegrationTests.testAFollowedLinkLoadsInTheSameTabAndUpdatesTheUrl`）
-  超时，`-retry-tests-on-failure` 重跑后通过；xcodebuild 最终
-  `** TEST SUCCEEDED **`，job 结论 success。
-- 本轮 `473d744`（C3/F-03/F-04 + 卡顿诊断）此前一次运行 `39696430174` 为 274 项测试、0 失败；
-  `492c81d` 加入卡顿“最后操作”上下文后再次通过。
+- **Run the unit tests：成功**。274 项测试、0 失败、无重试，
+  xcodebuild 最终 `** TEST SUCCEEDED **`，job 结论 success。
+- 前一次运行 `39696430174`（C3/F-03/F-04 + 卡顿诊断）为 274 项 0 失败；
+  `492c81d` 加入卡顿“最后操作”上下文、`c18926b` 修复搜索页字段被列表挤出的布局后，本轮再次通过。
 - **安装包**：`G:\Vela-unsigned-3.9.0.ipa`
-  - 大小 6,754,096 字节（约 6.4 MiB）
-  - SHA-256 `638ba507a93d31a110aaa9a2020854fb0102d7a9d4d677ce17c0030a27508593`
+  - 大小 6,753,671 字节（约 6.4 MiB）
+  - SHA-256 `848d9beef7aa890f3b057d633b9f04c49ae21b166b11291c40c03386d6690d05`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
@@ -1220,6 +1218,10 @@ B2 的待办，不声称已经解决。
   `ScrollView` 只拿显式 frame，不再参与理想高度回问。这是最可疑的自激布局路径。
 - 顶栏点击会打开搜索页并触发键盘高度更新、搜索建议刷新与玻璃容器布局；这些状态仍在主 actor 上。
   本环境没有真机/模拟器，无法复现确认；修复后需要用户在实际设备上验证是否消失。
+- 截图复现的“搜索页状态异常”：搜索页原先把 `Spacer` 放在字段上下，键盘浮起后列表高度超过剩余空间，
+  Spacer 折叠、固定高度的字段被挤出屏幕，列表顶到状态栏。已改为 **top-aligned VStack**，
+  字段用 `padding(.top, searchPageTopGap)` 固定在上方；列表使用独立的 `searchPageCardHeight`
+  （扣除 top gap、字段高度与键盘后的预算），不再使用只适合手机底栏的 `omniboxCardHeight`。
 
 ### 24.2 卡顿诊断
 
