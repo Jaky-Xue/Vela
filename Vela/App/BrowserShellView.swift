@@ -496,7 +496,7 @@ struct BrowserShellView: View {
         }
     }
 
-    var shellRoot: some View { shellAppearanceObservers }
+    var shellRoot: some View { shellAppearanceObservers.overlay { searchPageLayer } }
 
     var body: some View {
         presentations()

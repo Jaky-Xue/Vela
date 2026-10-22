@@ -233,22 +233,33 @@ extension BrowserShellView {
     var contentSurface: some View {
         ZStack(alignment: .bottom) {
             mainSurface
-
-            if omnibox.isEditing {
-                OmniboxSearchPageView(
-                    viewModel: omnibox,
-                    keyboardHeight: keyboardHeight,
-                    cardMaxHeight: searchPageCardHeight,
-                    topGap: searchPageTopGap
-                )
-                .transition(.opacity)
-            }
         }
         // The keyboard overlays the page — a browser never shrinks its document
-        // for a keyboard — and the search page measures down to the keyboard's
-        // top edge itself.
+        // for a keyboard.
         .ignoresSafeArea(.keyboard)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The search page lives at the shell root, not inside the content column.
+    ///
+    /// Inside `contentSurface` it was a child of the keyboard-avoiding layout;
+    /// when a floating keyboard was dragged or docked, an ancestor could shift
+    /// the whole column, taking the field with it. At the root, with the
+    /// keyboard explicitly ignored, the page's geometry is independent of every
+    /// keyboard frame.
+    @ViewBuilder
+    var searchPageLayer: some View {
+        if omnibox.isEditing {
+            OmniboxSearchPageView(
+                viewModel: omnibox,
+                keyboardHeight: keyboardHeight,
+                cardMaxHeight: searchPageCardHeight,
+                topGap: searchPageTopGap
+            )
+            .ignoresSafeArea(.keyboard)
+            .transition(.opacity)
+            .zIndex(100)
+        }
     }
 
     /// How far down the screen the search page puts its field: about a third
