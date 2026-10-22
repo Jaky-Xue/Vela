@@ -1050,15 +1050,16 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39723807985](https://github.com/Jaky-Xue/Vela/actions/runs/39723807985)，
-  提交 `3b98b1c`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39725275871](https://github.com/Jaky-Xue/Vela/actions/runs/39725275871)，
+  提交 `76bbaa8`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。277 项测试、0 失败、无重试，`** TEST SUCCEEDED **`。
-- 本轮在审计收口之上增加：翻译 405 的 GET 回退与单单元拆分、405 专用错误文案；
-  版本提升为 **3.9.2 (5)**，以便与已安装的 3.9.1 区分。
-- **安装包**：`G:\Vela-unsigned-3.9.2.ipa`
-  - 大小 6,773,925 字节（约 6.5 MiB）
-  - SHA-256 `577a1de190d3d6fef26848ec52db55349433c9f347acffab349f9a5505379d12`
+- **Run the unit tests：成功**。280 项测试；第一次尝试有 PublicWebSmoke 与两项既有导航时序测试
+  超时，`-retry-tests-on-failure` 重跑后通过；xcodebuild 最终 `** TEST SUCCEEDED **`。
+- 本轮新增：搜索页字段显式宽度与 safe-top、设置页按用途重新分组；版本 **3.9.3 (6)**。
+  更早的 3.9.2 包含翻译 405 的 GET/单单元回退。
+- **安装包**：`G:\Vela-unsigned-3.9.3.ipa`
+  - 大小 6,776,123 字节（约 6.5 MiB）
+  - SHA-256 `054c463decae6e1b44cf0c8147c31ab74563866c8512668ada1c2631486b26cc`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
