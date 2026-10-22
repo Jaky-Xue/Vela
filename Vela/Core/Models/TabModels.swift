@@ -640,12 +640,6 @@ public struct TabRecord: Codable, Equatable, Sendable, Identifiable {
     public var scrollOffsetY: Double
 }
 
-public struct BrowserTabMutationResult: Sendable {
-    public var tabs: [TabRecord]
-    public var activeTabId: String
-    public var tabSequence: Int
-}
-
 /// The persisted browsing session.
 ///
 /// Private tabs are persisted too, but only with their URL and title — the

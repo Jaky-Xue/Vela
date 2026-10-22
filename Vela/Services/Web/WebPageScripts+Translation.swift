@@ -129,6 +129,48 @@ extension WebPageScripts {
         }
       }
 
+      // A final sweep for visible text that the block walk did not turn into
+      // a unit: direct text inside an inline element, a site that uses spans
+      // where a paragraph should be, or markup whose block tags are unusual.
+      // The ancestor check prevents this from duplicating anything already
+      // covered; BODY/HTML are skipped because translating the whole body
+      // would swallow the units already collected.
+      function coverageFallback(root, units, state) {
+        if (!root || !document.createTreeWalker) { return; }
+        if (units.length >= 600 || state.chars >= MAX_CHARS) { return; }
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+          acceptNode: function (node) {
+            var text = (node.nodeValue || '').trim();
+            if (text.length < 2 || !hasLetters(text)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            var parent = node.parentElement;
+            if (!parent || SKIP[parent.nodeName]) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        });
+        var node;
+        var visited = 0;
+        while ((node = walker.nextNode()) && visited < 3000) {
+          visited += 1;
+          var parent = node.parentElement;
+          if (!parent || parent.nodeName === 'BODY' || parent.nodeName === 'HTML') {
+            continue;
+          }
+          if (hasBlockChild(parent)) { continue; }
+          var covered = false;
+          for (var ancestor = parent; ancestor; ancestor = ancestor.parentElement) {
+            if (ancestor.__velaUnitId !== undefined) {
+              covered = true;
+              break;
+            }
+          }
+          if (!covered) { addUnit(parent, units, state); }
+        }
+      }
+
       window.__velaExtractUnits = function (root, onlyNew) {
         var units = [];
         var state = { chars: 0 };
@@ -148,6 +190,16 @@ extension WebPageScripts {
               if (frameBody) { walk(frameBody, units, state, false); }
             }
           } catch (_frameError) {
+          }
+        }
+        if (onlyNew !== true) {
+          try {
+            coverageFallback(
+              document.body || document.documentElement,
+              units,
+              state
+            );
+          } catch (_fallbackError) {
           }
         }
         var sample = '';

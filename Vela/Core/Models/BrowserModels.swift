@@ -47,14 +47,6 @@ public enum SyncState: String, Codable, Sendable, CaseIterable {
     case conflict
 }
 
-/// The sync providers this app supports: user-owned ones only. Account-backed
-/// cloud providers are deliberately absent.
-public enum SyncProviderId: String, Codable, Sendable, CaseIterable {
-    case none
-    case webdav
-    case personalServer = "personal_server"
-}
-
 // MARK: - Data boundary
 
 /// One value decides whether a piece of browsing data is written to the durable

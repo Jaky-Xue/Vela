@@ -89,6 +89,19 @@ final class NovelPrivacyTests: XCTestCase {
         XCTAssertEqual(privateService.books.first?.id ?? "", privateOpen.book.id)
     }
 
+    func testAsyncPrivateShelfIsIsolatedAndUsable() async {
+        guard let service = await InMemoryNovelLibrary.makeAsync() else {
+            return XCTFail("the asynchronous private service could not be created")
+        }
+        defer { service.close() }
+        guard let opened = service.open(extraction(chapter: 1)) else {
+            return XCTFail("the asynchronous private service could not open the chapter")
+        }
+        XCTAssertEqual(service.books.count, 1)
+        XCTAssertTrue(regular.books.isEmpty)
+        XCTAssertEqual(opened.book.title, "测试小说")
+    }
+
     func testPrivateWritesDoNotTouchTheRegularDatabase() {
         let before = regularCounts()
         guard let privateService = InMemoryNovelLibrary.make(),
