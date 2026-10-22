@@ -1050,15 +1050,16 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39734332007](https://github.com/Jaky-Xue/Vela/actions/runs/39734332007)，
-  提交 `51a0305`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39736545625](https://github.com/Jaky-Xue/Vela/actions/runs/39736545625)，
+  提交 `f99106c`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。277 项测试、0 失败、无重试，`** TEST SUCCEEDED **`。
-- 本轮新增：搜索框位置完全独立于键盘（屏幕高度 18%，120–260pt）、引擎/取消改为 overlay
-  控件、键盘只缩短列表列；版本 **3.9.5 (8)**。
-- **安装包**：`G:\Vela-unsigned-3.9.5.ipa`
-  - 大小 6,775,467 字节（约 6.5 MiB）
-  - SHA-256 `b86d612c6d3b7dc151304a1dd35a51bc55dcbd54f31e2ba6d5911f52ef82510a`
+- **Run the unit tests：成功**。279 项测试；第一次尝试有 2 项既有导航时序测试超时，
+  `-retry-tests-on-failure` 重跑后通过；最终 `** TEST SUCCEEDED **`。
+- 本轮新增：系统离线翻译（iOS 18 Translation 框架）+ Google 405/429 自动回退；
+  搜索框位置完全独立于键盘、引擎/取消 overlay 控件；版本 **3.9.6 (9)**。
+- **安装包**：`G:\Vela-unsigned-3.9.6.ipa`
+  - 大小 6,795,503 字节（约 6.5 MiB）
+  - SHA-256 `be8d7cc2f173cf50c1ba417d9cab3bcb50e82ad9231cea839c9ace40db5be12d`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
@@ -1341,3 +1342,28 @@ B2 的待办，不声称已经解决。
   外观模式/预览、配色、背景、无痕模式按用途顺序排列。
 - 其余子页保持现有分区（搜索引擎、网页标识、翻译、用户脚本等本身已按任务分组），
   不再为了统一而强行改成相同行数。
+
+## 27. 系统离线翻译与键盘无关搜索布局（2026-10-22）
+
+### 27.1 系统翻译（不依赖 VPN）
+
+- 新增 `TranslationProviderKind.appleSystem`（“系统翻译（离线）”）：
+  - 使用 iOS 18+ `Translation` 框架的 `TranslationSession`；
+  - 通过隐藏的 `AppleTranslationHost` 视图接收 `.translationTask` 会话；
+  - `prepareTranslation()` 触发系统语言包下载，页面文本不离开设备；
+  - 目标语言映射为 `zh-Hans`/`zh-Hant`/`en`/`ja`/`ko`/`fr`/`de`/`es`/`ru`。
+- 选择 Google 时，如果 POST/GET 仍返回 **405 或 429**，`requestBatch` 会自动尝试系统翻译
+  （语言包已安装时）；失败则保留原有错误。这样 VPN 拦截 Google 时仍可翻译。
+- 设置 ▸ 网页翻译新增系统翻译选项；选择它时不显示 API 密钥/接口字段。
+- 搜索默认引擎仍是 Bing；Google 的 `/sorry` 人机验证属于 Google 对当前 IP 的拦截，系统翻译
+  不经过 Google，可避开该链路。
+
+### 27.2 搜索页位置与键盘
+
+- 搜索框位置固定为屏幕高度 18%（120–260pt），完全不读取键盘高度。
+- 搜索框是 overlay；文本字段左右 padding，引擎切换与“取消”是 overlay 控件，固定可见。
+- 列表列使用独立高度预算；只有停靠键盘会缩短列表底部，搜索框不移动。
+- 浮动键盘遮挡固定为 0；每帧通知相同值直接返回，不再套动画。
+- 设置内部：通用合并“页面显示与缩放”；外观合并“背景”；顶层五组按用途排列。
+
+> 说明：`Translation` 框架的离线语言包首次使用需要系统下载；这一步依赖网络，但不依赖 Google/VPN。
