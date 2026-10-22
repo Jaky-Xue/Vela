@@ -39,7 +39,7 @@ public final class AppEnvironment {
     /// The page translation panel's state.
     public let translation: TranslationService
     /// The on-device translation bridge, when the OS provides the framework.
-    public private(set) var appleTranslationBridge: (any AppleTranslationBridging)?
+    private(set) var appleTranslationBridge: (any AppleTranslationBridging)?
 
     /// The private session's novel shelf, created on demand and dropped when
     /// the session ends. It runs on its own in-memory database, so nothing it
