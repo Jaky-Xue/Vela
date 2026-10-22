@@ -682,21 +682,25 @@ struct BrowserShellView: View {
         let end = (note.userInfo?[UIApplication.keyboardFrameEndUserInfoKey] as? NSValue)?
             .cgRectValue ?? .zero
         let screenHeight = max(UIScreen.main.bounds.height, end.maxY)
-        // A docked keyboard runs from its top edge to the bottom of the screen,
-        // so the occlusion is that whole span. A floating keyboard — an iPad
-        // panel — covers only its own frame; measuring to the screen bottom
-        // would shrink the suggestion card for nothing.
+        // Only a docked keyboard should resize the page. A floating iPad
+        // keyboard is draggable: it sends a frame notification on every drag
+        // frame, and treating each one as a new bottom inset made the search
+        // page follow the keyboard and stutter. A floating panel covers only
+        // itself; the page stays put underneath it.
         let occlusion: CGFloat
         if end.isEmpty {
             occlusion = 0
         } else if screenHeight - end.maxY < 40 {
+            // Docked: the keyboard runs from its top edge to the bottom.
             occlusion = max(0, screenHeight - end.minY)
         } else {
-            occlusion = end.height
+            occlusion = 0
         }
-        withAnimation(Self.chromeAnimation) {
-            keyboardHeight = occlusion
-        }
+        guard abs(occlusion - keyboardHeight) > 0.5 else { return }
+        // No implicit animation here: this notification can arrive many times
+        // while the keyboard is dragged, and animating every frame compounds
+        // into the stall the report describes.
+        keyboardHeight = occlusion
     }
 
     /// The shell state that belongs to the tab on screen, not to the window.
