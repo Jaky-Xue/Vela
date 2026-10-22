@@ -271,7 +271,9 @@ extension BrowserShellView {
         // that value made the whole page follow the keyboard. The field sits at
         // a stable fraction of the screen and the keyboard is only an overlay.
         let screenHeight = max(safeRectHeight + safeTop + safeBottom, 320)
-        return min(max(120, screenHeight * 0.18), 260)
+        // The root overlay starts at the window's top edge; include the status
+        // bar inset so the field cannot be painted through the clock.
+        return safeTop + min(max(120, screenHeight * 0.18), 260)
     }
 
     /// The search page's list budget, separate from the phone card's.

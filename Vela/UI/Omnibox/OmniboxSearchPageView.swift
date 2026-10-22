@@ -60,10 +60,6 @@ struct OmniboxSearchPageView: View {
                 .zIndex(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        // The page is drawn over the content surface, which can already sit
-        // under the status bar while the top chrome is hidden. Add the safe
-        // inset here so the field can never be drawn through the clock.
-        .safeAreaPadding(.top)
         // The field is painted over whatever page happens to be behind the
         // shell, so a veil over that page would just be the page's colour at
         // 90% opacity. The search page draws the ambient field itself instead,
