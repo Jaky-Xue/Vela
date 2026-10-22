@@ -1050,16 +1050,15 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39730183313](https://github.com/Jaky-Xue/Vela/actions/runs/39730183313)，
-  提交 `382a880`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39734332007](https://github.com/Jaky-Xue/Vela/actions/runs/39734332007)，
+  提交 `51a0305`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。278 项测试；第一次尝试有 4 项 PublicWebSmoke 外网测试超时，
-  `-retry-tests-on-failure` 重跑后通过；xcodebuild 最终 `** TEST SUCCEEDED **`。
-- 本轮新增：浮动键盘不再驱动页面缩放/动画、搜索字段显式宽度与 safe-top、设置顶层五组、
-  通用/外观内部合并相关分区；版本 **3.9.4 (7)**。更早的 3.9.2 包含翻译 405 的 GET/单单元回退。
-- **安装包**：`G:\Vela-unsigned-3.9.4.ipa`
-  - 大小 6,775,510 字节（约 6.5 MiB）
-  - SHA-256 `ffbc623d5baa76063fe7b9ae26fa5175792c099d2d5b044d0484a967689fa039`
+- **Run the unit tests：成功**。277 项测试、0 失败、无重试，`** TEST SUCCEEDED **`。
+- 本轮新增：搜索框位置完全独立于键盘（屏幕高度 18%，120–260pt）、引擎/取消改为 overlay
+  控件、键盘只缩短列表列；版本 **3.9.5 (8)**。
+- **安装包**：`G:\Vela-unsigned-3.9.5.ipa`
+  - 大小 6,775,467 字节（约 6.5 MiB）
+  - SHA-256 `b86d612c6d3b7dc151304a1dd35a51bc55dcbd54f31e2ba6d5911f52ef82510a`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
