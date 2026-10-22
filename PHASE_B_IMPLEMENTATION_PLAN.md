@@ -1050,17 +1050,18 @@ B2 的待办，不声称已经解决。
 
 ## 19. 最终 CI、测试与安装包（2026-10-21）
 
-- 最终运行：[39708794611](https://github.com/Jaky-Xue/Vela/actions/runs/39708794611)，
-  提交 `1b32c56`，Release，`macos-26-intel`，Xcode 26.6。
+- 最终运行：[39719808188](https://github.com/Jaky-Xue/Vela/actions/runs/39719808188)，
+  提交 `da933b2`，Release，`macos-26-intel`，Xcode 26.6。
 - **Build Vela：成功**；IPA 与 dSYM 已上传。
-- **Run the unit tests：成功**。277 项测试；第一次尝试有 1 项既有导航时序测试
-  （`testDesktopModePresentsADesktopIdentifierToThePage`）20 秒超时，
-  `-retry-tests-on-failure` 重跑后通过；xcodebuild 最终 `** TEST SUCCEEDED **`。
-- 本轮完成：搜索页字段 overlay/去玻璃容器、翻译提取覆盖增强、F-07 异步建库、D4 预览编码后台、
-  F-05 私密库错误可见、C4 两个无引用类型删除，并将版本提升为 **3.9.1 (4)**。
+- **Run the unit tests：成功**。277 项测试、0 失败、无重试，
+  xcodebuild 最终 `** TEST SUCCEEDED **`，job 结论 success。
+- 本轮完成：崩溃/MetricKit 诊断、未捕获异常记录、D7 历史后台串行写、D2 单飞与订阅限制、
+  D5 用户脚本快照缓存、R-08 无用度量脚本移除、R-15 私密预览/下载启动清理、R-17 设置备份、
+  R-18 多窗口会话测试、R-23 重定向地址栏、C1 标签状态写入收归 TabManager、
+  搜索页字段 overlay、翻译提取覆盖增强、F-07 异步建库、D4 预览编码后台。
 - **安装包**：`G:\Vela-unsigned-3.9.1.ipa`
-  - 大小 6,754,772 字节（约 6.4 MiB）
-  - SHA-256 `ea7b64e4c83c53fca4874d49fdc0aeb5eb9d7fd96328fb1dd3d03afe2f725e17`
+  - 大小 6,768,581 字节（约 6.5 MiB）
+  - SHA-256 `0cab7738a161722a7010982be6e1e62f0cfa8aa3f676ad305e3c46190845b91f`
   - `CFBundleShortVersionString` 3.9.0，`CFBundleVersion` 3，`org.vela.browser.ios`
   - Mach-O arm64，未签名（供 Sideloadly/AltStore 签名安装）
 - **Runner 说明**：`macos-15`/Xcode 16.4 无法编译该工程，因为
@@ -1287,3 +1288,41 @@ B2 的待办，不声称已经解决。
 - 删除确认无引用的 `SyncProviderId`、`BrowserTabMutationResult`；`AddressBarView.swift` 仍包含在用的
   `BrowserUrlResolver`/`AddressBarRejection`/`ProgressRing`，不能按文件名删除。
 - 版本提升为 **3.9.1 (Build 4)**，避免与之前的 3.9.0 包混淆。
+
+---
+
+## 26. 审计清单收口（2026-10-22）
+
+### 26.1 本轮新增
+
+- **R-08**：删除无人消费的 `pageMetricsReporter` 注入与定义；`pageMetrics` 消息通道只保留给
+  find-in-page 结果。滚动报告与 find 不受影响。
+- **R-09 / D5**：`UserScriptRepository` 缓存 enabled 集合与每个脚本的 GM 值；upsert / setEnabled /
+  remove / setValue / removeValue / removeAllValues 全部失效对应缓存。
+- **R-10 / D2**：广告规则编译单飞；编译中到达的请求合并为一次后续编译；订阅下载限制 2xx 与 20 MB。
+- **R-13 / D7**：历史写入移到串行后台队列；visit id 在入队前生成，下一导航可立即形成链；
+  标题更新与记录同一队列，不会越过插入。
+- **R-15**：启动时若没有私密会话，清理私密下载记录与文件；私密标签预览只进内存缓存，不写磁盘。
+- **R-17**：设置文档写入时保留上一份成功编码的备份；当前文档解码失败时回退到备份。
+- **R-18**：新增 `WindowSessionTests`，验证 `window-main` 与 Stage Manager 会话互不覆盖。
+- **R-23**：地址栏在重定向期间读取 `pendingUrl`，并观察其变化。
+- **R-24 / R-26 / B0**：新增 `CrashDiagnosticsService`：MetricKit 崩溃/卡顿摘要 + 未捕获
+  Objective-C 异常原因；加载诊断页新增“崩溃与卡顿”区，可复制/清除。
+- **C1 / R-20**：`goHome`/`returnToPage`/进度写入统一走 `TabManager.showHome/showPage/updateProgress`；
+  Shell 不再直接写 `tab.url/isHome/estimatedProgress`。
+- **D8**：`SiteIconLoader` 增加全局并发上限 6。
+- **C4**：删除无引用的 `SyncProviderId`、`BrowserTabMutationResult`、0 字节任务文件；
+  更新 PORTING 统计与指向不存在 coordinator 的注释。`AddressBarView.swift` 因仍含在用类型而保留。
+
+### 26.2 仍无法在本环境完成
+
+- **D1 / R-25**：真机性能基线（Instruments Time Profiler/Hangs/Allocations/VM Tracker/SwiftUI）
+  需要设备与 Xcode，不能由 CI 单元测试替代。
+- **D8 真实抓包**、**私密图标第三方请求验证**需要真机网络代理。
+- **F-06 / R-33**：没有 UI 测试 target；UI、旋转、键盘、真机网络、Stage Manager 场景未自动化。
+- **搜索页/翻译 429/识别**：代码已改，但必须由用户在实际设备上确认；CI 只证明编译与单元行为。
+- **C2 目录拆分**：评估后不强行把现有 `Core/<Feature>` 目录改成 `Models/Logic/Runtime`；
+  当前按功能分组更贴近调用方，强行移动只产生路径 churn。
+- **C3 展示动作**：导航动作已统一；sheet/overlay 的“显示哪个界面”仍属于 shell 的视图状态，
+  没有改成单一动作值类型。
+- **R-17**：备份回退只能保住上一份可解码文档；单个字段类型错误仍会让当前文档整体回退。

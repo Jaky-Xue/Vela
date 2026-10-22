@@ -149,6 +149,8 @@
 - **不做**：不引入全局状态容器、不把所有状态改成单向数据流、不重写 `BrowserTabState`。
 - **验收**：`grep` 显示 `tab.url =` 只出现在 coordinator 与 `TabManager`；shell 不再直接写标签的页面状态。
 - **回滚**：方法级改动，可逐个恢复。
+- **状态（2026-10-22）**：`goHome`/`returnToPage`/进度写入收归 `TabManager.showHome/showPage/updateProgress`；
+  shell 的直接标签状态写入已清零。阅读模式仍由 shell 持有视图状态，未抽成窗口级对象。
 
 ### C2：依赖收窄
 
@@ -159,8 +161,8 @@
   3. 评估把 `Core` 明确分为 `Models/Logic/Runtime` 三个子目录（只移动文件，不改类型）。
 - **验收**：`AppEnvironment` 的转发属性数量不增加；coordinator 构造参数减少 3 个。
 - **回滚**：纯删除/移动，易回滚。
-- **状态（2026-10-21）**：已删除 coordinator 的 `bookmarks`/`searchHistory`/`sessionRepository`
-  构造参数（C2 部分）；目录拆分未做。
+- **状态（2026-10-22）**：coordinator 依赖已收窄；目录拆分经评估不采用 `Models/Logic/Runtime`，
+  保留现有 `Core/<Feature>` 分组（按功能划分更贴近调用方），本次不作为未完成项。
 
 ### C3：导航动作与私密路由去重
 
@@ -182,8 +184,9 @@
   的数字与分层描述；删除 0 字节任务文件或补内容。
 - **验收**：全仓库检索这些符号为 0；文档数字与 `find/wc` 一致。
 - **回滚**：删除前用 `git revert` 单提交恢复。
-- **状态（2026-10-21）**：仅完成 `clearTabChain` 接入关闭清理；删除 `AddressBarView.swift` 导致
-  `AddressBarRejection`/`BrowserUrlResolver` 缺失、CI 编译失败，文件已恢复；它并非死代码（仍含 `BrowserUrlResolver` 等），该项本身应撤销。其余未做。
+- **状态（2026-10-22）**：`clearTabChain` 已接入；删除无引用 `SyncProviderId`/`BrowserTabMutationResult`/
+  0 字节任务文件；PORTING 统计和不存在 coordinator 的注释已更新。`AddressBarView.swift` 仍含在用
+  `BrowserUrlResolver`/`AddressBarRejection`/`ProgressRing`，按设计保留。
 
 ### 阶段 C 的完成标准
 
@@ -217,8 +220,8 @@
 - **验收**：编译期间主线程无 >100ms 的 hang（以 Hangs 工具为准）；规则结果与改前逐条一致
   （现有 `AdBlockContentRuleCompilationTests` 保证）；开关快速切换只产生一次最终编译。
 - **回滚**：线程迁移与合并可分别回滚。
-- **状态（2026-10-21）**：纯解析/编码已移入 `Task.detached`（D2 部分）；单飞/合并与真实 Hangs
-  测量未做（D1 未做，无法给出主线程 hang 数字）。
+- **状态（2026-10-22）**：纯解析/编码后台；`refreshAdBlockRules` 单飞合并；订阅下载限制 2xx/20MB。
+  真实 Hangs 测量仍未做。
 
 ### D3：预览图编码移出主线程
 
@@ -240,7 +243,7 @@
 - **对应**：R-09。**做什么**：去掉 `beginNavigation` 的重复装配；`UserScriptService` 缓存启用集合与 GM 值。
 - **验收**：一次导航只装配一次；脚本安装/编辑后下一次导航立即生效（现有测试覆盖）。
 - **回滚**：恢复第二次装配与直接查询。
-- **状态（2026-10-21）**：已删除 `beginNavigation` 的重复装配；快照缓存未做。
+- **状态（2026-10-22）**：重复装配删除；仓库缓存 enabled 集合与 GM 值并在所有写路径失效。
 
 ### D6：进度更新与外壳重算解耦
 
@@ -254,6 +257,7 @@
 - **对应**：R-13。**做什么**：串行后台队列写历史；保持“先 record、后 updateTitle”的顺序。
 - **验收**：导航到 `didStartProvisional` 的时间不因历史量增长而增长；历史列表内容一致。
 - **回滚**：恢复同步。
+- **状态（2026-10-22）**：已实施串行后台队列；visit id 入队前生成，标题更新同队列；未做真机计时。
 
 ### D8：图标请求收敛与私密外发（建议提前到 B7）
 
@@ -262,8 +266,8 @@
 - **验收**：私密模式下打开总览/侧栏，网络请求中不出现标签页 host 的第三方图标请求；
   普通模式总览首屏请求数有上限；失败站点不重复请求。
 - **回滚**：缓存策略独立。
-- **状态（2026-10-22）**：`SiteIconLoader` actor 合并并发请求，失败 URL 负缓存 15 分钟（上限 256）；
-  私密候选过滤保持；未做真实抓包。
+- **状态（2026-10-22）**：`SiteIconLoader` 合并并发请求、失败 URL 负缓存 15 分钟（上限 256）、
+  全局并发上限 6；私密候选过滤保持；未做真实抓包。
 
 ---
 
