@@ -1394,8 +1394,14 @@ B2 的待办，不声称已经解决。
   同时模拟 `document.fullscreenElement`/WebKit 别名和 `fullscreenchange` 事件。
   WebKit 内联控件自带的原生全屏按钮无法在 JS 层拦截，改为监听 `webkitbeginfullscreen`，
   关闭原生呈现后立刻进入自建播放器。
-- 容器全屏（站点自己的播放器 UI）保留站点控制条，原生层只提供退出按钮；
-  `<video>` 全屏使用自建控制层：播放/暂停、±10 秒、进度条、时间、静音、退出，自动隐藏。
+- 优先提升站点自己的播放器容器（`#movie_player`、`.html5-video-player`、`.bpx-player-container`
+  等，或 id/class 含 player 的近层容器），保留站点控制条；原生层只提供退出按钮。
+  只有找不到播放器容器的裸 `<video>` 才使用自建控制层：播放/暂停、±10 秒、进度条、时间、
+  静音、退出，自动隐藏。
+- 提升前暂时解除祖先元素上会创建 fixed 包含块的 `transform`/`filter`/`perspective`/
+  `contain`/`will-change`，退出时逐项恢复，避免视频被困在原来的播放器框里。
+- 进入后的 0/80/300/900/1800 ms 会重申布局并对容器播放器派发 `resize`，
+  覆盖站点播放器在原生全屏收尾时重置样式、或替换 `<video>` 元素的情况。
 - 跨域 iframe 内的播放器由子 frame 自行铺满，再由主文档把对应 iframe 元素放大到视口；
   退出时通过 `postMessage` 通知所有子 frame 还原。
 - 脚本控制面：`window.__velaPlayer` 提供 `enter`/`exit`/`command`/`video`/`state`/

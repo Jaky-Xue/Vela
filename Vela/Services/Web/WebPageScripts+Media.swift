@@ -387,12 +387,20 @@ extension WebPageScripts {
     /// its `webkitbeginfullscreen` event is caught instead, the native
     /// presentation is closed, and the same promotion runs a moment later.
     ///
-    /// A page that fullscreens a container rather than the video element
-    /// keeps its own chrome: the container is what is promoted, so the
-    /// site's progress bar, settings menu and captions come along. The host
-    /// then shows only a way out. A bare video gets the host's controls
-    /// instead, and WebKit's inline controls are stood down for the length
-    /// of the presentation and restored exactly as they were.
+    /// The player container is what gets promoted whenever one can be found,
+    /// including when the page asked for fullscreen on the bare video: the
+    /// container carries the site's progress bar, settings menu and captions,
+    /// and it survives a player that replaces or re-lays-out the video during
+    /// the transition. The host then shows only a way out. A video with no
+    /// player wrapper gets the host's controls instead, and WebKit's inline
+    /// controls are stood down for the length of the presentation and
+    /// restored exactly as they were.
+    ///
+    /// A fixed element is still positioned relative to any ancestor that
+    /// creates a containing block — a transform, a filter, `contain` — so the
+    /// ancestor chain is lifted for the length of the presentation and put
+    /// back on the way out. A few delayed re-applies cover a native
+    /// fullscreen teardown or a site layout that lands after the promotion.
     ///
     /// A player inside a cross-origin frame cannot be promoted from inside
     /// that frame — fixed positioning is relative to the frame's own
@@ -425,6 +433,7 @@ extension WebPageScripts {
       var overlayStyle = null;
       var promotedFrame = null;
       var savedFrame = null;
+      var savedAncestors = [];
       var nativeTakeoverVideo = null;
       var lastStateAt = 0;
 
@@ -488,6 +497,19 @@ extension WebPageScripts {
         'display': 'block'
       };
 
+      // Properties that make an ancestor the containing block for a fixed
+      // descendant. A player is often wrapped in one of them, which is why a
+      // promoted element can stay trapped in its old box. The values are the
+      // documented containing-block creators; each is restored on exit.
+      var ancestorLiftStyles = {
+        'transform': 'none',
+        'filter': 'none',
+        'perspective': 'none',
+        'backdrop-filter': 'none',
+        'contain': 'none',
+        'will-change': 'auto'
+      };
+
       function post(payload) {
         try {
           if (window.webkit && window.webkit.messageHandlers &&
@@ -516,6 +538,51 @@ extension WebPageScripts {
           if (!hosts[i].shadowRoot) { continue; }
           var nested = findVideo(hosts[i].shadowRoot);
           if (nested) { return nested; }
+        }
+        return null;
+      }
+
+      // A site's player is a container around the video: its chrome, its caption
+      // layer, the element its own layout sizes. Promoting the container rather
+      // than the bare video is what survives a player that replaces or re-lays-out
+      // the video during the fullscreen transition. A video with no such wrapper
+      // keeps the host's controls.
+      function playerContainerFor(video) {
+        if (!video || !video.closest) { return null; }
+        var selectors = [
+          '.html5-video-player',
+          '#movie_player',
+          '.bpx-player-container',
+          '.bpx-player-video-wrap',
+          '.video-js',
+          '.vjs-player',
+          '.plyr',
+          '.jwplayer',
+          '.dplayer',
+          '.artplayer',
+          '.prism-player',
+          '.xgplayer',
+          '.vp-player',
+          '.vimeo-player',
+          '[data-player]',
+          '.video-player',
+          '.player-container'
+        ];
+        for (var i = 0; i < selectors.length; i++) {
+          var found = video.closest(selectors[i]);
+          if (found && found !== document.body && found !== document.documentElement) {
+            return found;
+          }
+        }
+        var node = video.parentElement;
+        for (var depth = 0; node && depth < 4 && node !== document.body; depth++) {
+          var marker = '';
+          try { marker = String(node.id || ''); } catch (error) {}
+          try {
+            marker += ' ' + String(typeof node.className === 'string' ? node.className : '');
+          } catch (error) {}
+          if (marker.toLowerCase().indexOf('player') !== -1) { return node; }
+          node = node.parentElement;
         }
         return null;
       }
@@ -556,8 +623,27 @@ extension WebPageScripts {
         }
       }
 
+      function currentVideo() {
+        if (activeVideo && activeVideo.isConnected) { return activeVideo; }
+        var replacement = null;
+        if (activeElement && activeElement !== activeVideo) {
+          replacement = findVideo(activeElement);
+        }
+        if (!replacement || !replacement.isConnected || replacement === activeVideo) {
+          // A bare video that the site replaced. The new one is the page's video;
+          // the host's controls should follow it even if it is no longer the
+          // element that received the fullscreen request.
+          replacement = document.querySelector('video');
+        }
+        if (replacement) {
+          activeVideo = replacement;
+          bindVideo(replacement);
+        }
+        return activeVideo;
+      }
+
       function videoState() {
-        var video = activeVideo;
+        var video = currentVideo();
         var duration = 0;
         try { duration = (video && isFinite(video.duration)) ? video.duration : 0; } catch (error) {}
         return {
@@ -623,6 +709,46 @@ extension WebPageScripts {
         video.addEventListener('timeupdate', onTimeUpdate, true);
       }
 
+      function liftAncestors(element) {
+        savedAncestors = [];
+        var node = element ? element.parentElement : null;
+        while (node && node !== document.body && node !== document.documentElement) {
+          var computed = null;
+          try { computed = getComputedStyle(node); } catch (error) {}
+          if (computed) {
+            var willChange = String(computed.willChange || '');
+            var createsContainingBlock =
+              (computed.transform && computed.transform !== 'none') ||
+              (computed.filter && computed.filter !== 'none') ||
+              (computed.perspective && computed.perspective !== 'none') ||
+              (computed.backdropFilter && computed.backdropFilter !== 'none') ||
+              (computed.contain && computed.contain !== 'none') ||
+              willChange.indexOf('transform') !== -1 ||
+              willChange.indexOf('filter') !== -1 ||
+              willChange.indexOf('perspective') !== -1 ||
+              willChange.indexOf('contain') !== -1;
+            if (createsContainingBlock) {
+              savedAncestors.push({ node: node, saved: save(node, ancestorLiftStyles) });
+              apply(node, ancestorLiftStyles);
+            }
+          }
+          node = node.parentElement;
+        }
+      }
+
+      function reapplyAncestorLift() {
+        for (var i = 0; i < savedAncestors.length; i++) {
+          apply(savedAncestors[i].node, ancestorLiftStyles);
+        }
+      }
+
+      function restoreAncestors() {
+        for (var i = savedAncestors.length - 1; i >= 0; i--) {
+          restore(savedAncestors[i].node, savedAncestors[i].saved);
+        }
+        savedAncestors = [];
+      }
+
       function enter(element, video, reason) {
         if (active) { exit('replaced', true); }
         if (!element) { return false; }
@@ -644,6 +770,7 @@ extension WebPageScripts {
           savedElement = save(target, containerStyles);
           apply(target, containerStyles);
         }
+        liftAncestors(target);
 
         savedRoot = save(document.documentElement, { 'overflow': 'hidden' });
         apply(document.documentElement, { 'overflow': 'hidden' });
@@ -657,7 +784,7 @@ extension WebPageScripts {
         overlayStyle = document.createElement('style');
         overlayStyle.setAttribute('data-vela-media-player', '');
         overlayStyle.textContent =
-          '[data-vela-media-fullscreen] video{max-width:100%!important;max-height:100%!important;}' +
+          '[data-vela-media-fullscreen="container"] video{max-width:100vw!important;max-height:100vh!important;}' +
           '[data-vela-media-fullscreen="video"]::-webkit-media-controls{display:none!important;}';
         try { (document.head || document.documentElement).appendChild(overlayStyle); } catch (error) {}
 
@@ -698,7 +825,40 @@ extension WebPageScripts {
         try { targetVideo.dispatchEvent(new Event('webkitbeginfullscreen')); } catch (error) {}
         try { targetVideo.dispatchEvent(new Event('webkitpresentationmodechanged')); } catch (error) {}
         emit('enter');
+        reassertStyles();
         return true;
+      }
+
+      function applyActiveStyles() {
+        if (!active || !activeElement) { return; }
+        if (mode === 'video') {
+          apply(activeElement, videoStyles);
+          if (activeVideo) {
+            try { activeVideo.controls = false; } catch (error) {}
+          }
+        } else {
+          apply(activeElement, containerStyles);
+        }
+      }
+
+      // A native presentation that is closing can restore the page's layout after
+      // this script has already applied its own, and a site's player can resize
+      // the video only after it notices the container changed. A few re-applies
+      // cover both, and stop as soon as the user leaves.
+      function reassertStyles() {
+        var delays = [0, 80, 300, 900, 1800];
+        for (var i = 0; i < delays.length; i++) {
+          (function (delay) {
+            setTimeout(function () {
+              if (!active) { return; }
+              applyActiveStyles();
+              reapplyAncestorLift();
+              if (mode === 'container') {
+                try { window.dispatchEvent(new Event('resize')); } catch (error) {}
+              }
+            }, delay);
+          })(delays[i]);
+        }
       }
 
       function exit(reason, silent) {
@@ -708,6 +868,7 @@ extension WebPageScripts {
 
         active = false;
         restore(element, savedElement);
+        restoreAncestors();
         restore(document.documentElement, savedRoot);
         if (document.body) { restore(document.body, savedBody); }
         if (overlayStyle && overlayStyle.parentNode) {
@@ -764,7 +925,7 @@ extension WebPageScripts {
           broadcastCommand(name, value);
           return false;
         }
-        var video = activeVideo;
+        var video = currentVideo();
         try {
           if (name === 'play' && video) {
             var attempt = video.play();
@@ -814,14 +975,24 @@ extension WebPageScripts {
         return false;
       }
 
+      function enterBest(element, reason) {
+        if (!element) { return false; }
+        if (element.tagName === 'VIDEO') {
+          var container = playerContainerFor(element);
+          if (container) { return enter(container, element, reason); }
+          return enter(element, element, reason);
+        }
+        var video = findVideo(element);
+        if (!video) { return false; }
+        return enter(element, video, reason);
+      }
+
       function requestFrom(element) {
         if (!element) { return false; }
         // A page that makes the whole document fullscreen is not asking for a
         // player; leave that to WebKit's element presentation.
         if (element === document.body || element === document.documentElement) { return false; }
-        var video = findVideo(element);
-        if (!video) { return false; }
-        return enter(element, video, 'page');
+        return enterBest(element, 'page');
       }
 
       var nativeRequestFullscreen = Element.prototype.requestFullscreen;
@@ -844,14 +1015,14 @@ extension WebPageScripts {
       var videoProto = window.HTMLVideoElement && HTMLVideoElement.prototype;
       if (videoProto && typeof videoProto.webkitEnterFullscreen === 'function') {
         videoProto.webkitEnterFullscreen = function () {
-          enter(this, this, 'page');
+          requestFrom(this);
         };
       }
       if (videoProto && typeof videoProto.webkitSetPresentationMode === 'function') {
         var nativePresentationMode = videoProto.webkitSetPresentationMode;
         videoProto.webkitSetPresentationMode = function (nextMode) {
           if (nextMode === 'fullscreen') {
-            enter(this, this, 'page');
+            requestFrom(this);
             return;
           }
           if (nextMode === 'inline' && active && activeVideo === this) {
@@ -1089,9 +1260,7 @@ extension WebPageScripts {
         enter: function (element) {
           var target = element || document.querySelector('video');
           if (!target) { return false; }
-          var video = findVideo(target);
-          if (!video) { return false; }
-          return enter(target, video, 'script');
+          return enterBest(target, 'script');
         },
         exit: function () {
           if (active) { return exit('script'); }

@@ -143,11 +143,11 @@ public struct ElementPickResult: Identifiable, Sendable {
 /// and lets the site's own JavaScript stay in charge.
 public struct MediaFullscreenSession: Identifiable, Equatable, Sendable {
     public enum Mode: String, Sendable {
-        /// The page fullscreened the bare `<video>`; the host draws controls.
+        /// A bare `<video>` with no player wrapper: the host draws controls.
         case video
-        /// The page fullscreened a player container, which carries its own
-        /// chrome — progress bar, settings, captions. The host only offers a
-        /// way out.
+        /// A player container — the page's own, or the wrapper the injected
+        /// script found around the video — which carries its own chrome:
+        /// progress bar, settings, captions. The host only offers a way out.
         case container
     }
 
