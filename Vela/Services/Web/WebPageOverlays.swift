@@ -53,6 +53,13 @@ public final class WebPageOverlays {
     /// when the page navigates, because the functions live in that document.
     public var userScriptMenuCommands: [UserScriptMenuCommand] = []
 
+    /// The fullscreen video presentation in progress, if any.
+    ///
+    /// The page owns the media element and its own controls; this value is
+    /// what the shell draws over the promoted video, and what it sends
+    /// playback commands back through. `nil` means no presentation.
+    public var mediaFullscreen: MediaFullscreenSession?
+
     /// `alert` / `confirm` / `prompt` completion handlers.
     ///
     /// WebKit blocks the page on these, so the handler is held until the user
@@ -124,6 +131,151 @@ public struct ElementPickResult: Identifiable, Sendable {
     public var tagName: String = ""
     /// A short text preview from the element, for the same reason.
     public var textPreview: String = ""
+}
+
+/// A fullscreen video presentation the page asked for.
+///
+/// A value rather than a controller. The page keeps the `<video>` element and
+/// the player around it; the app promotes that element to the viewport and
+/// draws its own controls over it. Everything this type carries is reported by
+/// the page, and every control the host shows is sent back as a
+/// `MediaPlayerCommand`, which is what keeps the app out of the media pipeline
+/// and lets the site's own JavaScript stay in charge.
+public struct MediaFullscreenSession: Identifiable, Equatable, Sendable {
+    public enum Mode: String, Sendable {
+        /// The page fullscreened the bare `<video>`; the host draws controls.
+        case video
+        /// The page fullscreened a player container, which carries its own
+        /// chrome — progress bar, settings, captions. The host only offers a
+        /// way out.
+        case container
+    }
+
+    public let tabId: String
+    public var mode: Mode
+    public var title: String
+    public var duration: Double
+    public var currentTime: Double
+    public var isPaused: Bool
+    public var isMuted: Bool
+    public var volume: Double
+    public var isEnded: Bool
+    public var isReady: Bool
+    public var canSeek: Bool
+    /// True when the page itself asked. A frame's request needs the top
+    /// document to promote the frame element as well.
+    public var isMainFrame: Bool
+
+    public var id: String { tabId }
+
+    public init(
+        tabId: String,
+        mode: Mode,
+        title: String,
+        duration: Double = 0,
+        currentTime: Double = 0,
+        isPaused: Bool = true,
+        isMuted: Bool = false,
+        volume: Double = 1,
+        isEnded: Bool = false,
+        isReady: Bool = false,
+        canSeek: Bool = false,
+        isMainFrame: Bool = true
+    ) {
+        self.tabId = tabId
+        self.mode = mode
+        self.title = title
+        self.duration = duration
+        self.currentTime = currentTime
+        self.isPaused = isPaused
+        self.isMuted = isMuted
+        self.volume = volume
+        self.isEnded = isEnded
+        self.isReady = isReady
+        self.canSeek = canSeek
+        self.isMainFrame = isMainFrame
+    }
+
+    /// Builds a session from the page's `enter` message.
+    public init?(tabId: String, payload: [String: Any], fallbackTitle: String, isMainFrame: Bool) {
+        guard (payload["event"] as? String) == "enter" else { return nil }
+        let mode = Mode(rawValue: payload["mode"] as? String ?? "video") ?? .video
+        let duration = Self.sanitizedNumber(payload["duration"])
+        self.init(
+            tabId: tabId,
+            mode: mode,
+            title: Self.sanitizedTitle(payload["title"] as? String ?? "", fallback: fallbackTitle),
+            duration: duration,
+            currentTime: Self.clampedTime(
+                Self.sanitizedNumber(payload["currentTime"]),
+                duration: duration
+            ),
+            isPaused: Self.flag(payload["paused"]),
+            isMuted: Self.flag(payload["muted"]),
+            volume: min(max(0, Self.sanitizedNumber(payload["volume"])), 1),
+            isReady: Self.sanitizedNumber(payload["readyState"]) >= 2,
+            canSeek: Self.flag(payload["canSeek"]),
+            isMainFrame: isMainFrame
+        )
+    }
+
+    /// Applies a `state` message. Returns false for anything else, so a stale
+    /// report from a page that has already left cannot overwrite this one.
+    @discardableResult
+    public mutating func applyState(_ payload: [String: Any]) -> Bool {
+        guard (payload["event"] as? String) == "state" else { return false }
+        let nextDuration = Self.sanitizedNumber(payload["duration"])
+        if nextDuration > 0 { duration = nextDuration }
+        let reportedTime = Self.sanitizedNumber(payload["currentTime"])
+        currentTime = Self.clampedTime(reportedTime, duration: duration)
+        isPaused = Self.flag(payload["paused"])
+        isMuted = Self.flag(payload["muted"])
+        volume = min(max(0, Self.sanitizedNumber(payload["volume"])), 1)
+        isEnded = Self.flag(payload["ended"])
+        isReady = Self.sanitizedNumber(payload["readyState"]) >= 2
+        canSeek = Self.flag(payload["canSeek"])
+        return true
+    }
+
+    /// A live stream has no duration, so its elapsed time must not be clamped
+    /// to zero with it. A finite film is clamped to its own length.
+    private static func clampedTime(_ value: Double, duration: Double) -> Double {
+        let time = max(0, value)
+        return duration > 0 ? min(time, duration) : time
+    }
+
+    private static func sanitizedNumber(_ value: Any?) -> Double {
+        let number: Double
+        if let value = value as? NSNumber { number = value.doubleValue }
+        else if let value = value as? Double { number = value }
+        else if let value = value as? Int { number = Double(value) }
+        else { number = 0 }
+        return number.isFinite ? number : 0
+    }
+
+    private static func flag(_ value: Any?) -> Bool {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
+        return false
+    }
+
+    private static func sanitizedTitle(_ raw: String, fallback: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = trimmed.isEmpty ? fallback.trimmingCharacters(in: .whitespacesAndNewlines) : trimmed
+        return String(value.prefix(120))
+    }
+}
+
+/// A playback command the shell sends to the page's own player.
+public enum MediaPlayerCommand: Sendable {
+    case play
+    case pause
+    case togglePlay
+    case seek(Double)
+    case skip(Double)
+    case setMuted(Bool)
+    case setVolume(Double)
+    case exit
 }
 
 /// The find bar's position in the page's matches.

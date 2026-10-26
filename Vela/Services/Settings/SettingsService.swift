@@ -110,6 +110,22 @@ public final class SettingsService {
         self.appearanceMode = defaults.string(forKey: Key.appearanceMode)
             .flatMap(AppearanceMode.init(rawValue:)) ?? .system
 
+        // 联网搜索推荐 had no switch before 3.9.9, so a stored `false` can only
+        // be the old shipped default. Turn it on once; from then on the switch
+        // in 设置 ▸ 搜索引擎 is the user's own choice.
+        let remoteKey = "org.vela.browser.remote-suggestions-defaulted"
+        if !defaults.bool(forKey: remoteKey) {
+            defaults.set(true, forKey: remoteKey)
+            if !preferences.searchEngine.searchSuggestions.remoteEnabled {
+                var migrated = preferences
+                migrated.searchEngine.searchSuggestions.remoteEnabled = true
+                preferences = migrated
+                // Property observers do not run for an assignment made in an
+                // initializer, so the migration writes its result explicitly.
+                persistPreferences()
+            }
+        }
+
         // The history repository reads this key directly during its prune pass,
         // so the retention window is mirrored where the write path can see it.
         defaults.set(preferences.historyRetentionDays, forKey: "org.vela.browser.history-retention-days")

@@ -55,7 +55,16 @@ struct OmniboxSuggestionEngine {
     }
 
     /// The full list, in priority order.
-    func suggestions(for rawInput: String, privacyMode: BrowserSessionPrivacyMode) -> [OmniboxSuggestion] {
+    ///
+    /// `remoteSuggestions` are the engine's 联网搜索推荐 rows, already fetched
+    /// and sanitised. They belong to the search section, after the row for the
+    /// text the user actually typed: return still does the predictable thing,
+    /// and a recommendation is one tap away.
+    func suggestions(
+        for rawInput: String,
+        privacyMode: BrowserSessionPrivacyMode,
+        remoteSuggestions: [String] = []
+    ) -> [OmniboxSuggestion] {
         // The master switch of the 搜索建议 section: off, the omnibox offers
         // nothing at all rather than a list that ignores part of its own
         // settings — the idle list included.
@@ -181,6 +190,25 @@ struct OmniboxSuggestionEngine {
             )
         )
 
+        // 6b. 联网搜索推荐. After the exact-query row, because that row is the
+        // one return resolves and must not be displaced by a suggestion.
+        for (index, raw) in remoteSuggestions.enumerated() {
+            let title = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty,
+                  title.compare(input, options: .caseInsensitive) != .orderedSame else { continue }
+            guard seen.insert("remote:\(title.lowercased())").inserted else { continue }
+            results.append(
+                OmniboxSuggestion(
+                    id: "remote:\(engine.id):\(index)",
+                    kind: .search(engineId: engine.id),
+                    title: title,
+                    subtitle: "联网搜索推荐",
+                    host: "",
+                    completion: title
+                )
+            )
+        }
+
         return results
     }
 
@@ -211,8 +239,16 @@ struct OmniboxSuggestionEngine {
 
     /// Groups the list by section, dropping empty sections and preserving the
     /// priority order of `OmniboxSection.allCases`.
-    func groups(for rawInput: String, privacyMode: BrowserSessionPrivacyMode) -> [OmniboxSuggestionGroup] {
-        let all = suggestions(for: rawInput, privacyMode: privacyMode)
+    func groups(
+        for rawInput: String,
+        privacyMode: BrowserSessionPrivacyMode,
+        remoteSuggestions: [String] = []
+    ) -> [OmniboxSuggestionGroup] {
+        let all = suggestions(
+            for: rawInput,
+            privacyMode: privacyMode,
+            remoteSuggestions: remoteSuggestions
+        )
         guard !all.isEmpty else { return [] }
 
         return OmniboxSection.allCases.compactMap { section in
@@ -308,8 +344,12 @@ public final class OmniboxViewModel {
     private let searchHistory: SearchHistoryRepository
     private let history: HistoryService
     private let tabManager: TabManager
+    private let suggestionClient: any SearchSuggestionProviding
 
     private var refreshTask: Task<Void, Never>?
+    /// The 联网搜索推荐 request in flight. Cancelled on every new keystroke and
+    /// when the session ends, so a slow answer cannot land on a newer query.
+    private var remoteTask: Task<Void, Never>?
     /// False until the first non-empty input arrives, so the idle list is shown
     /// the instant the field focuses rather than after a debounce.
     private var hasLoadedOnce = false
@@ -326,12 +366,19 @@ public final class OmniboxViewModel {
     /// view, and one owner is better than two.
     private static let collapseKey = "org.vela.browser.omnibox-collapsed-sections"
 
-    init(settings: SettingsService, history: HistoryService, bookmarks: BookmarkService,
-         searchHistory: SearchHistoryRepository, tabManager: TabManager) {
+    init(
+        settings: SettingsService,
+        history: HistoryService,
+        bookmarks: BookmarkService,
+        searchHistory: SearchHistoryRepository,
+        tabManager: TabManager,
+        suggestionClient: (any SearchSuggestionProviding)? = nil
+    ) {
         self.settings = settings
         self.history = history
         self.searchHistory = searchHistory
         self.tabManager = tabManager
+        self.suggestionClient = suggestionClient ?? SearchSuggestionClient()
         self.engine = OmniboxSuggestionEngine(
             settings: settings,
             history: history,
@@ -372,6 +419,8 @@ public final class OmniboxViewModel {
         isEditing = false
         refreshTask?.cancel()
         refreshTask = nil
+        remoteTask?.cancel()
+        remoteTask = nil
         groups = []
         visibleSuggestions = []
         highlightedId = nil
@@ -554,8 +603,62 @@ public final class OmniboxViewModel {
 
         let privacyMode = tabManager.activeTab?.privacyMode ?? .regular
         activePrivacyMode = privacyMode
+        remoteTask?.cancel()
+        remoteTask = nil
         groups = engine.groups(for: input, privacyMode: privacyMode)
         rebuildVisibleSuggestions()
+        startRemoteSuggestions(for: input, privacyMode: privacyMode)
+    }
+
+    /// Starts the 联网搜索推荐 request for the text now in the field.
+    ///
+    /// One debounce longer than the local pass, because the network is the
+    /// slow half and a fast typist's intermediate strings are not worth a
+    /// request. The guards are the privacy contract: the switch must be on, the
+    /// tab must be regular, and a URL the user typed is never sent to a search
+    /// engine. A custom engine has no endpoint in the table and simply gets no
+    /// recommendations.
+    private func startRemoteSuggestions(for input: String, privacyMode: BrowserSessionPrivacyMode) {
+        let query = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let preferences = settings.preferences.searchEngine.searchSuggestions
+        guard preferences.remoteEnabled,
+              preferences.regularEnabled,
+              privacyMode != .private,
+              !query.isEmpty,
+              BrowserUrlResolver.resolveDirectUrl(query) == nil else { return }
+
+        let engineRecord = settings.preferences.searchEngine.activeEngine
+        guard SearchSuggestionProvider(engineId: engineRecord.id) != nil else { return }
+
+        remoteTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled, let self else { return }
+
+            let words = await self.suggestionClient.suggestions(
+                for: query,
+                engineId: engineRecord.id
+            )
+            guard !Task.isCancelled, let self else { return }
+
+            // The session can move on while a request is in flight: the user
+            // types, switches engines, switches tabs into a private one, or
+            // closes the omnibox. Only the answer to the query on screen may
+            // be applied.
+            guard self.isEditing,
+                  self.text.trimmingCharacters(in: .whitespacesAndNewlines) == query,
+                  self.settings.preferences.searchEngine.activeEngine.id == engineRecord.id,
+                  self.settings.preferences.searchEngine.searchSuggestions.remoteEnabled,
+                  (self.tabManager.activeTab?.privacyMode ?? .regular) == privacyMode else {
+                return
+            }
+
+            self.groups = self.engine.groups(
+                for: input,
+                privacyMode: privacyMode,
+                remoteSuggestions: words
+            )
+            self.rebuildVisibleSuggestions()
+        }
     }
 
     // MARK: - Collapse persistence

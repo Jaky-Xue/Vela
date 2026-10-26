@@ -1369,3 +1369,38 @@ B2 的待办，不声称已经解决。
 - 设置内部：通用合并“页面显示与缩放”；外观合并“背景”；顶层五组按用途排列。
 
 > 说明：`Translation` 框架的离线语言包首次使用需要系统下载；这一步依赖网络，但不依赖 Google/VPN。
+
+## 28. 联网搜索推荐与自建全屏播放器（2026-10-26）
+
+### 28.1 联网搜索推荐
+
+- 新增 `SearchSuggestionClient`：边输入边向当前搜索引擎请求建议，结果并入搜索页的“搜索”分区，
+  排在“用 X 搜索”一行之后；回车仍只搜索输入框里的原文。
+- 端点表覆盖 Bing、Google、DuckDuckGo、百度、360、搜狗、神马、Yandex；没有端点的引擎
+  （例如自定义引擎、Startpage、Ecosia）只显示本地建议，不会拼一个不存在的 URL。
+- 响应解析兼容四类形状：`[query, [建议]]`、JSONP 回调包住的同款数组、百度的 `{s:[...]}`、
+  360 的 `{result:[{word:...}]}`；百度/搜狗的 GBK 响应按响应头字符集解码。
+- 隐私边界：无痕标签页始终不联网取建议；输入本身能被解析成网址时也不发送。
+  设置 ▸ 搜索引擎 ▸ 搜索建议新增“联网搜索推荐”开关，默认开启；
+  旧版本没有这个开关，升级时一次性把旧的 `false` 视为默认值并打开，之后尊重用户选择。
+- 请求有 180 ms 间隔、5 分钟内存缓存和 1.6 s 超时；任何失败都静默回退到本地列表。
+
+### 28.2 自建全屏播放器（脚本可接管）
+
+- 移除 `fullscreenBridge` 对系统原生播放器的跳转与字幕镜像逻辑；新增
+  `WebPageScripts.mediaPlayerScript`，把含视频的元素用 fixed 定位铺满视口，
+  页面自己的播放器、字幕和 JavaScript 继续运行。
+- 接管三条入口：`requestFullscreen`、`webkitRequestFullscreen`、`video.webkitEnterFullscreen`；
+  同时模拟 `document.fullscreenElement`/WebKit 别名和 `fullscreenchange` 事件。
+  WebKit 内联控件自带的原生全屏按钮无法在 JS 层拦截，改为监听 `webkitbeginfullscreen`，
+  关闭原生呈现后立刻进入自建播放器。
+- 容器全屏（站点自己的播放器 UI）保留站点控制条，原生层只提供退出按钮；
+  `<video>` 全屏使用自建控制层：播放/暂停、±10 秒、进度条、时间、静音、退出，自动隐藏。
+- 跨域 iframe 内的播放器由子 frame 自行铺满，再由主文档把对应 iframe 元素放大到视口；
+  退出时通过 `postMessage` 通知所有子 frame 还原。
+- 脚本控制面：`window.__velaPlayer` 提供 `enter`/`exit`/`command`/`video`/`state`/
+  `promoteFrame`/`releaseFrame`；`document` 派发 `velaplayerenter`、`velaplayerstate`、
+  `velaplayerexit` 事件，用户脚本可以接管播放与退出。
+- 原生侧 `MediaPlayerOverlay` 是 shell 根部的层，不是 presented controller；
+  播放期间隐藏命令栏、iPad 顶栏、书签栏与内容 inset，页面铺满全屏。
+- 版本提升为 **3.9.9 (Build 12)**。

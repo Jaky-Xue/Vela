@@ -404,6 +404,13 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         // document is being replaced.
         overlays.userScriptMenuCommands.removeAll { $0.tabId == tab.id }
 
+        // The player belongs to the document that opened it. A navigation
+        // replaces that document, so the host layer goes with it; the page's
+        // own unload also restores the styles it took over.
+        if overlays.mediaFullscreen?.tabId == tab.id {
+            overlays.mediaFullscreen = nil
+        }
+
         let serial = nextNavigationSerial
         nextNavigationSerial += 1
         let url = webView.url?.absoluteString ?? tab.pendingUrl

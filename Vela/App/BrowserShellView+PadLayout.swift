@@ -19,7 +19,7 @@ extension BrowserShellView {
         VStack(spacing: 0) {
             // The search page carries its own field; leaving the top bar in
             // place would put two address fields on screen.
-            if !omnibox.isEditing, novelSession == nil {
+            if !omnibox.isEditing, novelSession == nil, env.overlays.mediaFullscreen == nil {
                 padTopBar
                     .frame(height: chromeHidden ? 0 : Self.padTopBarHeight, alignment: .top)
                     .clipped()
@@ -30,7 +30,7 @@ extension BrowserShellView {
 
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
-                    if !omnibox.isEditing, novelSession == nil {
+                    if !omnibox.isEditing, novelSession == nil, env.overlays.mediaFullscreen == nil {
                         BookmarksBarView(
                             onNavigate: { url in
                                 navigate(to: url, in: submissionTab)
@@ -358,6 +358,10 @@ extension BrowserShellView {
                     // strip shows the surface colour, so the page never paints
                     // there at all.
                     let protectsTop = env.settings.preferences.topProtectionEnabled
+                    // The player owns the screen: no status-bar strip, no
+                    // command-bar clearance, no iPad column chrome. The page
+                    // itself has promoted the video to the viewport.
+                    let playerActive = env.overlays.mediaFullscreen?.tabId == tab.id
                     WebViewHost(
                         webView: webView,
                         // The status bar's height, so the page's own first
@@ -365,9 +369,9 @@ extension BrowserShellView {
                         // clock — while still scrolling underneath, the way
                         // Safari's does. A reserved strip makes the page start
                         // at its own top, so the inset drops to zero there.
-                        topContentInset: usesPadLayout ? 0 : (protectsTop ? 0 : safeTop),
-                        topReservedInset: usesPadLayout ? 0 : (protectsTop ? safeTop : 0),
-                        bottomContentInset: bottomChromeClearance,
+                        topContentInset: playerActive ? 0 : (usesPadLayout ? 0 : (protectsTop ? 0 : safeTop)),
+                        topReservedInset: playerActive ? 0 : (usesPadLayout ? 0 : (protectsTop ? safeTop : 0)),
+                        bottomContentInset: playerActive ? 0 : bottomChromeClearance,
                         // Applied when the view is actually attached: an
                         // off-screen web view has no zoomable geometry.
                         allowsGestureZoom: env.settings.preferences.forcedZoomEnabled ?? false,
@@ -384,7 +388,7 @@ extension BrowserShellView {
                     // layout keeps the page inside its column and below the top
                     // bar, but still lets it run under the home indicator so no
                     // strip of background shows beneath the document.
-                    .ignoresSafeArea(edges: usesPadLayout ? .bottom : .all)
+                    .ignoresSafeArea(edges: playerActive || !usesPadLayout ? .all : .bottom)
                 } else {
                     // A cold tab with no web view at all. Materialising happens
                     // in `onAppear` rather than here: creating a web view during

@@ -107,10 +107,16 @@ struct SearchEngineSettingsView: View {
                         env.settings.update { $0.searchEngine.searchSuggestions.openTabsEnabled = value }
                     }
                 ))
+                Toggle("联网搜索推荐", isOn: Binding(
+                    get: { env.settings.preferences.searchEngine.searchSuggestions.remoteEnabled },
+                    set: { value in
+                        env.settings.update { $0.searchEngine.searchSuggestions.remoteEnabled = value }
+                    }
+                ))
             } header: {
                 Text("搜索建议")
             } footer: {
-                Text("关闭后地址栏不再显示任何建议。")
+                Text("关闭后地址栏不再显示任何建议。联网搜索推荐会在输入时向当前搜索引擎请求建议；无痕标签页始终只用本地记录，不会发出请求。")
             }
         }
         .navigationTitle("搜索引擎")

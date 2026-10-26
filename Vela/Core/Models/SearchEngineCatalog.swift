@@ -307,8 +307,10 @@ public struct SearchSuggestionPreferences: Codable, Equatable, Sendable {
     public var historyEnabled: Bool
     public var browsingHistoryEnabled: Bool
     public var navigationSuggestionsChosen: Bool
-    /// Remote (network) suggestions. Off by default: nothing here sends
-    /// keystrokes to a search provider unless the user opts in.
+    /// Remote (network) suggestions. On by default, like the reference
+    /// browsers: typing a query is already on its way to the engine in a
+    /// moment. Private tabs never make this request regardless of the value,
+    /// and the switch in 设置 ▸ 搜索引擎 turns it off.
     public var remoteEnabled: Bool
 
     public init(
@@ -319,7 +321,7 @@ public struct SearchSuggestionPreferences: Codable, Equatable, Sendable {
         historyEnabled: Bool = true,
         browsingHistoryEnabled: Bool = true,
         navigationSuggestionsChosen: Bool = false,
-        remoteEnabled: Bool = false
+        remoteEnabled: Bool = true
     ) {
         self.regularEnabled = regularEnabled
         self.privateEnabled = privateEnabled

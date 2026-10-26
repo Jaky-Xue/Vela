@@ -295,12 +295,14 @@ struct BrowserShellView: View {
             // header and chapter controls are the chrome. The iPad layout has
             // its navigation in the top bar, so the phone command bar is not
             // drawn there at all.
-            if novelSession == nil && !usesPadLayout {
+            if novelSession == nil && !usesPadLayout && env.overlays.mediaFullscreen == nil {
                 commandBar
             }
         }
         .overlay(alignment: .bottom) {
-            if novelSession == nil {
+            // The fullscreen player owns the screen: a floating tool over a
+            // film is chrome the user did not ask for.
+            if novelSession == nil && env.overlays.mediaFullscreen == nil {
                 floatingToolsInGlassContainer
             }
         }
@@ -497,7 +499,11 @@ struct BrowserShellView: View {
     }
 
     var shellRoot: some View {
-        shellAppearanceObservers.overlay(alignment: .top) { searchPageLayer }
+        shellAppearanceObservers
+            .overlay(alignment: .top) { searchPageLayer }
+            // Above the search page: a page that opened the player has left
+            // the omnibox, and the film is now the frontmost surface.
+            .overlay { mediaPlayerLayer }
     }
 
     var body: some View {
@@ -719,6 +725,12 @@ struct BrowserShellView: View {
 
     /// The shell state that belongs to the tab on screen, not to the window.
     private func handleActiveTabChanged() {
+        // A player belongs to one tab. Switching away hides its picture, so
+        // leaving the layer up would control a page nobody can see.
+        if let session = env.overlays.mediaFullscreen,
+           session.tabId != tabManager.activeTabId {
+            env.webCoordinator.dismissMediaFullscreen()
+        }
         isReaderActive = false
         readerArticle = nil
         translationBarDismissed = false

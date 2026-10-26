@@ -152,6 +152,9 @@ public final class BrowserWebCoordinator: NSObject {
         userScriptTabStates.removeValue(forKey: tab.id)
         history.clearTabChain(tabId: tab.id)
         overlays.userScriptMenuCommands.removeAll { $0.tabId == tab.id }
+        if overlays.mediaFullscreen?.tabId == tab.id {
+            overlays.mediaFullscreen = nil
+        }
         if let webView = tabManager?.webView(for: tab.id) {
             traces.removeValue(forKey: ObjectIdentifier(webView))
         }
@@ -202,6 +205,8 @@ public final class BrowserWebCoordinator: NSObject {
             handleUserScriptMessage(message, tab: tab, webView: webView)
         case .console:
             handleConsoleMessage(message, tab: tab)
+        case .mediaFullscreen:
+            handleMediaFullscreenMessage(message, tab: tab, webView: webView)
         case .none:
             break
         }
@@ -260,6 +265,126 @@ public final class BrowserWebCoordinator: NSObject {
         }
         tab.canGoBack = webView.canGoBack
         tab.canGoForward = webView.canGoForward
+    }
+
+    // MARK: - Fullscreen player
+
+    /// The page's own fullscreen player reporting in.
+    ///
+    /// `enter` opens the host's layer, `state` keeps its controls honest, and
+    /// `exit` closes it. The page remains the owner of the media element
+    /// throughout; nothing here reaches into the video, and the commands in
+    /// `sendMediaPlayerCommand` go back as calls to `window.__velaPlayer`.
+    func handleMediaFullscreenMessage(_ message: WKScriptMessage, tab: BrowserTabState, webView: WKWebView) {
+        guard let payload = message.body as? [String: Any],
+              let event = payload["event"] as? String else { return }
+
+        switch event {
+        case "enter":
+            guard let session = MediaFullscreenSession(
+                tabId: tab.id,
+                payload: payload,
+                fallbackTitle: tab.displayTitle,
+                isMainFrame: message.frameInfo.isMainFrame
+            ) else { return }
+            overlays.mediaFullscreen = session
+
+            // A frame can only promote itself inside its own viewport, which
+            // is still its old box on the page. The top document promotes the
+            // frame element; the frame has already promoted the video inside.
+            if !message.frameInfo.isMainFrame {
+                let frameUrl = message.frameInfo.request.url?.absoluteString ?? ""
+                let encoded = Self.javaScriptString(frameUrl)
+                webView.evaluateJavaScript(
+                    "window.__velaPlayer && window.__velaPlayer.promoteFrame(\(encoded));",
+                    completionHandler: nil
+                )
+            }
+        case "state":
+            guard var session = overlays.mediaFullscreen, session.tabId == tab.id else { return }
+            guard session.applyState(payload) else { return }
+            overlays.mediaFullscreen = session
+        case "exit":
+            if let session = overlays.mediaFullscreen, session.tabId == tab.id {
+                overlays.mediaFullscreen = nil
+                // The frame put its own video back. The top document is still
+                // holding the frame element at full screen, so it has to let
+                // go as well.
+                if !session.isMainFrame {
+                    webView.evaluateJavaScript(
+                        "window.__velaPlayer && window.__velaPlayer.releaseFrame();",
+                        completionHandler: nil
+                    )
+                }
+            }
+        default:
+            break
+        }
+    }
+
+    /// Sends a playback command to the page's player.
+    ///
+    /// Evaluated in the main frame. The player in a cross-origin frame is
+    /// reached by the main frame forwarding the same command over
+    /// `postMessage`, which the injected script does when it has no player of
+    /// its own.
+    public func sendMediaPlayerCommand(_ command: MediaPlayerCommand) {
+        guard let session = overlays.mediaFullscreen,
+              let webView = tabManager?.webView(for: session.tabId) else { return }
+
+        let call: String
+        switch command {
+        case .play:
+            call = "command('play')"
+        case .pause:
+            call = "command('pause')"
+        case .togglePlay:
+            call = "command('toggle')"
+        case .seek(let time):
+            call = "command('seek', \(Self.javaScriptNumber(time)))"
+        case .skip(let delta):
+            call = "command('skip', \(Self.javaScriptNumber(delta)))"
+        case .setMuted(let muted):
+            call = "command('mute', \(muted ? "true" : "false"))"
+        case .setVolume(let volume):
+            call = "command('volume', \(Self.javaScriptNumber(volume)))"
+        case .exit:
+            call = "command('exit')"
+        }
+        webView.evaluateJavaScript(
+            "window.__velaPlayer && window.__velaPlayer.\(call);",
+            completionHandler: nil
+        )
+    }
+
+    /// Closes the host layer and tells the page to put its player back.
+    public func dismissMediaFullscreen() {
+        guard let session = overlays.mediaFullscreen else { return }
+        overlays.mediaFullscreen = nil
+        guard let webView = tabManager?.webView(for: session.tabId) else { return }
+        webView.evaluateJavaScript(
+            """
+            if (window.__velaPlayer) {
+              window.__velaPlayer.command('exit');
+              window.__velaPlayer.releaseFrame();
+            }
+            """,
+            completionHandler: nil
+        )
+    }
+
+    private static func javaScriptNumber(_ value: Double) -> String {
+        let safe = value.isFinite ? value : 0
+        // `String(_:)` is locale-independent, which is what a JavaScript
+        // literal needs: a decimal comma from a localized format would turn
+        // the argument into two.
+        return String(safe)
+    }
+
+    private static func javaScriptString(_ value: String) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              let encoded = String(data: data, encoding: .utf8) else { return "\"\"" }
+        return encoded
     }
 
     func handleScrollMessage(_ message: WKScriptMessage, tab: BrowserTabState, webView: WKWebView) {
@@ -565,7 +690,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
 
         let startScripts: [String] = [
             WebPageScripts.historyApiBridge,
-            WebPageScripts.fullscreenBridge,
+            WebPageScripts.mediaPlayerScript,
             WebPageScripts.inlineVideoControlsScript,
             WebPageScripts.youtubeTapControlsScript,
             WebPageScripts.youtubeQualityScript
@@ -799,12 +924,11 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // `WKPreferences`; on iOS media playback is routed through the system
         // player, so there is no equivalent to set here.
 
-        // Element fullscreen — the Fullscreen API a page calls from script, and
-        // the path a custom video player's fullscreen button takes — and
-        // picture-in-picture are both opt-in on iOS. (The other half of the
-        // fullscreen story is `UIRequiresFullScreen` in Info.plist: an iPad app
-        // that supports multitasking cannot host the system's fullscreen video
-        // presentation at all.)
+        // Element fullscreen stays enabled for non-video content — an image
+        // viewer, a document, a canvas — and picture-in-picture stays opt-in.
+        // Video never reaches either: `mediaPlayerScript` takes video-bearing
+        // elements over and presents them in the app's own player layer, so
+        // the system's media presentation is not the fallback for a film.
         if #available(iOS 15.4, *) {
             preferences.isElementFullscreenEnabled = true
         }
