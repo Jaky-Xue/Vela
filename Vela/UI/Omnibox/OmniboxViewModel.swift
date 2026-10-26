@@ -638,7 +638,7 @@ public final class OmniboxViewModel {
                 for: query,
                 engineId: engineRecord.id
             )
-            guard !Task.isCancelled, let self else { return }
+            guard !Task.isCancelled else { return }
 
             // The session can move on while a request is in flight: the user
             // types, switches engines, switches tabs into a private one, or

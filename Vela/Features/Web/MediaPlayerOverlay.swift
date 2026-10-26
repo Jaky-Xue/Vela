@@ -283,7 +283,7 @@ struct MediaPlayerOverlay: View {
         }
     }
 
-    private func revealControls(keep: Bool) {
+    private func revealControls(keep: Bool = false) {
         withAnimation(.easeInOut(duration: 0.18)) {
             controlsVisible = true
         }

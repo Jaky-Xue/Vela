@@ -155,8 +155,8 @@ enum SearchSuggestionParser {
     }
 
     private static func decode(_ data: Data, charset: String?) -> String? {
-        if let charset, let encoding = encoding(named: charset) {
-            if let text = String(data: data, encoding: encoding) { return text }
+        if let charset, let textEncoding = encoding(named: charset) {
+            if let text = String(data: data, encoding: textEncoding) { return text }
             // A provider that names GBK may still answer with a byte the
             // narrower codec rejects; GB18030 is its superset.
             if charset.lowercased().hasPrefix("gb"),
