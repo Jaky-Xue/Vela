@@ -119,7 +119,8 @@ enum SearchSuggestionProvider: String, CaseIterable, Sendable {
 ///
 /// Four shapes cover the table: a bare JSON pair whose second element is the
 /// list (Bing, Google, DuckDuckGo with `type=list`, Yandex, Sogou's callback),
-/// Baidu's object with an `s` array, 360's object with `result[].word`, and the
+/// Baidu's object with its grouped `g[].q` entries (or an `s` array from the
+/// non-`json=1` variant), 360's object with `result[].word`, and the
 /// phrase-object array DuckDuckGo returns without `type=list`. A first `[` or
 /// `{` and last `]` or `}` bracket the JSON in a callback response, which is
 /// how the JSONP-shaped answers are read without a JavaScript parser.
@@ -209,13 +210,14 @@ enum SearchSuggestionParser {
             if !phrases.isEmpty { return phrases }
         }
 
-        for key in ["result", "data", "items"] {
+        for key in ["result", "data", "items", "g"] {
             guard let list = object[key] as? [Any] else { continue }
             let words = list.compactMap { item -> String? in
                 guard let entry = item as? [String: Any] else { return nil }
                 return entry["word"] as? String
                     ?? entry["phrase"] as? String
                     ?? entry["value"] as? String
+                    ?? entry["q"] as? String
             }
             if !words.isEmpty { return words }
         }

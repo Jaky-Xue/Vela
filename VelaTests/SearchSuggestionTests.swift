@@ -70,6 +70,16 @@ final class SearchSuggestionTests: XCTestCase {
         )
     }
 
+    func testBaiduGroupedObjectResponse() {
+        let data = Data(
+            #"window.baidu.sug({"q":"iphone","p":false,"g":[{"q":"iphone 18","t":"n"},{"q":"iphone 17","t":"n"}]});"#.utf8
+        )
+        XCTAssertEqual(
+            SearchSuggestionParser.parse(data: data, charset: "utf-8"),
+            ["iphone 18", "iphone 17"]
+        )
+    }
+
     func testResultObjectResponse() {
         let data = Data(
             #"{"errorcode":0,"result":[{"word":"iphone 官网"},{"word":"iphone 18"}]}"#.utf8
