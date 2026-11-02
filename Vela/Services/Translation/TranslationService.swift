@@ -86,6 +86,20 @@ public final class TranslationService {
     private var lastGoogleRequestAt: Date?
     private static let googleMinimumInterval: TimeInterval = 0.35
 
+    /// Set once a Google batch has fallen back to the on-device engine.
+    ///
+    /// A blocked endpoint would otherwise burn its timeout on every batch
+    /// before taking the same fallback. Once the first batch has proved the
+    /// network path unusable, the rest of this page goes straight to Apple.
+    private var appleFallbackActive = false
+
+    /// Remembered across pages, not just batches: a VPN-blocked Google path
+    /// costs eight seconds to discover on every new page, which is exactly
+    /// what made translating feel slow. After one failure the next pages start
+    /// on the on-device engine and only try Google again when the cooldown
+    /// expires.
+    private var googleUnavailableUntil: Date?
+
     private struct DynamicWork {
         let payload: String
         let webView: WKWebView
@@ -289,6 +303,7 @@ public final class TranslationService {
         generation += 1
         let run = generation
         dynamicWork.removeAll()
+        appleFallbackActive = false
         lastErrorMessage = nil
         phase = .extracting
 
@@ -408,6 +423,7 @@ public final class TranslationService {
     public func restoreOriginal(webView: WKWebView) async {
         generation += 1
         dynamicWork.removeAll()
+        appleFallbackActive = false
         _ = try? await webView.evaluateJavaScript(WebPageScripts.translationSupportScript)
         _ = try? await webView.evaluateJavaScript(WebPageScripts.textRestoreScript)
         if !syncedTabId.isEmpty {
@@ -640,6 +656,17 @@ public final class TranslationService {
     ) async throws -> BatchResult {
         switch settings.provider {
         case .google:
+            // A batch that already fell back to the on-device engine is proof
+            // that the network path is not usable for this page; the rest of
+            // the page skips Google rather than paying its timeout again.
+            if appleFallbackActive, let apple = await appleBatch(units, target: target) {
+                return apple
+            }
+            if let until = googleUnavailableUntil, until > Date(),
+               let apple = await appleBatch(units, target: target) {
+                return apple
+            }
+
             // Google is given every block in the batch wrapped in its own
             // element. It preserves the tags and their data attributes, so the
             // response can be split back into the same block ids without the
@@ -649,25 +676,21 @@ public final class TranslationService {
             }.joined()
             do {
                 let result = try await google(wrapped, settings: settings, target: target)
+                googleUnavailableUntil = nil
                 return BatchResult(
                     payload: .wrappedHTML(result.html),
                     detectedLanguage: result.detectedLanguage
                 )
             } catch {
-                // When Google is blocked by the network, the on-device
-                // translation engine is the fallback that keeps page
-                // translation working without a VPN.
-                if let translationError = error as? TranslationError,
-                   case let .http(status) = translationError,
-                   status == 405 || status == 429,
-                   let appleBridge,
-                   let values = try? await appleBridge.translate(units.map(\.html), target: target),
-                   values.count == units.count {
-                    var map: [Int: String] = [:]
-                    for (unit, value) in zip(units, values) {
-                        map[unit.id] = value
-                    }
-                    return BatchResult(payload: .units(map), detectedLanguage: nil)
+                // Any failure — a blocked host, a timeout, a 403 or a 429 —
+                // means the on-device engine is the better road for this page.
+                // Restricting the fallback to two HTTP statuses left the
+                // common VPN failure (a connection that simply never answers)
+                // with no translation at all.
+                if let apple = await appleBatch(units, target: target) {
+                    appleFallbackActive = true
+                    googleUnavailableUntil = Date().addingTimeInterval(5 * 60)
+                    return apple
                 }
                 throw error
             }
@@ -711,6 +734,22 @@ public final class TranslationService {
         }
     }
 
+    /// One batch through the on-device engine, or nil when the bridge is
+    /// absent or the language pair is not installed.
+    private func appleBatch(
+        _ units: [Extraction.Unit],
+        target: TranslationTargetLanguage
+    ) async -> BatchResult? {
+        guard let appleBridge,
+              let values = try? await appleBridge.translate(units.map(\.html), target: target),
+              values.count == units.count else { return nil }
+        var map: [Int: String] = [:]
+        for (unit, value) in zip(units, values) {
+            map[unit.id] = value
+        }
+        return BatchResult(payload: .units(map), detectedLanguage: nil)
+    }
+
     private func google(
         _ wrappedHTML: String,
         settings: TranslationSettings,
@@ -746,10 +785,17 @@ public final class TranslationService {
             forHTTPHeaderField: "User-Agent"
         )
         request.httpBody = "q=\(formEncode(wrappedHTML))".data(using: .utf8)
+        // A public endpoint either answers promptly or is blocked. Waiting a
+        // full minute per batch is what made a broken Google path feel like a
+        // broken translator.
+        request.timeoutInterval = 8
 
         await paceGoogleRequest()
         do {
-            let data = try await send(request)
+            // One attempt: a blocked or rate-limited endpoint should hand the
+            // page to the on-device engine at once, not spend a retry cycle
+            // re-learning the same failure.
+            let data = try await send(request, maximumAttempts: 1)
             let parsed = try Self.parseGoogleResponse(data)
             return (parsed.html, parsed.detectedLanguage)
         } catch {
@@ -800,8 +846,9 @@ public final class TranslationService {
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
             forHTTPHeaderField: "User-Agent"
         )
+        request.timeoutInterval = 8
         await paceGoogleRequest()
-        let data = try await send(request)
+        let data = try await send(request, maximumAttempts: 1)
         let parsed = try Self.parseGoogleResponse(data)
         return (parsed.html, parsed.detectedLanguage)
     }
@@ -911,8 +958,10 @@ public final class TranslationService {
     /// paragraph batches is exactly what makes it answer 429; pacing and
     /// retries turn a rate-limited page into a slower translation instead of a
     /// failed one.
-    private func send(_ request: URLRequest) async throws -> Data {
-        let maximumAttempts = 4
+    private func send(
+        _ request: URLRequest,
+        maximumAttempts: Int = 4
+    ) async throws -> Data {
         var lastStatus = 0
         var lastRetryAfter: TimeInterval?
 

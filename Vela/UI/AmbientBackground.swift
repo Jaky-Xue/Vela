@@ -164,49 +164,11 @@ struct AmbientBackgroundView: View {
                 base
 
                 if style.usesAmbient, size.width > 1, size.height > 1 {
-                    if #available(iOS 18.0, *) {
-                        meshField
+                    if colorScheme == .dark {
+                        darkField(in: size)
                     } else {
-                        ForEach(specs.indices, id: \.self) { index in
-                            blob(specs[index], in: size)
-                        }
+                        lightField(in: size)
                     }
-
-                    // A thin frosted pane. It used to be a full-screen
-                    // `.ultraThinMaterial` over a field that never moves — the
-                    // most expensive layer in the view, spent to blur a
-                    // gradient that is already smooth. A pale veil gives the
-                    // same lift for a fraction of the cost.
-                    Rectangle()
-                        .fill(Color.white)
-                        .opacity(colorScheme == .dark ? 0.035 : 0.06)
-                        .allowsHitTesting(false)
-
-                    specular(in: size)
-
-                    AmbientGrain()
-                        .opacity(colorScheme == .dark ? 0.18 : 0.24)
-                        .blendMode(.overlay)
-                        .allowsHitTesting(false)
-
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white.opacity(colorScheme == .dark ? 0.06 : 0.20), location: 0),
-                            .init(color: .clear, location: 0.48)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .blendMode(.plusLighter)
-                    .allowsHitTesting(false)
-
-                    RadialGradient(
-                        colors: [.clear, .black.opacity(colorScheme == .dark ? 0.10 : 0.03)],
-                        center: .center,
-                        startRadius: max(size.width, size.height) * 0.36,
-                        endRadius: max(size.width, size.height) * 0.86
-                    )
-                    .allowsHitTesting(false)
                 }
             }
             .frame(width: size.width, height: size.height)
@@ -218,6 +180,216 @@ struct AmbientBackgroundView: View {
         // letting one field dissolve into the next reads as the choice being
         // applied rather than as the screen repainting itself.
         .animation(.easeInOut(duration: 0.28), value: style)
+    }
+
+    /// The light field: the mesh, then the glass, sheen and grain that give
+    /// it depth.
+    ///
+    /// Light is the appearance this composition was tuned for; dark gets its
+    /// own treatment below rather than a dimmed copy of this one.
+    @ViewBuilder
+    private func lightField(in size: CGSize) -> some View {
+        if #available(iOS 18.0, *) {
+            meshField
+        } else {
+            ForEach(specs.indices, id: \.self) { index in
+                blob(specs[index], in: size)
+            }
+        }
+
+        // A thin frosted pane. It used to be a full-screen
+        // `.ultraThinMaterial` over a field that never moves — the most
+        // expensive layer in the view, spent to blur a gradient that is
+        // already smooth. A pale veil gives the same lift for far less.
+        Rectangle()
+            .fill(Color.white)
+            .opacity(0.06)
+            .allowsHitTesting(false)
+
+        specular(in: size)
+
+        AmbientGrain()
+            .opacity(0.24)
+            .blendMode(.overlay)
+            .allowsHitTesting(false)
+
+        LinearGradient(
+            stops: [
+                .init(color: .white.opacity(0.20), location: 0),
+                .init(color: .clear, location: 0.48)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
+
+        RadialGradient(
+            colors: [.clear, .black.opacity(0.03)],
+            center: .center,
+            startRadius: max(size.width, size.height) * 0.36,
+            endRadius: max(size.width, size.height) * 0.86
+        )
+        .allowsHitTesting(false)
+    }
+
+    /// The dark field: a deep, nearly neutral ground lit by at most two soft
+    /// coloured sources, with a vignette and a fine grain.
+    ///
+    /// The nine-stop mesh was designed for pale light-mode colours. On a dark
+    /// ground its stops became separate dark patches — the "AI colour blocking"
+    /// a mesh shows when every cell has to hold a hue. Dark gets one dominant
+    /// glow and one supporting glow instead, so the eye reads a lit surface
+    /// rather than a collage.
+    @ViewBuilder
+    private func darkField(in size: CGSize) -> some View {
+        let longEdge = max(size.width, size.height)
+        let glow = darkGlowColors
+
+        ZStack {
+            darkGlow(
+                glow.primary,
+                x: 0.16, y: 0.10,
+                diameter: 1.25,
+                opacity: glow.primaryOpacity,
+                in: size
+            )
+            darkGlow(
+                glow.secondary,
+                x: 0.84, y: 0.86,
+                diameter: 1.05,
+                opacity: glow.secondaryOpacity,
+                in: size
+            )
+
+            AmbientGrain()
+                .opacity(0.10)
+                .blendMode(.overlay)
+                .allowsHitTesting(false)
+
+            LinearGradient(
+                stops: [
+                    .init(color: .white.opacity(0.028), location: 0),
+                    .init(color: .clear, location: 0.42)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .blendMode(.plusLighter)
+            .allowsHitTesting(false)
+
+            RadialGradient(
+                colors: [.clear, .black.opacity(0.34)],
+                center: .center,
+                startRadius: longEdge * 0.34,
+                endRadius: longEdge * 0.88
+            )
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// One soft light source for the dark field.
+    private func darkGlow(
+        _ color: Color,
+        x: CGFloat,
+        y: CGFloat,
+        diameter: CGFloat,
+        opacity: Double,
+        in size: CGSize
+    ) -> some View {
+        let edge = max(size.width, size.height) * diameter
+        return Circle()
+            .fill(
+                RadialGradient(
+                    colors: [
+                        color.opacity(opacity),
+                        color.opacity(opacity * 0.32),
+                        color.opacity(0)
+                    ],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: edge * 0.5
+                )
+            )
+            .frame(width: edge, height: edge)
+            .blur(radius: edge * 0.16)
+            .blendMode(.plusLighter)
+            .position(x: size.width * x, y: size.height * y)
+            .allowsHitTesting(false)
+    }
+
+    private struct DarkGlowColors {
+        var primary: Color
+        var secondary: Color
+        var primaryOpacity: Double
+        var secondaryOpacity: Double
+    }
+
+    /// The coloured light the dark field is allowed. Opacities stay low: on a
+    /// near-black ground a saturated glow reads as a sticker, not a light.
+    private var darkGlowColors: DarkGlowColors {
+        switch style {
+        case .solid:
+            return DarkGlowColors(primary: .clear, secondary: .clear, primaryOpacity: 0, secondaryOpacity: 0)
+        case .onyx:
+            return DarkGlowColors(
+                primary: Color(red: 0.74, green: 0.77, blue: 0.82),
+                secondary: Color(red: 0.38, green: 0.41, blue: 0.47),
+                primaryOpacity: 0.08,
+                secondaryOpacity: 0.06
+            )
+        case .sunrise:
+            return DarkGlowColors(
+                primary: Color(red: 0.94, green: 0.66, blue: 0.38),
+                secondary: Color(red: 0.62, green: 0.38, blue: 0.20),
+                primaryOpacity: 0.16,
+                secondaryOpacity: 0.08
+            )
+        case .sunset:
+            return DarkGlowColors(
+                primary: Color(red: 0.92, green: 0.48, blue: 0.58),
+                secondary: Color(red: 0.55, green: 0.28, blue: 0.40),
+                primaryOpacity: 0.15,
+                secondaryOpacity: 0.08
+            )
+        case .lime:
+            return DarkGlowColors(
+                primary: Color(red: 0.62, green: 0.80, blue: 0.38),
+                secondary: Color(red: 0.34, green: 0.46, blue: 0.22),
+                primaryOpacity: 0.12,
+                secondaryOpacity: 0.06
+            )
+        case .aurora:
+            return DarkGlowColors(
+                primary: Color(red: 0.38, green: 0.80, blue: 0.72),
+                secondary: Color(red: 0.20, green: 0.50, blue: 0.46),
+                primaryOpacity: 0.14,
+                secondaryOpacity: 0.08
+            )
+        case .glacier:
+            return DarkGlowColors(
+                primary: Color(red: 0.38, green: 0.64, blue: 0.92),
+                secondary: Color(red: 0.20, green: 0.38, blue: 0.64),
+                primaryOpacity: 0.16,
+                secondaryOpacity: 0.08
+            )
+        case .violet:
+            return DarkGlowColors(
+                primary: Color(red: 0.62, green: 0.48, blue: 0.90),
+                secondary: Color(red: 0.36, green: 0.26, blue: 0.60),
+                primaryOpacity: 0.14,
+                secondaryOpacity: 0.08
+            )
+        case .colorful:
+            // Two glows only: a duotone reads as a deliberate photograph
+            // light, where five hues had read as a collage.
+            return DarkGlowColors(
+                primary: Color(red: 0.86, green: 0.42, blue: 0.62),
+                secondary: Color(red: 0.32, green: 0.56, blue: 0.90),
+                primaryOpacity: 0.12,
+                secondaryOpacity: 0.12
+            )
+        }
     }
 
     /// The style's own base, with a neutral veil rather than the palette

@@ -296,9 +296,23 @@ extension WebPageScripts {
             template.innerHTML = unit.html;
             if (mergeText(element, template.content)) {
               appliedIds.push(unit.id);
+            } else if (element.children.length === 0) {
+              // A leaf block has no elements to lose; writing its text keeps
+              // the block's own tag and attributes. Replacing its innerHTML
+              // could inject the provider's wrapper, so only the text is
+              // taken, and only when there is text to take.
+              var translatedText = template.content.textContent || '';
+              if (translatedText.trim()) {
+                element.textContent = translatedText;
+                element.__velaUsedHTMLRestore = true;
+              }
+              appliedIds.push(unit.id);
             } else {
-              element.innerHTML = unit.html;
-              element.__velaUsedHTMLRestore = true;
+              // The provider changed the block's inline shape. Replacing a
+              // block's innerHTML recreates its links and buttons and is what
+              // makes a translated page look broken; one untranslated
+              // paragraph is cheaper than a broken page. Count it as handled
+              // so the host does not retry it forever.
               appliedIds.push(unit.id);
             }
           }
