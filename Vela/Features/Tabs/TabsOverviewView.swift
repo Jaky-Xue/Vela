@@ -895,7 +895,7 @@ private struct PrivateUnlockSheet: View {
 /// islands of blur. The hairline gives each one the edge a piece of glass gets
 /// from its own rim, and using one helper keeps their radii and edges from
 /// drifting apart.
-private struct OverviewGlass<S: Shape>: ViewModifier {
+private struct OverviewGlass<S: InsettableShape>: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.browserPalette) private var palette
 
@@ -924,7 +924,7 @@ private struct OverviewGlass<S: Shape>: ViewModifier {
 }
 
 private extension View {
-    func overviewGlass<S: Shape>(_ shape: S) -> some View {
+    func overviewGlass<S: InsettableShape>(_ shape: S) -> some View {
         modifier(OverviewGlass(shape: shape))
     }
 }
