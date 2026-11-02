@@ -349,18 +349,23 @@ extension BrowserShellView {
         }
     }
 
-    /// How far down the screen the search page puts its field: about a third
-    /// of the space the keyboard leaves, which is where the reference search
-    /// pages place it and where a thumb can still reach the cancel button.
+    /// How far down the screen the search page puts its field.
+    ///
+    /// The field belongs at the top, directly under the status bar: it is the
+    /// subject of the page, and every pixel below it is suggestion-list space.
+    /// It used to sit about a fifth of the way down, which read as a centred
+    /// field and left the list too short to show more than a few rows.
+    ///
+    /// Independent of the keyboard on purpose: a floating keyboard sends frame
+    /// updates while it is dragged, and deriving the field's position from that
+    /// made the whole page follow the keyboard. The keyboard is only an overlay
+    /// on the list.
     var searchPageTopGap: CGFloat {
-        // Deliberately independent of the keyboard. A floating keyboard sends
-        // frame updates while it is dragged; deriving the field's position from
-        // that value made the whole page follow the keyboard. The field sits at
-        // a stable fraction of the screen and the keyboard is only an overlay.
-        let screenHeight = max(safeRectHeight + safeTop + safeBottom, 320)
-        // The root overlay starts at the window's top edge; include the status
-        // bar inset so the field cannot be painted through the clock.
-        return safeTop + min(max(120, screenHeight * 0.18), 260)
+        // The overlay inherits the shell's origin, which SwiftUI usually places
+        // at the bottom of the status bar. Only the part of the status bar the
+        // shell does not already clear needs adding, so the field sits 8 pt
+        // below the clock in either arrangement.
+        max(0, safeTop - shellOriginY) + 8
     }
 
     /// The search page's list budget, separate from the phone card's.
@@ -370,9 +375,16 @@ extension BrowserShellView {
     /// height above the list; using the phone budget there made the list taller
     /// than the space it had, which is what pushed the field off the top.
     var searchPageCardHeight: CGFloat {
-        let screenHeight = safeRectHeight + safeTop + safeBottom
-        let available = screenHeight - keyboardHeight
-            - searchPageTopGap - BrowserChrome.barHeight - 14
+        // Absolute positions rather than subtractions against the shell's own
+        // height: the field starts at the shell's window origin plus the top
+        // gap, and the list starts one bar below it. The keyboard's top is
+        // measured from the window's bottom.
+        let fullHeight = windowHeight > 0
+            ? windowHeight
+            : safeRectHeight + safeTop + safeBottom
+        let fieldTop = shellOriginY + searchPageTopGap
+        let listTop = fieldTop + BrowserChrome.barHeight + 14
+        let available = fullHeight - keyboardHeight - listTop - 6
         return min(max(120, available), BrowserMetrics.omniboxCardMaxHeight)
     }
 
@@ -450,24 +462,20 @@ extension BrowserShellView {
                     let protectsTop = env.settings.preferences.topProtectionEnabled
                     WebViewHost(
                         webView: webView,
-                        // The status bar's height, so the page's own first
-                        // line starts below it instead of running under the
-                        // clock — while still scrolling underneath, the way
-                        // Safari's does. A reserved strip makes the page start
-                        // at its own top, so the inset drops to zero there.
+                        // Where the page's content should start, measured from
+                        // the window's top edge. The host subtracts its own
+                        // position and reserves the uncovered status-bar strip
+                        // when protection is on, so this value is absolute
+                        // rather than a scroll inset.
                         //
-                        // The strip itself is measured by the host from the
-                        // window, independently of the shell's `safeTop`, so
-                        // it holds even where the shell's own geometry sits
-                        // inside the safe area.
                         // On the iPad layout the page normally runs under the
-                        // floating top bar. 顶部保护 reserves only the status
-                        // bar strip; the bar itself still floats over the page,
-                        // so the scroll inset keeps the page's first line below
-                        // it either way.
-                        topContentInset: usesPadLayout
-                            ? (protectsTop ? padBarsHeight : padTopChromeHeight)
-                            : (protectsTop ? 0 : safeTop),
+                        // floating top bar; 顶部保护 adds the status-bar strip
+                        // on top of that. The bar itself still floats over the
+                        // page, so the content offset always includes its
+                        // height.
+                        topContentOffset: usesPadLayout
+                            ? padTopChromeHeight
+                            : safeTop,
                         protectsStatusBar: protectsTop,
                         bottomContentInset: bottomChromeClearance,
                         // Applied when the view is actually attached: an

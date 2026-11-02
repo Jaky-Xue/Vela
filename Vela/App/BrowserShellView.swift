@@ -143,6 +143,13 @@ struct BrowserShellView: View {
     @State var safeBottom: CGFloat = 0
     @State var safeRectHeight: CGFloat = 0
     @State var safeRectWidth: CGFloat = 0
+    /// Where the shell itself begins in the window. SwiftUI lays the shell
+    /// inside the safe area, so this is the status-bar height; a search page
+    /// overlay inherits that origin and must not add the inset again.
+    @State var shellOriginY: CGFloat = 0
+    /// The window's height, which is the only height an overlay-origin offset
+    /// and a keyboard occlusion can be compared against.
+    @State var windowHeight: CGFloat = 0
 
     /// The page's horizontal offset while an edge swipe is tracking, and the
     /// two flags that keep the interactive gesture from overlapping itself.
@@ -315,8 +322,8 @@ struct BrowserShellView: View {
         // command bar's clearance, the iPad content inset) needs the window's
         // real insets. This probe sits in the window and reports them.
         .background {
-            WindowSafeAreaReader { insets in
-                applyWindowSafeArea(insets)
+            WindowSafeAreaReader { metrics in
+                applyWindowMetrics(metrics)
             }
         }
         .background {
@@ -605,14 +612,24 @@ struct BrowserShellView: View {
         safeRectWidth = geo.size.width
     }
 
-    /// Records the window's safe-area insets, which are the ones the
-    /// edge-to-edge web surface actually needs.
-    func applyWindowSafeArea(_ insets: UIEdgeInsets) {
-        if abs(safeTop - insets.top) > 0.5 {
-            safeTop = insets.top
+    /// Records the window metrics the shell cannot read from its own geometry:
+    /// the real safe-area insets, the shell's origin inside the window, and the
+    /// window height. The first two are needed because SwiftUI lays the shell
+    /// inside the safe area, where its own insets read zero; the height is
+    /// needed to place a keyboard-relative card without assuming where the
+    /// shell begins.
+    func applyWindowMetrics(_ metrics: ShellWindowMetrics) {
+        if abs(safeTop - metrics.insets.top) > 0.5 {
+            safeTop = metrics.insets.top
         }
-        if abs(safeBottom - insets.bottom) > 0.5 {
-            safeBottom = insets.bottom
+        if abs(safeBottom - metrics.insets.bottom) > 0.5 {
+            safeBottom = metrics.insets.bottom
+        }
+        if abs(shellOriginY - metrics.originY) > 0.5 {
+            shellOriginY = metrics.originY
+        }
+        if abs(windowHeight - metrics.windowHeight) > 0.5 {
+            windowHeight = metrics.windowHeight
         }
     }
 
@@ -1113,9 +1130,15 @@ struct BrowserShellView: View {
     func applyElementHide(_ pick: ElementPickResult) {
         env.settings.addManualElementHide(selector: pick.selector, host: pick.host)
         env.overlays.elementPick = nil
-        if let tab = activeTab, !tab.isHome {
-            _ = tabManager.reload(tab: tab)
-        }
+        guard let tab = activeTab, !tab.isHome else { return }
+        // Hiding one element is a stylesheet update, not a navigation. The old
+        // reload discarded the page's scroll position and running state; the
+        // rule is already stored, so the same document can apply it now and
+        // every later load gets it at document start.
+        env.webCoordinator.applyManualElementHides(
+            to: tabManager.webView(for: tab.id),
+            host: pick.host
+        )
     }
 
     /// Whether the menu's page-bound actions have something to act on.
@@ -1769,14 +1792,23 @@ struct BackgroundPictureBackdrop: View {
 
 // MARK: - Window safe area
 
-/// Reports the hosting window's safe-area insets.
+/// The window measurements a safe-area-inset shell cannot read itself.
+private struct ShellWindowMetrics: Equatable {
+    var insets: UIEdgeInsets
+    var originY: CGFloat
+    var windowHeight: CGFloat
+}
+
+/// Reports the hosting window's safe-area insets, its height, and where the
+/// probed view (and therefore the shell) begins inside it.
 ///
 /// `GeometryReader` inside the shell cannot: the shell is laid out inside the
 /// safe area, so its own insets are zero. The web view is laid out edge to
 /// edge, and the status bar and home indicator are real obstacles to it, so
-/// the strip heights have to come from the window itself.
+/// the strip heights and the shell's window origin have to come from the
+/// window itself.
 private struct WindowSafeAreaReader: UIViewRepresentable {
-    var onChange: (UIEdgeInsets) -> Void
+    var onChange: (ShellWindowMetrics) -> Void
 
     func makeUIView(context: Context) -> SafeAreaProbeView {
         let view = SafeAreaProbeView()
@@ -1793,8 +1825,8 @@ private struct WindowSafeAreaReader: UIViewRepresentable {
     }
 
     final class SafeAreaProbeView: UIView {
-        var onChange: ((UIEdgeInsets) -> Void)?
-        private var lastReported: UIEdgeInsets?
+        var onChange: ((ShellWindowMetrics) -> Void)?
+        private var lastReported: ShellWindowMetrics?
         private var observation: NSKeyValueObservation?
 
         override func didMoveToWindow() {
@@ -1806,12 +1838,13 @@ private struct WindowSafeAreaReader: UIViewRepresentable {
             // probe sits inside the safe area, so its own insets never change;
             // the window's do.
             observation = window.observe(\.safeAreaInsets, options: [.initial, .new]) { [weak self] window, _ in
-                let insets = window.safeAreaInsets
+                guard let self else { return }
+                let metrics = self.metrics(in: window)
                 // State is written from a UIKit callback, but a SwiftUI update
                 // can be in flight on the same turn; the hop keeps the write
                 // out of it.
                 DispatchQueue.main.async {
-                    self?.publish(insets)
+                    self.publish(metrics)
                 }
             }
         }
@@ -1821,9 +1854,9 @@ private struct WindowSafeAreaReader: UIViewRepresentable {
             // Rotation and Stage Manager resizes run layout even when KVO on
             // the window does not fire; this is the second, dependable signal.
             guard let window else { return }
-            let insets = window.safeAreaInsets
+            let metrics = metrics(in: window)
             DispatchQueue.main.async { [weak self] in
-                self?.publish(insets)
+                self?.publish(metrics)
             }
         }
 
@@ -1831,16 +1864,18 @@ private struct WindowSafeAreaReader: UIViewRepresentable {
             observation?.invalidate()
         }
 
-        private func publish(_ insets: UIEdgeInsets) {
-            if let lastReported,
-               abs(lastReported.top - insets.top) < 0.5,
-               abs(lastReported.bottom - insets.bottom) < 0.5,
-               abs(lastReported.left - insets.left) < 0.5,
-               abs(lastReported.right - insets.right) < 0.5 {
-                return
-            }
-            lastReported = insets
-            onChange?(insets)
+        private func metrics(in window: UIWindow) -> ShellWindowMetrics {
+            ShellWindowMetrics(
+                insets: window.safeAreaInsets,
+                originY: convert(CGPoint.zero, to: window).y,
+                windowHeight: window.bounds.height
+            )
+        }
+
+        private func publish(_ metrics: ShellWindowMetrics) {
+            guard metrics != lastReported else { return }
+            lastReported = metrics
+            onChange?(metrics)
         }
     }
 }

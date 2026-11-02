@@ -7,10 +7,10 @@
 //  A dedicated page rather than a card over the current one: the page the user
 //  was reading has nothing to do with the query they are about to type, and
 //  covering it completely — the way the reference browsers do — is what makes
-//  the session feel like a place rather than an interruption. The field sits
-//  about a third of the way down the space the keyboard leaves, the suggestion
-//  list grows beneath it, and the engine badge on the field's leading edge is
-//  the switcher: one tap, one menu, every engine.
+//  the session feel like a place rather than an interruption. The field sits at
+//  the top, directly under the status bar, so the suggestion list gets all the
+//  space above the keyboard; the engine badge on its leading edge is the
+//  switcher: one tap, one menu, every engine.
 //
 
 import SwiftUI

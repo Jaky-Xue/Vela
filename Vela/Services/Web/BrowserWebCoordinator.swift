@@ -177,6 +177,43 @@ public final class BrowserWebCoordinator: NSObject {
         webView?.evaluateJavaScript(WebPageScripts.stopElementPickerScript)
     }
 
+    /// The `id` of the style element manual hides are written into.
+    static let manualHideStyleIdentifier = "org.vela.browser.manual-hide"
+
+    /// The CSS for a host's manual hides, or nil when it has none.
+    ///
+    /// Selectors containing a brace are skipped rather than allowed to break
+    /// out of the declaration block.
+    private func manualHideCSS(for host: String) -> String? {
+        let selectors = settings.manualElementHide.effectiveSelectors(for: host)
+            .filter { !$0.contains("{") && !$0.contains("}") }
+        guard !selectors.isEmpty else { return nil }
+        return selectors.joined(separator: ",\n") + "\n{ display: none !important; }"
+    }
+
+    /// Applies a host's manual hides to the document already on screen.
+    ///
+    /// The rule is already stored; this only updates the stylesheet. Reloading
+    /// the page after a hide was the old behaviour, and it threw away the
+    /// user's scroll position and any state the page held to achieve something
+    /// a style element can do on the spot.
+    public func applyManualElementHides(to webView: WKWebView?, host: String) {
+        guard let webView else { return }
+        let css = manualHideCSS(for: host) ?? ""
+        let script = """
+        (function () {
+          var style = document.getElementById('\(Self.manualHideStyleIdentifier)');
+          if (!style) {
+            style = document.createElement('style');
+            style.id = '\(Self.manualHideStyleIdentifier)';
+            (document.head || document.documentElement).appendChild(style);
+          }
+          style.textContent = \(jsonLiteral(css));
+        })();
+        """
+        webView.evaluateJavaScript(script)
+    }
+
     // MARK: - Script message dispatch
 
     /// Routes a page message. One `switch` over the handler name, which is why
@@ -603,23 +640,18 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // Manual element hides. The selector belongs to the host, so the
         // stylesheet is composed per navigation and injected at document
         // start, before the page's own markup can paint the element once.
-        if let host = url?.host {
-            let selectors = settings.manualElementHide.effectiveSelectors(for: host)
-                .filter { !$0.contains("{") && !$0.contains("}") }
-            if !selectors.isEmpty {
-                let css = selectors.joined(separator: ",\n") + "\n{ display: none !important; }"
-                let combined = """
-                (function () {
-                  var style = document.createElement('style');
-                  style.id = 'org.vela.browser.manual-hide';
-                  style.textContent = \(jsonLiteral(css));
-                  (document.head || document.documentElement).appendChild(style);
-                })();
-                """
-                controller.addUserScript(
-                    WKUserScript(source: combined, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-                )
-            }
+        if let host = url?.host, let css = manualHideCSS(for: host) {
+            let combined = """
+            (function () {
+              var style = document.createElement('style');
+              style.id = '\(Self.manualHideStyleIdentifier)';
+              style.textContent = \(jsonLiteral(css));
+              (document.head || document.documentElement).appendChild(style);
+            })();
+            """
+            controller.addUserScript(
+                WKUserScript(source: combined, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            )
         }
 
         if overlays.isElementPickerArmed {
