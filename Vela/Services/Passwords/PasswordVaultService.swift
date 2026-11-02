@@ -16,7 +16,6 @@
 //
 
 import Foundation
-import LocalAuthentication
 import Observation
 import WebKit
 
@@ -65,38 +64,24 @@ public final class PasswordVaultService {
             return true
         }
 
-        let context = LAContext()
-        context.localizedCancelTitle = "取消"
-        context.localizedFallbackTitle = "使用密码"
-
-        var policyError: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
+        switch await DeviceAuthentication.evaluate(reason: "解锁密码与保险箱") {
+        case .success:
+            isUnlocked = true
+            reload()
+            return true
+        case .unavailable:
             // No passcode and no biometrics: the Keychain is still encrypted
             // with the device key, so the vault is reachable rather than
             // bricked.
             isUnlocked = true
             reload()
             return true
-        }
-
-        do {
-            let success = try await context.evaluatePolicy(
-                .deviceOwnerAuthentication,
-                localizedReason: "解锁密码与保险箱"
-            )
-            guard success else {
-                lastError = "未能验证身份"
-                return false
-            }
-            isUnlocked = true
-            reload()
-            return true
-        } catch {
-            // A user cancellation is not an error worth reporting twice; the
-            // lock screen is its own answer.
-            if (error as NSError).code != LAError.Code.userCancel.rawValue {
-                lastError = "未能验证身份"
-            }
+        case .cancelled:
+            // The sheet's own lock screen is the answer; reporting a failure
+            // as well would just repeat it in red.
+            return false
+        case .failed:
+            lastError = "未能验证身份"
             return false
         }
     }

@@ -452,7 +452,8 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var padToolbarTrailingItems: [String]?
     /// 不保留历史记录：开启后新的访问不再写入历史。
     public var historyNotRetained: Bool?
-    /// 不保留标签页：开启后退出应用不保存当前标签页，下次启动从新标签页开始。
+    /// 不保留标签页：开启后浏览器不保留任何标签页痕迹——不写会话、不记录
+    /// 「最近关闭」、不保存预览图片。当前打开的标签页不受影响。
     public var tabsNotRetained: Bool?
     /// 小说阅读的翻页方式：scroll 或 paged。
     public var novelPageMode: String?

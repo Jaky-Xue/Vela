@@ -19,6 +19,11 @@ import UIKit
 struct BrowserCardStyle: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.browserPalette) private var palette
+    /// When the system's reduced-transparency setting is on, a material loses
+    /// its body and the card turns into a washed-out version of the page behind
+    /// it. The card then paints the palette's card fill, which keeps the same
+    /// silhouette and the same contrast without the blur.
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var material: Material = .regularMaterial
     var radius: CGFloat = BrowserRadius.card
@@ -32,10 +37,14 @@ struct BrowserCardStyle: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         content
             .background {
-                if let tint {
-                    shape.fill(tint)
+                if reduceTransparency {
+                    shape.fill(palette.card)
+                } else {
+                    if let tint {
+                        shape.fill(tint)
+                    }
+                    shape.fill(material)
                 }
-                shape.fill(material)
             }
             .overlay(shape.strokeBorder(palette.cardStroke, lineWidth: 0.5))
             .clipShape(shape)
@@ -111,6 +120,7 @@ extension View {
 struct BrowserFloatingChrome: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.browserPalette) private var palette
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var radius: CGFloat
     var material: Material
@@ -124,7 +134,7 @@ struct BrowserFloatingChrome: ViewModifier {
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), !reduceTransparency {
             content
                 .glassEffect(
                     interactive ? Glass.regular.interactive() : Glass.regular,
@@ -149,8 +159,12 @@ struct BrowserFloatingChrome: ViewModifier {
     private func legacySurface(_ content: Content, shape: RoundedRectangle) -> some View {
         content
             .background {
-                shape.fill(palette.controlFill.opacity(tintStrength))
-                shape.fill(material)
+                if reduceTransparency {
+                    shape.fill(palette.chromeBackground)
+                } else {
+                    shape.fill(palette.controlFill.opacity(tintStrength))
+                    shape.fill(material)
+                }
             }
             .luminousSheen(shape: shape)
             .overlay(shape.strokeBorder(palette.cardStroke, lineWidth: 0.5))

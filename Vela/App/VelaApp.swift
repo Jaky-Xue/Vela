@@ -112,6 +112,7 @@ private struct BrowserWindowRoot: View {
                 environment.tabManager.persistsSession = retained
                 if !retained {
                     try? environment.tabSessions.removeSession(windowId: environment.windowId)
+                    environment.tabManager.discardRetainedTabData()
                 }
             }
             .onChange(of: environment.settings.preferences.privateBrowsingMode) { _, _ in
@@ -155,8 +156,11 @@ private struct BrowserWindowRoot: View {
                 case .background:
                     environment.tabManager.persistSession()
                     // The vault does not stay open behind a backgrounded app:
-                    // unlocking again is the whole point of the lock.
+                    // unlocking again is the whole point of the lock. The same
+                    // rule covers 无痕 content, which is verified per foreground
+                    // session rather than once per launch.
                     environment.passwords.lock()
+                    environment.lockPrivateAccess()
                     // A backgrounded app that still holds private tabs is the
                     // case the cleanup exists for: the user has moved on, and
                     // the ephemeral store must not be the thing that survives.
@@ -236,7 +240,21 @@ private struct BrowserWindowRoot: View {
         if url.scheme?.lowercased() == "vela" {
             switch url.host?.lowercased() {
             case "private":
-                environment.tabManager.createTab(privacyMode: .private, openSource: .user)
+                // A handoff from another app is still a request to see private
+                // content, so it passes the same check the in-app switch does.
+                let env = environment
+                Task { @MainActor in
+                    switch await env.requestPrivateAccess(reason: "打开无痕标签页") {
+                    case .granted:
+                        env.tabManager.createTab(privacyMode: .private, openSource: .user)
+                    case .unavailable:
+                        env.privateAccessNotice = "此设备未设置密码或面容 ID / 触控 ID，无法验证身份并打开无痕标签页。"
+                    case .failed:
+                        env.privateAccessNotice = "验证未通过，没有打开无痕标签页。"
+                    case .cancelled:
+                        break
+                    }
+                }
             case "newtab":
                 environment.tabManager.createTab(openSource: .user)
             default:

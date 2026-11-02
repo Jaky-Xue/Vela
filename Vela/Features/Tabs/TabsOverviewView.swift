@@ -22,7 +22,6 @@
 
 import SwiftUI
 import UIKit
-import LocalAuthentication
 import WebKit
 
 struct TabsOverviewView: View {
@@ -37,7 +36,6 @@ struct TabsOverviewView: View {
 
     @State private var showPrivateTabs = false
     @State private var didSyncMode = false
-    @State private var isPrivateUnlocked = false
     @State private var pendingPrivateUnlock = false
     @State private var isSearching = false
     @State private var searchQuery = ""
@@ -98,7 +96,7 @@ struct TabsOverviewView: View {
         // the print's aspect instead of the screen's. A background is
         // proposed the content's size and cannot grow it.
         Group {
-            if showPrivateTabs && isLocked && !isPrivateUnlocked {
+            if showPrivateTabs && isLocked {
                 lockedState
             } else {
                 contentStack
@@ -108,21 +106,9 @@ struct TabsOverviewView: View {
         .background { backgroundLayer }
         .environment(\.colorScheme, .dark)
         .task { await prepare() }
-        .onChange(of: showPrivateTabs) { _, isPrivate in
-            // Entering the private grid is what the lock gates, so the unlocked
-            // flag is cleared on the way out.
-            if !isPrivate {
-                isPrivateUnlocked = false
-            } else if isLocked {
-                isPrivateUnlocked = false
-            }
-        }
         .sheet(isPresented: $pendingPrivateUnlock) {
             PrivateUnlockSheet(
-                onUnlock: {
-                    isPrivateUnlocked = true
-                    pendingPrivateUnlock = false
-                },
+                onUnlock: { pendingPrivateUnlock = false },
                 onCancel: {
                     showPrivateTabs = false
                     pendingPrivateUnlock = false
@@ -131,9 +117,11 @@ struct TabsOverviewView: View {
         }
     }
 
-    /// setting, and it only applies to the private grid.
+    /// The lock setting, asked of the environment so it shares one verified
+    /// state with the sidebar: verifying here also unlocks the iPad column,
+    /// and a backgrounded app re-locks both at once.
     private var isLocked: Bool {
-        env.settings.preferences.lockPrivateTabs
+        env.requiresPrivateAuthentication
     }
 
     // MARK: - Background
@@ -214,7 +202,7 @@ struct TabsOverviewView: View {
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(palette.primaryText)
             .frame(width: 36, height: 36)
-            .background(.ultraThinMaterial, in: Circle())
+            .overviewGlass(Circle())
     }
 
     /// The actions the old bottom bar carried, parked where Safari parks its
@@ -244,7 +232,7 @@ struct TabsOverviewView: View {
             HamburgerGlyph(width: 15, thickness: 1.8, spacing: 3.6)
                 .foregroundStyle(palette.primaryText)
                 .frame(width: 36, height: 36)
-                .background(.ultraThinMaterial, in: Circle())
+                .overviewGlass(Circle())
         }
         .accessibilityLabel("标签页操作")
     }
@@ -324,7 +312,7 @@ struct TabsOverviewView: View {
             }
         }
         .padding(3)
-        .background(.ultraThinMaterial, in: Capsule())
+        .overviewGlass(Capsule())
     }
 
     private func modeSegment(
@@ -367,6 +355,12 @@ struct TabsOverviewView: View {
             searchQuery = ""
             isSearching = false
         }
+        // The system prompt is the answer to "open the private grid", so it
+        // appears as the mode changes rather than waiting for a second tap on
+        // the lock screen.
+        if isPrivate && isLocked {
+            pendingPrivateUnlock = true
+        }
     }
 
     private var searchField: some View {
@@ -395,7 +389,7 @@ struct TabsOverviewView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background(.ultraThinMaterial, in: Capsule())
+            .overviewGlass(Capsule())
 
             Button {
                 withAnimation(.snappy(duration: 0.2)) {
@@ -441,7 +435,7 @@ struct TabsOverviewView: View {
                         .padding(.leading, 12)
                         .padding(.trailing, 14)
                         .padding(.vertical, 9)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .overviewGlass(Capsule())
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
@@ -652,23 +646,31 @@ private struct TabCard: View {
             }
             .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
 
-            HStack(spacing: 5) {
-                // The start page has no site to identify, so its title stands
-                // alone — a letter swatch in front of 主页 is noise.
-                if !tab.isHome {
-                    SiteIconView(
-                        host: tab.displayHost,
-                        size: 15,
-                        faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl,
-                        allowsThirdPartyLookup: tab.privacyMode != .private
-                    )
+            // A private card carries no caption. Its title and host are the
+            // one part of the card a blur cannot cover — the picture is
+            // smeared, but the line underneath would still print the page's
+            // name for anyone glancing at the screen. The card keeps its
+            // silhouette and its close button; the label stays on the
+            // accessibility element for VoiceOver.
+            if tab.privacyMode != .private {
+                HStack(spacing: 5) {
+                    // The start page has no site to identify, so its title stands
+                    // alone — a letter swatch in front of 主页 is noise.
+                    if !tab.isHome {
+                        SiteIconView(
+                            host: tab.displayHost,
+                            size: 15,
+                            faviconUrl: tab.faviconUrl.isEmpty ? nil : tab.faviconUrl,
+                            allowsThirdPartyLookup: true
+                        )
+                    }
+                    Text(tab.displayTitle)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .foregroundStyle(palette.primaryText)
                 }
-                Text(tab.displayTitle)
-                    .font(.caption)
-                    .lineLimit(1)
-                    .foregroundStyle(palette.primaryText)
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
@@ -802,12 +804,14 @@ private struct TabCard: View {
 /// `LAContext` is what gates the private list, so the biometric prompt a user
 /// sees is the standard system one.
 private struct PrivateUnlockSheet: View {
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
     var onUnlock: () -> Void
     var onCancel: () -> Void
 
     @State private var errorMessage: String?
+    @State private var isVerifying = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -833,11 +837,19 @@ private struct PrivateUnlockSheet: View {
             Spacer()
 
             VStack(spacing: 10) {
-                Button("解锁") {
+                Button {
                     Task { await authenticate() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isVerifying {
+                            ProgressView().tint(.white)
+                        }
+                        Text(isVerifying ? "验证中…" : "解锁")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
+                .disabled(isVerifying)
 
                 Button("取消") { onCancel() }
                     .frame(maxWidth: .infinity)
@@ -850,25 +862,69 @@ private struct PrivateUnlockSheet: View {
         .task { await authenticate() }
     }
 
+    /// One shared check with the sidebar and every 无痕 entry point. The
+    /// sheet is only the surface that carries the error copy; the prompt itself
+    /// is the system's Face ID / Touch ID / passcode sheet.
     private func authenticate() async {
-        let context = LAContext()
-        var error: NSError?
-        // `deviceOwnerAuthentication` falls back to the passcode when biometrics
-        // are unavailable, which matters on a device with no enrolled face or
-        // fingerprint — a biometric-only policy would lock the user out of their
-        // own tabs.
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+        guard !isVerifying else { return }
+        isVerifying = true
+        defer { isVerifying = false }
+
+        switch await env.requestPrivateAccess(reason: "查看无痕标签页") {
+        case .granted:
+            errorMessage = nil
+            onUnlock()
+        case .unavailable:
             errorMessage = "此设备未设置密码或生物识别，无法验证身份。"
-            return
-        }
-        do {
-            let success = try await context.evaluatePolicy(
-                .deviceOwnerAuthentication,
-                localizedReason: "查看无痕标签页"
-            )
-            if success { onUnlock() }
-        } catch {
+        case .cancelled:
+            errorMessage = "验证已取消。可以重试，或退出无痕标签页。"
+        case .failed:
             errorMessage = "验证未通过。"
         }
+    }
+}
+
+
+// MARK: - Overview glass
+
+/// The one translucent treatment every control on the overview wears.
+///
+/// The mode pill, the header circles, the search field and the pinned chips
+/// used to be raw `.ultraThinMaterial` fills with no edge. Against a bright
+/// page print the material alone has no silhouette, so the controls read as
+/// islands of blur. The hairline gives each one the edge a piece of glass gets
+/// from its own rim, and using one helper keeps their radii and edges from
+/// drifting apart.
+private struct OverviewGlass<S: Shape>: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.browserPalette) private var palette
+
+    var shape: S
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                // The system's reduced-transparency setting must not turn the
+                // overview's controls into washed-out smears over the page
+                // print; a palette control fill keeps their silhouette.
+                if reduceTransparency {
+                    shape.fill(palette.controlFill)
+                } else {
+                    shape.fill(.ultraThinMaterial)
+                }
+            }
+            .overlay {
+                shape.strokeBorder(
+                    reduceTransparency ? palette.cardStroke : .white.opacity(0.16),
+                    lineWidth: 0.5
+                )
+                .allowsHitTesting(false)
+            }
+    }
+}
+
+private extension View {
+    func overviewGlass<S: Shape>(_ shape: S) -> some View {
+        modifier(OverviewGlass(shape: shape))
     }
 }

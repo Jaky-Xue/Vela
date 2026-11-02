@@ -91,6 +91,7 @@ struct WebRTCProtectionSettingsView: View {
         }
         .navigationTitle("WebRTC 泄露防护")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
     }
 
     private func applyEnabled(_ enabled: Bool) {

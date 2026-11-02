@@ -72,6 +72,24 @@ final class TabPreviewStore {
         try? FileManager.default.removeItem(at: url)
     }
 
+    /// Forgets every picture, in memory and on disk.
+    ///
+    /// 不保留标签页 uses this: the preview folder is a record of the pages the
+    /// user looked at, so turning the switch on (or launching with it on) must
+    /// remove the ones already there, not merely stop writing new ones.
+    func removeAll() {
+        cache.removeAllObjects()
+        guard let directory,
+              let files = try? FileManager.default.contentsOfDirectory(
+                  at: directory,
+                  includingPropertiesForKeys: nil,
+                  options: [.skipsHiddenFiles]
+              ) else { return }
+        for url in files {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     /// Keeps the folder from growing without bound across sessions. The newest
     /// files are the ones a restored session is most likely to name.
     private func pruneIfNeeded() {

@@ -85,6 +85,7 @@ struct ToolbarSettingsView: View {
         }
         .navigationTitle("工具栏")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
         .toolbar {
             EditButton()
         }

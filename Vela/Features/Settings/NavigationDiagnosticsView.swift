@@ -97,6 +97,7 @@ struct NavigationDiagnosticsView: View {
         }
         .navigationTitle("加载诊断")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
     }
 }
 

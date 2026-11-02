@@ -65,6 +65,48 @@ public final class UserScriptService {
         reload()
     }
 
+    /// Enables or disables every installed script in one pass.
+    ///
+    /// A manager with a dozen scripts should not ask the user to tap a dozen
+    /// switches to silence them for an afternoon. Scripts already in the
+    /// requested state are skipped, so the write touches only what changed.
+    public func setAllEnabled(_ enabled: Bool) {
+        for script in scripts where script.enabled != enabled {
+            try? repository.setEnabled(enabled, id: script.id)
+        }
+        reload()
+    }
+
+    /// Replaces a script's matching rules.
+    ///
+    /// The detail screen edits these directly instead of requiring a reinstall:
+    /// a script that is right about everything except its `@match` line should
+    /// not have to be re-fetched to be pointed at the site the user is on.
+    /// Empty lines are dropped, and each list keeps declaration order.
+    public func updateRules(
+        matches: [String],
+        includes: [String],
+        excludes: [String] = [],
+        excludeMatches: [String] = [],
+        for script: InstalledUserScriptState
+    ) throws {
+        func cleaned(_ values: [String]) -> [String] {
+            var seen = Set<String>()
+            return values
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && seen.insert($0).inserted }
+        }
+
+        var updated = script
+        updated.matches = cleaned(matches)
+        updated.includes = cleaned(includes)
+        updated.excludes = cleaned(excludes)
+        updated.excludeMatches = cleaned(excludeMatches)
+        updated.updatedAt = Date()
+        try repository.upsert(updated)
+        reload()
+    }
+
     public func delete(id: String) {
         try? repository.remove(id: id)
         updateStatus.removeValue(forKey: id)

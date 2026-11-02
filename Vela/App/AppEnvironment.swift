@@ -190,6 +190,13 @@ public final class AppEnvironment {
            let snapshot = try? tabSessions.loadSession(windowId: windowId) {
             tabManager.restoreSession(snapshot)
         }
+        // 不保留标签页 keeps nothing about the strip, so a launch with it on
+        // clears what earlier launches left behind: no recently-closed rows and
+        // no page pictures. Without this, turning the switch on only stopped
+        // *new* records and left the old ones to be restored on screen.
+        if !tabManager.persistsSession {
+            tabManager.discardRetainedTabData()
+        }
         // The recently-closed list is persisted, so a relaunch offers the
         // entries it saved. Private entries are loaded only when a private
         // session is actually open (restored tabs or the routing switch);
@@ -220,6 +227,21 @@ public final class AppEnvironment {
             // First launch, or a restore that produced nothing.
             let tab = tabManager.createTab()
             tabManager.activateTab(id: tab.id)
+        }
+
+        // A private session that was open when the app was quit must not put a
+        // private page on screen before the owner has verified themselves.
+        // The private tabs stay in the strip; only the landing surface moves
+        // to the regular side, which is also what every entry point does.
+        if settings.preferences.lockPrivateTabs,
+           tabManager.activeTab?.privacyMode == .private {
+            if let regular = tabManager.regularTabs.first {
+                tabManager.activateTab(id: regular.id)
+            } else {
+                tabManager.activateTab(
+                    id: tabManager.createTab(privacyMode: .regular, openSource: .restore).id
+                )
+            }
         }
     }
 
@@ -257,14 +279,19 @@ public final class AppEnvironment {
 
     // MARK: - Preferences with a window side effect
 
-    /// Turns 不保留标签页 on or off. Enabling it clears this window's session
-    /// already on disk so a later relaunch cannot resurrect tabs from before
-    /// the choice; the open tabs stay on screen until the app is closed.
+    /// Turns 不保留标签页 on or off.
+    ///
+    /// Enabling it clears every retained trace — this window's session file,
+    /// the recently-closed list (in memory and on disk) and the preview folder
+    /// — so the switch means "the browser keeps no tabs" rather than the
+    /// narrower "the browser will not restore tabs after it is quit". The open
+    /// tabs stay on screen: the switch is not a close-all command.
     public func setTabsNotRetained(_ notRetained: Bool) {
         settings.update { $0.tabsNotRetained = notRetained }
         tabManager.persistsSession = !notRetained
         if notRetained {
             try? tabSessions.removeSession(windowId: windowId)
+            tabManager.discardRetainedTabData()
         }
     }
 
@@ -287,6 +314,99 @@ public final class AppEnvironment {
     /// after the write.
     public func togglePrivateBrowsingMode() {
         setPrivateBrowsingMode(!(settings.preferences.privateBrowsingMode ?? false))
+    }
+
+    // MARK: - Identity check for 无痕
+
+    /// The outcome of the device-owner check that gates private content.
+    public enum PrivateAccessResult: Equatable, Sendable {
+        case granted
+        case cancelled
+        /// The device has no passcode and no enrolled Face ID / Touch ID.
+        case unavailable
+        case failed
+    }
+
+    /// Whether 无痕 content is behind the device check right now.
+    ///
+    /// Cleared when the app leaves the foreground and when the private session
+    /// ends, so "verified once" does not become "verified for the rest of the
+    /// day". A Stage Manager window has its own environment and therefore its
+    /// own flag.
+    public private(set) var privateAccessUnlocked = false
+
+    /// A message the shell shows when the 无痕 switch could not run the check.
+    /// A cancelled prompt needs none — the system sheet is its own answer —
+    /// but a device with no passcode, or a failed evaluation, would otherwise
+    /// make the switch look dead.
+    public var privateAccessNotice: String?
+
+    /// Whether a private surface must ask for the system check before it can
+    /// be shown.
+    public var requiresPrivateAuthentication: Bool {
+        settings.preferences.lockPrivateTabs && !privateAccessUnlocked
+    }
+
+    /// Runs the system Face ID / Touch ID / passcode prompt exactly once per
+    /// foreground session.
+    ///
+    /// Every private surface calls this — the overview, the iPad sidebar, the
+    /// 无痕 switch, a `vela://private` handoff, a restored private session — so
+    /// the rule "no private content without the system check" holds at every
+    /// door rather than at whichever one remembered to ask.
+    @discardableResult
+    public func requestPrivateAccess(
+        reason: String = "查看无痕标签页"
+    ) async -> PrivateAccessResult {
+        guard settings.preferences.lockPrivateTabs else {
+            privateAccessUnlocked = true
+            return .granted
+        }
+        if privateAccessUnlocked { return .granted }
+
+        switch await DeviceAuthentication.evaluate(reason: reason) {
+        case .success:
+            privateAccessUnlocked = true
+            return .granted
+        case .cancelled:
+            return .cancelled
+        case .unavailable:
+            return .unavailable
+        case .failed:
+            return .failed
+        }
+    }
+
+    /// Re-locks the private surfaces without ending the session.
+    public func lockPrivateAccess() {
+        privateAccessUnlocked = false
+    }
+
+    /// The 无痕 switch every UI entry point uses.
+    ///
+    /// Turning it on verifies the owner first when the lock is enabled;
+    /// turning it off re-locks, so the next entry asks again. The synchronous
+    /// `setPrivateBrowsingMode` remains for internal state transitions that
+    /// cannot prompt (boot, session end).
+    public func requestPrivateBrowsingToggle() async {
+        let turningOn = !(settings.preferences.privateBrowsingMode ?? false)
+        if turningOn {
+            switch await requestPrivateAccess(reason: "进入无痕模式") {
+            case .granted:
+                break
+            case .cancelled:
+                return
+            case .unavailable:
+                privateAccessNotice = "此设备未设置密码或面容 ID / 触控 ID，无法验证身份并进入无痕模式。请先在系统设置中设置设备密码。"
+                return
+            case .failed:
+                privateAccessNotice = "验证未通过，无痕模式没有开启。"
+                return
+            }
+        } else {
+            privateAccessUnlocked = false
+        }
+        setPrivateBrowsingMode(turningOn)
     }
 
     /// The mode the current strip presents: the active tab's own mode, or the
@@ -449,6 +569,7 @@ public final class AppEnvironment {
         guard let token = beginEndPrivateSession(expectedGeneration: expectedGeneration) else {
             return
         }
+        privateAccessUnlocked = false
         await finishEndPrivateSession(token)
     }
 }

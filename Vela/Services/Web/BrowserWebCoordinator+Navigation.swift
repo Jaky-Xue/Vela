@@ -25,6 +25,18 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         "http", "https", "about", "file", "blob", "data", "javascript", "ws", "wss"
     ]
 
+    /// Whether a URL names an installable user script.
+    ///
+    /// The `.user.js` suffix is the convention every gallery and update server
+    /// uses (Greasy Fork, GitHub raw links, Tampermonkey's own update URLs), and
+    /// the path is checked rather than the response type because the decision
+    /// has to be made before the request is sent.
+    static func isUserScriptURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return false }
+        return url.path.lowercased().hasSuffix(".user.js")
+    }
+
     public nonisolated func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,
@@ -61,6 +73,29 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                 type: typeName,
                 outcome: .cancelled
             )
+            return .cancel
+        }
+
+        // 1b. A link to a `*.user.js` file is an install request, not a page.
+        //     Leaving it to WebKit would print the script as a text document,
+        //     which is what made "install" links on script galleries look like
+        //     a code viewer. The navigation is cancelled and the URL is handed
+        //     to the shell, which fetches and reviews it before anything is
+        //     stored. Private tabs are excluded: installing from a private
+        //     session would write to the profile the mode promises not to touch.
+        // Only a page-level navigation is an install request; a frame that
+        // happens to load a .user.js is page content and is left alone.
+        if tab.privacyMode != .private,
+           navigationAction.targetFrame?.isMainFrame != false,
+           Self.isUserScriptURL(url) {
+            let request = UserScriptInstallRequest(
+                url: url,
+                tabId: tab.id,
+                sourceHost: navigationAction.sourceFrame.request.url?.host ?? ""
+            )
+            Task { @MainActor [weak self] in
+                self?.overlays.pendingUserScriptInstall = request
+            }
             return .cancel
         }
 

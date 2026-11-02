@@ -268,6 +268,7 @@ struct AdBlockSettingsView: View {
                 }
                 .navigationTitle("编辑自定义规则")
                 .navigationBarTitleDisplayMode(.inline)
+                .browserListSurface()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("取消") { editingRuleIndex = nil }
@@ -286,6 +287,7 @@ struct AdBlockSettingsView: View {
         }
         .navigationTitle("广告与内容过滤")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
         .onAppear {
             Task { await env.refreshAdBlockRules() }
         }
@@ -376,6 +378,7 @@ struct AdBlockSourceRulesView: View {
         }
         .navigationTitle(source.name)
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
         .searchable(text: $query, prompt: "搜索规则")
         .task {
             if text == nil {
@@ -436,6 +439,7 @@ struct SitePermissionsSettingsView: View {
         }
         .navigationTitle("网站权限")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
     }
 }
 
@@ -512,6 +516,7 @@ struct ExternalNavigationSettingsView: View {
         }
         .navigationTitle("外部应用跳转")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
     }
 
     /// Adds the typed host as an exception, defaulting to asking.
@@ -582,6 +587,7 @@ struct ClearDataView: View {
         }
         .navigationTitle("清除浏览数据")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
         .onAppear {
             // The counts come from the published history list, which is no
             // longer refreshed on every page load.
@@ -722,5 +728,6 @@ struct DownloadSettingsView: View {
         }
         .navigationTitle("下载")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
     }
 }

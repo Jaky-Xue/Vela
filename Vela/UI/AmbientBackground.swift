@@ -211,6 +211,10 @@ struct AmbientBackgroundView: View {
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
+        // The field's colours are a visual choice made in a settings list;
+        // letting one field dissolve into the next reads as the choice being
+        // applied rather than as the screen repainting itself.
+        .animation(.easeInOut(duration: 0.28), value: style)
     }
 
     /// The style's own base, with a neutral veil rather than the palette

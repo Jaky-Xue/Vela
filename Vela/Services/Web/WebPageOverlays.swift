@@ -38,6 +38,15 @@ public final class WebPageOverlays {
     /// The element the user picked while the picker was armed.
     public var elementPick: ElementPickResult?
 
+    /// A `*.user.js` link the page tried to open, held while the shell offers
+    /// to install it.
+    ///
+    /// A userscript manager's job at a `.user.js` link is to install the
+    /// script, not to print its source as a text page. The navigation is
+    /// cancelled at the policy stage and the URL is handed here; the install
+    /// sheet fetches, parses and shows it before anything is stored.
+    public var pendingUserScriptInstall: UserScriptInstallRequest?
+
     /// A file upload the page is blocked on. The shell presents the picker and
     /// then calls the stored handler.
     public var fileUpload: FileUploadRequest?
@@ -90,6 +99,16 @@ public struct JavaScriptDialog: Identifiable, Equatable, Sendable {
     /// the user knows the page is not the source.
     public var fromUserScript: Bool
     public var tabId: String
+}
+
+/// A `*.user.js` navigation waiting for the install prompt.
+public struct UserScriptInstallRequest: Identifiable, Equatable, Sendable {
+    public let id = UUID()
+    public var url: URL
+    public var tabId: String
+    /// The host of the page that offered the link, so the prompt can say where
+    /// the install request came from.
+    public var sourceHost: String
 }
 
 /// A navigation the page asked for that would leave the browser.

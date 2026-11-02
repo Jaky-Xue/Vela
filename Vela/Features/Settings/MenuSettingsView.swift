@@ -110,6 +110,7 @@ struct MenuSettingsView: View {
         }
         .navigationTitle("菜单面板")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
         .toolbar {
             EditButton()
         }
@@ -249,6 +250,7 @@ struct MenuShortcutEditorView: View {
             }
             .navigationTitle("新建快捷方式")
             .navigationBarTitleDisplayMode(.inline)
+            .browserListSurface()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") {

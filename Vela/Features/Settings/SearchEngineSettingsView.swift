@@ -121,6 +121,7 @@ struct SearchEngineSettingsView: View {
         }
         .navigationTitle("搜索引擎")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
         .sheet(isPresented: $showingCustomEngineForm) {
             CustomSearchEngineForm(engine: nil) { engine in
                 env.settings.addCustomSearchEngine(engine)
@@ -182,6 +183,7 @@ private struct CustomSearchEngineForm: View {
             }
             .navigationTitle(engine == nil ? "添加搜索引擎" : "编辑搜索引擎")
             .navigationBarTitleDisplayMode(.inline)
+            .browserListSurface()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }

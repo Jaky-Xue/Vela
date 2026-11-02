@@ -134,20 +134,64 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
-                Toggle("无痕标签页需要验证身份", isOn: Binding(
-                    get: { env.settings.preferences.lockPrivateTabs },
-                    set: { value in env.settings.update { $0.lockPrivateTabs = value } }
-                ))
-                Toggle("模糊无痕标签页预览", isOn: Binding(
-                    get: { env.settings.preferences.blurPrivateTabPreviews },
-                    set: { value in env.settings.update { $0.blurPrivateTabPreviews = value } }
-                ))
+                HStack {
+                    Text("图标大小")
+                    Spacer()
+                    Text("\(Int(env.settings.preferences.homeTileIconSize ?? 40)) pt")
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(palette.secondaryText)
+                }
+                Slider(
+                    value: Binding(
+                        get: { env.settings.preferences.homeTileIconSize ?? 40 },
+                        set: { newValue in
+                            env.settings.update { $0.homeTileIconSize = newValue }
+                        }
+                    ),
+                    in: 28...64,
+                    step: 2
+                )
+                .tint(palette.accent)
+
+                Picker("形状", selection: Binding(
+                    get: { env.settings.preferences.homeTileShape ?? "rounded" },
+                    set: { newValue in
+                        env.settings.update { $0.homeTileShape = newValue }
+                    }
+                )) {
+                    Text("圆角").tag("rounded")
+                    Text("圆形").tag("circle")
+                    Text("方角").tag("square")
+                }
+                .pickerStyle(.segmented)
+
+                HStack {
+                    Text("间距")
+                    Spacer()
+                    Text("\(Int(env.settings.preferences.homeTileSpacing ?? 12)) pt")
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(palette.secondaryText)
+                }
+                Slider(
+                    value: Binding(
+                        get: { env.settings.preferences.homeTileSpacing ?? 12 },
+                        set: { newValue in
+                            env.settings.update { $0.homeTileSpacing = newValue }
+                        }
+                    ),
+                    in: 8...28,
+                    step: 2
+                )
+                .tint(palette.accent)
             } header: {
-                Text("无痕模式")
+                Text("主页图标")
+            } footer: {
+                Text("主页显示收藏的网站。图标大小、形状和间距即时生效；背景图片在上方「背景」中设置，它同时作用于主页与工具栏。")
             }
         }
         .navigationTitle("外观")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
         .sheet(isPresented: $showPhotoPicker) {
             PhotoLibraryPicker { image in
                 saveBackgroundImage(image)

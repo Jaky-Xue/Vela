@@ -147,6 +147,7 @@ struct UserAgentSettingsView: View {
         }
         .navigationTitle("网页标识")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
     }
 
     /// One preset row with the reference screen's radio affordance: an empty

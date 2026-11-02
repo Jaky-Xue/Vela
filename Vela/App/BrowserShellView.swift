@@ -248,15 +248,38 @@ struct BrowserShellView: View {
         env.settings.preferences.backgroundImageStamp != nil
     }
 
-    var shellBase: some View {
-        ZStack {
+    /// The app's own backdrop, below everything.
+    ///
+    /// Kept apart from the content column so the cross-fade below is scoped to
+    /// the backdrop: an `.animation(value:)` on the outer stack would animate
+    /// every layout change in the browser whenever the backdrop switched.
+    /// Choosing a picture in 外观 is a visual decision made with the settings
+    /// sheet still open, and a background that cut from one surface to another
+    /// behind it read as a rendering glitch rather than as the choice taking
+    /// effect.
+    @ViewBuilder
+    var shellBackdrop: some View {
+        Group {
             if showsBackgroundPictureAtRoot, let stamp = env.settings.preferences.backgroundImageStamp {
                 BackgroundPictureBackdrop(stamp: stamp)
+                    .transition(.opacity)
             } else if showsAmbientRootBackground {
                 AmbientBackgroundView()
+                    .transition(.opacity)
             } else {
-                palette.surface.ignoresSafeArea()
+                palette.surface
+                    .ignoresSafeArea()
+                    .transition(.opacity)
             }
+        }
+        .animation(.easeInOut(duration: 0.28), value: showsBackgroundPictureAtRoot)
+        .animation(.easeInOut(duration: 0.28), value: showsAmbientRootBackground)
+        .animation(.easeInOut(duration: 0.28), value: env.settings.backgroundStyle)
+    }
+
+    var shellBase: some View {
+        ZStack {
+            shellBackdrop
 
             if usesPadLayout {
                 padRoot
@@ -354,6 +377,18 @@ struct BrowserShellView: View {
             presenting: novelNotice
         ) { _ in
             Button("好", role: .cancel) { novelNotice = nil }
+        } message: { message in
+            Text(message)
+        }
+        .alert(
+            "无法进入无痕模式",
+            isPresented: Binding(
+                get: { env.privateAccessNotice != nil },
+                set: { if !$0 { env.privateAccessNotice = nil } }
+            ),
+            presenting: env.privateAccessNotice
+        ) { _ in
+            Button("好", role: .cancel) { env.privateAccessNotice = nil }
         } message: { message in
             Text(message)
         }
@@ -1005,7 +1040,7 @@ struct BrowserShellView: View {
                 // No tab on screen does not make the switch a tab factory:
                 // turning 无痕模式 on here materialises the private home it
                 // routes to, which is exactly what an empty browser needs.
-                env.togglePrivateBrowsingMode()
+                Task { await env.requestPrivateBrowsingToggle() }
             case .leavePrivate: break
             default: break
             }
@@ -1072,7 +1107,7 @@ struct BrowserShellView: View {
             // to regular and a private page yields the screen to the regular
             // home. The private tabs themselves stay either way — ending the
             // session is the 离开无痕模式 action, not this one.
-            env.togglePrivateBrowsingMode()
+            Task { await env.requestPrivateBrowsingToggle() }
         case .leavePrivate:
             let expectedGeneration = env.privateNovelSessionGeneration
             // Close the private reader (and shelf) before the session's data
@@ -1157,7 +1192,7 @@ struct BrowserShellView: View {
         case .findInPage:
             if canActOnPage { showFindBar = true }
         case .togglePrivate:
-            env.togglePrivateBrowsingMode()
+            Task { await env.requestPrivateBrowsingToggle() }
         case .nextTab:
             tabManager.switchTab(by: 1)
         case .previousTab:

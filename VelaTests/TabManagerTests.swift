@@ -198,6 +198,17 @@ final class TabManagerTests: XCTestCase {
         XCTAssertNotNil(manager.webView(for: pinned.id))
     }
 
+    func testNewTabsLandAtTheFrontOfTheStrip() {
+        let manager = makeManager()
+        let home = manager.createTab()
+        let older = manager.openTab(url: URL(string: "https://older.example")!)
+        let newer = manager.openTab(url: URL(string: "https://newer.example")!)
+
+        // The tab just opened is the one the user is about to read, so it is
+        // the first card in the overview and the first row in the sidebar.
+        XCTAssertEqual(manager.tabs.map(\.id), [newer.id, older.id, home.id])
+    }
+
     // MARK: - Closing
 
     func testClosingTheLastTabLeavesExactlyOneHomeTab() {
@@ -302,15 +313,19 @@ final class TabManagerTests: XCTestCase {
         let second = manager.openTab(url: URL(string: "https://one.example")!)
         let third = manager.openTab(url: URL(string: "https://two.example")!)
 
+        // New tabs land at the front, so the strip reads newest-first before
+        // anything is pinned: third, second, first.
+        XCTAssertEqual(manager.tabs.map(\.id), [third.id, second.id, first.id])
+
         manager.setPinned(true, id: third.id)
 
-        XCTAssertEqual(manager.tabs.map(\.id), [third.id, first.id, second.id])
+        XCTAssertEqual(manager.tabs.map(\.id), [third.id, second.id, first.id])
 
         // Unpinning keeps the tab where it is rather than teleporting it back
         // to where it sat before it was pinned. It was at the front, so it stays
         // at the front — now as the leading unpinned tab.
         manager.setPinned(false, id: third.id)
-        XCTAssertEqual(manager.tabs.map(\.id), [third.id, first.id, second.id])
+        XCTAssertEqual(manager.tabs.map(\.id), [third.id, second.id, first.id])
     }
 
     func testPinnedTabsKeepTheirRelativeOrder() {
@@ -328,12 +343,14 @@ final class TabManagerTests: XCTestCase {
     func testSwitchTabWrapsInBothDirections() {
         let manager = makeManager()
         let first = manager.createTab()
-        _ = manager.openTab(url: URL(string: "https://one.example")!)
+        let middle = manager.openTab(url: URL(string: "https://one.example")!)
         let last = manager.openTab(url: URL(string: "https://two.example")!)
         XCTAssertEqual(manager.activeTabId, last.id)
+        // Newest-first: last, middle, first.
+        XCTAssertEqual(manager.tabs.map(\.id), [last.id, middle.id, first.id])
 
         manager.switchTab(by: 1)
-        XCTAssertEqual(manager.activeTabId, first.id)
+        XCTAssertEqual(manager.activeTabId, middle.id)
 
         manager.switchTab(by: -1)
         XCTAssertEqual(manager.activeTabId, last.id)
@@ -347,7 +364,8 @@ final class TabManagerTests: XCTestCase {
 
         manager.move(fromIndex: 0, toIndex: 1)
 
-        XCTAssertEqual(manager.tabs.map(\.id), [second.id, first.id, third.id])
+        // Before the move the strip is newest-first: third, second, first.
+        XCTAssertEqual(manager.tabs.map(\.id), [second.id, third.id, first.id])
     }
 
     // MARK: - Privacy

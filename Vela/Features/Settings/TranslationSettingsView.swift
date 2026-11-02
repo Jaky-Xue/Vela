@@ -193,6 +193,7 @@ struct TranslationSettingsView: View {
         }
         .navigationTitle("网页翻译")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
     }
 
     private func symbol(for provider: TranslationProviderKind) -> String {

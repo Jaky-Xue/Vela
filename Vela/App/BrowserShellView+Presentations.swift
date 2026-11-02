@@ -172,6 +172,20 @@ extension BrowserShellView {
         } message: { notice in
             Text(notice)
         }
+        .sheet(item: Binding(
+            get: { env.overlays.pendingUserScriptInstall },
+            set: { value in
+                if value == nil {
+                    env.overlays.pendingUserScriptInstall = nil
+                }
+            }
+        )) { request in
+            UserScriptInstallPromptView(request: request) {
+                env.overlays.pendingUserScriptInstall = nil
+            }
+            .environment(env)
+            .browserAmbientSheet()
+        }
         .alert(
             env.overlays.javascriptDialog?.message ?? "",
             isPresented: Binding(

@@ -34,6 +34,7 @@ struct UserScriptsView: View {
     /// on success, so without this the only feedback was the script appearing in
     /// the list — which a reinstall of an existing script does not even do.
     @State private var installNotice: String?
+    @State private var searchQuery = ""
 
     private enum InstallSource: String, CaseIterable, Identifiable {
         case paste, url, file
@@ -48,6 +49,20 @@ struct UserScriptsView: View {
     }
 
     private var scripts: [InstalledUserScriptState] { env.userScripts.scripts }
+
+    /// The list narrowed by the search field. Rules are searchable too: after
+    /// installing a dozen gallery scripts the name is often the part the user
+    /// does not remember — the site they run on is.
+    private var filteredScripts: [InstalledUserScriptState] {
+        guard !searchQuery.isEmpty else { return scripts }
+        return scripts.filter { script in
+            script.displayName.localizedCaseInsensitiveContains(searchQuery)
+                || script.description.localizedCaseInsensitiveContains(searchQuery)
+                || script.namespace.localizedCaseInsensitiveContains(searchQuery)
+                || script.matches.contains { $0.localizedCaseInsensitiveContains(searchQuery) }
+                || script.includes.contains { $0.localizedCaseInsensitiveContains(searchQuery) }
+        }
+    }
 
     var body: some View {
         List {
@@ -86,13 +101,22 @@ struct UserScriptsView: View {
                     EmptyState(
                         systemImage: "curlybraces",
                         title: "还没有用户脚本",
-                        message: "脚本可以给网页加功能，例如去除浮窗、增强阅读体验。"
+                        message: "脚本可以给网页加功能，例如去除浮窗、增强阅读体验。点按下方「安装新脚本」粘贴代码、从网址下载或导入文件；在网页里点按 .user.js 链接也会直接打开安装页。"
+                    )
+                    .listRowBackground(Color.clear)
+                }
+            } else if filteredScripts.isEmpty {
+                Section {
+                    EmptyState(
+                        systemImage: "magnifyingglass",
+                        title: "没有匹配的脚本",
+                        message: "换个关键词试试，可以搜索脚本名称、说明或它运行的网站。"
                     )
                     .listRowBackground(Color.clear)
                 }
             } else {
                 Section {
-                    ForEach(scripts) { script in
+                    ForEach(filteredScripts) { script in
                         NavigationLink {
                             UserScriptDetailView(script: script)
                         } label: {
@@ -116,7 +140,9 @@ struct UserScriptsView: View {
                     }
                 } header: {
                     HStack {
-                        Text("\(scripts.count) 个脚本")
+                        Text(searchQuery.isEmpty
+                             ? "\(scripts.count) 个脚本"
+                             : "\(filteredScripts.count)/\(scripts.count) 个脚本")
                         Spacer()
                         if env.userScripts.isCheckingUpdates {
                             ProgressView()
@@ -124,7 +150,7 @@ struct UserScriptsView: View {
                         }
                     }
                 } footer: {
-                    Text("关闭的脚本会保留设置，但不会在页面上运行。左滑或长按可以删除。")
+                    Text("关闭的脚本会保留设置，但不会在页面上运行。左滑或长按可以删除。修改后需要重新载入网页才会生效。")
                 }
             }
 
@@ -146,15 +172,29 @@ struct UserScriptsView: View {
         .browserListSurface()
         .navigationTitle("用户脚本")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(
+            text: $searchQuery,
+            placement: .navigationBarDrawer(displayMode: .automatic),
+            prompt: "搜索脚本或运行网站"
+        )
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await checkAllUpdates() }
+                Menu {
+                    Button("全部启用", systemImage: "checkmark.circle") {
+                        env.userScripts.setAllEnabled(true)
+                    }
+                    Button("全部停用", systemImage: "pause.circle") {
+                        env.userScripts.setAllEnabled(false)
+                    }
+                    Divider()
+                    Button("检查全部更新", systemImage: "arrow.triangle.2.circlepath") {
+                        Task { await checkAllUpdates() }
+                    }
                 } label: {
-                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Image(systemName: "ellipsis.circle")
                 }
                 .disabled(scripts.isEmpty || env.userScripts.isCheckingUpdates)
-                .accessibilityLabel("检查全部更新")
+                .accessibilityLabel("更多操作")
             }
         }
         .onAppear { env.userScripts.reload() }
@@ -490,6 +530,13 @@ struct UserScriptDetailView: View {
     @State private var editError: String?
     @State private var notice: String?
 
+    @State private var showRuleEditor = false
+    @State private var matchText = ""
+    @State private var includeText = ""
+    @State private var excludeText = ""
+    @State private var excludeMatchText = ""
+    @State private var ruleError: String?
+
     private var current: InstalledUserScriptState {
         env.userScripts.script(id: script.id) ?? script
     }
@@ -540,8 +587,20 @@ struct UserScriptDetailView: View {
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
+                Button {
+                    matchText = current.matches.joined(separator: "\n")
+                    includeText = current.includes.joined(separator: "\n")
+                    excludeText = current.excludes.joined(separator: "\n")
+                    excludeMatchText = current.excludeMatches.joined(separator: "\n")
+                    ruleError = nil
+                    showRuleEditor = true
+                } label: {
+                    Label("编辑匹配规则", systemImage: "slider.horizontal.3")
+                }
             } header: {
                 Text("运行于")
+            } footer: {
+                Text("@match 使用站点通配语法（如 https://*.example.com/*），@include 支持更宽松的通配与 /正则/。两者至少保留一条，脚本才会在任何网页运行。")
             }
 
             if !current.excludes.isEmpty || !current.excludeMatches.isEmpty {
@@ -670,6 +729,9 @@ struct UserScriptDetailView: View {
         .sheet(isPresented: $showEditor) {
             editorSheet
         }
+        .sheet(isPresented: $showRuleEditor) {
+            ruleEditorSheet
+        }
         .alert("删除「\(current.displayName)」？", isPresented: $showDeleteConfirm) {
             Button("取消", role: .cancel) {}
             Button("删除", role: .destructive) {
@@ -678,6 +740,106 @@ struct UserScriptDetailView: View {
             }
         } message: {
             Text("脚本保存的数据（GM_setValue）和依赖也会一起删除。")
+        }
+    }
+
+    private var ruleEditorSheet: some View {
+        NavigationStack {
+            Form {
+                if let ruleError {
+                    Section {
+                        Text(ruleError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                Section {
+                    TextEditor(text: $matchText)
+                        .font(.system(size: 12, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .frame(minHeight: 88)
+                } header: {
+                    Text("@match · 每行一条")
+                } footer: {
+                    Text("Chrome 扩展的站点匹配语法：<scheme>://<host><path>，host 可以用 *.example.com，path 可以用 * 通配。")
+                }
+
+                Section {
+                    TextEditor(text: $includeText)
+                        .font(.system(size: 12, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .frame(minHeight: 88)
+                } header: {
+                    Text("@include · 每行一条")
+                } footer: {
+                    Text("对完整网址做通配匹配；以 / 开头和结尾时按正则表达式处理。")
+                }
+
+                Section {
+                    TextEditor(text: $excludeText)
+                        .font(.system(size: 12, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .frame(minHeight: 66)
+                } header: {
+                    Text("@exclude · 每行一条")
+                }
+
+                Section {
+                    TextEditor(text: $excludeMatchText)
+                        .font(.system(size: 12, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .frame(minHeight: 66)
+                } header: {
+                    Text("@exclude-match · 每行一条")
+                } footer: {
+                    Text("排除规则优先于包含规则：地址先命中排除项时，脚本不会在该页运行。")
+                }
+            }
+            .navigationTitle("匹配规则")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showRuleEditor = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { saveRules() }
+                }
+            }
+        }
+    }
+
+    private func saveRules() {
+        func lines(_ text: String) -> [String] {
+            text.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+
+        let matches = lines(matchText)
+        let includes = lines(includeText)
+        guard !matches.isEmpty || !includes.isEmpty else {
+            ruleError = "至少需要一条 @match 或 @include 规则，否则脚本不会在任何网页运行。"
+            return
+        }
+
+        do {
+            try env.userScripts.updateRules(
+                matches: matches,
+                includes: includes,
+                excludes: lines(excludeText),
+                excludeMatches: lines(excludeMatchText),
+                for: current
+            )
+            showRuleEditor = false
+            ruleError = nil
+            notice = "匹配规则已保存。重新载入网页后生效。"
+        } catch {
+            ruleError = "保存失败：\(error.localizedDescription)"
         }
     }
 

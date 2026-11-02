@@ -114,9 +114,16 @@ public final class TabManager {
     /// inbound URL at once, instead of wherever a caller remembered it.
     public var newPagePrivacyMode: BrowserSessionPrivacyMode = .regular
 
-    /// Whether closing/backgrounding writes the tab strip to disk. Set by the
-    /// environment from 不保留标签页; when false, the last saved session is
-    /// cleared and no new one is written.
+    /// Whether tabs are retained at all. Set by the environment from
+    /// 不保留标签页.
+    ///
+    /// When false the browser keeps nothing beyond the tabs open right now: no
+    /// session is written or restored, closed tabs are not recorded for
+    /// 最近关闭, and page pictures are not saved for a later launch. The switch
+    /// used to cover only the session file, which left the strip's other two
+    /// traces — the recently-closed list and the preview folder — retaining
+    /// exactly the page titles and pictures the user had just asked it to
+    /// forget.
     public var persistsSession = true
 
     /// Fired when the first private tab of a new session is appended.
@@ -211,7 +218,9 @@ public final class TabManager {
         previews.store(
             image,
             for: tabId,
-            persistToDisk: tab(id: tabId)?.privacyMode != .private
+            // 不保留标签页 also means the picture is not carried into a later
+            // launch; the in-memory copy still serves the overview now.
+            persistToDisk: persistsSession && tab(id: tabId)?.privacyMode != .private
         )
     }
 
@@ -299,13 +308,16 @@ public final class TabManager {
             openSource: openSource
         )
 
-        // A pinned tab stays at the leading edge; a new tab lands after the
-        // pinned block, before the rest.
-        if let lastPinnedIndex = tabs.lastIndex(where: { $0.pinned }) {
-            tabs.insert(tab, at: lastPinnedIndex + 1)
-        } else {
-            tabs.append(tab)
-        }
+        // New tabs land at the front of the unpinned block, not at its tail:
+        // the tab a user just opened is the one they are about to use, and
+        // hunting for it at the far end of a long strip was the complaint this
+        // ordering answers. Pinned tabs keep the leading edge they were given.
+        //
+        // The home tab is created long before it is used, so it is inserted
+        // here once and then moves with the strip; a later page tab inserts
+        // ahead of it, which is exactly the "new tab in front" the strip shows.
+        let insertIndex = tabs.lastIndex(where: { $0.pinned }).map { $0 + 1 } ?? 0
+        tabs.insert(tab, at: insertIndex)
         return tab
     }
 
@@ -503,7 +515,10 @@ public final class TabManager {
         let mode = closing.privacyMode
         onWillCloseTab?(closing)
 
-        if !closing.isHome {
+        // 不保留标签页 means a closed tab leaves no trace either: recording it
+        // would retain its title and address until the next launch, which is
+        // the retention the switch is asking to stop.
+        if !closing.isHome, persistsSession {
             let record = RecentlyClosedTabRecord(
                 title: closing.displayTitle,
                 url: closing.url,
@@ -1010,6 +1025,18 @@ public final class TabManager {
     """
 
     // MARK: - Persistence
+
+    /// Drops every retained trace of the strip for 不保留标签页.
+    ///
+    /// Called when the switch is turned on and at launch while it is on. The
+    /// open tabs stay exactly as they are — the switch is about what survives
+    /// the session, not about closing what the user is using.
+    public func discardRetainedTabData() {
+        recentlyClosed.removeAll()
+        previews.removeAll()
+        try? sessionRepository?.clearRecentlyClosed(privacyMode: .regular)
+        try? sessionRepository?.clearRecentlyClosed(privacyMode: .private)
+    }
 
     /// The write is
     /// fire-and-forget: a session save must never block a navigation.

@@ -29,18 +29,27 @@ struct GeneralSettingsView: View {
                     get: { env.settings.preferences.restoreTabsOnLaunch },
                     set: { value in env.settings.update { $0.restoreTabsOnLaunch = value } }
                 ))
+                .disabled(env.settings.preferences.tabsNotRetained ?? false)
+
                 Toggle("在后台打开新标签页", isOn: Binding(
                     get: { env.settings.preferences.openNewTabsInBackground },
                     set: { value in env.settings.update { $0.openNewTabsInBackground = value } }
                 ))
+            } header: {
+                Text("启动")
+            } footer: {
+                Text("「在后台打开新标签页」关闭时，从网页打开的新标签页会立即切换过去。开启「不保留标签页」后，恢复选项不再适用。")
+            }
+
+            Section {
                 Toggle("不保留标签页", isOn: Binding(
                     get: { env.settings.preferences.tabsNotRetained ?? false },
                     set: { value in env.setTabsNotRetained(value) }
                 ))
             } header: {
-                Text("启动与标签页")
+                Text("标签页保留")
             } footer: {
-                Text("开启「不保留标签页」后，退出应用不会保存当前标签页，下次启动从新标签页开始。")
+                Text("开启后，浏览器不再保留任何标签页痕迹：退出应用不保存标签页、关闭的标签不会进入「最近关闭」、标签预览图片也不写入磁盘。当前打开的标签页不受影响。")
             }
 
             Section {
@@ -124,5 +133,6 @@ struct GeneralSettingsView: View {
         }
         .navigationTitle("通用")
         .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
     }
 }

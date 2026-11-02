@@ -24,6 +24,14 @@ struct BrowserSidebarView: View {
         mode == .private ? env.tabManager.privateTabs : env.tabManager.regularTabs
     }
 
+    /// A private column whose identity check has not been passed shows the
+    /// lock instead of the list. The sidebar is a door to 无痕 content just as
+    /// the phone overview is, so it asks the same question rather than being
+    /// the one surface that opens without it.
+    private var isLocked: Bool {
+        mode == .private && env.requiresPrivateAuthentication
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -65,7 +73,24 @@ struct BrowserSidebarView: View {
                     .foregroundStyle(palette.primaryText)
                 Spacer()
                 Button {
-                    _ = env.tabManager.createTab(privacyMode: mode, openSource: .user)
+                    let requestedMode = mode
+                    Task { @MainActor in
+                        if requestedMode == .private {
+                            switch await env.requestPrivateAccess(reason: "新建无痕标签页") {
+                            case .granted:
+                                break
+                            case .cancelled:
+                                return
+                            case .unavailable:
+                                env.privateAccessNotice = "此设备未设置密码或面容 ID / 触控 ID，无法验证身份。"
+                                return
+                            case .failed:
+                                env.privateAccessNotice = "验证未通过。"
+                                return
+                            }
+                        }
+                        _ = env.tabManager.createTab(privacyMode: requestedMode, openSource: .user)
+                    }
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 15, weight: .semibold))
@@ -89,7 +114,33 @@ struct BrowserSidebarView: View {
                 }
             }
 
-            Picker("标签模式", selection: $mode) {
+            // The private segment is the sidebar's 无痕 switch, so it runs the
+            // same device check as the phone overview. The mode only moves
+            // once the check passes; a cancelled prompt leaves the sidebar on
+            // the regular column instead of opening a list the user did not
+            // authenticate to see.
+            Picker("标签模式", selection: Binding(
+                get: { mode },
+                set: { requested in
+                    guard requested == .private,
+                          env.requiresPrivateAuthentication else {
+                        mode = requested
+                        return
+                    }
+                    Task { @MainActor in
+                        switch await env.requestPrivateAccess(reason: "查看无痕标签页") {
+                        case .granted:
+                            mode = .private
+                        case .cancelled:
+                            break
+                        case .unavailable:
+                            env.privateAccessNotice = "此设备未设置密码或面容 ID / 触控 ID，无法验证身份。"
+                        case .failed:
+                            env.privateAccessNotice = "验证未通过。"
+                        }
+                    }
+                }
+            )) {
                 Text("普通").tag(BrowserSessionPrivacyMode.regular)
                 Text("无痕").tag(BrowserSessionPrivacyMode.private)
             }
@@ -105,7 +156,36 @@ struct BrowserSidebarView: View {
     private var tabList: some View {
         ScrollView {
             VStack(spacing: 3) {
-                if tabs.isEmpty {
+                if isLocked {
+                    VStack(spacing: BrowserSpacing.compact) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 26))
+                            .foregroundStyle(palette.accent)
+                            .frame(width: 54, height: 54)
+                            .background(palette.accent.opacity(0.12), in: Circle())
+                        Text("无痕标签页已锁定")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(palette.primaryText)
+                        Button("验证身份") {
+                            Task { @MainActor in
+                                switch await env.requestPrivateAccess(reason: "查看无痕标签页") {
+                                case .granted:
+                                    break
+                                case .cancelled:
+                                    break
+                                case .unavailable:
+                                    env.privateAccessNotice = "此设备未设置密码或面容 ID / 触控 ID，无法验证身份。"
+                                case .failed:
+                                    env.privateAccessNotice = "验证未通过。"
+                                }
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 32)
+                } else if tabs.isEmpty {
                     Text("没有标签页")
                         .font(.caption)
                         .foregroundStyle(palette.secondaryText)
@@ -126,8 +206,24 @@ struct BrowserSidebarView: View {
         let isActive = tab.id == env.tabManager.activeTabId
         return HStack(spacing: 8) {
             Button {
-                env.tabManager.activateTab(id: tab.id)
-                onClose?()
+                if tab.privacyMode == .private, env.requiresPrivateAuthentication {
+                    Task { @MainActor in
+                        switch await env.requestPrivateAccess(reason: "查看无痕标签页") {
+                        case .granted:
+                            env.tabManager.activateTab(id: tab.id)
+                            onClose?()
+                        case .cancelled:
+                            break
+                        case .unavailable:
+                            env.privateAccessNotice = "此设备未设置密码或面容 ID / 触控 ID，无法验证身份。"
+                        case .failed:
+                            env.privateAccessNotice = "验证未通过。"
+                        }
+                    }
+                } else {
+                    env.tabManager.activateTab(id: tab.id)
+                    onClose?()
+                }
             } label: {
                 HStack(spacing: 9) {
                     if tab.isHome {
