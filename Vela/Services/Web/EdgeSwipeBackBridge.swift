@@ -27,7 +27,15 @@ import UIKit
 /// `BrowserShellView.edgeSwipeBackEnabled`.
 struct EdgeSwipeBackBridge: UIViewRepresentable {
     var isEnabled: Bool
-    var onBack: () -> Void
+    /// The finger's horizontal travel from the edge. The shell moves the page
+    /// with this value, so the gesture is interactive rather than a switch
+    /// that fires at the end.
+    var onChanged: (CGFloat) -> Void = { _ in }
+    /// The distance and velocity at release. The shell decides whether the
+    /// swipe completes or springs back.
+    var onEnded: (CGFloat, CGFloat) -> Void = { _, _ in }
+    /// A cancelled or failed recognition — spring the page home.
+    var onCancelled: () -> Void = {}
 
     func makeUIView(context: Context) -> EdgeSwipeBridgeView {
         let view = EdgeSwipeBridgeView()
@@ -82,8 +90,19 @@ struct EdgeSwipeBackBridge: UIViewRepresentable {
         }
 
         @objc private func edgePanned(_ sender: UIScreenEdgePanGestureRecognizer) {
-            guard sender.state == .ended else { return }
-            parent?.onBack()
+            let translation = max(0, sender.translation(in: sender.view).x)
+
+            switch sender.state {
+            case .began, .changed:
+                parent?.onChanged(translation)
+            case .ended:
+                let velocity = sender.velocity(in: sender.view).x
+                parent?.onEnded(translation, velocity)
+            case .cancelled, .failed:
+                parent?.onCancelled()
+            default:
+                break
+            }
         }
 
         func gestureRecognizer(

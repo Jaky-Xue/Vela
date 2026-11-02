@@ -145,6 +145,13 @@ struct BrowserShellView: View {
     @State var safeTop: CGFloat = 0
     @State var safeBottom: CGFloat = 0
     @State var safeRectHeight: CGFloat = 0
+    @State var safeRectWidth: CGFloat = 0
+
+    /// The page's horizontal offset while an edge swipe is tracking, and the
+    /// two flags that keep the interactive gesture from overlapping itself.
+    @State var swipeBackTranslation: CGFloat = 0
+    @State var isSwipeBackTracking = false
+    @State var isSwipeBackCompleting = false
 
     /// Whether the surface the chrome floats over reads light — a bright
     /// wallpaper, a pale page — and the bar should therefore draw black ink.
@@ -169,6 +176,11 @@ struct BrowserShellView: View {
     /// floating panel arrives like a physical sheet rather than a rectangle
     /// travelling on rails.
     static let sidebarAnimation = Animation.spring(response: 0.44, dampingFraction: 0.72)
+
+    /// The edge swipe's settle: a spring soft enough that a released page
+    /// glides home instead of snapping, and quick enough that a completed
+    /// swipe does not wait on it.
+    static let swipeBackSettle = Animation.spring(response: 0.36, dampingFraction: 0.84)
 
     @MainActor
     init(environment: AppEnvironment) {
@@ -236,6 +248,11 @@ struct BrowserShellView: View {
     /// the app itself — home, reader, error, empty — and in sheets, which draw
     /// their own.
     var showsAmbientRootBackground: Bool {
+        // An edge swipe pulls the page to the right and reveals the surface
+        // underneath. Forcing the ambient field for the length of the gesture
+        // gives it a lit stage instead of the flat palette colour a page
+        // normally covers.
+        if swipeBackTranslation > 0.5 { return true }
         if novelSession != nil { return false }
         if showsBackgroundPictureAtRoot { return false }
         guard let tab = activeTab else { return true }
@@ -289,14 +306,17 @@ struct BrowserShellView: View {
             if usesPadLayout {
                 padRoot
             } else {
-                contentSurface
+                swipeBackTransformed(contentSurface)
             }
         }
         .background { safeAreaReader }
         .background {
-            EdgeSwipeBackBridge(isEnabled: edgeSwipeBackEnabled) {
-                handleEdgeSwipeBack()
-            }
+            EdgeSwipeBackBridge(
+                isEnabled: edgeSwipeBackEnabled,
+                onChanged: { handleSwipeBackChanged($0) },
+                onEnded: { handleSwipeBackEnded($0, velocity: $1) },
+                onCancelled: { handleSwipeBackCancelled() }
+            )
         }
         // The Translation framework hands sessions to a SwiftUI modifier, so
         // its host must live in the hierarchy even though it draws nothing.
@@ -536,6 +556,15 @@ struct BrowserShellView: View {
         .onChange(of: scenePhase) { _, phase in
             handleScenePhaseChanged(phase)
         }
+        .onChange(of: edgeSwipeBackEnabled) { _, enabled in
+            // The page can gain history mid-gesture (a navigation committing),
+            // which hands the gesture to WebKit. Do not leave the page parked.
+            guard !enabled, !isSwipeBackCompleting else { return }
+            isSwipeBackTracking = false
+            withAnimation(Self.swipeBackSettle) {
+                swipeBackTranslation = 0
+            }
+        }
     }
 
     var shellRoot: some View {
@@ -580,6 +609,7 @@ struct BrowserShellView: View {
         safeTop = geo.safeAreaInsets.top
         safeBottom = geo.safeAreaInsets.bottom
         safeRectHeight = geo.size.height
+        safeRectWidth = geo.size.width
     }
 
     // MARK: - Screen-edge swipe back
@@ -598,12 +628,94 @@ struct BrowserShellView: View {
         // swipe there would pop reader mode or navigate the page underneath it.
         guard novelSession == nil else { return false }
         guard !omnibox.isEditing, !showFindBar else { return false }
+        // Layers that own the screen. A swipe inside them belongs to them,
+        // not to the page they cover.
+        guard !showTabsOverview, !showQRScanner, !showPadSidebar else { return false }
         guard let tab = activeTab else { return false }
         if isReaderActive { return true }
         if tab.isHome { return !tab.url.isEmpty }
         if tab.loadState.isFailure { return true }
         guard tabManager.webView(for: tab.id) != nil else { return false }
         return !tab.canGoBack
+    }
+
+    /// The swipe's progress as a fraction of the window's width. Drives the
+    /// page's corner radius, scale and shadow, so the motion is one continuous
+    /// value rather than a set of keyframes.
+    var swipeBackProgress: CGFloat {
+        guard safeRectWidth > 0 else { return 0 }
+        return min(max(swipeBackTranslation / safeRectWidth, 0), 1)
+    }
+
+    /// The moving half of the swipe: the page follows the finger, gains rounded
+    /// corners as it leaves the edge, and casts a shadow onto the surface it
+    /// reveals. Chrome is deliberately outside this transform — the bars stay
+    /// put while the document moves under them, the way Safari's does.
+    @ViewBuilder
+    func swipeBackTransformed<V: View>(_ view: V) -> some View {
+        view
+            .offset(x: swipeBackTranslation)
+            .scaleEffect(1 - swipeBackProgress * 0.015, anchor: .leading)
+            .clipShape(
+                RoundedRectangle(cornerRadius: 28 * swipeBackProgress, style: .continuous)
+            )
+            .shadow(
+                color: .black.opacity(0.18 * swipeBackProgress),
+                radius: 18,
+                x: -6,
+                y: 0
+            )
+    }
+
+    func handleSwipeBackChanged(_ translation: CGFloat) {
+        guard edgeSwipeBackEnabled, !isSwipeBackCompleting else { return }
+        isSwipeBackTracking = true
+        swipeBackTranslation = max(0, translation)
+    }
+
+    func handleSwipeBackEnded(_ translation: CGFloat, velocity: CGFloat) {
+        guard isSwipeBackTracking, !isSwipeBackCompleting else { return }
+        isSwipeBackTracking = false
+
+        let width = max(safeRectWidth, 320)
+        // A short but fast flick completes; so does a slow drag past roughly a
+        // quarter of the screen. Anything else springs home.
+        let shouldComplete = translation > width * 0.26 || velocity > 550
+
+        guard shouldComplete else {
+            withAnimation(Self.swipeBackSettle) {
+                swipeBackTranslation = 0
+            }
+            return
+        }
+
+        isSwipeBackCompleting = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(Self.swipeBackSettle) {
+            // Past the trailing edge, so the completion swap cannot flash a
+            // strip of the old page still on screen.
+            swipeBackTranslation = width + 48
+        }
+        // Complete the navigation once the page is off the edge, then put the
+        // new document at the origin with no animation: it must not slide in
+        // from under the previous page's resting position.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
+            handleEdgeSwipeBack()
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                swipeBackTranslation = 0
+            }
+            isSwipeBackCompleting = false
+        }
+    }
+
+    func handleSwipeBackCancelled() {
+        guard isSwipeBackTracking else { return }
+        isSwipeBackTracking = false
+        withAnimation(Self.swipeBackSettle) {
+            swipeBackTranslation = 0
+        }
     }
 
     func handleEdgeSwipeBack() {
@@ -766,6 +878,11 @@ struct BrowserShellView: View {
 
     /// The shell state that belongs to the tab on screen, not to the window.
     private func handleActiveTabChanged() {
+        // A swipe belongs to the page it started on.
+        isSwipeBackTracking = false
+        if !isSwipeBackCompleting {
+            swipeBackTranslation = 0
+        }
         isReaderActive = false
         readerArticle = nil
         translationBarDismissed = false

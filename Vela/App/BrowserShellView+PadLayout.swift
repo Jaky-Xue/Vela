@@ -21,7 +21,7 @@ extension BrowserShellView {
         // top content inset is what keeps its first line clear of the bar
         // rather than a layout row pushing the whole document down.
         ZStack(alignment: .top) {
-            contentSurface
+            swipeBackTransformed(contentSurface)
 
             if !omnibox.isEditing, novelSession == nil {
                 VStack(spacing: 0) {
