@@ -30,9 +30,6 @@ public enum WebPageScripts {
         /// has been translated once. The service answers with a batch of
         /// translated HTML.
         case translation = "velaTranslation"
-        /// A page's fullscreen video request, and the playback state it
-        /// reports while the app's player is up.
-        case mediaFullscreen = "velaMediaFullscreen"
     }
 
     // MARK: - History API bridge

@@ -1476,3 +1476,22 @@ B2 的待办，不声称已经解决。
 - 无痕标签卡不显示下方的标题/图标说明（VoiceOver 标签仍保留）。
 
 版本提升为 **3.9.11 (Build 14)**。
+
+## 30. 3.9.12：全屏视频回到苹果原生播放器（2026-11-02）
+
+3.9.9/3.9.10 的自建全屏播放器（第 28.2 节）撤回。真机反馈表明 3.9.8 之前
+“把视频交给系统播放器”的全屏体验更好；自建层与其重写播放器，不如让 WebKit
+自己完成。
+
+- 恢复 `WebPageScripts.fullscreenBridge`：页面在含视频元素上调用
+  `requestFullscreen` / `webkitRequestFullscreen` / `webkitEnterFullscreen` /
+  `webkitSetPresentationMode('fullscreen')` 时，转交给视频元素自己的原生全屏，
+  由 WebKit 呈现系统播放器（AVKit 全屏界面）。字幕桥接逻辑一并恢复。
+- 删除自建播放器：`mediaPlayerScript`、`MediaPlayerOverlay`、
+  `BrowserShellView+MediaPlayer`、`MediaFullscreenSession`、`MediaPlayerCommand`、
+  `mediaFullscreen` 消息通道与 `MediaPlayerTests` 全部移除。
+- 命令栏、浮动工具、iPad 顶栏/书签栏与内容 inset 不再有 `playerActive` 分支，
+  恢复 3.9.8 的布局；系统播放器是 presented controller，自己覆盖屏幕。
+- 保留 3.9.9 的其它成果（联网搜索推荐）与 3.9.11 的全部改动。
+
+版本提升为 **3.9.12 (Build 15)**。
