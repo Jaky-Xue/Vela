@@ -84,8 +84,8 @@ public final class AppEnvironment {
             settings: services.settings,
             history: services.history,
             downloads: services.downloads,
-            permissionAudit: services.permissionAudit,
             userScripts: services.userScriptRepository,
+            permissionAudit: services.permissionAudit,
             navigationLog: navigationLog
         )
         self.webCoordinator = coordinator
