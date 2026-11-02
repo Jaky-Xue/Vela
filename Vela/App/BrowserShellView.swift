@@ -690,6 +690,7 @@ struct BrowserShellView: View {
         }
 
         isSwipeBackCompleting = true
+        let swipedTabId = activeTab?.id
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(Self.swipeBackSettle) {
             // Past the trailing edge, so the completion swap cannot flash a
@@ -700,6 +701,18 @@ struct BrowserShellView: View {
         // new document at the origin with no animation: it must not slide in
         // from under the previous page's resting position.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
+            // The bar stays tappable while the page slides, so the tab can
+            // change underneath the animation. A swipe belongs to the page it
+            // started on; do not go back on a tab the user just switched to.
+            guard activeTab?.id == swipedTabId else {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    swipeBackTranslation = 0
+                }
+                isSwipeBackCompleting = false
+                return
+            }
             handleEdgeSwipeBack()
             var transaction = Transaction()
             transaction.disablesAnimations = true
