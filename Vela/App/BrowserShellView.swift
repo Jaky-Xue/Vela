@@ -534,6 +534,10 @@ struct BrowserShellView: View {
     var shellRoot: some View {
         shellAppearanceObservers
             .overlay(alignment: .top) { searchPageLayer }
+            // The search page has an opacity transition; without an animation
+            // tied to the editing state it was inserted and removed in one
+            // frame while the command bar below faded.
+            .animation(.snappy(duration: 0.22), value: omnibox.isEditing)
     }
 
     var body: some View {

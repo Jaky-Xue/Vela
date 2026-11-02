@@ -48,6 +48,25 @@ final class TabPreviewStore {
         return image
     }
 
+    /// The picture for a tab, read from disk off the main actor.
+    ///
+    /// The overview asks for one picture per card. `UIImage(contentsOfFile:)`
+    /// is a synchronous file read and decode, and doing twenty of them in the
+    /// same body pass is exactly the stutter the overview used to show when a
+    /// session had grown past the live-view pool.
+    func imageAsync(for tabId: String) async -> UIImage? {
+        if let cached = cache.object(forKey: tabId as NSString) { return cached }
+        guard let directory else { return nil }
+        let url = directory.appendingPathComponent(Self.fileName(for: tabId))
+        let image = await Task.detached(priority: .userInitiated) {
+            UIImage(contentsOfFile: url.path)
+        }.value
+        if let image {
+            cache.setObject(image, forKey: tabId as NSString)
+        }
+        return image
+    }
+
     func store(_ image: UIImage, for tabId: String, persistToDisk: Bool = true) {
         // The render and JPEG encode are the expensive half; the cache write
         // must be on the main actor, and the file write stays off it.

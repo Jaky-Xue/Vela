@@ -24,10 +24,19 @@ struct BookmarksBarView: View {
 
     private var bookmarks: [BookmarkNode] {
         guard let rootId = env.bookmarks.rootNodeId(for: .toolbar) else { return [] }
-        return flatten(env.bookmarks.children(of: rootId))
+        return Self.flatten(env.bookmarks.children(of: rootId))
     }
 
-    private func flatten(_ items: [BookmarkTreeItem]) -> [BookmarkNode] {
+    /// Whether the strip has anything to show. The shell asks this to size the
+    /// page's top content inset: an empty bar must not hold a 36-point band of
+    /// the page away from the glass.
+    @MainActor
+    static func hasVisibleBookmarks(in env: AppEnvironment) -> Bool {
+        guard let rootId = env.bookmarks.rootNodeId(for: .toolbar) else { return false }
+        return !flatten(env.bookmarks.children(of: rootId)).isEmpty
+    }
+
+    private static func flatten(_ items: [BookmarkTreeItem]) -> [BookmarkNode] {
         var result: [BookmarkNode] = []
         for item in items {
             if item.node.isFolder {
@@ -49,6 +58,9 @@ struct BookmarksBarView: View {
                 .clipped()
                 .opacity(isHidden ? 0 : 1)
                 .allowsHitTesting(!isHidden)
+                // Bookmarks added, removed or reordered while the bar is on
+                // screen settle into their new places instead of snapping.
+                .animation(.snappy(duration: 0.24), value: bookmarks.map(\.id))
         }
     }
 
@@ -61,7 +73,7 @@ struct BookmarksBarView: View {
                     .frame(width: 26, height: 26)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(BookmarkBarButtonStyle())
             .accessibilityLabel("书签管理")
 
             Rectangle()
@@ -92,20 +104,24 @@ struct BookmarksBarView: View {
                     .frame(width: 24, height: 26)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(BookmarkBarButtonStyle())
             .accessibilityLabel("更多书签")
         }
         .padding(.horizontal, 10)
         .frame(height: 36)
+        // Thin material, not an opaque palette fill: the page scrolls under
+        // this strip, and a fill would make it a solid band of colour across
+        // the top of the document. The tint is only enough to keep the text
+        // legible over a bright page.
         .background {
             ZStack {
-                palette.chromeBackground.opacity(0.78)
-                Rectangle().fill(.regularMaterial)
+                Rectangle().fill(.thinMaterial)
+                palette.chromeBackground.opacity(0.10)
             }
         }
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(palette.separator)
+                .fill(palette.separator.opacity(0.55))
                 .frame(height: 0.5)
         }
     }
@@ -126,6 +142,21 @@ struct BookmarksBarView: View {
             .frame(height: 26)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BookmarkBarButtonStyle())
+    }
+}
+
+/// The press feedback for a bookmark chip: a short scale and fade under the
+/// finger, the same weight the chrome buttons use. A tap that only navigates
+/// afterwards leaves the row feeling dead until the page arrives.
+private struct BookmarkBarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .opacity(configuration.isPressed ? 0.65 : 1)
+            .animation(
+                .spring(response: 0.22, dampingFraction: 0.75),
+                value: configuration.isPressed
+            )
     }
 }

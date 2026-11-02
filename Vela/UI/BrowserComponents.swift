@@ -2,98 +2,10 @@
 //  BrowserComponents.swift
 //  Vela
 //
-//  The shared rows, badges, empty states and collapsible sections used by every list screen.
+//  The empty states and collapsible sections used by every list screen.
 //
 
 import SwiftUI
-import UIKit
-
-// MARK: - Rows
-
-/// A reusable row used by the settings, bookmark, history and download lists.
-///
-/// The same visual row is used by every list screen, so it lives here once.
-struct BrowserListRow<Leading: View, Trailing: View>: View {
-    @Environment(\.browserPalette) private var palette
-
-    var title: String
-    var subtitle: String?
-    var detail: String?
-    @ViewBuilder var leading: () -> Leading
-    @ViewBuilder var trailing: () -> Trailing
-
-    init(
-        title: String,
-        subtitle: String? = nil,
-        detail: String? = nil,
-        @ViewBuilder leading: @escaping () -> Leading,
-        @ViewBuilder trailing: @escaping () -> Trailing
-    ) {
-        self.title = title
-        self.subtitle = subtitle
-        self.detail = detail
-        self.leading = leading
-        self.trailing = trailing
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            leading()
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.body)
-                    .foregroundStyle(palette.primaryText)
-                    .lineLimit(1)
-                if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(palette.secondaryText)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 8)
-            if let detail, !detail.isEmpty {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(palette.secondaryText)
-            }
-            trailing()
-        }
-        .contentShape(Rectangle())
-    }
-}
-
-// MARK: - Sheets
-
-/// The bottom sheet detents Vela uses.
-enum BrowserSheetDetent {
-    static func forContentHeight(_ height: CGFloat) -> PresentationDetent {
-        switch height {
-        case ..<160: return .height(180)
-        case ..<300: return .medium
-        default: return .large
-        }
-    }
-}
-
-// MARK: - Badges
-
-/// A compact pill that shows the current privacy mode.
-struct PrivacyModeBadge: View {
-    var mode: BrowserSessionPrivacyMode
-
-    var body: some View {
-        if mode == .private {
-            Label("无痕", systemImage: "eyeglasses")
-                .labelStyle(.titleAndIcon)
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.purple.opacity(0.20), in: Capsule())
-                .foregroundStyle(Color.purple)
-        }
-    }
-}
 
 // MARK: - Empty states
 /// The one empty-state component. Every list that can be empty uses this, so

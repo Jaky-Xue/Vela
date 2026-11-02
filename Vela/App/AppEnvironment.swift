@@ -308,14 +308,6 @@ public final class AppEnvironment {
         }
     }
 
-    /// The one flip every 无痕模式 entry point uses. Keeping the expression here
-    /// means the menu, the toolbar, the hardware command and the empty-browser
-    /// menu cannot disagree about whether the current value was read before or
-    /// after the write.
-    public func togglePrivateBrowsingMode() {
-        setPrivateBrowsingMode(!(settings.preferences.privateBrowsingMode ?? false))
-    }
-
     // MARK: - Identity check for 无痕
 
     /// The outcome of the device-owner check that gates private content.

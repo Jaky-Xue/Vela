@@ -380,8 +380,6 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var externalNavigationRules: [ExternalNavigationSiteRule]
     public var restoreTabsOnLaunch: Bool
     public var openNewTabsInBackground: Bool
-    public var tabAutoCloseEnabled: Bool
-    public var tabAutoCloseIdleHours: Int
     public var historyRetentionDays: Int
     public var lockPrivateTabs: Bool
     public var blurPrivateTabPreviews: Bool
@@ -472,8 +470,6 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         externalNavigationRules: [ExternalNavigationSiteRule] = [],
         restoreTabsOnLaunch: Bool = true,
         openNewTabsInBackground: Bool = false,
-        tabAutoCloseEnabled: Bool = false,
-        tabAutoCloseIdleHours: Int = 24,
         historyRetentionDays: Int = 90,
         lockPrivateTabs: Bool = false,
         blurPrivateTabPreviews: Bool = true,
@@ -518,8 +514,6 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.externalNavigationRules = externalNavigationRules
         self.restoreTabsOnLaunch = restoreTabsOnLaunch
         self.openNewTabsInBackground = openNewTabsInBackground
-        self.tabAutoCloseEnabled = tabAutoCloseEnabled
-        self.tabAutoCloseIdleHours = tabAutoCloseIdleHours
         self.historyRetentionDays = historyRetentionDays
         self.lockPrivateTabs = lockPrivateTabs
         self.blurPrivateTabPreviews = blurPrivateTabPreviews

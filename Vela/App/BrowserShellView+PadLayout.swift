@@ -11,44 +11,75 @@ import WebKit
 extension BrowserShellView {
     // MARK: - Surfaces
 
-    /// The iPad chrome, after Safari's arrangement: one top bar spanning the
-    /// window, a bookmarks strip beneath it, and the page filling the rest.
-    /// The tab sidebar is a drawer over the page rather than a permanent
+    /// The iPad chrome, after Safari's arrangement: a floating glass top bar
+    /// and a bookmarks strip over a page that runs the full height beneath
+    /// them. The tab sidebar is a drawer over the page rather than a permanent
     /// column, so the page keeps the whole width while reading.
     var padRoot: some View {
-        VStack(spacing: 0) {
-            // The search page carries its own field; leaving the top bar in
-            // place would put two address fields on screen.
+        // The chrome floats over the page, the way Safari's does. The page
+        // runs to the top edge and scrolls beneath the glass; the web view's
+        // top content inset is what keeps its first line clear of the bar
+        // rather than a layout row pushing the whole document down.
+        ZStack(alignment: .top) {
+            contentSurface
+
             if !omnibox.isEditing, novelSession == nil {
-                padTopBar
-                    .frame(height: chromeHidden ? 0 : Self.padTopBarHeight, alignment: .top)
-                    .clipped()
-                    .opacity(chromeHidden ? 0 : 1)
-                    .allowsHitTesting(!chromeHidden)
-                    .zIndex(2)
+                VStack(spacing: 0) {
+                    padTopBar
+                        .frame(height: chromeHidden ? 0 : Self.padTopBarHeight, alignment: .top)
+                        .clipped()
+                        .opacity(chromeHidden ? 0 : 1)
+                        .allowsHitTesting(!chromeHidden)
+
+                    BookmarksBarView(
+                        onNavigate: { url in
+                            navigate(to: url, in: submissionTab)
+                        },
+                        onOpenManager: { showBookmarks = true },
+                        isHidden: chromeHidden
+                    )
+                }
+                .zIndex(2)
             }
 
-            ZStack(alignment: .topLeading) {
-                VStack(spacing: 0) {
-                    if !omnibox.isEditing, novelSession == nil {
-                        BookmarksBarView(
-                            onNavigate: { url in
-                                navigate(to: url, in: submissionTab)
-                            },
-                            onOpenManager: { showBookmarks = true },
-                            isHidden: chromeHidden
-                        )
-                    }
-                    contentSurface
-                }
-
-                if showPadSidebar {
-                    padSidebarLayer
-                        .zIndex(3)
-                }
+            if showPadSidebar {
+                padSidebarLayer
+                    .padding(.top, chromeHidden ? 0 : padBarsHeight)
+                    .zIndex(1)
             }
         }
+        .animation(Self.chromeAnimation, value: chromeHidden)
         .animation(.snappy(duration: 0.26), value: showPadSidebar)
+    }
+
+    /// How much of the window the floating iPad chrome covers, measured from
+    /// the top of the safe area.
+    ///
+    /// The web view's content inset uses this so the page starts below the
+    /// glass while still painting underneath it. The bookmarks strip is only
+    /// there when the toolbar bookmark root has something in it, which is why
+    /// the number is computed rather than a constant.
+    var padBarsHeight: CGFloat {
+        let bookmarks: CGFloat = BookmarksBarView.hasVisibleBookmarks(in: env) ? 36 : 0
+        return Self.padTopBarHeight + bookmarks
+    }
+
+    /// The same distance measured from the window's top edge. The web view
+    /// ignores the top safe area so the page paints under the status bar the
+    /// way Safari's does; its scroll inset therefore has to include that strip
+    /// as well as the bars.
+    var padTopChromeHeight: CGFloat {
+        safeTop + padBarsHeight
+    }
+
+    /// Clearance for a surface that is not a web view — the home, the reader,
+    /// the error page. Those scroll views have no content inset of their own,
+    /// so they ask for the top space as a safe-area inset instead.
+    @ViewBuilder
+    var padTopClearance: some View {
+        if usesPadLayout {
+            Color.clear.frame(height: chromeHidden ? 0 : padBarsHeight)
+        }
     }
 
     var padInk: Color {
@@ -59,25 +90,19 @@ extension BrowserShellView {
     }
 
     /// The unified Safari-style top bar: sidebar, back, address, share, tabs,
-    /// menu — one glass surface instead of the phone layout's three clusters.
-    @ViewBuilder
+    /// menu — one glass surface.
+    ///
+    /// The sidebar and leading controls, the address field and the trailing
+    /// controls were three separate glass pieces. Against the page they read
+    /// as gaps of unpainted screen, and three `glassEffect` layers cost three
+    /// times the compositing of one. Safari's iPad bar is a single translucent
+    /// strip; this is that strip.
     var padTopBar: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: BrowserChrome.barGap) {
-                padTopBarContent
-            }
-        } else {
-            padTopBarContent
-        }
+        padTopBarContent
     }
 
     var padToolbarLayout: ToolbarLayout { env.settings.padToolbarLayout }
 
-    /// Three glass pieces rather than one continuous strip: the fixed sidebar
-    /// surface plus the user's leading controls, the address field, and the
-    /// user's trailing controls plus the menu. The gaps are what divide the
-    /// bar that used to read as one long slab.
-    ///
     /// The field's width is stated here rather than left to an `HStack`. The
     /// field is a bridged `UITextField`, and a text field answers a size query
     /// with a width of its own — after the home picture loads, the ink update
@@ -91,11 +116,12 @@ extension BrowserShellView {
         GeometryReader { geo in
             let leadingWidth = Self.padClusterWidth(controlCount: padToolbarLayout.leading.count + 1)
             let trailingWidth = Self.padClusterWidth(controlCount: padToolbarLayout.trailing.count + 1)
-            // The bar's own 12-point margins and the two 6-point gaps between
-            // its pieces come out first; whatever is left is the field's.
+            // The outer 12-point margins, the bar's own 6-point inset and
+            // the two gaps between the clusters come out first; whatever is
+            // left is the field's.
             let fieldWidth = max(
                 64,
-                geo.size.width - 24 - leadingWidth - trailingWidth - 12
+                geo.size.width - 48 - leadingWidth - trailingWidth - 12
             )
 
             HStack(spacing: 6) {
@@ -118,7 +144,6 @@ extension BrowserShellView {
                 .padding(.horizontal, 4)
                 .frame(minWidth: BrowserChrome.barHeight)
                 .frame(height: BrowserChrome.barHeight)
-                .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
 
                 OmniboxView(
                     viewModel: omnibox,
@@ -146,8 +171,16 @@ extension BrowserShellView {
                 .padding(.horizontal, 4)
                 .frame(minWidth: BrowserChrome.barHeight)
                 .frame(height: BrowserChrome.barHeight)
-                .browserFloatingChrome(radius: BrowserRadius.omnibox, tintStrength: 0.5, elevation: .card)
             }
+            .padding(.horizontal, 6)
+            .frame(height: BrowserChrome.barHeight)
+            .browserFloatingChrome(
+                radius: BrowserRadius.floating,
+                material: .thinMaterial,
+                tintStrength: 0.28,
+                elevation: .card,
+                interactive: false
+            )
             .padding(.horizontal, 12)
             .padding(.top, 8)
             .padding(.bottom, 6)
@@ -237,6 +270,11 @@ extension BrowserShellView {
         // The keyboard overlays the page — a browser never shrinks its document
         // for a keyboard.
         .ignoresSafeArea(.keyboard)
+        // Switching tabs cross-fades the outgoing document into the incoming
+        // one. Without it the web view is torn down and replaced in a single
+        // frame, which reads as a flash of the shell's blank surface between
+        // two pages.
+        .animation(.easeInOut(duration: 0.18), value: activeTab?.id)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -304,6 +342,7 @@ extension BrowserShellView {
             )
             .id("reader")
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaInset(edge: .top) { padTopClearance }
             .safeAreaInset(edge: .bottom) {
                 // The command bar floats over the surface's tail; the spacer
                 // keeps the article's last lines scrollable above it.
@@ -327,6 +366,7 @@ extension BrowserShellView {
                         }
                     )
                     .id("home-\(tab.id)")
+                    .safeAreaInset(edge: .top) { padTopClearance }
                     .safeAreaInset(edge: .bottom) {
                         // The command bar floats over the surface's tail; the
                         // spacer keeps the last tiles scrollable above it.
@@ -347,6 +387,7 @@ extension BrowserShellView {
                         onHome: { goHome(tab) }
                     )
                     .id("error-\(tab.id)-\(tab.navigationSerial)")
+                    .safeAreaInset(edge: .top) { padTopClearance }
                     .safeAreaInset(edge: .bottom) {
                         Color.clear.frame(height: bottomChromeClearance)
                     }
@@ -365,7 +406,7 @@ extension BrowserShellView {
                         // clock — while still scrolling underneath, the way
                         // Safari's does. A reserved strip makes the page start
                         // at its own top, so the inset drops to zero there.
-                        topContentInset: usesPadLayout ? 0 : (protectsTop ? 0 : safeTop),
+                        topContentInset: usesPadLayout ? padTopChromeHeight : (protectsTop ? 0 : safeTop),
                         topReservedInset: usesPadLayout ? 0 : (protectsTop ? safeTop : 0),
                         bottomContentInset: bottomChromeClearance,
                         // Applied when the view is actually attached: an
@@ -384,7 +425,11 @@ extension BrowserShellView {
                     // layout keeps the page inside its column and below the top
                     // bar, but still lets it run under the home indicator so no
                     // strip of background shows beneath the document.
-                    .ignoresSafeArea(edges: usesPadLayout ? .bottom : .all)
+                    // The page runs under the status bar, the floating
+                    // chrome and the home indicator; the content inset is
+                    // what keeps its first and last lines readable. This is
+                    // the arrangement Safari uses on both idioms.
+                    .ignoresSafeArea(.all)
                 } else {
                     // A cold tab with no web view at all. Materialising happens
                     // in `onAppear` rather than here: creating a web view during
@@ -396,6 +441,8 @@ extension BrowserShellView {
                         .ignoresSafeArea(edges: .top)
                 }
             }
+            .id("content-\(tab.id)")
+            .transition(.opacity)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             EmptyState(
@@ -405,6 +452,7 @@ extension BrowserShellView {
                 actionTitle: "新建标签页",
                 action: { tabManager.createTab(openSource: .user) }
             )
+            .safeAreaInset(edge: .top) { padTopClearance }
         }
     }
 

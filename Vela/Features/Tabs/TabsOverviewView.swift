@@ -683,7 +683,7 @@ private struct TabCard: View {
             // The last kept picture paints first, so a live tab does not
             // flash its icon while the fresh print is being taken.
             if snapshot == nil {
-                snapshot = env.tabManager.preview(for: tab.id)
+                snapshot = await env.tabManager.previewImage(for: tab.id)
             }
             snapshot = await takeSnapshot()
         }
@@ -767,7 +767,7 @@ private struct TabCard: View {
     private func takeSnapshot() async -> UIImage? {
         guard let webView = env.tabManager.webView(for: tab.id),
               webView.window != nil else {
-            return env.tabManager.preview(for: tab.id)
+            return await env.tabManager.previewImage(for: tab.id)
         }
         let fresh: UIImage? = await withCheckedContinuation { continuation in
             webView.takeSnapshot(with: nil) { image, _ in
@@ -778,7 +778,7 @@ private struct TabCard: View {
             env.tabManager.storePreview(fresh, for: tab.id)
             return fresh
         }
-        return env.tabManager.preview(for: tab.id)
+        return await env.tabManager.previewImage(for: tab.id)
     }
 
     private var closeButton: some View {

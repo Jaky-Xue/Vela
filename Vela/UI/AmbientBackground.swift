@@ -172,11 +172,14 @@ struct AmbientBackgroundView: View {
                         }
                     }
 
-                    // A thin frosted pane. It adds the glass surface without
-                    // washing out the pale colours underneath.
+                    // A thin frosted pane. It used to be a full-screen
+                    // `.ultraThinMaterial` over a field that never moves — the
+                    // most expensive layer in the view, spent to blur a
+                    // gradient that is already smooth. A pale veil gives the
+                    // same lift for a fraction of the cost.
                     Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .opacity(colorScheme == .dark ? 0.06 : 0.10)
+                        .fill(Color.white)
+                        .opacity(colorScheme == .dark ? 0.035 : 0.06)
                         .allowsHitTesting(false)
 
                     specular(in: size)

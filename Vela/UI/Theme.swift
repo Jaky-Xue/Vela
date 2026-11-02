@@ -346,10 +346,6 @@ struct BrowserPalette: Equatable, Identifiable, Sendable {
 enum BrowserMetrics {
     /// The widest a centred dialog grows.
     static let dialogMaxWidth: CGFloat = 420
-    /// The tab strip's cell size on a large screen.
-    static let tabStripItemWidth: CGFloat = 200
-    static let tabStripItemHeight: CGFloat = 34
-
     // Omnibox. These are the suggestion card's own metrics.
     static let omniboxRowHeight: CGFloat = 54
     static let omniboxHeaderHeight: CGFloat = 34

@@ -213,6 +213,11 @@ public final class TabManager {
         previews.image(for: tabId)
     }
 
+    /// The same picture, loaded off the main actor for the overview's cards.
+    public func previewImage(for tabId: String) async -> UIImage? {
+        await previews.imageAsync(for: tabId)
+    }
+
     /// Keeps a page picture for the overview, downscaled to card size.
     public func storePreview(_ image: UIImage, for tabId: String) {
         previews.store(

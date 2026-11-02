@@ -37,41 +37,19 @@ struct OmniboxView: View {
     /// `nil` keeps the palette's own colours, which is what every surface that
     /// owns its backdrop wants.
     var foregroundOverride: Color? = nil
-    /// Whether the field draws its own glass pill.
-    ///
-    /// The phone bar gives the omnibox its own capsule between two button
-    /// clusters. The iPad top bar is already one glass surface, and stacking
-    /// a second glass pill inside it is what made the field look doubled and
-    /// crowded; there the field is text on the bar's own glass.
-    var usesOwnChrome: Bool = true
-
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
 
+    /// The field is text on the bar's own glass.
+    ///
+    /// It used to carry a glass pill of its own. Once the bar became one glass
+    /// surface, that pill was a second refraction layer inside the first — the
+    /// doubling the iPad bar was already trying to avoid — so the field now
+    /// draws only its content and the progress line.
     var body: some View {
-        chrome
+        fieldContent
             .animation(.easeOut(duration: 0.18), value: viewModel.isEditing)
             .animation(.easeOut(duration: 0.15), value: viewModel.text.isEmpty)
-    }
-
-    @ViewBuilder
-    private var chrome: some View {
-        if usesOwnChrome {
-            fieldContent
-                .browserFloatingChrome(
-                    radius: BrowserRadius.omnibox,
-                    material: .regularMaterial,
-                    tintStrength: 0.6,
-                    elevation: .card
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
-                        .strokeBorder(isEditingStroke, lineWidth: 1)
-                        .allowsHitTesting(false)
-                }
-        } else {
-            fieldContent
-        }
     }
 
     private var fieldContent: some View {
@@ -117,13 +95,6 @@ struct OmniboxView: View {
 
     /// The ring drawn around the field while it is open.
     ///
-    /// The omnibox is the only control whose "focused" state is a mode the rest
-    /// of the chrome reacts to, so the state is drawn rather than left to the
-    /// caret alone.
-    private var isEditingStroke: Color {
-        viewModel.isEditing ? palette.accent.opacity(0.55) : .clear
-    }
-
     // MARK: - Field
 
     /// The field, plus the tap catcher that opens the session.
