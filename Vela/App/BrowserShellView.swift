@@ -653,18 +653,26 @@ struct BrowserShellView: View {
     /// put while the document moves under them, the way Safari's does.
     @ViewBuilder
     func swipeBackTransformed<V: View>(_ view: V) -> some View {
-        view
-            .offset(x: swipeBackTranslation)
-            .scaleEffect(1 - swipeBackProgress * 0.015, anchor: .leading)
-            .clipShape(
-                RoundedRectangle(cornerRadius: 28 * swipeBackProgress, style: .continuous)
-            )
-            .shadow(
-                color: .black.opacity(0.18 * swipeBackProgress),
-                radius: 18,
-                x: -6,
-                y: 0
-            )
+        if swipeBackTranslation > 0 {
+            view
+                .offset(x: swipeBackTranslation)
+                .scaleEffect(1 - swipeBackProgress * 0.015, anchor: .leading)
+                .clipShape(
+                    RoundedRectangle(cornerRadius: 28 * swipeBackProgress, style: .continuous)
+                )
+                .shadow(
+                    color: .black.opacity(0.18 * swipeBackProgress),
+                    radius: 18,
+                    x: -6,
+                    y: 0
+                )
+        } else {
+            // A resting page must not be clipped. `clipShape` clips to the
+            // view's safe-area frame, and the web view deliberately paints
+            // past it to the screen's bottom edge; applying the shape at rest
+            // cut that overflow into the blank strip under the page.
+            view
+        }
     }
 
     func handleSwipeBackChanged(_ translation: CGFloat) {

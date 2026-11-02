@@ -118,7 +118,15 @@ struct TranslationBar: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
         case .extracting, .translating:
-            EmptyView()
+            Button {
+                translation.cancel()
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityLabel("停止翻译")
         case .finished:
             Button("显示原文") {
                 Task { await translation.restoreOriginal(webView: webView) }

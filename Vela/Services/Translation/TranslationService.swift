@@ -432,6 +432,20 @@ public final class TranslationService {
         phase = .finished(segments: applied)
     }
 
+    /// Abandons the run in progress.
+    ///
+    /// Bumping the generation is what stops the running task: every await is
+    /// followed by a generation check, and the in-flight page calls have their
+    /// own deadlines. The bar returns to the page's offer, so a stuck or
+    /// slow translation can be stopped and retried without closing anything.
+    public func cancel() {
+        generation += 1
+        dynamicWork.removeAll()
+        appleFallbackActive = false
+        lastErrorMessage = nil
+        phase = .idle
+    }
+
     /// Puts the document's own text back.
     public func restoreOriginal(webView: WKWebView) async {
         generation += 1
