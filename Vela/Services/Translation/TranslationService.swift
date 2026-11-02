@@ -699,7 +699,11 @@ public final class TranslationService {
             guard let appleBridge else {
                 throw TranslationError.failed("系统翻译需要 iOS 18 或更高版本。")
             }
-            let values = try await appleBridge.translate(units.map(\.html), target: target)
+            let values = try await appleBridge.translate(
+                units.map(\.html),
+                target: target,
+                source: detected?.code
+            )
             guard values.count == units.count else { throw TranslationError.alignment }
             var map: [Int: String] = [:]
             for (unit, value) in zip(units, values) {
@@ -741,7 +745,11 @@ public final class TranslationService {
         target: TranslationTargetLanguage
     ) async -> BatchResult? {
         guard let appleBridge,
-              let values = try? await appleBridge.translate(units.map(\.html), target: target),
+              let values = try? await appleBridge.translate(
+            units.map(\.html),
+            target: target,
+            source: detected?.code
+        ),
               values.count == units.count else { return nil }
         var map: [Int: String] = [:]
         for (unit, value) in zip(units, values) {
@@ -788,7 +796,7 @@ public final class TranslationService {
         // A public endpoint either answers promptly or is blocked. Waiting a
         // full minute per batch is what made a broken Google path feel like a
         // broken translator.
-        request.timeoutInterval = 8
+        request.timeoutInterval = 6
 
         await paceGoogleRequest()
         do {
@@ -846,7 +854,7 @@ public final class TranslationService {
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
             forHTTPHeaderField: "User-Agent"
         )
-        request.timeoutInterval = 8
+        request.timeoutInterval = 6
         await paceGoogleRequest()
         let data = try await send(request, maximumAttempts: 1)
         let parsed = try Self.parseGoogleResponse(data)

@@ -70,11 +70,6 @@ struct NewTabHomeView: View {
     /// scrolls, and its bounce reports offsets that return to zero — so its
     /// drags are what the command bar listens to.
     var onChromeSwipe: ((CGFloat) -> Void)? = nil
-    /// Opens the address/search page. The home carries a field of its own so
-    /// an empty start page reads as a place to begin rather than a blank
-    /// collection with the address bar somewhere at the bottom.
-    var onSearch: (() -> Void)? = nil
-
     @State private var bookmarkNodes: [BookmarkNode] = []
     /// The width of the content column, measured once per layout. The
     /// favourites grid uses it to choose a column count that suits the window
@@ -108,10 +103,6 @@ struct NewTabHomeView: View {
                     .padding(.top, 2)
                 }
 
-                if let onSearch {
-                    homeSearchField(action: onSearch)
-                }
-
                 // The home carries what the user has saved: the favourites
                 // grid, and the recently-closed list behind it. There is no
                 // add tile — a bookmark joins the home when it is added, so
@@ -137,7 +128,7 @@ struct NewTabHomeView: View {
                             .foregroundStyle(homePrimaryText)
                         Text(isPrivate
                              ? "这个标签页的访问记录不会留下。"
-                             : "点按上方搜索框，或从地址栏输入网址；把常用网站加入收藏后会出现在这里。")
+                             : "从地址栏输入网址；把常用网站加入收藏后会出现在这里。")
                             .font(.footnote)
                             .foregroundStyle(homeSecondaryText)
                             .multilineTextAlignment(.center)
@@ -192,37 +183,6 @@ struct NewTabHomeView: View {
     }
 
     // MARK: - Start page
-
-    /// The start page's own search field.
-    ///
-    /// It opens exactly the search page the address bar opens, so the home
-    /// has a first action even before a bookmark exists. The material keeps
-    /// the placeholder legible on a picture background.
-    private func homeSearchField(action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(palette.secondaryText)
-                Text("搜索或输入网址")
-                    .font(.subheadline)
-                    .foregroundStyle(palette.secondaryText)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 46)
-            .background {
-                Capsule()
-                    .fill(.thinMaterial)
-                    .overlay {
-                        Capsule().strokeBorder(palette.cardStroke, lineWidth: 0.5)
-                    }
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(HomeSearchButtonStyle())
-        .accessibilityLabel("搜索或输入网址")
-    }
 
     /// A start-page section: a larger title and a fold, rather than the small
     /// list header the rest of the app uses. The home is read at a glance and
@@ -536,16 +496,6 @@ struct NewTabHomeView: View {
 
 /// The form behind the "添加" tile.
 ///
-/// The press feedback for the home's search field.
-private struct HomeSearchButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .opacity(configuration.isPressed ? 0.8 : 1)
-            .animation(.spring(response: 0.22, dampingFraction: 0.8), value: configuration.isPressed)
-    }
-}
-
 /// The width of the home's content column, reported once per layout so the
 /// favourites grid can choose its column count from the real width.
 private struct HomeContentWidthKey: PreferenceKey {

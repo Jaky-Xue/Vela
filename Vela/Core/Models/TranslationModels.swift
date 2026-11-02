@@ -87,7 +87,7 @@ public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable
         // several paragraphs. Apple's on-device session has its own sensible
         // per-request size; the others have their own caps.
         case .google: return 12_000
-        case .appleSystem: return 8_000
+        case .appleSystem: return 12_000
         case .deepL: return 24_000
         case .openAICompatible: return 8_000
         }
@@ -96,7 +96,7 @@ public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable
     var batchItemLimit: Int {
         switch self {
         case .google: return 50
-        case .appleSystem: return 40
+        case .appleSystem: return 60
         case .deepL: return 40
         case .openAICompatible: return 30
         }
