@@ -434,7 +434,7 @@ final class TabManagerTests: XCTestCase {
 
     func testSessionRoundTripsTheTabsAndTheActiveOne() {
         let manager = makeManager()
-        manager.openTab(url: URL(string: "https://one.example")!)
+        let first = manager.openTab(url: URL(string: "https://one.example")!)
         let second = manager.openTab(url: URL(string: "https://two.example")!)
         manager.activateTab(id: second.id)
 
@@ -453,10 +453,14 @@ final class TabManagerTests: XCTestCase {
         // tab when it first appears, through the same cold-tab path every
         // other tab takes. Activation is what materialises one.
         XCTAssertNil(restored.webView(for: second.id))
-        XCTAssertNil(restored.webView(for: manager.tabs[0].id))
+        // The tab that must stay cold is the *other* one. Indexing the strip
+        // instead assumed the old append-at-the-end order; with newest-first
+        // insertion the first row is the active tab, which is exactly the one
+        // activation is about to materialise.
+        XCTAssertNil(restored.webView(for: first.id))
         restored.activateTab(id: second.id)
         XCTAssertNotNil(restored.webView(for: second.id))
-        XCTAssertNil(restored.webView(for: manager.tabs[0].id))
+        XCTAssertNil(restored.webView(for: first.id))
     }
 }
 
