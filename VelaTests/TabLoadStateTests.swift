@@ -384,7 +384,6 @@ final class NavigationLogBufferTests: XCTestCase {
             errorCode: NSURLErrorTimedOut,
             errorMessage: "timed out",
             outcome: .failure,
-            adBlockActive: true,
             userScriptsActive: false
         )
         guard let entry = log.entries.first else { return XCTFail("nothing recorded") }
@@ -393,7 +392,6 @@ final class NavigationLogBufferTests: XCTestCase {
         XCTAssertEqual(entry.durationMs, 1234)
         XCTAssertEqual(entry.errorCode, NSURLErrorTimedOut)
         XCTAssertEqual(entry.outcome, .failure)
-        XCTAssertTrue(entry.adBlockActive)
         XCTAssertFalse(entry.userScriptsActive)
         XCTAssertTrue(entry.displayLine.contains("linkActivated"))
     }

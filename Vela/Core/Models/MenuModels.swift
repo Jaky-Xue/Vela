@@ -21,7 +21,6 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
     case share
     case findInPage
     case reader
-    case translate
     case novel
     case bookshelf
     case passwords
@@ -35,7 +34,6 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
     case offlinePages
     case scanQRCode
     case privateTab
-    case adBlock
     case reload
     case settings
     /// Not a grid tile: offered on the private-tab tile's long-press menu when
@@ -50,7 +48,6 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .share: return "分享"
         case .findInPage: return "查找网页"
         case .reader: return "文章阅读"
-        case .translate: return "网页翻译"
         case .novel: return "小说模式"
         case .bookshelf: return "书架"
         case .passwords: return "密码与保险箱"
@@ -64,7 +61,6 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .offlinePages: return "离线页面"
         case .scanQRCode: return "扫一扫"
         case .privateTab: return "无痕模式"
-        case .adBlock: return "广告过滤"
         case .reload: return "重新载入"
         case .settings: return "设置"
         case .leavePrivate: return "离开无痕模式"
@@ -77,7 +73,6 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .share: return "square.and.arrow.up"
         case .findInPage: return "magnifyingglass"
         case .reader: return "doc.plaintext"
-        case .translate: return "character.bubble"
         case .novel: return "text.book.closed"
         case .bookshelf: return "books.vertical"
         case .passwords: return "key.fill"
@@ -91,7 +86,6 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .offlinePages: return "tray.full"
         case .scanQRCode: return "qrcode.viewfinder"
         case .privateTab: return "eyeglasses"
-        case .adBlock: return "shield.lefthalf.filled"
         case .reload: return "arrow.clockwise"
         case .settings: return "gearshape"
         case .leavePrivate: return "eyeglasses.slash"
@@ -103,7 +97,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
     /// reference panels grey out what a page-less context cannot do.
     var requiresPage: Bool {
         switch self {
-        case .addBookmark, .share, .findInPage, .reader, .translate, .novel,
+        case .addBookmark, .share, .findInPage, .reader, .novel,
              .hideElements, .desktopSite, .saveOfflinePage, .reload:
             return true
         default:

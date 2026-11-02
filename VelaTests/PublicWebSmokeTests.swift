@@ -34,10 +34,6 @@ final class PublicWebSmokeTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         harness = try BrowserHarness()
-        // The shipped rules are installed, because a smoke test run with ad
-        // blocking off would not exercise what users run. Whether they compiled
-        // is asserted by the ad-block suites; this one is about the network.
-        _ = await harness.installShippedAdBlockRules()
     }
 
     override func tearDown() async throws {

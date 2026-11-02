@@ -25,9 +25,9 @@ struct SettingsView: View {
     @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
 
-    /// A page to open above the root. The translation bar's "翻译设置" and any
-    /// other context that names a specific screen push it directly instead of
-    /// landing the user on a list of nouns to hunt through.
+    /// A page to open above the root. Any context that names a specific
+    /// screen pushes it directly instead of landing the user on a list of
+    /// nouns to hunt through.
     @State private var pushedDestination: SettingsDestination?
 
     init(initialDestination: SettingsDestination? = nil) {
@@ -101,18 +101,6 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
-                    TranslationSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "character.bubble",
-                        tint: .blue,
-                        title: "网页翻译",
-                        subtitle: "翻译服务、目标语言与显示方式",
-                        detail: env.settings.translationSettings.provider.displayName
-                    )
-                }
-
-                NavigationLink {
                     UserAgentSettingsView()
                 } label: {
                     settingsRow(
@@ -125,18 +113,6 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
-                    AdBlockSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "shield.lefthalf.filled",
-                        tint: .green,
-                        title: "广告与内容过滤",
-                        subtitle: "订阅规则、自定义规则与元素隐藏",
-                        detail: env.settings.adBlockSettings.preferences.enabled ? "已开启" : "已关闭"
-                    )
-                }
-
-                NavigationLink {
                     UserScriptsView()
                 } label: {
                     settingsRow(
@@ -145,6 +121,20 @@ struct SettingsView: View {
                         title: "用户脚本",
                         subtitle: "安装、更新与运行时机",
                         detail: env.settings.preferences.userScriptsEnabled ? "" : "已关闭"
+                    )
+                }
+
+                NavigationLink {
+                    ElementHideSettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "eye.slash",
+                        tint: .gray,
+                        title: "隐藏的元素",
+                        subtitle: "用元素选择器在各网站隐藏的内容",
+                        detail: env.settings.manualElementHide.sites.isEmpty
+                            ? ""
+                            : "\(env.settings.manualElementHide.sites.count) 个网站"
                     )
                 }
             } header: {
@@ -185,7 +175,7 @@ struct SettingsView: View {
                         icon: "lock.shield",
                         tint: .cyan,
                         title: "网站权限",
-                        subtitle: "相机、麦克风与网站数据的默认行为"
+                        subtitle: "相机、麦克风、位置、剪贴板与访问记录"
                     )
                 }
 
@@ -380,10 +370,8 @@ struct SettingsView: View {
 enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
     case general
     case appearance
-    case translation
     case searchEngine
     case userAgent
-    case adBlock
     case userScripts
     case passwords
     case privateBrowsing
@@ -403,10 +391,8 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
         switch self {
         case .general: GeneralSettingsView()
         case .appearance: AppearanceSettingsView()
-        case .translation: TranslationSettingsView()
         case .searchEngine: SearchEngineSettingsView()
         case .userAgent: UserAgentSettingsView()
-        case .adBlock: AdBlockSettingsView()
         case .userScripts: UserScriptsView()
         case .passwords: PasswordVaultView()
         case .privateBrowsing: PrivateBrowsingSettingsView()

@@ -14,8 +14,6 @@ import UIKit
 /// trademark policy require; everything else on the screen stays out of the
 /// way of the icon, the name and the version.
 struct AboutView: View {
-    @Environment(AppEnvironment.self) private var env
-
     /// Read from the bundle rather than written down: a version typed into a
     /// string is the one fact in this screen guaranteed to drift from the
     /// build it describes.
@@ -51,15 +49,6 @@ struct AboutView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .listRowBackground(Color.clear)
-            }
-
-            Section {
-                LabeledContent("规则总数") {
-                    Text("\(env.adBlock.ruleCount)")
-                        .monospacedDigit()
-                }
-            } header: {
-                Text("状态")
             }
 
             Section {

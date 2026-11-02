@@ -25,11 +25,10 @@ public enum WebPageScripts {
         case elementPick = "velaElementPick"
         case console = "velaConsole"
         case userScript = "velaUserScript"
-        case adBlockReport = "velaAdBlockReport"
-        /// New text blocks found by the translation observer after a page
-        /// has been translated once. The service answers with a batch of
-        /// translated HTML.
-        case translation = "velaTranslation"
+        /// Page-side permission questions from the location, clipboard and
+        /// notification bridge. Camera, microphone and motion arrive through
+        /// `WKUIDelegate` instead.
+        case permissionAsk = "velaPermissionAsk"
     }
 
     // MARK: - History API bridge

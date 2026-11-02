@@ -462,6 +462,10 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
     func beginNavigation(_ navigation: WKNavigation?, in webView: WKWebView) {
         guard let tab = tab(for: webView) else { return }
         pruneTraces()
+        // A permission sheet belongs to the document that asked. Navigating
+        // away without answering leaves WebKit or the page bridge blocked
+        // forever, so a start retires it as a denial.
+        cancelPendingPermission(tabId: tab.id)
         // The commands close over the document that registered them; the
         // document is being replaced.
         overlays.userScriptMenuCommands.removeAll { $0.tabId == tab.id }
@@ -488,7 +492,6 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         tab.lastFailure = nil
         tab.serverStatus = 0
         tab.runtimeState = tab.id == tabManager?.activeTabId ? .active : .background
-        adBlock.resetPageReport()
 
         log(tab: tab, serial: serial, event: .start, url: url)
     }
@@ -891,7 +894,6 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             errorCode: error?.code ?? 0,
             errorMessage: error?.localizedDescription ?? "",
             outcome: outcome,
-            adBlockActive: adBlock.isReady && settings.adBlockSettings.preferences.enabled,
             userScriptsActive: settings.preferences.userScriptsEnabled
         )
     }

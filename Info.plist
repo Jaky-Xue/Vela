@@ -38,9 +38,9 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.9.24</string>
+	<string>3.9.25</string>
 	<key>CFBundleVersion</key>
-	<string>27</string>
+	<string>28</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>
@@ -132,7 +132,13 @@
 		<string>orpheuswidget</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Vela 需要使用相机扫描二维码。</string>
+	<string>Vela 需要使用相机扫描二维码，以及在你允许某个网站使用相机时把画面交给该网站。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Vela 在你允许某个网站使用麦克风时，把录音交给该网站。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Vela 在你允许某个网站使用位置时，把当前位置交给该网站。</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Vela 在你允许某个网站使用运动与方向数据时，把传感器数据交给该网站。</string>
 
 	<!-- The password vault unlocks with Face ID (or Touch ID / the device
 	     passcode). Without this key the system refuses the Face ID prompt and

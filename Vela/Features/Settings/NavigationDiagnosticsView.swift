@@ -147,7 +147,6 @@ private struct NavigationLogRow: View {
 
             HStack(spacing: BrowserSpacing.compact) {
                 Text("#\(entry.navigationSerial)")
-                if entry.adBlockActive { Text("拦截开") }
                 if entry.userScriptsActive { Text("脚本开") }
                 if !entry.navigationType.isEmpty { Text(entry.navigationType) }
             }

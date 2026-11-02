@@ -32,10 +32,11 @@ public final class BrowserWebCoordinator: NSObject {
     // MARK: - Collaborators
 
     let settings: SettingsService
-    let adBlock: AdBlockEngine
     let history: HistoryService
     let downloads: DownloadService
     let userScripts: UserScriptRepository
+    /// The shared record of permission answers, written on every decision.
+    let permissionAudit: PermissionAuditService
     weak var tabManager: TabManager?
 
     /// The structured record of what happened to each navigation. In memory
@@ -45,13 +46,6 @@ public final class BrowserWebCoordinator: NSObject {
     /// The values the shell renders over a page. Owned by the environment and
     /// handed in, so a view can observe one dialog without observing the engine.
     public let overlays: WebPageOverlays
-
-    /// Receives new text blocks from a translated page's mutation observer.
-    ///
-    /// The coordinator sees the script message; the translation service owns
-    /// the provider and the target, so the two are connected by this closure
-    /// rather than by the engine reaching into the service.
-    public var dynamicTranslationHandler: ((String, String, WKWebView) -> Void)?
 
     /// Opens a tab a user script asked for with `GM_openInTab`. Set by the
     /// environment, because the tab manager lives there.
@@ -115,21 +109,28 @@ public final class BrowserWebCoordinator: NSObject {
     /// re-issued load is allowed through.
     var pendingIdentityReloads: Set<String> = []
 
+    /// Answers the user gave without choosing "以后对这个网站都这样".
+    ///
+    /// Keyed by host and kind. Held for the life of the process, which is the
+    /// session a browser is; a relaunch asks again. A site rule stored in
+    /// settings takes precedence over this map.
+    var permissionSessionDecisions: [String: SitePermissionRule] = [:]
+
     public init(
         overlays: WebPageOverlays,
         settings: SettingsService,
-        adBlock: AdBlockEngine,
         history: HistoryService,
         downloads: DownloadService,
         userScripts: UserScriptRepository,
+        permissionAudit: PermissionAuditService,
         navigationLog: NavigationLog
     ) {
         self.overlays = overlays
         self.settings = settings
-        self.adBlock = adBlock
         self.history = history
         self.downloads = downloads
         self.userScripts = userScripts
+        self.permissionAudit = permissionAudit
         self.navigationLog = navigationLog
         super.init()
     }
@@ -194,10 +195,8 @@ public final class BrowserWebCoordinator: NSObject {
             handlePageMetricsMessage(message)
         case .elementPick:
             handleElementPickMessage(message, tab: tab)
-        case .adBlockReport:
-            handleAdBlockReport(message, webView: webView)
-        case .translation:
-            handleTranslationMessage(message, from: webView)
+        case .permissionAsk:
+            handlePermissionAsk(message, webView: webView)
         case .userScript:
             handleUserScriptMessage(message, tab: tab, webView: webView)
         case .console:
@@ -298,46 +297,6 @@ public final class BrowserWebCoordinator: NSObject {
             tagName: payload["tag"] as? String ?? "",
             textPreview: payload["text"] as? String ?? ""
         )
-    }
-
-    /// New blocks found by a translated page's observer.
-    ///
-    /// Only the main frame is accepted: an iframe's content is its own
-    /// document and was never part of the page translation.
-    func handleTranslationMessage(_ message: WKScriptMessage, from webView: WKWebView) {
-        guard message.frameInfo.isMainFrame,
-              let tab = tab(for: webView),
-              let payload = message.body as? [String: Any],
-              let units = payload["units"] as? [[String: Any]], !units.isEmpty,
-              let data = try? JSONSerialization.data(withJSONObject: payload),
-              let json = String(data: data, encoding: .utf8) else { return }
-        dynamicTranslationHandler?(json, tab.id, webView)
-    }
-
-    /// Re-applies the compiled rule list to web views that already exist.
-    ///
-    /// A web view copies its rule lists when it is built, so a list compiled a
-    /// moment later — the common case on a fresh install, where the first
-    /// compile and the session restore race — never reaches that page. Editing
-    /// the live controller is what makes the next navigation, including a
-    /// reload, filtered by the current list; it is the same route user scripts
-    /// take when one is installed mid-session.
-    func reloadAdBlockRulesIntoOpenWebViews() {
-        guard let tabManager else { return }
-        let lists = adBlock.attachedRuleLists()
-        for webView in tabManager.allWebViews() {
-            let controller = webView.configuration.userContentController
-            controller.removeAllContentRuleLists()
-            for list in lists {
-                controller.add(list)
-            }
-        }
-    }
-
-    func handleAdBlockReport(_ message: WKScriptMessage, webView: WKWebView) {
-        guard let payload = message.body as? [String: Any],
-              let count = payload["hiddenCount"] as? Int else { return }
-        adBlock.applyReport(hiddenCount: count)
     }
 
     /// Writes from a script come back as messages. The store is the authority, so
@@ -583,6 +542,16 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
+        // The page-side permission gate. Main frame only: a site's permission
+        // is the document's, and the APIs it wraps are the top document's own.
+        controller.addUserScript(
+            WKUserScript(
+                source: WebPageScripts.permissionBridge,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+
         let startScripts: [String] = [
             WebPageScripts.historyApiBridge,
             WebPageScripts.fullscreenBridge,
@@ -631,34 +600,26 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                 forMainFrameOnly: false
             )
         )
-        controller.addUserScript(
-            WKUserScript(
-                source: AdBlockEngine.cosmeticCountingScript,
-                injectionTime: .atDocumentEnd,
-                forMainFrameOnly: false
-            )
-        )
-
-        // Cosmetic filtering. Injected as a style element rather than through
-        // the rule list because a rule list can only hide by selector if the
-        // selector is known at compile time, and the manual element hides are
-        // per-host.
-        if let host = url?.host,
-           let css = adBlock.cosmeticStyle(
-               for: host,
-               manualSelectors: settings.manualElementHide.effectiveSelectors(for: host)
-           ) {
-            let combined = """
-            (function () {
-              var style = document.createElement('style');
-              style.id = '\(AdBlockEngine.cosmeticStyleIdentifier)';
-              style.textContent = \(jsonLiteral(css));
-              (document.head || document.documentElement).appendChild(style);
-            })();
-            """
-            controller.addUserScript(
-                WKUserScript(source: combined, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-            )
+        // Manual element hides. The selector belongs to the host, so the
+        // stylesheet is composed per navigation and injected at document
+        // start, before the page's own markup can paint the element once.
+        if let host = url?.host {
+            let selectors = settings.manualElementHide.effectiveSelectors(for: host)
+                .filter { !$0.contains("{") && !$0.contains("}") }
+            if !selectors.isEmpty {
+                let css = selectors.joined(separator: ",\n") + "\n{ display: none !important; }"
+                let combined = """
+                (function () {
+                  var style = document.createElement('style');
+                  style.id = 'org.vela.browser.manual-hide';
+                  style.textContent = \(jsonLiteral(css));
+                  (document.head || document.documentElement).appendChild(style);
+                })();
+                """
+                controller.addUserScript(
+                    WKUserScript(source: combined, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+                )
+            }
         }
 
         if overlays.isElementPickerArmed {
@@ -801,13 +762,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         }
 
         attachPageScripts(to: controller, tab: tab, url: URL(string: tab.url))
-
-        // Attach the compiled rule list synchronously from the last load. The
-        // engine keeps the compiled `WKContentRuleList` in memory after it loads
-        // it, so a navigation does not have to await a lookup.
-        for list in adBlock.attachedRuleLists() {
-            controller.add(list)
-        }
 
         // Preferences. `javaScriptCanOpenWindowsAutomatically` stays false: a
         // page that opens a window without a user gesture is a popup, and popups

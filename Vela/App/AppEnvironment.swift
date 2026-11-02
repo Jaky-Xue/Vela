@@ -6,8 +6,8 @@
 //
 //  `AppServices` owns everything the process shares — database, settings,
 //  history, bookmarks, downloads, the offline shelf. This object owns what a
-//  single window owns: its tab session, its web views, its page overlays, its
-//  navigation log and its translation panel. A Stage Manager window therefore
+//  single window owns: its tab session, its web views, its page overlays and
+//  its navigation log. A Stage Manager window therefore
 //  gets its own environment, built here from the shared services, instead of
 //  sharing one tab strip with every other window.
 //
@@ -36,11 +36,6 @@ public final class AppEnvironment {
     public let tabManager: TabManager
     /// The structured record of recent navigations in this window.
     public let navigationLog: NavigationLog
-    /// The page translation panel's state.
-    public let translation: TranslationService
-    /// The on-device translation bridge, when the OS provides the framework.
-    private(set) var appleTranslationBridge: (any AppleTranslationBridging)?
-
     /// The private session's novel shelf, created on demand and dropped when
     /// the session ends. It runs on its own in-memory database, so nothing it
     /// writes can reach the regular novel tables.
@@ -87,9 +82,9 @@ public final class AppEnvironment {
         let coordinator = BrowserWebCoordinator(
             overlays: overlays,
             settings: services.settings,
-            adBlock: services.adBlock,
             history: services.history,
             downloads: services.downloads,
+            permissionAudit: services.permissionAudit,
             userScripts: services.userScriptRepository,
             navigationLog: navigationLog
         )
@@ -100,13 +95,6 @@ public final class AppEnvironment {
             sessionRepository: services.tabSessions,
             windowId: windowId
         )
-        self.translation = TranslationService()
-        if #available(iOS 18.0, *) {
-            let bridge = AppleTranslationBridge()
-            appleTranslationBridge = bridge
-            translation.appleBridge = bridge
-        }
-
         coordinator.attach(tabManager: tabManager)
         tabManager.onPrivateSessionStarted = { [weak self] in
             self?.beginPrivateSession()
@@ -121,24 +109,6 @@ public final class AppEnvironment {
                 openSource: .webWindowOpen,
                 activate: active
             )
-        }
-        // A translated page's observer reports new blocks here. The closure is
-        // weak on both sides: the coordinator is owned by this environment, so
-        // a strong capture would keep the window alive for the app's lifetime.
-        coordinator.dynamicTranslationHandler = { [weak self] payload, tabId, webView in
-            guard let self else { return }
-            self.translation.handleDynamicUnits(
-                payload,
-                tabId: tabId,
-                webView: webView,
-                settings: self.settings.translationSettings
-            )
-        }
-        // A compile that finishes after this window built its web views has
-        // to reach those pages; the closure walks the pool and re-applies the
-        // list. Set before boot so the first launch compile is covered.
-        services.adBlockRulesDidChange = { [weak coordinator] in
-            coordinator?.reloadAdBlockRulesIntoOpenWebViews()
         }
         services.bootOnce()
         bootWindow()
@@ -166,7 +136,7 @@ public final class AppEnvironment {
     public var bookmarks: BookmarkService { services.bookmarks }
     public var history: HistoryService { services.history }
     public var downloads: DownloadService { services.downloads }
-    public var adBlock: AdBlockEngine { services.adBlock }
+    public var permissionAudit: PermissionAuditService { services.permissionAudit }
     public var searchHistory: SearchHistoryRepository { services.searchHistory }
     public var userScripts: UserScriptService { services.userScripts }
     public var tabSessions: TabSessionRepository { services.tabSessions }
@@ -425,20 +395,6 @@ public final class AppEnvironment {
     public var currentPrivacyMode: BrowserSessionPrivacyMode {
         tabManager.activeTab?.privacyMode
             ?? ((settings.preferences.privateBrowsingMode ?? false) ? .private : .regular)
-    }
-
-    // MARK: - Ad-blocking, forwarded
-
-    public func refreshAdBlockRules() async {
-        await services.refreshAdBlockRules()
-    }
-
-    public func updateAdBlockSource(id: String) async {
-        await services.updateAdBlockSource(id: id)
-    }
-
-    public func adBlockRuleText(sourceId: String) -> String? {
-        services.adBlockRuleText(sourceId: sourceId)
     }
 
     public func clearAllBrowsingData(includeWebKitData: Bool = true) async {

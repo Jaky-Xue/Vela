@@ -2,450 +2,180 @@
 //  SettingsSubpages.swift
 //  Vela
 //
-//  The settings destinations past the main list: ad blocking, default
-//  site permissions, external navigation, downloads, and clearing
-//  site data.
+//  The settings destinations past the main list: default site permissions,
+//  external navigation, downloads, and clearing site data.
 //
 
 import SwiftUI
 import WebKit
 
-// MARK: - Ad block
-
-struct AdBlockSettingsView: View {
-    @Environment(AppEnvironment.self) private var env
-
-    @State private var newRule = ""
-    @State private var updatingSourceId: String?
-    /// The index of the local rule under edit, and its text.
-    @State private var editingRuleIndex: Int?
-    @State private var editingRuleText = ""
-
-    private var isEditingRule: Binding<Bool> {
-        Binding(
-            get: { editingRuleIndex != nil },
-            set: { if !$0 { editingRuleIndex = nil } }
-        )
-    }
-
-    var body: some View {
-        List {
-            Section {
-                Toggle("启用广告与内容过滤", isOn: Binding(
-                    get: { env.settings.adBlockSettings.preferences.enabled },
-                    set: { value in
-                        env.settings.setAdBlockEnabled(value)
-                        Task { await env.refreshAdBlockRules() }
-                    }
-                ))
-                Toggle("隐藏页面元素", isOn: Binding(
-                    get: { env.settings.adBlockSettings.preferences.cosmeticFilteringEnabled },
-                    set: { value in
-                        env.settings.update { $0.adBlock.preferences.cosmeticFilteringEnabled = value }
-                        Task { await env.refreshAdBlockRules() }
-                    }
-                ))
-            } footer: {
-                Text("关闭元素隐藏只会停止过滤页面内的广告位，请求拦截仍然生效。")
-            }
-
-            Section {
-                LabeledContent("已加载规则") {
-                    Text("\(env.adBlock.ruleCount)")
-                        .monospacedDigit()
-                }
-                LabeledContent("隐藏选择器") {
-                    Text("\(env.adBlock.cosmeticSelectors.count)")
-                        .monospacedDigit()
-                }
-                if env.adBlock.unsupportedRuleCount > 0 {
-                    LabeledContent("规则集中无法表达") {
-                        Text("\(env.adBlock.unsupportedRuleCount)")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if let compileError = env.adBlock.lastError {
-                    // WebKit refuses a whole list over one rule and does not
-                    // name it, so the message is shown verbatim; without this
-                    // row a refused list looks exactly like an empty one.
-                    Text(compileError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-                if env.adBlock.lastPageHiddenCount > 0 {
-                    LabeledContent("当前页面隐藏") {
-                        Text("\(env.adBlock.lastPageHiddenCount) 个元素")
-                            .monospacedDigit()
-                    }
-                }
-            } header: {
-                Text("过滤状态")
-            } footer: {
-                Text("系统不提供拦截计数，这里显示规则条数与实际隐藏的元素数。")
-            }
-
-            Section {
-                ForEach(env.settings.adBlockSettings.ruleSources) { source in
-                    NavigationLink {
-                        AdBlockSourceRulesView(source: source)
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(source.name)
-                                if !source.lastError.isEmpty {
-                                    Text(source.lastError)
-                                        .font(.caption)
-                                        .foregroundStyle(.red)
-                                } else if let updated = source.lastUpdatedAt {
-                                    Text("更新于 \(updated.formatted(date: .abbreviated, time: .shortened))")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else if source.sourceType == .system {
-                                    Text("随 App 内置")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Text("尚未下载")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer()
-                            if updatingSourceId == source.id {
-                                ProgressView()
-                            }
-                            Toggle("", isOn: Binding(
-                                get: { source.enabled },
-                                set: { value in
-                                    env.settings.setRuleSourceEnabled(value, sourceId: source.id)
-                                    Task { await env.refreshAdBlockRules() }
-                                }
-                            ))
-                            .labelsHidden()
-                        }
-                    }
-                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                        if source.sourceType == .remote {
-                            Button {
-                                updatingSourceId = source.id
-                                Task {
-                                    await env.updateAdBlockSource(id: source.id)
-                                    updatingSourceId = nil
-                                }
-                            } label: {
-                                Label("更新", systemImage: "arrow.clockwise")
-                            }
-                            .tint(.blue)
-                        }
-                    }
-                }
-
-                Menu {
-                    ForEach(AdBlockCustomRuleSource.catalog.filter { candidate in
-                        !env.settings.adBlockSettings.ruleSources.contains { $0.id == candidate.id }
-                    }) { candidate in
-                        Button(candidate.name) {
-                            var sources = env.settings.adBlockSettings.ruleSources
-                            sources.append(candidate)
-                            env.settings.update { $0.adBlock.ruleSources = sources }
-                            Task { await env.updateAdBlockSource(id: candidate.id) }
-                        }
-                    }
-                } label: {
-                    Label("添加订阅规则", systemImage: "plus")
-                }
-            } header: {
-                Text("规则来源")
-            }
-
-            Section {
-                ForEach(env.settings.adBlockSettings.preferences.siteExceptions) { exception in
-                    HStack {
-                        Text(exception.host)
-                        Spacer()
-                        Button {
-                            env.settings.removeAdBlockSiteException(host: exception.host)
-                            Task { await env.refreshAdBlockRules() }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .onDelete { offsets in
-                    for index in offsets {
-                        let host = env.settings.adBlockSettings.preferences.siteExceptions[index].host
-                        env.settings.removeAdBlockSiteException(host: host)
-                    }
-                    Task { await env.refreshAdBlockRules() }
-                }
-            } header: {
-                Text("不做过滤的网站")
-            } footer: {
-                Text("在某个网站上关闭过滤后，该网站会被加入这里。")
-            }
-
-            Section {
-                ForEach(
-                    Array(env.settings.adBlockSettings.preferences.localRules.enumerated()),
-                    id: \.offset
-                ) { index, rule in
-                    Button {
-                        editingRuleText = rule
-                        editingRuleIndex = index
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text(rule)
-                                .font(.system(size: 13, design: .monospaced))
-                                .foregroundStyle(.primary)
-                            Spacer(minLength: 0)
-                            Image(systemName: "pencil")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .onDelete { offsets in
-                    var rules = env.settings.adBlockSettings.preferences.localRules
-                    rules.remove(atOffsets: offsets)
-                    env.settings.setLocalAdBlockRules(rules)
-                    Task { await env.refreshAdBlockRules() }
-                }
-
-                HStack {
-                    TextField("例如：||example.com^", text: $newRule)
-                        .font(.system(size: 13, design: .monospaced))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("添加") {
-                        let trimmed = newRule.trimmingCharacters(in: .whitespaces)
-                        guard !trimmed.isEmpty else { return }
-                        var rules = env.settings.adBlockSettings.preferences.localRules
-                        rules.append(trimmed)
-                        env.settings.setLocalAdBlockRules(rules)
-                        newRule = ""
-                        Task { await env.refreshAdBlockRules() }
-                    }
-                    .disabled(newRule.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            } header: {
-                Text("自定义规则")
-            } footer: {
-                Text("支持 Adblock Plus 语法的常见写法，例如 ||example.com^ 拦截整站、##.ad-banner 隐藏元素。点按一条规则即可修改，左滑删除。")
-            }
-
-            Section {
-                ForEach(env.settings.manualElementHide.sites) { site in
-                    DisclosureGroup {
-                        ForEach(site.rules) { rule in
-                            Text(rule.selector)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .swipeActions {
-                                    Button("删除", role: .destructive) {
-                                        env.settings.removeManualElementHide(ruleId: rule.id, host: site.host)
-                                    }
-                                }
-                        }
-                    } label: {
-                        Text(site.host)
-                    }
-                }
-            } header: {
-                Text("手动隐藏的页面元素")
-            } footer: {
-                Text("在页面菜单中选择「隐藏页面元素」，然后点选要去掉的元素。")
-            }
-        }
-        .sheet(isPresented: isEditingRule) {
-            NavigationStack {
-                Form {
-                    Section {
-                        TextField("规则", text: $editingRuleText, axis: .vertical)
-                            .font(.system(size: 14, design: .monospaced))
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .lineLimit(3...10)
-                    } footer: {
-                        Text("保存后会立即重新编译规则。")
-                    }
-                }
-                .navigationTitle("编辑自定义规则")
-                .navigationBarTitleDisplayMode(.inline)
-                .browserListSurface()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("取消") { editingRuleIndex = nil }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("保存") { saveEditedLocalRule() }
-                            .disabled(
-                                editingRuleText
-                                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                                    .isEmpty
-                            )
-                    }
-                }
-            }
-            .browserAmbientSheet()
-        }
-        .navigationTitle("广告与内容过滤")
-        .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
-        .onAppear {
-            Task { await env.refreshAdBlockRules() }
-        }
-    }
-
-    /// Writes the edited rule back and recompiles. A rule deleted while the
-    /// editor was open leaves nothing to write, so the index is checked.
-    private func saveEditedLocalRule() {
-        guard let index = editingRuleIndex else { return }
-        var rules = env.settings.adBlockSettings.preferences.localRules
-        guard rules.indices.contains(index) else {
-            editingRuleIndex = nil
-            return
-        }
-        rules[index] = editingRuleText.trimmingCharacters(in: .whitespacesAndNewlines)
-        env.settings.setLocalAdBlockRules(rules)
-        editingRuleIndex = nil
-        editingRuleText = ""
-        Task { await env.refreshAdBlockRules() }
-    }
-}
-
-// MARK: - One source's rules
-
-/// The rule text a source contributes, searchable and copyable.
-///
-/// Until this existed the only number a user could see was "已加载规则";
-/// the rules themselves — the shipped lists and every subscription — were
-/// compiled and never readable. System and subscription rules are shown as
-/// they are: editing them would be overwritten by the next update, so the
-/// one edit offered is to copy a rule into the user's own rules.
-struct AdBlockSourceRulesView: View {
-    @Environment(AppEnvironment.self) private var env
-
-    let source: AdBlockCustomRuleSource
-
-    @State private var text: String?
-    @State private var query = ""
-
-    private var lines: [String] {
-        guard let text else { return [] }
-        return text
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-    }
-
-    private var visibleLines: [String] {
-        let needle = query.trimmingCharacters(in: .whitespaces)
-        guard !needle.isEmpty else { return lines }
-        return lines.filter { $0.localizedCaseInsensitiveContains(needle) }
-    }
-
-    var body: some View {
-        List {
-            Section {
-                if text != nil, !lines.isEmpty {
-                    ForEach(Array(visibleLines.enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(isComment(line) ? Color.secondary : Color.primary)
-                            .textSelection(.enabled)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button {
-                                    addLocalRule(line)
-                                } label: {
-                                    Label("加入自定义规则", systemImage: "plus")
-                                }
-                                .tint(.blue)
-                            }
-                    }
-                } else {
-                    ContentUnavailableView(
-                        text == nil ? "还没有规则内容" : "没有规则",
-                        systemImage: "shield.slash",
-                        description: Text(
-                            source.sourceType == .remote
-                                ? "这个订阅还没有下载，请回到上一页更新它。"
-                                : "这个来源目前没有规则。"
-                        )
-                    )
-                }
-            } header: {
-                Text("共 \(visibleLines.count) 条")
-            } footer: {
-                Text("规则按原样显示，以 ! 或 [ 开头的是注释与元数据。向左轻扫一条规则，可以把它加入自定义规则后再修改。")
-            }
-        }
-        .navigationTitle(source.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
-        .searchable(text: $query, prompt: "搜索规则")
-        .task {
-            if text == nil {
-                text = env.adBlockRuleText(sourceId: source.id) ?? ""
-            }
-        }
-    }
-
-    private func isComment(_ line: String) -> Bool {
-        line.hasPrefix("!") || line.hasPrefix("[")
-    }
-
-    private func addLocalRule(_ line: String) {
-        var rules = env.settings.adBlockSettings.preferences.localRules
-        guard !rules.contains(line) else { return }
-        rules.append(line)
-        env.settings.setLocalAdBlockRules(rules)
-        Task { await env.refreshAdBlockRules() }
-    }
-}
-
 // MARK: - Site permissions
 
 struct SitePermissionsSettingsView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.browserPalette) private var palette
+
+    private var siteRules: [SitePermissionSiteRule] {
+        env.settings.preferences.sitePermissionRules ?? []
+    }
 
     var body: some View {
         List {
             Section {
-                // Only the kinds a web view actually asks about. The model
-                // carries location, sensor and clipboard too, but iOS never
-                // routes those through a web view, so a picker for them was a
-                // setting that decided nothing.
-                ForEach([SitePermissionKind.camera, .microphone]) { kind in
+                ForEach(SitePermissionKind.allCases) { kind in
                     Picker(kind.displayName, selection: Binding(
                         get: { env.settings.preferences.sitePermissions[kind] },
                         set: { value in env.settings.setSitePermissionDefault(value, kind: kind) }
                     )) {
-                        Text("询问").tag(SitePermissionRule.ask)
-                        Text("允许").tag(SitePermissionRule.allow)
-                        Text("拒绝").tag(SitePermissionRule.block)
+                        Text(SitePermissionRule.ask.displayName).tag(SitePermissionRule.ask)
+                        Text(SitePermissionRule.allow.displayName).tag(SitePermissionRule.allow)
+                        Text(SitePermissionRule.block.displayName).tag(SitePermissionRule.block)
                     }
                     .pickerStyle(.menu)
                 }
             } header: {
                 Text("默认行为")
             } footer: {
-                Text("「询问」会在页面上弹出确认。系统层面拒绝时，这里的「允许」不生效。")
+                Text("「询问」会在页面上弹出确认，答案只作用到当前会话；「以后对这个网站都这样」会把答案按网站保存。系统层面拒绝时，这里的「允许」不生效。")
             }
 
             Section {
-                Label("相机与麦克风", systemImage: "camera")
+                if siteRules.isEmpty {
+                    Text("还没有按网站保存的权限。提示里打开「以后对这个网站都这样」后，记录会出现在这里。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(siteRules) { rule in
+                        HStack(spacing: 10) {
+                            Image(systemName: rule.kind.symbolName)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(palette.accent)
+                                .frame(width: 22)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(rule.host)
+                                    .font(.subheadline)
+                                Text(rule.kind.displayName)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 6)
+                            Text(rule.rule.displayName)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(rule.rule == .allow ? .green : .red)
+                            Button {
+                                env.settings.removeSitePermissionRule(id: rule.id)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("移除这条权限")
+                        }
+                    }
+                }
+            } header: {
+                Text("按网站保存")
+            }
+
+            Section {
+                if env.permissionAudit.records.isEmpty {
+                    Text("还没有访问记录。网页请求权限时会记录在这里。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(env.permissionAudit.records.prefix(100))) { record in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: record.kind.symbolName)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(record.decision == .allowed ? .green : .red)
+                                .frame(width: 22)
+                                .padding(.top, 2)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(record.host)
+                                    .font(.subheadline)
+                                Text("\(record.kind.displayName) · \(record.decision.displayName) · \(record.scope.displayName)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 6)
+                            Text(record.createdAt.formatted(date: .numeric, time: .shortened))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    Button("清除访问记录", role: .destructive) {
+                        env.permissionAudit.clear()
+                    }
+                }
+            } header: {
+                Text("访问记录")
+            } footer: {
+                Text("记录只保存网站、权限类型、结果和作用范围，不保存页面地址或内容；最多保留 500 条。")
+            }
+
+            Section {
+                Label("相机、麦克风与定位", systemImage: "camera")
             } header: {
                 Text("系统权限")
             } footer: {
-                Text("请到「设置 ▸ Vela」中开启。")
+                Text("网页的「允许」还要经过 iOS 对 Vela 本身的授权。请到「设置 ▸ Vela」中开启；定位在首次使用时会由系统另行询问。")
             }
         }
         .navigationTitle("网站权限")
+        .navigationBarTitleDisplayMode(.inline)
+        .browserListSurface()
+    }
+}
+
+// MARK: - Hidden elements
+
+/// The selectors the element picker added, grouped by site.
+///
+/// The picker is a direct action — the user pointed at one element and asked
+/// for it to go — so its records are kept and managed here rather than folded
+/// into a filter-list subscription. Removing a rule takes effect on the next
+/// load of that site.
+struct ElementHideSettingsView: View {
+    @Environment(AppEnvironment.self) private var env
+
+    var body: some View {
+        List {
+            if env.settings.manualElementHide.sites.isEmpty {
+                Section {
+                    Text("还没有隐藏任何元素。在网页上用「隐藏元素」选中一块区域后，会记录在这里。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                ForEach(env.settings.manualElementHide.sites) { site in
+                    Section {
+                        ForEach(site.rules) { rule in
+                            HStack(spacing: 10) {
+                                Text(rule.selector)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .lineLimit(2)
+                                Spacer(minLength: 6)
+                                Button {
+                                    env.settings.removeManualElementHide(
+                                        ruleId: rule.id,
+                                        host: site.host
+                                    )
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("移除这条隐藏规则")
+                            }
+                        }
+                    } header: {
+                        Text(site.host)
+                    }
+                }
+            }
+        }
+        .navigationTitle("隐藏的元素")
         .navigationBarTitleDisplayMode(.inline)
         .browserListSurface()
     }

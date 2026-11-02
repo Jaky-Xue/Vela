@@ -33,7 +33,6 @@ enum ToolbarControl: String, CaseIterable, Codable, Sendable, Identifiable, Hash
     case reload
     case find
     case settings
-    case adBlock
     case privateMode
 
     var id: String { rawValue }
@@ -55,7 +54,6 @@ enum ToolbarControl: String, CaseIterable, Codable, Sendable, Identifiable, Hash
         case .reload: return "刷新"
         case .find: return "查找"
         case .settings: return "设置"
-        case .adBlock: return "广告过滤"
         case .privateMode: return "无痕模式"
         }
     }
@@ -79,7 +77,6 @@ enum ToolbarControl: String, CaseIterable, Codable, Sendable, Identifiable, Hash
         case .reload: return "arrow.clockwise"
         case .find: return "magnifyingglass"
         case .settings: return "gearshape"
-        case .adBlock: return "shield.lefthalf.filled"
         case .privateMode: return "eyeglasses"
         }
     }

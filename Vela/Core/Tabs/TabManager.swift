@@ -20,8 +20,8 @@ import Observation
 
 /// Supplies the `WKWebViewConfiguration` for a tab.
 ///
-/// Kept as a protocol so `TabManager` does not depend on the ad-block engine or
-/// the user-script store directly.
+/// Kept as a protocol so `TabManager` does not depend on the web engine or the
+/// user-script store directly.
 @MainActor
 public protocol BrowserWebViewConfigurationProviding: AnyObject {
     func makeConfiguration(for tab: BrowserTabState) -> WKWebViewConfiguration

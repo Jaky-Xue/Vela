@@ -10,7 +10,7 @@
 //  one directly.
 //
 //  Three tables exist because of how iOS sandboxes an app: downloads, user
-//  scripts and ad-block subscriptions are stored here rather than in the
+//  scripts and hidden-element selectors are stored here rather than in the
 //  preferences document a shared path would have allowed, and the migration
 //  note is recorded next to each.
 //
@@ -48,7 +48,6 @@ public enum BrowserSchema {
     public static let downloadsTable = "downloads"
     public static let userScriptsTable = "user_scripts"
     public static let userScriptValuesTable = "user_script_values"
-    public static let adBlockSourcesTable = "adblock_rule_sources"
     public static let novelBooksTable = "novel_books"
     public static let novelChaptersTable = "novel_chapters"
     public static let novelTOCEntriesTable = "novel_toc_entries"
@@ -407,29 +406,6 @@ public enum BrowserSchema {
         )
         """,
         "CREATE INDEX IF NOT EXISTS idx_user_script_values_script ON \(userScriptValuesTable)(script_id)",
-
-        // MARK: Vela-native: ad-block rule sources
-
-        // Migration note: the subscription metadata lives in a table and the rule
-        // text stays on disk, because the compiled `WKContentRuleList` identifier
-        // has to be tracked and invalidated.
-        """
-        CREATE TABLE IF NOT EXISTS \(adBlockSourcesTable) (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          url TEXT NOT NULL DEFAULT '',
-          source_type TEXT NOT NULL,
-          enabled INTEGER NOT NULL DEFAULT 1,
-          rule_count INTEGER NOT NULL DEFAULT 0,
-          last_updated_at INTEGER NOT NULL DEFAULT 0,
-          last_error TEXT NOT NULL DEFAULT '',
-          content_rule_list_identifier TEXT NOT NULL DEFAULT ''
-        )
-        """,
-        """
-        CREATE INDEX IF NOT EXISTS idx_adblock_sources_enabled
-        ON \(adBlockSourcesTable)(enabled, source_type)
-        """,
 
         // MARK: Vela-native: the novel shelf
 

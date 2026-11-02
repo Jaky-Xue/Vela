@@ -114,6 +114,7 @@ public enum SitePermissionKind: String, Codable, Sendable, CaseIterable, Identif
     case location
     case sensor
     case clipboard
+    case notification
 
     public var id: String { rawValue }
 
@@ -124,6 +125,30 @@ public enum SitePermissionKind: String, Codable, Sendable, CaseIterable, Identif
         case .location: return "位置"
         case .sensor: return "运动与方向"
         case .clipboard: return "剪贴板"
+        case .notification: return "通知"
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .camera: return "camera"
+        case .microphone: return "mic"
+        case .location: return "location"
+        case .sensor: return "gyroscope"
+        case .clipboard: return "doc.on.clipboard"
+        case .notification: return "bell"
+        }
+    }
+
+    /// One sentence for the settings footer, saying how the gate is reached.
+    public var requestSummary: String {
+        switch self {
+        case .camera: return "网页调用摄像头时询问。"
+        case .microphone: return "网页录音时询问。"
+        case .location: return "网页读取定位前询问；系统定位授权由 iOS 另外询问一次。"
+        case .sensor: return "网页读取设备方向或运动数据时询问。"
+        case .clipboard: return "网页读取剪贴板内容前询问。写入不受限制。"
+        case .notification: return "网页请求通知权限时询问。iOS 的网页视图并不显示系统通知，答案只对网页自身可见。"
         }
     }
 }
@@ -132,6 +157,14 @@ public enum SitePermissionRule: String, Codable, Sendable, CaseIterable {
     case ask
     case allow
     case block
+
+    public var displayName: String {
+        switch self {
+        case .ask: return "询问"
+        case .allow: return "允许"
+        case .block: return "拒绝"
+        }
+    }
 }
 
 public struct SitePermissionDefaultSettings: Codable, Equatable, Sendable {
@@ -140,19 +173,26 @@ public struct SitePermissionDefaultSettings: Codable, Equatable, Sendable {
     public var location: SitePermissionRule
     public var sensor: SitePermissionRule
     public var clipboard: SitePermissionRule
+    /// Optional for decode compatibility: this struct lives inside the
+    /// preferences document, which decodes as a whole, and a required key
+    /// absent from an existing install would reset every setting with it.
+    /// `nil` reads as 询问.
+    public var notification: SitePermissionRule?
 
     public init(
         camera: SitePermissionRule = .ask,
         microphone: SitePermissionRule = .ask,
         location: SitePermissionRule = .ask,
         sensor: SitePermissionRule = .ask,
-        clipboard: SitePermissionRule = .ask
+        clipboard: SitePermissionRule = .ask,
+        notification: SitePermissionRule? = .ask
     ) {
         self.camera = camera
         self.microphone = microphone
         self.location = location
         self.sensor = sensor
         self.clipboard = clipboard
+        self.notification = notification
     }
 
     public static let `default` = SitePermissionDefaultSettings()
@@ -165,6 +205,7 @@ public struct SitePermissionDefaultSettings: Codable, Equatable, Sendable {
             case .location: return location
             case .sensor: return sensor
             case .clipboard: return clipboard
+            case .notification: return notification ?? .ask
             }
         }
         set {
@@ -174,8 +215,37 @@ public struct SitePermissionDefaultSettings: Codable, Equatable, Sendable {
             case .location: location = newValue
             case .sensor: sensor = newValue
             case .clipboard: clipboard = newValue
+            case .notification: notification = newValue
             }
         }
+    }
+}
+
+/// A decision the user made for one site and one kind of permission.
+///
+/// The site's request asks "以后对这个网站都这样"; this is where that answer
+/// lives. A missing entry falls back to the session decision and then to the
+/// kind's default, so a site the user never answered still follows the
+/// default setting.
+public struct SitePermissionSiteRule: Codable, Equatable, Sendable, Identifiable {
+    public var id: String
+    public var host: String
+    public var kind: SitePermissionKind
+    public var rule: SitePermissionRule
+    public var updatedAt: Date
+
+    public init(
+        id: String = UUID().uuidString,
+        host: String,
+        kind: SitePermissionKind,
+        rule: SitePermissionRule,
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.host = host
+        self.kind = kind
+        self.rule = rule
+        self.updatedAt = updatedAt
     }
 }
 
@@ -372,10 +442,12 @@ public struct SecureDnsSettings: Codable, Equatable, Sendable {
 /// the settings would silently reset.
 public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var searchEngine: SearchEngineSettings
-    public var adBlock: AdBlockSettings
     public var webSecurity: BrowserWebSecuritySettings
     public var secureDns: SecureDnsSettings
     public var sitePermissions: SitePermissionDefaultSettings
+    /// Per-site answers to 「以后对这个网站都这样」. Optional for the decode
+    /// reason every optional field here carries.
+    public var sitePermissionRules: [SitePermissionSiteRule]?
     public var externalNavigationDefault: ExternalNavigationAppOpenPolicy
     public var externalNavigationRules: [ExternalNavigationSiteRule]
     public var restoreTabsOnLaunch: Bool
@@ -462,10 +534,10 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
 
     public init(
         searchEngine: SearchEngineSettings = .default,
-        adBlock: AdBlockSettings = .default,
         webSecurity: BrowserWebSecuritySettings = .default,
         secureDns: SecureDnsSettings = .default,
         sitePermissions: SitePermissionDefaultSettings = .default,
+        sitePermissionRules: [SitePermissionSiteRule]? = nil,
         externalNavigationDefault: ExternalNavigationAppOpenPolicy = .ask,
         externalNavigationRules: [ExternalNavigationSiteRule] = [],
         restoreTabsOnLaunch: Bool = true,
@@ -506,10 +578,10 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         forcedZoomEnabled: Bool? = nil
     ) {
         self.searchEngine = searchEngine
-        self.adBlock = adBlock
         self.webSecurity = webSecurity
         self.secureDns = secureDns
         self.sitePermissions = sitePermissions
+        self.sitePermissionRules = sitePermissionRules
         self.externalNavigationDefault = externalNavigationDefault
         self.externalNavigationRules = externalNavigationRules
         self.restoreTabsOnLaunch = restoreTabsOnLaunch
@@ -552,6 +624,21 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
 
     /// The resolved switch: protection is on unless explicitly turned off.
     public var topProtectionEnabled: Bool { topProtection ?? true }
+
+    /// The most specific stored answer for a site and permission kind.
+    ///
+    /// A rule stored for `example.com` applies to `www.example.com` as well;
+    /// an exact host match wins over a parent, and the longest parent wins
+    /// over a shorter one. `nil` means the user has not answered for this site.
+    public func sitePermissionRule(host: String, kind: SitePermissionKind) -> SitePermissionRule? {
+        let normalized = host.lowercased()
+        guard let rules = sitePermissionRules else { return nil }
+        let matches = rules.filter { rule in
+            rule.kind == kind
+                && (normalized == rule.host || normalized.hasSuffix("." + rule.host))
+        }
+        return matches.max { lhs, rhs in lhs.host.count < rhs.host.count }?.rule
+    }
 
     public static let `default` = BrowserPreferences()
 }

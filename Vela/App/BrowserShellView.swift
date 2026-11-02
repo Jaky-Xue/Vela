@@ -55,8 +55,6 @@ struct BrowserShellView: View {
     @State var showSettings = false
     /// The screen the settings sheet should open above its root.
     @State var settingsDestination: SettingsDestination?
-    /// Whether the menu's 广告过滤 tile has its settings open over the panel.
-    @State var showAdBlockSettings = false
     @State var showPasswords = false
     @State var showBookshelf = false
     /// The service the presented shelf belongs to. Captured when the sheet
@@ -74,9 +72,6 @@ struct BrowserShellView: View {
     @State var showAddBookmarkChoice = false
     @State var showShareSheet = false
     @State var showFindBar = false
-    /// Whether the user closed the translation bar for the page on screen.
-    /// Reset on every tab switch and navigation.
-    @State var translationBarDismissed = false
     /// The shelf of saved offline pages.
     @State var showOfflinePages = false
     /// A one-line result from saving a page: "已保存" or the reason it failed.
@@ -312,6 +307,18 @@ struct BrowserShellView: View {
             }
         }
         .background { safeAreaReader }
+        // The shell is laid out inside the safe area, so `safeTop` and
+        // `safeBottom` read from its geometry are zero — the clock and the
+        // home indicator are outside the rectangle SwiftUI hands the ZStack.
+        // The web view, though, deliberately paints edge to edge, and every
+        // offset derived from those numbers (the top protection strip, the
+        // command bar's clearance, the iPad content inset) needs the window's
+        // real insets. This probe sits in the window and reports them.
+        .background {
+            WindowSafeAreaReader { insets in
+                applyWindowSafeArea(insets)
+            }
+        }
         .background {
             EdgeSwipeBackBridge(
                 isEnabled: edgeSwipeBackEnabled,
@@ -319,18 +326,6 @@ struct BrowserShellView: View {
                 onEnded: { handleSwipeBackEnded($0, velocity: $1) },
                 onCancelled: { handleSwipeBackCancelled() }
             )
-        }
-        // The Translation framework hands sessions to a SwiftUI modifier, so
-        // its host must live in the hierarchy even though it draws nothing.
-        .overlay { appleTranslationHost }
-    }
-
-    /// The invisible host that gives the on-device translator a session.
-    @ViewBuilder
-    var appleTranslationHost: some View {
-        if #available(iOS 18.0, *),
-           let bridge = env.appleTranslationBridge as? AppleTranslationBridge {
-            AppleTranslationHost(bridge: bridge)
         }
     }
 
@@ -503,8 +498,7 @@ struct BrowserShellView: View {
         }
     }
 
-    /// The observers that follow the active document, plus the translation
-    /// offer that runs when a page settles.
+    /// The observers that follow the active document.
     var shellTabObservers: some View {
         shellInteractions
         .onChange(of: tabManager.activeTabId) { _, _ in
@@ -523,12 +517,6 @@ struct BrowserShellView: View {
             if let state {
                 handleActiveTabLoadStateChanged(state)
             }
-        }
-        // Runs once the active page has finished loading (and again on a tab
-        // or URL change): this is what recognises a foreign-language page and
-        // offers to translate it, the way Chrome's translate bubble does.
-        .task(id: translationDetectionKey) {
-            await detectTranslationIfNeeded()
         }
     }
 
@@ -608,10 +596,24 @@ struct BrowserShellView: View {
     }
 
     func recordSafeArea(_ geo: GeometryProxy) {
-        safeTop = geo.safeAreaInsets.top
-        safeBottom = geo.safeAreaInsets.bottom
+        // The geometry inside the safe area reports zero insets; a non-zero
+        // answer (a view that was deliberately placed edge to edge) is taken
+        // as authoritative, and the window probe fills in the rest.
+        safeTop = max(safeTop, geo.safeAreaInsets.top)
+        safeBottom = max(safeBottom, geo.safeAreaInsets.bottom)
         safeRectHeight = geo.size.height
         safeRectWidth = geo.size.width
+    }
+
+    /// Records the window's safe-area insets, which are the ones the
+    /// edge-to-edge web surface actually needs.
+    func applyWindowSafeArea(_ insets: UIEdgeInsets) {
+        if abs(safeTop - insets.top) > 0.5 {
+            safeTop = insets.top
+        }
+        if abs(safeBottom - insets.bottom) > 0.5 {
+            safeBottom = insets.bottom
+        }
     }
 
     // MARK: - Screen-edge swipe back
@@ -908,8 +910,6 @@ struct BrowserShellView: View {
         }
         isReaderActive = false
         readerArticle = nil
-        translationBarDismissed = false
-        syncTranslationState()
         showFindBar = false
         findQuery = ""
         chromeHidden = false
@@ -921,8 +921,6 @@ struct BrowserShellView: View {
     }
 
     private func handleActiveTabUrlChanged() {
-        translationBarDismissed = false
-        syncTranslationState()
         chromeHidden = false
         scrollTracker.accumulation = 0
         syncAddressText()
@@ -930,21 +928,7 @@ struct BrowserShellView: View {
     }
 
     private func handleActiveTabLoadStateChanged(_ state: TabLoadState) {
-        if let tab = activeTab,
-           state == .requested || state == .provisional {
-            env.translation.pageWillNavigate(tabId: tab.id)
-        }
         updateChromeForeground()
-    }
-
-    /// The translation offer for the page that just settled. A method rather
-    /// than a closure in the root chain, for the type checker's benefit.
-    @MainActor
-    private func detectTranslationIfNeeded() async {
-        guard !translationDetectionKey.isEmpty else { return }
-        translationBarDismissed = false
-        syncTranslationState()
-        await offerTranslationIfNeeded()
     }
 
     /// Yields the iPad sidebar's page and dismisses the overview before a
@@ -1156,14 +1140,6 @@ struct BrowserShellView: View {
     /// Runs one tile from the menu panel.
     func handleMenuAction(_ action: VelaMenuAction) {
         env.noteInteraction("菜单:\(action.rawValue)")
-        // 广告过滤 opens its settings instead of toggling in place. The panel
-        // is not where rule sources or custom rules can be managed, and a
-        // toggle that dismissed the panel and changed nothing on screen is
-        // exactly what read as a button that did nothing.
-        if action == .adBlock {
-            showAdBlockSettings = true
-            return
-        }
         showMenu = false
         guard let tab = activeTab else {
             switch action {
@@ -1200,20 +1176,6 @@ struct BrowserShellView: View {
             // user asked the browser not to offer.
             guard env.settings.preferences.readerModeAvailable else { break }
             activateReaderMode()
-        case .translate:
-            guard let webView = activeWebView else { break }
-            // The menu item is the manual switch Chrome puts beside its
-            // bubble: it translates, translates back when the bar is on
-            // screen, and reopens the bar when a translated page's bar was
-            // closed — so closing the bar never becomes a dead end.
-            if env.translation.isTranslated && !translationBarDismissed {
-                Task { await env.translation.restoreOriginal(webView: webView) }
-            } else {
-                translationBarDismissed = false
-                if !env.translation.isTranslated {
-                    startPageTranslation()
-                }
-            }
         case .saveOfflinePage:
             saveOfflinePage()
         case .offlinePages:
@@ -1262,9 +1224,6 @@ struct BrowserShellView: View {
                 bookshelfIsPrivate = false
             }
             Task { await env.endPrivateSession(expectedGeneration: expectedGeneration) }
-        case .adBlock:
-            // Handled above, before the panel is dismissed.
-            break
         case .reload:
             reloadActiveTab()
         case .settings:
@@ -1359,23 +1318,6 @@ struct BrowserShellView: View {
         }
         tabManager.applyUserAgentToAllWebViews()
         _ = tabManager.reload(tab: tab)
-    }
-
-    func toggleAdBlock() {
-        let enabled = env.settings.adBlockSettings.preferences.enabled
-        env.settings.setAdBlockEnabled(!enabled)
-        let identity = activeTab.map { TabDocumentIdentity(tab: $0) }
-        Task { @MainActor in
-            await env.refreshAdBlockRules()
-            // Content rules only apply to a new document, so the page is
-            // reloaded to make the change visible. Reload only the document
-            // the toggle was made on; a tab switch during the compile means
-            // the rules will apply on that tab's next load instead.
-            guard let identity,
-                  let tab = tabManager.tab(id: identity.tabId),
-                  identity.matches(activeTab) else { return }
-            _ = tabManager.reload(tab: tab)
-        }
     }
 
     func activateReaderMode() {
@@ -1822,5 +1764,83 @@ struct BackgroundPictureBackdrop: View {
             image = BackgroundImageStore.load(stamp: stamp)
         }
         .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Window safe area
+
+/// Reports the hosting window's safe-area insets.
+///
+/// `GeometryReader` inside the shell cannot: the shell is laid out inside the
+/// safe area, so its own insets are zero. The web view is laid out edge to
+/// edge, and the status bar and home indicator are real obstacles to it, so
+/// the strip heights have to come from the window itself.
+private struct WindowSafeAreaReader: UIViewRepresentable {
+    var onChange: (UIEdgeInsets) -> Void
+
+    func makeUIView(context: Context) -> SafeAreaProbeView {
+        let view = SafeAreaProbeView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateUIView(_ view: SafeAreaProbeView, context: Context) {
+        // The callback is refreshed here, but the report is not: mutating the
+        // shell's state synchronously inside a SwiftUI update is the one thing
+        // this probe must not do. `didMoveToWindow` and `layoutSubviews` are
+        // the UIKit callbacks that carry the measurements.
+        view.onChange = onChange
+    }
+
+    final class SafeAreaProbeView: UIView {
+        var onChange: ((UIEdgeInsets) -> Void)?
+        private var lastReported: UIEdgeInsets?
+        private var observation: NSKeyValueObservation?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            observation = nil
+            guard let window else { return }
+            // The window's own insets are the ones the edge-to-edge web view
+            // has to clear. KVO rather than `safeAreaInsetsDidChange`: this
+            // probe sits inside the safe area, so its own insets never change;
+            // the window's do.
+            observation = window.observe(\.safeAreaInsets, options: [.initial, .new]) { [weak self] window, _ in
+                let insets = window.safeAreaInsets
+                // State is written from a UIKit callback, but a SwiftUI update
+                // can be in flight on the same turn; the hop keeps the write
+                // out of it.
+                DispatchQueue.main.async {
+                    self?.publish(insets)
+                }
+            }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // Rotation and Stage Manager resizes run layout even when KVO on
+            // the window does not fire; this is the second, dependable signal.
+            guard let window else { return }
+            let insets = window.safeAreaInsets
+            DispatchQueue.main.async { [weak self] in
+                self?.publish(insets)
+            }
+        }
+
+        deinit {
+            observation?.invalidate()
+        }
+
+        private func publish(_ insets: UIEdgeInsets) {
+            if let lastReported,
+               abs(lastReported.top - insets.top) < 0.5,
+               abs(lastReported.bottom - insets.bottom) < 0.5,
+               abs(lastReported.left - insets.left) < 0.5,
+               abs(lastReported.right - insets.right) < 0.5 {
+                return
+            }
+            lastReported = insets
+            onChange?(insets)
+        }
     }
 }

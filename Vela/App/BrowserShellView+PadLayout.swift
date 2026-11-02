@@ -455,8 +455,20 @@ extension BrowserShellView {
                         // clock — while still scrolling underneath, the way
                         // Safari's does. A reserved strip makes the page start
                         // at its own top, so the inset drops to zero there.
-                        topContentInset: usesPadLayout ? padTopChromeHeight : (protectsTop ? 0 : safeTop),
-                        topReservedInset: usesPadLayout ? 0 : (protectsTop ? safeTop : 0),
+                        //
+                        // The strip itself is measured by the host from the
+                        // window, independently of the shell's `safeTop`, so
+                        // it holds even where the shell's own geometry sits
+                        // inside the safe area.
+                        // On the iPad layout the page normally runs under the
+                        // floating top bar. 顶部保护 reserves only the status
+                        // bar strip; the bar itself still floats over the page,
+                        // so the scroll inset keeps the page's first line below
+                        // it either way.
+                        topContentInset: usesPadLayout
+                            ? (protectsTop ? padBarsHeight : padTopChromeHeight)
+                            : (protectsTop ? 0 : safeTop),
+                        protectsStatusBar: protectsTop,
                         bottomContentInset: bottomChromeClearance,
                         // Applied when the view is actually attached: an
                         // off-screen web view has no zoomable geometry.

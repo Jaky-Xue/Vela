@@ -117,12 +117,31 @@ public struct ExternalNavigationRequest: Identifiable, Sendable {
     }
 }
 
-/// A camera or microphone request holding WebKit's decision handler.
+/// One site-permission question waiting on the user.
+///
+/// `respond` is the one path back to whatever asked: WebKit's decision
+/// handler for camera, microphone and motion, or the page bridge's JavaScript
+/// resolver for location, clipboard and notifications. The prompt does not
+/// know which, which is what lets one sheet answer every kind.
 public struct SitePermissionRequest: Identifiable {
     public let id = UUID()
-    public var origin: String
+    /// The tab that asked. A navigation in that tab retires the request.
+    public var tabId: String
+    public var host: String
+    /// The kind shown in the prompt.
     public var kind: SitePermissionKind
-    public var decisionHandler: (WKPermissionDecision) -> Void
+    /// Every kind the answer applies to. A media request for camera and
+    /// microphone at once carries two; every other request carries one.
+    public var coveredKinds: [SitePermissionKind]
+    /// Whether the tab is private. A private tab's answer is never written to
+    /// the site rules: 无痕 promises that nothing about the session outlives it.
+    public var isPrivate: Bool
+    public var respond: (Bool) -> Void
+
+    /// The kinds named in the prompt, e.g. 相机与麦克风.
+    public var coveredDisplayName: String {
+        coveredKinds.map(\.displayName).joined(separator: "与")
+    }
 }
 
 /// A file upload holding the completion handler the page is blocked on.

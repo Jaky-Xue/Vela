@@ -295,7 +295,6 @@ final class BrowserHarness {
     let settings: SettingsService
     let coordinator: BrowserWebCoordinator
     let tabManager: TabManager
-    let adBlock: AdBlockEngine
     let navigationLog: NavigationLog
     let history: HistoryService
 
@@ -313,21 +312,7 @@ final class BrowserHarness {
         let downloads = DownloadService(repository: DownloadRepository(database: database), settings: settings)
         let userScripts = UserScriptRepository(database: database)
         let sessions = TabSessionRepository(database: database)
-
-        // The same store the app uses. A temporary store of the test's own would
-        // be tidier, but the point of these tests is to exercise what ships, and
-        // a rule list WebKit refuses to compile into one store is not evidence
-        // about the store that matters.
-        //
-        // `WKContentRuleListStore.default()` is failable in the Swift interface,
-        // and the app's own default argument would trap on nil rather than
-        // reporting it; a test that crashes on that is a test that hides the
-        // reason.
-        guard let store = WKContentRuleListStore.default() else {
-            throw XCTSkip("WebKit returned no default content rule list store")
-        }
-        let adBlock = AdBlockEngine(store: store)
-        self.adBlock = adBlock
+        let permissionAudit = PermissionAuditService()
 
         let navigationLog = NavigationLog()
         self.navigationLog = navigationLog
@@ -336,10 +321,10 @@ final class BrowserHarness {
         let coordinator = BrowserWebCoordinator(
             overlays: overlays,
             settings: settings,
-            adBlock: adBlock,
             history: history,
             downloads: downloads,
             userScripts: userScripts,
+            permissionAudit: permissionAudit,
             navigationLog: navigationLog
         )
         self.coordinator = coordinator
@@ -349,39 +334,6 @@ final class BrowserHarness {
         coordinator.attach(tabManager: tabManager)
 
         _ = tabManager.createTab()
-    }
-
-    /// Compiles the shipped filter lists, which is what the app does at launch.
-    ///
-    /// Returns whether WebKit accepted them. The answer is returned rather than
-    /// asserted so that only the tests *about* ad blocking fail when it does not:
-    /// a smoke test asking whether the network works should not be reported as a
-    /// failure because a rule list did not compile.
-    @discardableResult
-    func installShippedAdBlockRules(enabled: Bool = true) async -> Bool {
-        do {
-            let compiled = try await adBlock.compile(
-                filterLists: AdBlockBuiltInRules.filterLists,
-                orderedSourceIds: AdBlockBuiltInRules.sources.map(\.id),
-                exceptedHosts: [],
-                includeCosmetic: true,
-                enabled: enabled
-            )
-            guard enabled else {
-                return !adBlock.isReady && adBlock.attachedRuleLists().isEmpty
-            }
-            return compiled.ruleCount > 0
-                && !compiled.cosmeticSelectors.isEmpty
-                && adBlock.isReady
-                && !adBlock.attachedRuleLists().isEmpty
-        } catch {
-            return false
-        }
-    }
-
-    /// Why the last ad-block install did not produce a usable rule list.
-    var adBlockCompileError: String? {
-        adBlock.lastError
     }
 
     /// The navigation log for one tab, as text.

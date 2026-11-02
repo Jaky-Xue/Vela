@@ -13,10 +13,6 @@ import WebKit
 extension BrowserShellView {
     func presentations() -> some View {
         shellRoot
-        .overlay(alignment: .top) {
-            translationBarLayer
-        }
-        .animation(.snappy(duration: 0.24), value: showsTranslationBar)
         .sheet(isPresented: $showBookmarks) {
             NavigationStack { BookmarksView() }
                 .environment(env)
@@ -97,7 +93,6 @@ extension BrowserShellView {
                 canActOnPage: canActOnPage,
                 isPrivateMode: activeTab?.privacyMode == .private,
                 isPrivateBrowsingOn: env.settings.preferences.privateBrowsingMode ?? false,
-                adBlockEnabled: env.settings.adBlockSettings.preferences.enabled,
                 pageTitle: menuPanelTitle,
                 onPerform: handleMenuAction,
                 onOpenShortcut: handleMenuShortcut,
@@ -109,13 +104,6 @@ extension BrowserShellView {
             )
             .environment(env)
             .browserAmbientSheet()
-            // Presented over the panel rather than after it: the user can
-            // manage rule sources and close the screen back to the menu.
-            .sheet(isPresented: $showAdBlockSettings) {
-                NavigationStack { AdBlockSettingsView() }
-                    .environment(env)
-                    .browserAmbientSheet()
-            }
         }
         .sheet(isPresented: $showAddBookmarkChoice) {
             AddBookmarkChoiceSheet(

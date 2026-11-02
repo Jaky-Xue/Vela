@@ -110,7 +110,7 @@ struct ElementHideConfirmSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Text("页面上已用蓝色框标出选中的区域。只对 \(pick.host) 生效，可随时在 设置 ▸ 广告与内容过滤 中移除。")
+            Text("页面上已用蓝色框标出选中的区域。只对 \(pick.host) 生效，可随时在 设置 ▸ 隐藏的元素 中移除。")
                 .font(.caption2)
                 .foregroundStyle(palette.secondaryText)
                 .multilineTextAlignment(.center)

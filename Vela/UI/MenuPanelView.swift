@@ -29,8 +29,6 @@ struct MenuPanelView: View {
     var isPrivateMode: Bool
     /// Whether 无痕模式 is on — the tile is a switch, and this is its state.
     var isPrivateBrowsingOn: Bool
-    /// Shown so the ad-block tile can reflect the current state.
-    var adBlockEnabled: Bool
     /// What the panel is acting on — the page's title, or "菜单" on a
     /// page-less surface. Drawn in the header row.
     var pageTitle: String
@@ -150,17 +148,11 @@ struct MenuPanelView: View {
 
     private func menuItem(_ tile: MenuTile) -> some View {
         let enabled = canActOnPage || !tile.requiresPage
-        // The two switches in the grid — 无痕模式 and 广告过滤 — draw their
-        // state on the tile: the accent wash and the corner badge read as "on"
-        // the way a checkmarked row would in a list menu. 广告过滤 used to take
-        // the state and never show it, so tapping it closed the panel and left
-        // nothing on screen to say blocking had changed at all.
-        let isModeOn = (tile.action == .privateTab && isPrivateBrowsingOn)
-            || (tile.action == .adBlock && adBlockEnabled)
-        // Off is a shield with a slash; on is the filled shield in the accent.
-        let symbol = tile.action == .adBlock && !adBlockEnabled
-            ? "shield.slash"
-            : tile.symbolName
+        // 无痕模式 draws its state on the tile: the accent wash and the
+        // corner badge read as "on" the way a checkmarked row would in a list
+        // menu.
+        let isModeOn = tile.action == .privateTab && isPrivateBrowsingOn
+        let symbol = tile.symbolName
         return Button {
             guard enabled else { return }
             switch tile {
@@ -220,11 +212,7 @@ struct MenuPanelView: View {
                 }
             }
         }
-        .accessibilityLabel(
-            tile.action == .adBlock
-                ? "广告过滤，\(adBlockEnabled ? "已开启" : "已关闭")"
-                : tile.title
-        )
+        .accessibilityLabel(tile.title)
         .accessibilityHint(enabled ? "" : "当前不可用")
     }
 }

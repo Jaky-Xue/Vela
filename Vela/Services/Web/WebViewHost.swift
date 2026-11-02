@@ -52,17 +52,24 @@ struct WebViewHost: UIViewRepresentable {
     /// while the chrome hides, so the page does not jump under the user's
     /// finger; hiding the bar simply reveals more of the document.
     let topContentInset: CGFloat
-    /// How much of the container's top the web view may not paint in — the
-    /// 全局顶部保护 strip, the height of the status bar.
+    /// Whether 全局顶部保护 is on: the page starts below the status bar and
+    /// never paints under the clock.
     ///
-    /// Zero keeps the default arrangement: the web view owns the whole
-    /// container and the page scrolls under the clock with only
-    /// `topContentInset` keeping its first line clear. Non-zero pulls the web
-    /// view's own frame down below the strip and clips the container, so the
-    /// page never renders there at all and the shell's surface colour shows —
-    /// which is why the two insets travel together: a reserved strip makes the
-    /// page start at its own top, so the scroll inset becomes zero.
-    let topReservedInset: CGFloat
+    /// The strip is measured from the *window*, not from the shell's
+    /// geometry. The shell is laid out inside the safe area, so a
+    /// `GeometryReader` placed in it reports zero insets; deriving the strip
+    /// from that reading is why the protection used to have no effect. The
+    /// container sits in the same window as the status bar, so its
+    /// `safeAreaInsets` (and `didMoveToWindow`) are the authoritative number.
+    ///
+    /// Off, the web view owns the whole container and the page scrolls under
+    /// the clock with only `topContentInset` keeping its first line clear.
+    /// On, the web view's own frame is pulled below the strip and the
+    /// container clips, so the page never renders there at all and the
+    /// shell's surface colour shows — which is why the two insets travel
+    /// together: a reserved strip makes the page start at its own top, so the
+    /// scroll inset becomes zero.
+    let protectsStatusBar: Bool
     /// The bottom content inset: the command bar's height plus the safe area,
     /// so the page's last lines stay scrollable clear of the bar.
     let bottomContentInset: CGFloat
@@ -92,8 +99,7 @@ struct WebViewHost: UIViewRepresentable {
             context.coordinator.observe(webView: webView, onScroll: onScroll, onProgress: onProgress)
         }
         container.attach(webView)
-        container.reservedTop = topReservedInset
-        container.clipsToBounds = topReservedInset > 0
+        container.protectsStatusBar = protectsStatusBar
 
         let scrollView = webView.scrollView
         // The page runs to the bottom edge of the screen — a reserved strip
@@ -304,9 +310,45 @@ final class WebViewContainerView: UIView {
     /// the previous one was held to.
     private var topConstraint: NSLayoutConstraint?
 
+    /// Whether the page is held below the status bar.
+    ///
+    /// The inset itself is read from the window's safe area rather than
+    /// passed in: this container is laid out edge to edge (the shell applies
+    /// `.ignoresSafeArea` to the host), so it is the one view in the
+    /// hierarchy that can see the real status-bar height. The SwiftUI shell
+    /// is laid out inside the safe area and reports zero.
+    var protectsStatusBar: Bool = false {
+        didSet { updateTopReserved() }
+    }
+
     /// How much of the container's top the web view is held below.
-    var reservedTop: CGFloat = 0 {
+    private var reservedTop: CGFloat = 0 {
         didSet { topConstraint?.constant = reservedTop }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updateTopReserved()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // The window's safe area can change without a window change: rotation,
+        // a call banner, the status bar coming back from a fullscreen video.
+        updateTopReserved()
+    }
+
+    /// Resolves the strip from the window and applies it to the constraint.
+    ///
+    /// A window-less container keeps the last value; the first layout after it
+    /// joins a window sets the real one.
+    private func updateTopReserved() {
+        guard let window else { return }
+        let inset = protectsStatusBar ? window.safeAreaInsets.top : 0
+        if abs(reservedTop - inset) > 0.5 {
+            reservedTop = inset
+        }
+        clipsToBounds = inset > 0
     }
 
     /// Attaches `webView` as the sole subview, adding it only when it is not

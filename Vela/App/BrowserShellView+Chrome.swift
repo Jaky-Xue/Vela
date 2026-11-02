@@ -274,8 +274,6 @@ extension BrowserShellView {
             }
         case .settings:
             openSettings()
-        case .adBlock:
-            toggleAdBlock()
         case .privateMode:
             Task { await env.requestPrivateBrowsingToggle() }
         }

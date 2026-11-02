@@ -28,11 +28,11 @@ struct PermissionPromptView: View {
                 .padding(.top, 28)
 
             VStack(spacing: 6) {
-                Text("允许「\(request.origin)」使用\(request.kind.displayName)？")
+                Text("允许「\(request.host)」使用\(request.coveredDisplayName)？")
                     .font(.headline)
                     .foregroundStyle(palette.primaryText)
                     .multilineTextAlignment(.center)
-                Text("该网站请求访问你的\(request.kind.displayName)。")
+                Text("该网站请求访问你的\(request.coveredDisplayName)。")
                     .font(.subheadline)
                     .foregroundStyle(palette.secondaryText)
                     .multilineTextAlignment(.center)
@@ -68,13 +68,5 @@ struct PermissionPromptView: View {
         .presentationDragIndicator(.visible)
     }
 
-    private var iconName: String {
-        switch request.kind {
-        case .camera: return "camera"
-        case .microphone: return "mic"
-        case .location: return "location"
-        case .sensor: return "gyroscope"
-        case .clipboard: return "doc.on.clipboard"
-        }
-    }
+    private var iconName: String { request.kind.symbolName }
 }

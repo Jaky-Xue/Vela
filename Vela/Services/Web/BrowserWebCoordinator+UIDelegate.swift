@@ -119,10 +119,9 @@ extension BrowserWebCoordinator: WKUIDelegate {
 
     /// Media capture permission.
     ///
-    /// per-site rules in `SitePermissionDefaultSettings`. iOS asks the app once
-    /// per origin; Vela answers from the site rule rather than prompting again,
-    /// because the app-level permission prompt has already been shown by the
-    /// system by this point.
+    /// A request for camera and microphone at once carries both kinds, so a
+    /// global default that blocks either one refuses the pair. The prompt
+    /// names both, and 「以后对这个网站都这样」 stores both rules.
     public nonisolated func webView(
         _ webView: WKWebView,
         requestMediaCapturePermissionFor origin: WKSecurityOrigin,
@@ -131,38 +130,226 @@ extension BrowserWebCoordinator: WKUIDelegate {
         decisionHandler: @escaping (WKPermissionDecision) -> Void
     ) {
         Task { @MainActor in
-            let kind: SitePermissionKind
+            let kinds: [SitePermissionKind]
             switch type {
-            case .camera: kind = .camera
-            case .microphone: kind = .microphone
-            case .cameraAndMicrophone: kind = .camera
-            @unknown default: kind = .camera
+            case .camera: kinds = [.camera]
+            case .microphone: kinds = [.microphone]
+            case .cameraAndMicrophone: kinds = [.camera, .microphone]
+            @unknown default: kinds = [.camera]
             }
-
-            let rule = self.settings.preferences.sitePermissions[kind]
-            switch rule {
-            case .allow:
-                decisionHandler(.grant)
-            case .block:
-                decisionHandler(.deny)
-            case .ask:
-                self.overlays.permissionRequest = SitePermissionRequest(
-                    origin: origin.host,
-                    kind: kind,
-                    decisionHandler: decisionHandler
-                )
+            self.requestPermission(
+                kinds: kinds,
+                host: origin.host,
+                tabId: self.tab(for: webView)?.id ?? ""
+            ) { allowed in
+                decisionHandler(allowed ? .grant : .deny)
             }
         }
     }
 
-    /// Resolves a pending media-capture prompt.
+    /// Motion and orientation permission.
+    public nonisolated func webView(
+        _ webView: WKWebView,
+        requestDeviceOrientationAndMotionPermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        Task { @MainActor in
+            self.requestPermission(
+                kinds: [.sensor],
+                host: origin.host,
+                tabId: self.tab(for: webView)?.id ?? ""
+            ) { allowed in
+                decisionHandler(allowed ? .grant : .deny)
+            }
+        }
+    }
+
+    /// Resolves the prompt on screen.
+    ///
+    /// `remember` writes a per-site rule; otherwise the answer is held for the
+    /// rest of the session. Either way every covered kind is recorded, so the
+    /// access log says what actually happened rather than only what the sheet
+    /// asked about.
     public func resolvePermissionRequest(allow: Bool, remember: Bool) {
         guard let request = overlays.permissionRequest else { return }
-        defer { overlays.permissionRequest = nil }
-        if remember {
-            settings.setSitePermissionDefault(allow ? .allow : .block, kind: request.kind)
+        overlays.permissionRequest = nil
+
+        let rule: SitePermissionRule = allow ? .allow : .block
+        // 无痕 never writes a site rule: the promise of the mode is that the
+        // next session starts from nothing, and a persistent exception would
+        // be exactly the trace it is supposed to leave behind.
+        let persistsSiteRule = remember && !request.isPrivate
+        let scope: SitePermissionScope = persistsSiteRule
+            ? .site
+            : (request.isPrivate ? .once : .session)
+        for kind in request.coveredKinds {
+            if persistsSiteRule {
+                settings.setSitePermissionRule(rule, host: request.host, kind: kind)
+            } else if !request.isPrivate {
+                permissionSessionDecisions[Self.permissionKey(host: request.host, kind: kind)] = rule
+            }
+            if !request.isPrivate {
+                permissionAudit.record(
+                    host: request.host,
+                    kind: kind,
+                    decision: allow ? .allowed : .denied,
+                    scope: scope
+                )
+            }
         }
-        request.decisionHandler(allow ? .grant : .deny)
+        request.respond(allow)
+    }
+
+    /// Retires a prompt whose tab navigated away.
+    ///
+    /// WebKit blocks the page on a media decision handler and the page bridge
+    /// blocks its wrapper on the JavaScript answer; either one dropping the
+    /// question leaves the caller waiting forever. Denying is the only safe
+    /// close.
+    public func cancelPendingPermission(tabId: String) {
+        guard let request = overlays.permissionRequest, request.tabId == tabId else { return }
+        overlays.permissionRequest = nil
+        if !request.isPrivate {
+            permissionAudit.record(
+                host: request.host,
+                kind: request.kind,
+                decision: .denied,
+                scope: .once
+            )
+        }
+        request.respond(false)
+    }
+
+    /// Answers one request from the rules, or raises the prompt.
+    ///
+    /// The order is deliberate: a stored site rule, then this session's answer,
+    /// then the kind's default. Only `.ask` at the end of that chain reaches
+    /// the user.
+    @MainActor
+    func requestPermission(
+        kinds: [SitePermissionKind],
+        host: String,
+        tabId: String,
+        respond: @escaping (Bool) -> Void
+    ) {
+        let ordered = SitePermissionKind.allCases.filter { kinds.contains($0) }
+        guard !ordered.isEmpty else {
+            respond(true)
+            return
+        }
+
+        // A background tab must not raise a sheet over the page the user is
+        // reading. The request is refused immediately; when the tab comes
+        // forward, its next attempt is asked normally.
+        if !tabId.isEmpty, tabId != tabManager?.activeTabId {
+            respond(false)
+            return
+        }
+
+        let isPrivate = tabManager?.tab(id: tabId)?.privacyMode == .private
+        let resolved: [(kind: SitePermissionKind, rule: SitePermissionRule, scope: SitePermissionScope)] =
+            ordered.map { kind in
+                let match = resolvedPermission(kind: kind, host: host)
+                return (kind, match.rule, match.scope)
+            }
+
+        if resolved.contains(where: { $0.rule == .block }) {
+            recordAutomaticDecisions(resolved, host: host, shouldRecord: !isPrivate)
+            respond(false)
+            return
+        }
+
+        if resolved.allSatisfy({ $0.rule == .allow }) {
+            recordAutomaticDecisions(resolved, host: host, shouldRecord: !isPrivate)
+            respond(true)
+            return
+        }
+
+        // One prompt at a time. A page that asks again while the sheet is up
+        // is refused rather than stacked; leaving it unanswered would hang the
+        // page just as badly.
+        guard overlays.permissionRequest == nil else {
+            if !isPrivate {
+                permissionAudit.record(
+                    host: host,
+                    kind: ordered[0],
+                    decision: .denied,
+                    scope: .once
+                )
+            }
+            respond(false)
+            return
+        }
+
+        let askKind = resolved.first(where: { $0.rule == .ask })?.kind ?? ordered[0]
+        overlays.permissionRequest = SitePermissionRequest(
+            tabId: tabId,
+            host: host,
+            kind: askKind,
+            coveredKinds: ordered,
+            isPrivate: isPrivate,
+            respond: respond
+        )
+    }
+
+    @MainActor
+    private func resolvedPermission(
+        kind: SitePermissionKind,
+        host: String
+    ) -> (rule: SitePermissionRule, scope: SitePermissionScope) {
+        if let site = settings.preferences.sitePermissionRule(host: host, kind: kind) {
+            return (site, .site)
+        }
+        let key = Self.permissionKey(host: host, kind: kind)
+        if let session = permissionSessionDecisions[key] {
+            return (session, .session)
+        }
+        return (settings.preferences.sitePermissions[kind], .default)
+    }
+
+    @MainActor
+    private func recordAutomaticDecisions(
+        _ resolved: [(kind: SitePermissionKind, rule: SitePermissionRule, scope: SitePermissionScope)],
+        host: String,
+        shouldRecord: Bool
+    ) {
+        guard shouldRecord else { return }
+        for item in resolved {
+            permissionAudit.record(
+                host: host,
+                kind: item.kind,
+                decision: item.rule == .allow ? .allowed : .denied,
+                scope: item.scope
+            )
+        }
+    }
+
+    static func permissionKey(host: String, kind: SitePermissionKind) -> String {
+        host.lowercased() + "|" + kind.rawValue
+    }
+
+    /// Answers a question from the page-side permission bridge.
+    ///
+    /// The bridge posts a request id; the reply is a call back into that same
+    /// document. A navigation in the meantime retires the request, and the
+    /// evaluation then has no promise to resolve, which is correct.
+    @MainActor
+    func handlePermissionAsk(_ message: WKScriptMessage, webView: WKWebView) {
+        guard message.frameInfo.isMainFrame,
+              let tab = tab(for: webView),
+              let host = URL(string: tab.url)?.host, !host.isEmpty,
+              let payload = message.body as? [String: Any],
+              let requestId = payload["id"] as? String,
+              let rawKind = payload["kind"] as? String,
+              let kind = SitePermissionKind(rawValue: rawKind) else { return }
+
+        requestPermission(kinds: [kind], host: host, tabId: tab.id) { allowed in
+            let literal = self.jsonLiteral(requestId)
+            let flag = allowed ? "true" : "false"
+            let script = "window.__velaPermissionResolve(\(literal), \(flag));"
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
     }
 
     /// File uploads.
@@ -238,4 +425,3 @@ extension BrowserWebCoordinator {
         request.completionHandler(urls)
     }
 }
-

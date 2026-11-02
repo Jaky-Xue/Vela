@@ -102,10 +102,9 @@ public struct NavigationLogEntry: Identifiable, Sendable {
     /// messages name a host and a reason and do not carry page content.
     public var errorMessage: String
     public var outcome: NavigationOutcome
-    /// Whether ad blocking and user scripts were contributing to this load. Part
-    /// of every entry because "does turning it off change anything" is the first
-    /// question asked of a page that will not load.
-    public var adBlockActive: Bool
+    /// Whether user scripts were contributing to this load. Part of every entry
+    /// because "does turning it off change anything" is the first question
+    /// asked of a page that will not load.
     public var userScriptsActive: Bool
 
     /// A one-line rendering for the diagnostics screen and the copied report.
@@ -188,7 +187,6 @@ public final class NavigationLog {
         errorCode: Int = 0,
         errorMessage: String = "",
         outcome: NavigationOutcome = .info,
-        adBlockActive: Bool = false,
         userScriptsActive: Bool = false
     ) {
         guard settings.enabled else { return }
@@ -209,7 +207,6 @@ public final class NavigationLog {
             errorCode: errorCode,
             errorMessage: Self.truncate(errorMessage, to: 160),
             outcome: outcome,
-            adBlockActive: adBlockActive,
             userScriptsActive: userScriptsActive
         )
         nextId += 1

@@ -27,7 +27,6 @@ public final class SettingsService {
         static let manualElementHide = "org.vela.browser.manual-element-hide"
         static let appearanceMode = "org.vela.browser.appearance-mode"
         static let navigationDiagnostics = "org.vela.browser.navigation-diagnostics"
-        static let translation = "org.vela.browser.translation-settings"
     }
 
     public private(set) var preferences: BrowserPreferences {
@@ -69,15 +68,6 @@ public final class SettingsService {
         didSet { persist(userScriptSettings, key: Key.userScripts) }
     }
 
-    /// The provider, credential and target language page translation uses.
-    ///
-    /// A document of its own for the same reason as the three above: a new
-    /// required key inside `BrowserPreferences` would make an existing
-    /// install's preferences fail to decode as a whole.
-    public private(set) var translationSettings: TranslationSettings {
-        didSet { persist(translationSettings, key: Key.translation) }
-    }
-
     private let defaults: UserDefaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -93,11 +83,6 @@ public final class SettingsService {
         self.navigationDiagnostics = Self.load(
             NavigationDiagnosticsSettings.self,
             key: Key.navigationDiagnostics,
-            from: defaults
-        ) ?? .default
-        self.translationSettings = Self.load(
-            TranslationSettings.self,
-            key: Key.translation,
             from: defaults
         ) ?? .default
         self.userScriptSettings = Self.load(
@@ -185,12 +170,6 @@ public final class SettingsService {
         var copy = navigationDiagnostics
         mutate(&copy)
         navigationDiagnostics = copy
-    }
-
-    public func updateTranslationSettings(_ mutate: (inout TranslationSettings) -> Void) {
-        var copy = translationSettings
-        mutate(&copy)
-        translationSettings = copy
     }
 
     public func updateUserScriptSettings(_ mutate: (inout UserScriptSettings) -> Void) {
@@ -375,50 +354,6 @@ public final class SettingsService {
         }
     }
 
-    // MARK: - Ad block
-
-    public var adBlockSettings: AdBlockSettings {
-        get { preferences.adBlock }
-        set { update { $0.adBlock = newValue } }
-    }
-
-    public func setAdBlockEnabled(_ enabled: Bool) {
-        update { $0.adBlock.preferences.enabled = enabled }
-    }
-
-    public func setRuleSourceEnabled(_ enabled: Bool, sourceId: String) {
-        update { preferences in
-            if let index = preferences.adBlock.ruleSources.firstIndex(where: { $0.id == sourceId }) {
-                preferences.adBlock.ruleSources[index].enabled = enabled
-            } else {
-                preferences.adBlock.ruleSources.append(
-                    AdBlockCustomRuleSource(id: sourceId, name: sourceId, sourceType: .remote, enabled: enabled)
-                )
-            }
-        }
-    }
-
-    public func addAdBlockSiteException(host: String) {
-        update { preferences in
-            let normalized = host.lowercased()
-            guard !preferences.adBlock.preferences.siteExceptions.contains(where: { $0.host == normalized })
-            else { return }
-            preferences.adBlock.preferences.siteExceptions.append(
-                AdBlockSiteException(host: normalized)
-            )
-        }
-    }
-
-    public func removeAdBlockSiteException(host: String) {
-        update { preferences in
-            preferences.adBlock.preferences.siteExceptions.removeAll { $0.host == host.lowercased() }
-        }
-    }
-
-    public func setLocalAdBlockRules(_ rules: [String]) {
-        update { $0.adBlock.preferences.localRules = rules }
-    }
-
     // MARK: - Manual element hide
 
     public func addManualElementHide(selector: String, host: String) {
@@ -465,6 +400,40 @@ public final class SettingsService {
     public func setSitePermissionDefault(_ rule: SitePermissionRule, kind: SitePermissionKind) {
         update { preferences in
             preferences.sitePermissions[kind] = rule
+        }
+    }
+
+    /// Stores or replaces a site's answer for one permission kind.
+    ///
+    /// `nil` removes the entry, which returns the site to its session decision
+    /// and then to the kind's default. A site and host are matched by the
+    /// suffix rule in `BrowserPreferences.sitePermissionRule(host:kind:)`, so
+    /// `example.com` also covers `www.example.com`.
+    public func setSitePermissionRule(
+        _ rule: SitePermissionRule?,
+        host: String,
+        kind: SitePermissionKind
+    ) {
+        let normalized = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return }
+        update { preferences in
+            var rules = preferences.sitePermissionRules ?? []
+            rules.removeAll { $0.host == normalized && $0.kind == kind }
+            if let rule {
+                rules.append(
+                    SitePermissionSiteRule(host: normalized, kind: kind, rule: rule)
+                )
+            }
+            preferences.sitePermissionRules = rules.isEmpty ? nil : rules
+        }
+    }
+
+    public func removeSitePermissionRule(id: String) {
+        update { preferences in
+            preferences.sitePermissionRules?.removeAll { $0.id == id }
+            if preferences.sitePermissionRules?.isEmpty == true {
+                preferences.sitePermissionRules = nil
+            }
         }
     }
 

@@ -258,7 +258,23 @@ struct BrowserSidebarView: View {
                 }
             } label: {
                 HStack(spacing: 9) {
-                    if tab.isHome {
+                    if tab.privacyMode == .private {
+                        // A private row carries no title, host or favicon —
+                        // the same rule the phone overview's private cards
+                        // follow. A drawer left open over the page is the one
+                        // place a private tab's name would be readable by
+                        // whoever glances at the screen, so the row keeps its
+                        // shape, its active dot and its close button and
+                        // nothing that names the page.
+                        Image(systemName: "eyeglasses")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(palette.secondaryText)
+                            .frame(width: 20, height: 20)
+                        Text("无痕标签页")
+                            .font(.system(size: 13, weight: isActive ? .semibold : .regular))
+                            .foregroundStyle(palette.primaryText)
+                            .lineLimit(1)
+                    } else if tab.isHome {
                         // No host means no favicon; a question-mark placeholder
                         // in front of 新标签页 read as an error.
                         Image(systemName: "plus")
@@ -269,19 +285,21 @@ struct BrowserSidebarView: View {
                         SiteIconView(
                             host: tab.displayHost,
                             size: 20,
-                            allowsThirdPartyLookup: tab.privacyMode != .private
+                            allowsThirdPartyLookup: true
                         )
                     }
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(tabTitle(tab))
-                            .font(.system(size: 13, weight: isActive ? .semibold : .regular))
-                            .foregroundStyle(palette.primaryText)
-                            .lineLimit(1)
-                        if !tab.displayHost.isEmpty {
-                            Text(tab.displayHost)
-                                .font(.system(size: 10))
-                                .foregroundStyle(palette.secondaryText)
+                    if tab.privacyMode != .private {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(tabTitle(tab))
+                                .font(.system(size: 13, weight: isActive ? .semibold : .regular))
+                                .foregroundStyle(palette.primaryText)
                                 .lineLimit(1)
+                            if !tab.displayHost.isEmpty {
+                                Text(tab.displayHost)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(palette.secondaryText)
+                                    .lineLimit(1)
+                            }
                         }
                     }
                     Spacer(minLength: 0)
@@ -315,6 +333,7 @@ struct BrowserSidebarView: View {
             isActive ? palette.accent.opacity(0.13) : Color.clear,
             in: RoundedRectangle(cornerRadius: 9, style: .continuous)
         )
+        .privacySensitive(tab.privacyMode == .private)
     }
 
     private func tabTitle(_ tab: BrowserTabState) -> String {
