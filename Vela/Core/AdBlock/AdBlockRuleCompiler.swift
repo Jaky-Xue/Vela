@@ -185,7 +185,7 @@ public enum AdBlockRuleCompiler {
                                     ifDomain: includeDomains.isEmpty ? nil : includeDomains,
                                     unlessDomain: excludeDomains.isEmpty ? nil : excludeDomains
                                 ),
-                                action: .hide(selector)
+                                action: .hide(selector: selector)
                             )
                         )
                     }
