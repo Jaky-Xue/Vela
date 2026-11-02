@@ -165,6 +165,11 @@ struct BrowserShellView: View {
     /// duration reads as a separate, laggier movement next to the page.
     static let chromeAnimation = Animation.spring(response: 0.32, dampingFraction: 0.86)
 
+    /// The tab drawer's motion: a spring with a little overshoot, so the
+    /// floating panel arrives like a physical sheet rather than a rectangle
+    /// travelling on rails.
+    static let sidebarAnimation = Animation.spring(response: 0.44, dampingFraction: 0.72)
+
     @MainActor
     init(environment: AppEnvironment) {
         _omnibox = State(initialValue: OmniboxViewModel(
@@ -523,7 +528,9 @@ struct BrowserShellView: View {
             // drawer must not sit over that page.
             if editing {
                 env.noteInteraction("地址栏")
-                showPadSidebar = false
+                withAnimation(Self.sidebarAnimation) {
+                    showPadSidebar = false
+                }
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -1519,7 +1526,7 @@ struct BrowserShellView: View {
             omnibox.endEditing()
             tabManager.activateTab(id: tabId)
 
-        case let .search(engineId):
+        case let .search(engineId), let .remote(engineId):
             var engine = env.settings.preferences.searchEngine.activeEngine
             if engine.id != engineId {
                 env.settings.setDefaultSearchEngine(id: engineId)

@@ -215,11 +215,11 @@ struct OmniboxSuggestionListView: View {
             }
         } label: {
             HStack(spacing: BrowserSpacing.tight) {
-                Image(systemName: group.section.symbolName)
+                Image(systemName: group.symbolName)
                     .font(.system(size: 11, weight: .semibold))
                     .frame(width: 14)
 
-                Text(group.section.title)
+                Text(group.title)
                     .font(.system(size: 12, weight: .semibold))
 
                 Text("\(group.count)")
@@ -242,7 +242,7 @@ struct OmniboxSuggestionListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(group.section.title)，\(group.count) 项")
+        .accessibilityLabel("\(group.title)，\(group.count) 项")
         .accessibilityHint(collapsed ? "展开" : "折叠")
     }
 
@@ -357,6 +357,14 @@ struct OmniboxSuggestionRow: View {
                 size: 26,
                 allowsThirdPartyLookup: allowsThirdPartyLookup
             )
+        } else if case .remote = suggestion.kind {
+            // The remote group already says which engine it came from; a
+            // filled square on every recommendation read as a block of
+            // buttons. A plain glyph keeps the group quiet.
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(palette.secondaryText.opacity(0.75))
+                .frame(width: 26, height: 26)
         } else {
             ZStack {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)

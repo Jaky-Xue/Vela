@@ -49,7 +49,7 @@ extension BrowserShellView {
             }
         }
         .animation(Self.chromeAnimation, value: chromeHidden)
-        .animation(.snappy(duration: 0.26), value: showPadSidebar)
+        .animation(Self.sidebarAnimation, value: showPadSidebar)
     }
 
     /// How much of the window the floating iPad chrome covers, measured from
@@ -138,9 +138,7 @@ extension BrowserShellView {
                         label: showPadSidebar ? "收起标签页侧边栏" : "显示标签页侧边栏",
                         foreground: padInk
                     ) {
-                        withAnimation(.snappy(duration: 0.26)) {
-                            showPadSidebar.toggle()
-                        }
+                        togglePadSidebar()
                     }
 
                     ForEach(padToolbarLayout.leading) { control in
@@ -251,24 +249,66 @@ extension BrowserShellView {
         }
     }
 
-    /// The tab drawer. It sits over the content only (below the top bar), with
-    /// a scrim that closes it on a tap outside.
+    /// The tab drawer: a rounded glass sheet floating over the page.
+    ///
+    /// The old drawer was a full-height column with square corners, flush to
+    /// the screen edge — a second window, not Safari's panel. This one is
+    /// inset on every side, clipped to a large radius, and carries the glass
+    /// itself, so the page shows through it and the row of rounded corners
+    /// reads as a sheet lifted off the document.
     var padSidebarLayer: some View {
-        ZStack(alignment: .topLeading) {
-            Color.black
-                .opacity(colorScheme == .dark ? 0.30 : 0.14)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { showPadSidebar = false }
+        GeometryReader { geo in
+            let width = min(Self.padSidebarWidth, max(220, geo.size.width - 32))
 
-            BrowserSidebarView(
-                onClose: { showPadSidebar = false }
-            )
-            .frame(width: Self.padSidebarWidth)
-            .frame(maxHeight: .infinity)
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.16), radius: 28, x: 10, y: 0)
+            ZStack(alignment: .topLeading) {
+                Color.black
+                    .opacity(colorScheme == .dark ? 0.30 : 0.14)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { closePadSidebar() }
+                    .transition(.opacity)
+
+                BrowserSidebarView(onClose: closePadSidebar)
+                    .frame(width: width)
+                    .frame(maxHeight: .infinity)
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: BrowserRadius.floating, style: .continuous)
+                    )
+                    .browserFloatingChrome(
+                        radius: BrowserRadius.floating,
+                        material: .thinMaterial,
+                        tintStrength: 0.22,
+                        elevation: .floating,
+                        interactive: false
+                    )
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+                    .padding(.leading, 8)
+                    .transition(
+                        .modifier(
+                            active: SidebarEntrance(isPresented: false),
+                            identity: SidebarEntrance(isPresented: true)
+                        )
+                    )
+            }
         }
-        .transition(.opacity.combined(with: .move(edge: .leading)))
+    }
+
+    /// Opens or closes the drawer with the shared spring and a soft tap of
+    /// feedback. The haptic is what makes the panel feel attached to the
+    /// button rather than to the animation clock.
+    func togglePadSidebar() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        withAnimation(Self.sidebarAnimation) {
+            showPadSidebar.toggle()
+        }
+    }
+
+    func closePadSidebar() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        withAnimation(Self.sidebarAnimation) {
+            showPadSidebar = false
+        }
     }
 
     /// The page, and whatever floats over it.
@@ -466,4 +506,21 @@ extension BrowserShellView {
         }
     }
 
+}
+
+
+// MARK: - Sidebar entrance
+
+/// How the drawer arrives: a touch smaller and a touch to the leading side,
+/// settling into place under the spring. The scale is what gives the panel its
+/// jelly weight; the offset keeps it from appearing out of thin air.
+private struct SidebarEntrance: ViewModifier {
+    var isPresented: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isPresented ? 1 : 0)
+            .scaleEffect(isPresented ? 1 : 0.94, anchor: .leading)
+            .offset(x: isPresented ? 0 : -22)
+    }
 }

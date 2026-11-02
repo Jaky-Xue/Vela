@@ -25,9 +25,12 @@ public enum OmniboxSection: String, CaseIterable, Codable, Sendable, Identifiabl
     case bookmarks
     case searchHistory
     case browsingHistory
-    /// Remote/engine suggestions. Always last: it is the only section that is
-    /// always present, so putting it anywhere else would push real matches down.
+    /// The exact-query row. Always present, so pressing return does the
+    /// predictable thing.
     case search
+    /// The active engine's remote recommendations. Their own group, labelled
+    /// with the engine, rather than a pile of rows under 搜索.
+    case remote
 
     public var id: String { rawValue }
 
@@ -39,6 +42,7 @@ public enum OmniboxSection: String, CaseIterable, Codable, Sendable, Identifiabl
         case .searchHistory: return "搜索记录"
         case .browsingHistory: return "历史记录"
         case .search: return "搜索"
+        case .remote: return "联网建议"
         }
     }
 
@@ -50,6 +54,7 @@ public enum OmniboxSection: String, CaseIterable, Codable, Sendable, Identifiabl
         case .searchHistory: return "magnifyingglass.circle"
         case .browsingHistory: return "clock.arrow.circlepath"
         case .search: return "magnifyingglass"
+        case .remote: return "sparkles"
         }
     }
 
@@ -79,6 +84,7 @@ public enum OmniboxSection: String, CaseIterable, Codable, Sendable, Identifiabl
 public struct OmniboxSuggestion: Identifiable, Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case search(engineId: SearchEngineId)
+        case remote(engineId: SearchEngineId)
         case url
         case openTab(tabId: String)
         case bookmark(nodeId: String)
@@ -95,6 +101,7 @@ public struct OmniboxSuggestion: Identifiable, Equatable, Sendable {
             case .pastQuery: return .searchHistory
             case .history: return .browsingHistory
             case .search: return .search
+            case .remote: return .remote
             }
         }
     }
@@ -132,7 +139,7 @@ public struct OmniboxSuggestion: Identifiable, Equatable, Sendable {
 
     public var iconName: String {
         switch kind {
-        case .search: return "magnifyingglass"
+        case .search, .remote: return "magnifyingglass"
         case .url: return "globe"
         case .openTab: return "square.on.square"
         case .bookmark: return "bookmark.fill"
@@ -150,9 +157,28 @@ public struct OmniboxSuggestion: Identifiable, Equatable, Sendable {
 public struct OmniboxSuggestionGroup: Identifiable, Equatable, Sendable {
     public var section: OmniboxSection
     public var suggestions: [OmniboxSuggestion]
+    /// A section whose header names something more specific than the source —
+    /// the remote group is the active engine's, so its header reads
+    /// "Google 建议" rather than 联网建议.
+    public var titleOverride: String?
+    public var symbolOverride: String?
 
     public var id: String { section.rawValue }
     public var count: Int { suggestions.count }
+    public var title: String { titleOverride ?? section.title }
+    public var symbolName: String { symbolOverride ?? section.symbolName }
+
+    public init(
+        section: OmniboxSection,
+        suggestions: [OmniboxSuggestion],
+        titleOverride: String? = nil,
+        symbolOverride: String? = nil
+    ) {
+        self.section = section
+        self.suggestions = suggestions
+        self.titleOverride = titleOverride
+        self.symbolOverride = symbolOverride
+    }
 }
 
 // MARK: - Match highlighting

@@ -2,12 +2,13 @@
 //  BrowserSidebarView.swift
 //  Vela
 //
-//  The iPad layout's leading column: the open tabs, the mode switch, and the
-//  doors to the library screens.
+//  The iPad layout's tab drawer: the open tabs, the mode switch and a search
+//  field, in a floating glass panel.
 //
-//  The sidebar is a native column of the shell, not a drawer: on a regular-width
-//  iPad it is always visible, so switching tabs is one tap rather than a trip
-//  through the tab overview. The phone layout keeps the overview and hides this.
+//  Safari's iPad sidebar is a rounded sheet that slides in over the page; this
+//  is the same shape and the same motion. The panel supplies its own glass, so
+//  this view paints no background at all — a second material here would be a
+//  blurred layer inside a blurred layer.
 //
 
 import SwiftUI
@@ -19,9 +20,19 @@ struct BrowserSidebarView: View {
     var onClose: (() -> Void)? = nil
 
     @State private var mode: BrowserSessionPrivacyMode = .regular
+    @State private var searchQuery = ""
 
     private var tabs: [BrowserTabState] {
         mode == .private ? env.tabManager.privateTabs : env.tabManager.regularTabs
+    }
+
+    /// The tabs narrowed by the drawer's search field.
+    private var visibleTabs: [BrowserTabState] {
+        guard !searchQuery.isEmpty else { return tabs }
+        return tabs.filter {
+            $0.displayTitle.localizedCaseInsensitiveContains(searchQuery)
+                || $0.displayHost.localizedCaseInsensitiveContains(searchQuery)
+        }
     }
 
     /// A private column whose identity check has not been passed shows the
@@ -35,23 +46,11 @@ struct BrowserSidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Rectangle().fill(palette.separator).frame(height: 0.5)
-            tabList
-        }
-        .background {
-            // The drawer is the same place as the rest of the app, not a
-            // separate panel: the ambient field shows through a light glass.
-            ZStack {
-                AmbientBackgroundView()
-                Rectangle().fill(.ultraThinMaterial).opacity(0.22)
-            }
-            .ignoresSafeArea()
-        }
-        .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(palette.separator)
-                .frame(width: 0.5)
-                .ignoresSafeArea()
+                .fill(palette.separator.opacity(0.55))
+                .frame(height: 0.5)
+                .padding(.horizontal, 14)
+            tabList
         }
         .onAppear {
             mode = env.tabManager.activeTab?.privacyMode ?? .regular
@@ -145,10 +144,42 @@ struct BrowserSidebarView: View {
                 Text("无痕").tag(BrowserSessionPrivacyMode.private)
             }
             .pickerStyle(.segmented)
+
+            searchField
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
         .padding(.bottom, 10)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(palette.secondaryText)
+
+            TextField("搜索标签页", text: $searchQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(palette.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("清除搜索")
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 32)
+        .background(palette.controlFill.opacity(0.5), in: Capsule())
     }
 
     // MARK: - Tabs
@@ -185,20 +216,21 @@ struct BrowserSidebarView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
-                } else if tabs.isEmpty {
-                    Text("没有标签页")
+                } else if visibleTabs.isEmpty {
+                    Text(searchQuery.isEmpty ? "没有标签页" : "没有匹配的标签页")
                         .font(.caption)
                         .foregroundStyle(palette.secondaryText)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 24)
                 } else {
-                    ForEach(tabs) { tab in
+                    ForEach(visibleTabs) { tab in
                         tabRow(tab)
                     }
                 }
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
         }
     }
 

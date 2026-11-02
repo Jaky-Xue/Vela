@@ -108,7 +108,7 @@ struct OmniboxSuggestionEngine {
                         id: "tab:\(tab.id)",
                         kind: .openTab(tabId: tab.id),
                         title: title,
-                        subtitle: "已打开的标签页",
+                        subtitle: tab.displayHost,
                         host: tab.displayHost,
                         completion: tab.url
                     )
@@ -127,7 +127,7 @@ struct OmniboxSuggestionEngine {
                         id: "bookmark:\(node.id)",
                         kind: .bookmark(nodeId: node.id),
                         title: node.title,
-                        subtitle: "书签 · \(node.displayHost)",
+                        subtitle: node.displayHost,
                         host: node.displayHost,
                         completion: url
                     )
@@ -150,7 +150,7 @@ struct OmniboxSuggestionEngine {
                         id: "query:\(record.id)",
                         kind: .pastQuery(queryId: record.id),
                         title: record.query,
-                        subtitle: record.useCount > 1 ? "搜索记录 · \(record.useCount) 次" : "搜索记录",
+                        subtitle: record.useCount > 1 ? "\(record.useCount) 次" : "",
                         host: "",
                         completion: record.query
                     )
@@ -169,8 +169,7 @@ struct OmniboxSuggestionEngine {
                         title: entry.displayTitle,
                         subtitle: entry.displayHost,
                         host: entry.displayHost,
-                        completion: entry.url,
-                        accessoryText: entry.visitCount > 1 ? "\(entry.visitCount)" : nil
+                        completion: entry.url
                     )
                 )
             }
@@ -185,8 +184,7 @@ struct OmniboxSuggestionEngine {
                 title: input,
                 subtitle: "用 \(engine.name) 搜索",
                 host: "",
-                completion: input,
-                accessoryText: engine.name
+                completion: input
             )
         )
 
@@ -200,9 +198,11 @@ struct OmniboxSuggestionEngine {
             results.append(
                 OmniboxSuggestion(
                     id: "remote:\(engine.id):\(index)",
-                    kind: .search(engineId: engine.id),
+                    kind: .remote(engineId: engine.id),
                     title: title,
-                    subtitle: "联网搜索推荐",
+                    // The header names the engine and the source; repeating
+                    // "联网搜索推荐" on every row was the bulk of the card.
+                    subtitle: "",
                     host: "",
                     completion: title
                 )
@@ -230,7 +230,7 @@ struct OmniboxSuggestionEngine {
                 id: "query:\(record.id)",
                 kind: .pastQuery(queryId: record.id),
                 title: record.query,
-                subtitle: "搜索记录",
+                subtitle: "",
                 host: "",
                 completion: record.query
             )
@@ -253,7 +253,20 @@ struct OmniboxSuggestionEngine {
 
         return OmniboxSection.allCases.compactMap { section in
             let rows = all.filter { $0.section == section }
-            return rows.isEmpty ? nil : OmniboxSuggestionGroup(section: section, suggestions: rows)
+            guard !rows.isEmpty else { return nil }
+            if section == .remote {
+                // The recommendations all came from the active engine, so the
+                // group is labelled with its name instead of a generic
+                // "联网建议": that is the grouping the user reads.
+                let engine = settings.preferences.searchEngine.activeEngine
+                return OmniboxSuggestionGroup(
+                    section: section,
+                    suggestions: rows,
+                    titleOverride: "\(engine.name) 建议",
+                    symbolOverride: "sparkles"
+                )
+            }
+            return OmniboxSuggestionGroup(section: section, suggestions: rows)
         }
     }
 
