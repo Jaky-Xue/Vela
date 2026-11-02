@@ -118,6 +118,44 @@ extension WebPageScripts {
         return '';
       }
 
+      // Picture-in-picture keeps the page on screen. The player's own caption
+      // paint would stay at the video's old position while the native window
+      // draws the mirrored cue, which is the sentence twice — once inside the
+      // floating window and once in an empty rectangle where the video used to
+      // be. Hide the painted layer for the length of the PiP presentation and
+      // restore it when the video returns inline.
+      //
+      // Opacity rather than `visibility` or `display`: the mirror still has to
+      // read the same text while it is hidden, and `innerText` survives an
+      // opacity change.
+      function hidePaintedCaptions(video) {
+        if (!video.__velaHiddenCaptions) { video.__velaHiddenCaptions = []; }
+        for (var s = 0; s < captionSelectors.length; s++) {
+          var nodes = document.querySelectorAll(captionSelectors[s]);
+          for (var i = 0; i < nodes.length; i++) {
+            var node = nodes[i];
+            if (node.__velaCaptionHidden) { continue; }
+            node.__velaCaptionHidden = true;
+            node.__velaCaptionOpacity = node.style.opacity;
+            node.style.opacity = '0';
+            node.style.pointerEvents = 'none';
+            video.__velaHiddenCaptions.push(node);
+          }
+        }
+      }
+
+      function restorePaintedCaptions(video) {
+        var nodes = video.__velaHiddenCaptions;
+        if (!nodes) { return; }
+        video.__velaHiddenCaptions = null;
+        for (var i = 0; i < nodes.length; i++) {
+          var node = nodes[i];
+          node.__velaCaptionHidden = false;
+          node.style.opacity = node.__velaCaptionOpacity || '';
+          node.style.pointerEvents = '';
+        }
+      }
+
       // Every other caption layer stands down while the mirror carries text.
       // That includes WebKit's own YouTube caption mirror — a forced track it
       // names 'YouTube Captions' and draws beside ours, which is what put two
@@ -170,6 +208,7 @@ extension WebPageScripts {
           video.__velaCaptionMirrorTimer = null;
         }
         restoreOtherCaptionTracks(video);
+        restorePaintedCaptions(video);
         var track = video.__velaCaptionMirrorTrack;
         if (!track) { return; }
         clearMirrorCues(track);
@@ -217,6 +256,12 @@ extension WebPageScripts {
           // or not it is painted. Inline it has to be visible: a player keeps
           // hidden copies of its cue elements, and those are not captions.
           var text = paintedCaptionText(mode && mode !== 'inline');
+          var isPictureInPicture = mode === 'picture-in-picture';
+          if (isPictureInPicture && text) {
+            hidePaintedCaptions(video);
+          } else if (!isPictureInPicture) {
+            restorePaintedCaptions(video);
+          }
           if (text !== painted) {
             painted = text;
             clearMirrorCues(track);
@@ -318,10 +363,24 @@ extension WebPageScripts {
       if (videoProto && typeof videoProto.webkitSetPresentationMode === 'function') {
         var nativeSetPresentationMode = videoProto.webkitSetPresentationMode;
         videoProto.webkitSetPresentationMode = function (mode) {
-          if (mode === 'fullscreen') { exposeSubtitlesToNativePlayer(this); }
+          if (mode === 'fullscreen' || mode === 'picture-in-picture') {
+            exposeSubtitlesToNativePlayer(this);
+          }
           return nativeSetPresentationMode.apply(this, arguments);
         };
       }
+
+      // The system PiP button is native; it does not call any of the patched
+      // methods. Capture the mode change on the document so the mirror and the
+      // page-overlay hide still start. The inline direction is already handled
+      // by the per-video listener registered in exposeSubtitlesToNativePlayer.
+      document.addEventListener('webkitpresentationmodechanged', function (event) {
+        var video = event.target;
+        if (!video || video.tagName !== 'VIDEO') { return; }
+        if (video.webkitPresentationMode === 'picture-in-picture') {
+          exposeSubtitlesToNativePlayer(video);
+        }
+      }, true);
     })();
     """
 }
