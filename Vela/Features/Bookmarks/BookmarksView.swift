@@ -321,7 +321,7 @@ struct BookmarksView: View {
 }
 
 /// Editing one bookmark.
-private struct BookmarkEditSheet: View {
+struct BookmarkEditSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var node: BookmarkNode

@@ -273,7 +273,7 @@ extension BrowserShellView {
                 showFindBar = true
             }
         case .settings:
-            showSettings = true
+            openSettings()
         case .adBlock:
             toggleAdBlock()
         case .privateMode:

@@ -17,8 +17,17 @@ struct TranslationSettingsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
+    @State private var packStatus: TranslationLanguagePackStatus?
+    @State private var isPreparingPack = false
+    @State private var packMessage: String?
+
     private var settings: TranslationSettings {
         env.settings.translationSettings
+    }
+
+    /// Re-checks the pack when the target or the page's language changes.
+    private var packRefreshKey: String {
+        "\(settings.target.rawValue)|\(env.translation.detected?.code ?? "")"
     }
 
     var body: some View {
@@ -62,6 +71,56 @@ struct TranslationSettingsView: View {
                 }
             } header: {
                 Text("服务商")
+            }
+
+            if env.appleTranslationBridge != nil {
+                Section {
+                    if let source = env.translation.detected {
+                        LabeledContent(
+                            "语言对",
+                            value: "\(source.displayName) → \(settings.target.displayName)"
+                        )
+                    } else {
+                        Text("打开一个网页后，这里会显示当前网页语言 → 目标语言的语言包状态。")
+                            .font(.footnote)
+                            .foregroundStyle(palette.secondaryText)
+                    }
+
+                    HStack {
+                        Text("语言包")
+                        Spacer()
+                        Text(packStatusText)
+                            .foregroundStyle(packStatusColor)
+                    }
+
+                    Button {
+                        Task { await preparePack() }
+                    } label: {
+                        HStack {
+                            if isPreparingPack {
+                                ProgressView().controlSize(.small)
+                            }
+                            Label(
+                                packStatus == .needsDownload ? "下载语言包" : "检查并下载语言包",
+                                systemImage: "arrow.down.circle"
+                            )
+                        }
+                    }
+                    .disabled(isPreparingPack)
+
+                    if let packMessage {
+                        Text(packMessage)
+                            .font(.caption)
+                            .foregroundStyle(palette.secondaryText)
+                    }
+                } header: {
+                    Text("系统翻译语言包")
+                } footer: {
+                    Text("系统翻译在设备上运行。第一次使用某个语言对时需要下载系统语言包，下载由系统弹窗完成；这里可以提前检查并开始下载。")
+                }
+                .task(id: packRefreshKey) {
+                    await refreshPackStatus()
+                }
             }
 
             Section {
@@ -194,6 +253,52 @@ struct TranslationSettingsView: View {
         .navigationTitle("网页翻译")
         .navigationBarTitleDisplayMode(.inline)
         .browserListSurface()
+    }
+
+    private var packStatusText: String {
+        switch packStatus {
+        case .installed: return "已安装"
+        case .needsDownload: return "未安装，需要下载"
+        case .unsupported: return "系统不支持此语言对"
+        case .unknown, nil: return "打开网页后可检查"
+        }
+    }
+
+    private var packStatusColor: Color {
+        switch packStatus {
+        case .installed: return .green
+        case .needsDownload: return .orange
+        case .unsupported: return .red
+        default: return palette.secondaryText
+        }
+    }
+
+    private func refreshPackStatus() async {
+        guard let bridge = env.appleTranslationBridge else { return }
+        packStatus = await bridge.languagePackStatus(
+            source: env.translation.detected?.code,
+            target: settings.target
+        )
+    }
+
+    private func preparePack() async {
+        guard let bridge = env.appleTranslationBridge else { return }
+        isPreparingPack = true
+        packMessage = nil
+        defer { isPreparingPack = false }
+
+        do {
+            try await bridge.prepareLanguagePack(
+                source: env.translation.detected?.code,
+                target: settings.target
+            )
+            await refreshPackStatus()
+            packMessage = packStatus == .installed
+                ? "语言包已安装。"
+                : "系统没有报告安装完成；如果下载弹窗被取消，可以再试一次。"
+        } catch {
+            packMessage = "无法开始下载：\(error.localizedDescription)"
+        }
     }
 
     private func symbol(for provider: TranslationProviderKind) -> String {

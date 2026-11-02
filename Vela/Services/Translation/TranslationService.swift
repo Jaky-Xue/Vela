@@ -354,6 +354,26 @@ public final class TranslationService {
             detectedUrl = extraction.url
         }
 
+        // The on-device engine cannot translate a pair whose language pack is
+        // missing. Checking before the first batch is what lets the app say so
+        // instead of parking the bar in a system download that never appears.
+        if settings.provider == .appleSystem,
+           let appleBridge,
+           let source = detected?.code,
+           !source.isEmpty {
+            switch await appleBridge.languagePackStatus(source: source, target: target) {
+            case .unsupported:
+                fail(run, "系统翻译不支持 \(detected?.displayName ?? source) → \(target.displayName)。")
+                return
+            case .needsDownload:
+                // The session's prepareTranslation raises the system download
+                // prompt; the batch below waits for it.
+                break
+            case .installed, .unknown:
+                break
+            }
+        }
+
         let total = units.count
         var applied = 0
         phase = .translating(done: 0, total: total)
@@ -652,7 +672,7 @@ public final class TranslationService {
             script = "window.__velaApplyTranslations(\(literal));"
         }
 
-        let raw = try await evaluate(script, in: webView, timeout: 12)
+        let raw = try await evaluate(script, in: webView, timeout: 20)
         if let numbers = raw as? [NSNumber] {
             return numbers.map(\.intValue)
         }
@@ -779,14 +799,12 @@ public final class TranslationService {
             }
 
         case .appleSystem:
-            guard let appleBridge else {
+            guard appleBridge != nil else {
                 throw TranslationError.failed("系统翻译需要 iOS 18 或更高版本。")
             }
-            let values = try await appleBridge.translate(
-                units.map(\.html),
-                target: target,
-                source: detected?.code
-            )
+            guard let values = await appleValues(units, target: target) else {
+                throw TranslationError.failed("系统翻译没有响应。请到 设置 ▸ 网页翻译 检查并下载语言包。")
+            }
             guard values.count == units.count else { throw TranslationError.alignment }
             var map: [Int: String] = [:]
             for (unit, value) in zip(units, values) {
@@ -821,18 +839,47 @@ public final class TranslationService {
         }
     }
 
+    /// Runs one batch through the on-device engine with a deadline.
+    ///
+    /// `prepareTranslation` presents the system language-pack download and can
+    /// wait on that sheet; a deadline keeps a dismissed or never-shown prompt
+    /// from leaving the translation bar in progress forever.
+    private func appleValues(
+        _ units: [Extraction.Unit],
+        target: TranslationTargetLanguage
+    ) async -> [String]? {
+        guard let appleBridge else { return nil }
+        let texts = units.map(\.html)
+        let source = detected?.code
+        let gate = TranslationEvaluationGate()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<[String]?, Never>) in
+            Task { @MainActor in
+                let values = try? await appleBridge.translate(
+                    texts,
+                    target: target,
+                    source: source
+                )
+                guard !gate.finished else { return }
+                gate.finished = true
+                continuation.resume(returning: values)
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(60))
+                guard !gate.finished else { return }
+                gate.finished = true
+                continuation.resume(returning: nil)
+            }
+        }
+    }
+
     /// One batch through the on-device engine, or nil when the bridge is
     /// absent or the language pair is not installed.
     private func appleBatch(
         _ units: [Extraction.Unit],
         target: TranslationTargetLanguage
     ) async -> BatchResult? {
-        guard let appleBridge,
-              let values = try? await appleBridge.translate(
-            units.map(\.html),
-            target: target,
-            source: detected?.code
-        ),
+        guard appleBridge != nil,
+              let values = await appleValues(units, target: target),
               values.count == units.count else { return nil }
         var map: [Int: String] = [:]
         for (unit, value) in zip(units, values) {

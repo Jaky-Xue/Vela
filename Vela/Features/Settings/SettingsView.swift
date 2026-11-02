@@ -25,6 +25,15 @@ struct SettingsView: View {
     @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
 
+    /// A page to open above the root. The translation bar's "翻译设置" and any
+    /// other context that names a specific screen push it directly instead of
+    /// landing the user on a list of nouns to hunt through.
+    @State private var pushedDestination: SettingsDestination?
+
+    init(initialDestination: SettingsDestination? = nil) {
+        _pushedDestination = State(initialValue: initialDestination)
+    }
+
     var body: some View {
         List {
             Section {
@@ -267,6 +276,9 @@ struct SettingsView: View {
         }
         .listStyle(.insetGrouped)
         .browserListSurface()
+        .navigationDestination(item: $pushedDestination) { destination in
+            destination.view
+        }
         // The appearance is applied to the window and to the presented view
         // controllers (`AppearanceMode.applyToAllWindows`), so this sheet —
         // including the Appearance screen pushed from it — re-resolves its
@@ -353,5 +365,57 @@ struct SettingsView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+
+// MARK: - Deep links
+
+/// A settings screen a context can ask for by name.
+///
+/// The settings sheet is one NavigationStack; a context that says "翻译设置"
+/// should land on that screen rather than on the root. Every case here has a
+/// row in `SettingsView`, so a deep link and the list cannot describe
+/// different screens.
+enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
+    case general
+    case appearance
+    case translation
+    case searchEngine
+    case userAgent
+    case adBlock
+    case userScripts
+    case passwords
+    case privateBrowsing
+    case sitePermissions
+    case externalNavigation
+    case webrtc
+    case clearData
+    case downloads
+    case diagnostics
+    case about
+
+    var id: String { rawValue }
+
+    @ViewBuilder
+    var view: some View {
+        switch self {
+        case .general: GeneralSettingsView()
+        case .appearance: AppearanceSettingsView()
+        case .translation: TranslationSettingsView()
+        case .searchEngine: SearchEngineSettingsView()
+        case .userAgent: UserAgentSettingsView()
+        case .adBlock: AdBlockSettingsView()
+        case .userScripts: UserScriptsView()
+        case .passwords: PasswordVaultView()
+        case .privateBrowsing: PrivateBrowsingSettingsView()
+        case .sitePermissions: SitePermissionsSettingsView()
+        case .externalNavigation: ExternalNavigationSettingsView()
+        case .webrtc: WebRTCProtectionSettingsView()
+        case .clearData: ClearDataView()
+        case .downloads: DownloadSettingsView()
+        case .diagnostics: NavigationDiagnosticsView()
+        case .about: AboutView()
+        }
     }
 }

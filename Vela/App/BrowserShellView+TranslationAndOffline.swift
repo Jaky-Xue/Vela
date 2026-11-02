@@ -63,7 +63,7 @@ extension BrowserShellView {
                         translationBarDismissed = true
                     }
                 },
-                onOpenSettings: { showSettings = true }
+                onOpenSettings: { openSettings(.translation) }
             )
             .padding(.horizontal, 10)
             .padding(.top, translationBarTopPadding)
@@ -129,6 +129,16 @@ extension BrowserShellView {
                 target: resolved
             )
         }
+    }
+
+    /// Opens settings, optionally on a named screen.
+    ///
+    /// One entry point so a context that says "翻译设置" can open that screen
+    /// rather than the settings root, and so the root itself always clears a
+    /// destination left over from the previous opening.
+    func openSettings(_ destination: SettingsDestination? = nil) {
+        settingsDestination = destination
+        showSettings = true
     }
 
     /// Saves the active page's archive, then reports the result in one line.

@@ -53,6 +53,8 @@ struct BrowserShellView: View {
     @State var showHistory = false
     @State var showDownloads = false
     @State var showSettings = false
+    /// The screen the settings sheet should open above its root.
+    @State var settingsDestination: SettingsDestination?
     /// Whether the menu's 广告过滤 tile has its settings open over the panel.
     @State var showAdBlockSettings = false
     @State var showPasswords = false
@@ -1169,7 +1171,7 @@ struct BrowserShellView: View {
             case .history: showHistory = true
             case .downloads: showDownloads = true
             case .offlinePages: showOfflinePages = true
-            case .settings: showSettings = true
+            case .settings: openSettings()
             case .bookshelf: openBookshelf()
             case .passwords: showPasswords = true
             case .scanQRCode:
@@ -1266,7 +1268,7 @@ struct BrowserShellView: View {
         case .reload:
             reloadActiveTab()
         case .settings:
-            showSettings = true
+            openSettings()
         }
     }
 
@@ -1342,7 +1344,7 @@ struct BrowserShellView: View {
         case .downloads:
             showDownloads = true
         case .settings:
-            showSettings = true
+            openSettings()
         }
     }
 

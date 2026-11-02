@@ -25,6 +25,21 @@ import Foundation
 /// is generic on purpose: any service exposing `/chat/completions` with a
 /// bearer token — a hosted model or a local server — can be pointed at it by
 /// changing the endpoint and model.
+/// Whether the on-device engine can translate one language pair right now.
+///
+/// The system's language packs are downloaded outside the app, so "the
+/// provider is selected" and "the pair can actually translate" are different
+/// facts. The translation screen shows this rather than letting the first
+/// request discover it.
+public enum TranslationLanguagePackStatus: Equatable, Sendable {
+    case installed
+    /// The pair is supported but its pack has not been downloaded yet.
+    case needsDownload
+    case unsupported
+    /// No source language is known yet, so the pair cannot be checked.
+    case unknown
+}
+
 public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case google
     case appleSystem
@@ -86,19 +101,19 @@ public enum TranslationProviderKind: String, Codable, CaseIterable, Identifiable
         // Google is sent a POST body, not a query string, so a batch can hold
         // several paragraphs. Apple's on-device session has its own sensible
         // per-request size; the others have their own caps.
-        case .google: return 12_000
-        case .appleSystem: return 12_000
-        case .deepL: return 24_000
-        case .openAICompatible: return 8_000
+        case .google: return 24_000
+        case .appleSystem: return 16_000
+        case .deepL: return 32_000
+        case .openAICompatible: return 12_000
         }
     }
 
     var batchItemLimit: Int {
         switch self {
-        case .google: return 50
-        case .appleSystem: return 60
-        case .deepL: return 40
-        case .openAICompatible: return 30
+        case .google: return 80
+        case .appleSystem: return 80
+        case .deepL: return 50
+        case .openAICompatible: return 40
         }
     }
 }

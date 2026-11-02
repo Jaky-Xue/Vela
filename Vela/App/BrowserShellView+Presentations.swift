@@ -37,11 +37,13 @@ extension BrowserShellView {
                 .browserListSurface()
                 .browserAmbientSheet()
         }
-        .sheet(isPresented: $showSettings) {
-            NavigationStack { SettingsView() }
-                .environment(env)
-                .browserListSurface()
-                .browserAmbientSheet()
+        .sheet(isPresented: $showSettings, onDismiss: { settingsDestination = nil }) {
+            NavigationStack {
+                SettingsView(initialDestination: settingsDestination)
+            }
+            .environment(env)
+            .browserListSurface()
+            .browserAmbientSheet()
         }
         .sheet(isPresented: $showPasswords) {
             NavigationStack {

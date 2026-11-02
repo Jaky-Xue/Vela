@@ -30,6 +30,21 @@ protocol AppleTranslationBridging: AnyObject {
         target: TranslationTargetLanguage,
         source: String?
     ) async throws -> [String]
+
+    /// Whether the on-device engine has the pack for this pair.
+    func languagePackStatus(
+        source: String?,
+        target: TranslationTargetLanguage
+    ) async -> TranslationLanguagePackStatus
+
+    /// Starts the system's language-pack download for the pair.
+    ///
+    /// The system presents its own download UI; this only drives the session
+    /// that asks for it.
+    func prepareLanguagePack(
+        source: String?,
+        target: TranslationTargetLanguage
+    ) async throws
 }
 
 @available(iOS 18.0, *)
@@ -117,6 +132,40 @@ final class AppleTranslationBridge: AppleTranslationBridging {
                 job.continuation.resume(throwing: CancellationError())
             }
         }
+    }
+
+    func languagePackStatus(
+        source: String?,
+        target: TranslationTargetLanguage
+    ) async -> TranslationLanguagePackStatus {
+        guard let source,
+              !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .unknown
+        }
+        let availability = LanguageAvailability()
+        let status = await availability.status(
+            from: Locale.Language(identifier: source),
+            to: Locale.Language(identifier: target.appleTranslationCode)
+        )
+        switch status {
+        case .installed:
+            return .installed
+        case .supported:
+            return .needsDownload
+        case .unsupported:
+            return .unsupported
+        @unknown default:
+            return .unknown
+        }
+    }
+
+    func prepareLanguagePack(
+        source: String?,
+        target: TranslationTargetLanguage
+    ) async throws {
+        // A one-request session: `prepareTranslation` runs before the request
+        // and is what raises the system's download prompt.
+        _ = try await translate([""], target: target, source: source)
     }
 
     func run(_ session: TranslationSession) async {
