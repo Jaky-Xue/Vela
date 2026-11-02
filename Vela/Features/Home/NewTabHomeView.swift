@@ -70,8 +70,16 @@ struct NewTabHomeView: View {
     /// scrolls, and its bounce reports offsets that return to zero — so its
     /// drags are what the command bar listens to.
     var onChromeSwipe: ((CGFloat) -> Void)? = nil
+    /// Opens the address/search page. The home carries a field of its own so
+    /// an empty start page reads as a place to begin rather than a blank
+    /// collection with the address bar somewhere at the bottom.
+    var onSearch: (() -> Void)? = nil
 
     @State private var bookmarkNodes: [BookmarkNode] = []
+    /// The width of the content column, measured once per layout. The
+    /// favourites grid uses it to choose a column count that suits the window
+    /// instead of always drawing five over-stretched cells.
+    @State private var contentWidth: CGFloat = 0
     @State private var recentlyClosed: [RecentlyClosedTabRecord] = []
     /// The custom background, reloaded whenever the settings document's stamp
     /// moves — which happens the moment a picture is saved or cleared behind
@@ -99,6 +107,11 @@ struct NewTabHomeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 2)
                 }
+
+                if let onSearch {
+                    homeSearchField(action: onSearch)
+                }
+
                 // The home carries what the user has saved: the favourites
                 // grid, and the recently-closed list behind it. There is no
                 // add tile — a bookmark joins the home when it is added, so
@@ -124,14 +137,14 @@ struct NewTabHomeView: View {
                             .foregroundStyle(homePrimaryText)
                         Text(isPrivate
                              ? "这个标签页的访问记录不会留下。"
-                             : "从地址栏输入网址；把常用网站加入收藏后会出现在这里。")
+                             : "点按上方搜索框，或从地址栏输入网址；把常用网站加入收藏后会出现在这里。")
                             .font(.footnote)
                             .foregroundStyle(homeSecondaryText)
                             .multilineTextAlignment(.center)
                     }
                     .shadow(color: homeTextShadow, radius: 8, y: 1)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 64)
+                    .padding(.top, 28)
                     .padding(.bottom, 40)
                 }
             }
@@ -141,6 +154,16 @@ struct NewTabHomeView: View {
             // clear of the home indicator even though the surface itself runs
             // edge to edge below the safe area.
             .padding(.bottom, BrowserSpacing.loose + 12)
+            .background {
+                GeometryReader { geo in
+                    Color.clear.preference(key: HomeContentWidthKey.self, value: geo.size.width)
+                }
+            }
+            .onPreferenceChange(HomeContentWidthKey.self) { width in
+                if abs(width - contentWidth) > 0.5 {
+                    contentWidth = width
+                }
+            }
         }
         // The surface reaches the bottom edge of the screen: a strip of dead
         // background above the home indicator reads as something sitting on
@@ -166,6 +189,86 @@ struct NewTabHomeView: View {
         .onAppear {
             loadBookmarks()
         }
+    }
+
+    // MARK: - Start page
+
+    /// The start page's own search field.
+    ///
+    /// It opens exactly the search page the address bar opens, so the home
+    /// has a first action even before a bookmark exists. The material keeps
+    /// the placeholder legible on a picture background.
+    private func homeSearchField(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(palette.secondaryText)
+                Text("搜索或输入网址")
+                    .font(.subheadline)
+                    .foregroundStyle(palette.secondaryText)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 46)
+            .background {
+                Capsule()
+                    .fill(.thinMaterial)
+                    .overlay {
+                        Capsule().strokeBorder(palette.cardStroke, lineWidth: 0.5)
+                    }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(HomeSearchButtonStyle())
+        .accessibilityLabel("搜索或输入网址")
+    }
+
+    /// A start-page section: a larger title and a fold, rather than the small
+    /// list header the rest of the app uses. The home is read at a glance and
+    /// from further away than a settings row.
+    private func homeSection<Content: View>(
+        _ title: String,
+        count: Int? = nil,
+        isExpanded: Binding<Bool>,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: BrowserSpacing.compact + 2) {
+            Button {
+                withAnimation(.snappy(duration: 0.24)) { isExpanded.wrappedValue.toggle() }
+            } label: {
+                HStack(spacing: 7) {
+                    Text(title)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(homePrimaryText)
+
+                    if let count {
+                        Text("\(count)")
+                            .font(.caption.weight(.medium))
+                            .monospacedDigit()
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(palette.controlFill.opacity(0.75), in: Capsule())
+                            .foregroundStyle(homeSecondaryText)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(homeSecondaryText.opacity(0.65))
+                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                content()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .shadow(color: homeTextShadow, radius: 8, y: 1)
     }
 
     // MARK: - Background
@@ -200,12 +303,6 @@ struct NewTabHomeView: View {
     private var homeTextShadow: Color {
         guard backgroundImage != nil else { return .clear }
         return backgroundIsLight ? .white.opacity(0.45) : .black.opacity(0.45)
-    }
-
-    /// Section headers draw on the picture too; the cards keep their own
-    /// palette ink because they carry their own surface.
-    private var homeSectionTint: Color? {
-        backgroundImage == nil ? nil : homeSecondaryText
     }
 
     private func reloadBackgroundImage() {
@@ -247,33 +344,36 @@ struct NewTabHomeView: View {
         bookmarkNodes = all.filter { homeIds.contains($0.id) }
     }
 
-    /// The favourites grid's row width, in tiles — five flexible slots, what
-    /// a home screen's density reads as.
-    static let tileColumnCount = 5
+    /// How many favourites fit in a row at the measured width.
+    ///
+    /// A fixed five columns was fine on a phone and left each tile a huge
+    /// square with a 40-point icon floating in it on an iPad. The row is
+    /// measured instead, with a floor of three tiles and a ceiling of ten, so
+    /// the grid stays a favourites shelf at every size.
+    private var tileColumnCount: Int {
+        let width = contentWidth > 1 ? contentWidth : 360
+        let minimum = max(78, tileIconSize + 38)
+        let count = Int((width + tileSpacing) / (minimum + tileSpacing))
+        return max(3, min(10, count))
+    }
 
     private var bookmarkBlock: some View {
-        CollapsibleSection(
-            title: "收藏",
-            systemImage: nil,
-            count: nil,
-            tint: homeSectionTint,
-            isExpanded: $bookmarksExpanded
-        ) {
+        homeSection("收藏", isExpanded: $bookmarksExpanded) {
             // Laid out in eager rows rather than a lazy grid. A lazy grid that
             // survives a rotation keeps the cell geometry it laid out for the
             // old width — the stranded-rows failure the tab overview fixes by
             // re-keying — and the odd misplaced tile after a turn is exactly
             // that. A favourites collection is short, so laziness buys nothing
-            // here and determinism is worth more. Five slots to a row, the
-            // tail padded with spacers, so every tile keeps the width a full
-            // row gives it however many tiles the last row holds.
+            // here and determinism is worth more. The tail is padded with
+            // spacers, so every tile keeps the width a full row gives it
+            // however many tiles the last row holds.
             VStack(spacing: tileSpacing) {
                 ForEach(bookmarkRows) { row in
-                    HStack(spacing: tileSpacing) {
+                    HStack(alignment: .top, spacing: tileSpacing) {
                         ForEach(row.nodes) { node in
                             bookmarkCell(node)
                         }
-                        ForEach(0..<(Self.tileColumnCount - row.nodes.count), id: \.self) { _ in
+                        ForEach(0..<(tileColumnCount - row.nodes.count), id: \.self) { _ in
                             Color.clear
                                 .frame(maxWidth: .infinity)
                         }
@@ -290,8 +390,8 @@ struct NewTabHomeView: View {
     }
 
     private var bookmarkRows: [BookmarkRow] {
-        stride(from: 0, to: bookmarkNodes.count, by: Self.tileColumnCount).map { start in
-            BookmarkRow(nodes: Array(bookmarkNodes[start..<min(start + Self.tileColumnCount, bookmarkNodes.count)]))
+        stride(from: 0, to: bookmarkNodes.count, by: tileColumnCount).map { start in
+            BookmarkRow(nodes: Array(bookmarkNodes[start..<min(start + tileColumnCount, bookmarkNodes.count)]))
         }
     }
 
@@ -324,13 +424,22 @@ struct NewTabHomeView: View {
             guard let url = BrowserUrlResolver.storedUrl(node.url) else { return }
             onNavigate(url)
         } label: {
-            SiteIconView(
-                host: node.displayHost,
-                size: tileIconSize,
-                cornerRadius: tileCornerRadius
-            )
+            VStack(spacing: 6) {
+                SiteIconView(
+                    host: node.displayHost,
+                    size: tileIconSize,
+                    cornerRadius: tileCornerRadius
+                )
+                Text(node.title.isEmpty ? node.displayHost : node.title)
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(homePrimaryText)
+                    .shadow(color: homeTextShadow, radius: 3, y: 1)
+                    .frame(maxWidth: .infinity)
+            }
+            .padding(.vertical, 4)
             .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
             .contentShape(Rectangle())
         }
         .buttonStyle(HomeTileButtonStyle())
@@ -358,11 +467,9 @@ struct NewTabHomeView: View {
     // MARK: - Recently closed
 
     private var recentlyClosedBlock: some View {
-        CollapsibleSection(
-            title: "最近关闭",
-            systemImage: "arrow.up.left",
+        homeSection(
+            "最近关闭",
             count: recentlyClosed.count,
-            tint: homeSectionTint,
             isExpanded: $recentlyClosedExpanded
         ) {
             VStack(spacing: 0) {
@@ -429,6 +536,26 @@ struct NewTabHomeView: View {
 
 /// The form behind the "添加" tile.
 ///
+/// The press feedback for the home's search field.
+private struct HomeSearchButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .animation(.spring(response: 0.22, dampingFraction: 0.8), value: configuration.isPressed)
+    }
+}
+
+/// The width of the home's content column, reported once per layout so the
+/// favourites grid can choose its column count from the real width.
+private struct HomeContentWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// The press feedback for a home tile.
 private struct HomeTileButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

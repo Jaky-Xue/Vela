@@ -98,6 +98,50 @@ extension WebPageScripts {
         '.art-subtitle'
       ];
 
+      // A stylesheet is the only way to keep newly created caption nodes
+      // hidden between mirror ticks: the player swaps a segment element for
+      // every cue, and a per-node opacity would lag one interval behind each
+      // new sentence. The class is toggled only while the video is in PiP.
+      (function installPictureInPictureStyle() {
+        if (document.getElementById('vela-pip-caption-style')) { return; }
+        var style = document.createElement('style');
+        style.id = 'vela-pip-caption-style';
+        var selectors = [
+          '.ytp-caption-window-container',
+          '.ytp-caption-segment',
+          '.caption-window',
+          '.captions-text',
+          '.bpx-player-subtitle-panel',
+          '.bpx-player-video-subtitle',
+          '.vjs-text-track-display',
+          '.jw-text-track-cue',
+          '.plyr__captions',
+          '.dplayer-subtitle',
+          '.art-subtitle'
+        ];
+        style.textContent = selectors.map(function (selector) {
+          return 'html.vela-pip-captions-hidden ' + selector +
+            '{opacity:0!important;pointer-events:none!important;}';
+        }).join('');
+        // WebKit renders a native text track inside the video element's own
+        // shadow tree, which no page selector can reach. The inline video
+        // must stop drawing it while the same track is what the PiP window
+        // shows; the presentation window has its own renderer.
+        style.textContent +=
+          'html.vela-pip-captions-hidden video::-webkit-media-text-track-container' +
+          '{display:none!important;}' +
+          'html.vela-pip-captions-hidden video::-webkit-media-text-track-display' +
+          '{display:none!important;}' +
+          'html.vela-pip-captions-hidden video::-webkit-media-text-track-region-container' +
+          '{display:none!important;}';
+        (document.head || document.documentElement).appendChild(style);
+      })();
+
+      function isPictureInPicture(video) {
+        return video.webkitPresentationMode === 'picture-in-picture' ||
+          document.pictureInPictureElement === video;
+      }
+
       function paintedCaptionText(includeHidden) {
         for (var s = 0; s < captionSelectors.length; s++) {
           var nodes = document.querySelectorAll(captionSelectors[s]);
@@ -209,6 +253,7 @@ extension WebPageScripts {
         }
         restoreOtherCaptionTracks(video);
         restorePaintedCaptions(video);
+        document.documentElement.classList.remove('vela-pip-captions-hidden');
         var track = video.__velaCaptionMirrorTrack;
         if (!track) { return; }
         clearMirrorCues(track);
@@ -256,10 +301,14 @@ extension WebPageScripts {
           // or not it is painted. Inline it has to be visible: a player keeps
           // hidden copies of its cue elements, and those are not captions.
           var text = paintedCaptionText(mode && mode !== 'inline');
-          var isPictureInPicture = mode === 'picture-in-picture';
-          if (isPictureInPicture && text) {
+          if (isPictureInPicture(video)) {
+            // Hiding the whole caption layer, not only the nodes the mirror
+            // read: the player creates a new segment for the next cue, and the
+            // stylesheet covers it before the next tick.
+            document.documentElement.classList.add('vela-pip-captions-hidden');
             hidePaintedCaptions(video);
-          } else if (!isPictureInPicture) {
+          } else {
+            document.documentElement.classList.remove('vela-pip-captions-hidden');
             restorePaintedCaptions(video);
           }
           if (text !== painted) {
@@ -381,6 +430,24 @@ extension WebPageScripts {
           exposeSubtitlesToNativePlayer(video);
         }
       }, true);
+
+      // The standard PiP property is the fallback signal for a presentation
+      // started by the system controls, which does not always surface as a
+      // webkitPresentationMode change in the page's world.
+      var lastPictureInPictureVideo = null;
+      setInterval(function () {
+        var pip = document.pictureInPictureElement;
+        if (pip) {
+          document.documentElement.classList.add('vela-pip-captions-hidden');
+          if (pip !== lastPictureInPictureVideo) {
+            lastPictureInPictureVideo = pip;
+            exposeSubtitlesToNativePlayer(pip);
+          }
+        } else if (lastPictureInPictureVideo) {
+          lastPictureInPictureVideo = null;
+          document.documentElement.classList.remove('vela-pip-captions-hidden');
+        }
+      }, 250);
     })();
     """
 }

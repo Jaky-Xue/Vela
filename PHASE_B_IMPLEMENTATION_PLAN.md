@@ -1580,3 +1580,33 @@ B2 的待办，不声称已经解决。
   镜像仍要读取文本）暂时隐藏；退出画中画或视频回到 `inline` 时逐项恢复。
 - `webkitSetPresentationMode('picture-in-picture')` 与系统画中画按钮
   （document 捕获 `webkitpresentationmodechanged`）都会启动同一套镜像/隐藏逻辑。
+
+## 34. 3.9.15：画中画字幕彻底收起、主页重做（2026-11-02）
+
+### 34.1 画中画字幕
+
+3.9.14 的逐节点 `opacity` 隐藏没有覆盖所有情况：播放器会为每条字幕换一个节点，
+隐藏总慢一拍；WebKit 也可能把原生字幕画在 video 元素自己的 shadow tree 里，
+页面选择器碰不到。3.9.15 改为：
+
+- 页面启动时注入一条 `html.vela-pip-captions-hidden` 样式：
+  YouTube/B 站/Video.js/JW/Plyr/DPlayer/ArtPlayer 的字幕容器与文字节点
+  `opacity:0!important`，并隐藏
+  `video::-webkit-media-text-track-container` / `-display` / `-region-container`
+  等原生字幕层。
+- 进入画中画时给 `<html>` 加这个类，退出时移除；新创建的字幕节点立即被样式覆盖，
+  不再等 150ms 的镜像 tick。
+- 同时用 `document.pictureInPictureElement` 每 250ms 兜底检测一次：
+  系统画中画按钮不经过 JS 的 `webkitSetPresentationMode` 时也能进入同一路径。
+- 镜像字幕仍继续供系统小窗使用；页面里的字幕层被隐藏，回到 `inline` 时恢复。
+
+### 34.2 主页标签页重做
+
+- 顶部新增“搜索或输入网址”胶囊，点按直接打开地址/搜索页；主页不再是只有图标、
+  没有第一动作的空白面。
+- 收藏网格从固定 5 列改为按实测宽度自适应（3–10 列），每格增加网站标题，
+  不再是 40pt 图标飘在大方块中央。
+- 分区标题改为更大的“收藏”“最近关闭”，带数量和折叠动画；保留原来的折叠状态记忆。
+- 空状态文案与间距调整，引导用户从搜索框或地址栏开始。
+
+版本提升为 **3.9.15 (Build 18)**。

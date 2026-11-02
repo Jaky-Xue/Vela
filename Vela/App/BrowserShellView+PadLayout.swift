@@ -372,7 +372,8 @@ extension BrowserShellView {
                             } else if translation > 48 {
                                 setChromeHidden(false)
                             }
-                        }
+                        },
+                        onSearch: { omnibox.beginEditing() }
                     )
                     .id("home-\(tab.id)")
                     .safeAreaInset(edge: .top) { padTopClearance }
