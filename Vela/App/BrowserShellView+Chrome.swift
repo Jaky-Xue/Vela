@@ -40,16 +40,22 @@ extension BrowserShellView {
         BrowserChrome.barHeight + BrowserChrome.barGap + safeBottom + 16
     }
 
-    /// The bar's one glass surface, moved as one piece.
+    /// The bar's three glass pieces riding one coordinated layer.
     ///
-    /// The bar used to be a container of three — a leading cluster, the field
-    /// and a trailing cluster — and every piece was its own refraction layer.
-    /// A single capsule is both the Safari shape and one layer instead of
-    /// three. The offset and the fade live on the bar itself, which is the
-    /// layer's own geometry: that is what makes a hide take the glass with it
-    /// instead of leaving a parked copy behind on rotation.
+    /// `glassEffect` on separate shapes can leave a layer parked at its
+    /// pre-rotation frame; the container samples the page once for the whole
+    /// bar and moves it as one piece. The offset and the fade stay outside the
+    /// container so a hide takes the glass with it.
     @ViewBuilder var commandBar: some View {
-        commandBarContent
+        Group {
+            if #available(iOS 26.0, *) {
+                GlassEffectContainer(spacing: BrowserChrome.barGap) {
+                    commandBarContent
+                }
+            } else {
+                commandBarContent
+            }
+        }
         .padding(.horizontal, BrowserChrome.sideInset)
         // The bottom-aligned overlay already lays the bar out above the
         // home-indicator inset; adding the inset again here lifted the bar a
@@ -157,16 +163,7 @@ extension BrowserShellView {
                 toolbarCluster(toolbarLayout.trailing)
             }
         }
-        .padding(.horizontal, 6)
-        .frame(height: BrowserChrome.barHeight)
         .frame(maxWidth: Self.commandBarMaxWidth)
-        .browserFloatingChrome(
-            radius: BrowserRadius.floating,
-            material: .thinMaterial,
-            tintStrength: 0.28,
-            elevation: .floating,
-            interactive: false
-        )
     }
 
     /// One side of the omnibox, as the user arranged it.
@@ -184,6 +181,12 @@ extension BrowserShellView {
         // second control widens the cluster past that.
         .frame(minWidth: BrowserChrome.barHeight)
         .frame(height: BrowserChrome.barHeight)
+        .browserFloatingChrome(
+            radius: BrowserRadius.omnibox,
+            material: .thinMaterial,
+            tintStrength: 0.32,
+            elevation: .card
+        )
     }
 
     /// One control in the bar. Back keeps its long-press history, and the tab

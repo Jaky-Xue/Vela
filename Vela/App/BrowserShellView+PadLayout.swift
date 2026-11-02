@@ -90,15 +90,22 @@ extension BrowserShellView {
     }
 
     /// The unified Safari-style top bar: sidebar, back, address, share, tabs,
-    /// menu — one glass surface.
+    /// menu — three floating glass pieces over the page.
     ///
-    /// The sidebar and leading controls, the address field and the trailing
-    /// controls were three separate glass pieces. Against the page they read
-    /// as gaps of unpainted screen, and three `glassEffect` layers cost three
-    /// times the compositing of one. Safari's iPad bar is a single translucent
-    /// strip; this is that strip.
+    /// The pieces are deliberate. A single strip spanning the window was tried
+    /// and read as a slab pasted over the document; separated pills let the
+    /// page show through the gaps and keep the address field the subject of
+    /// the bar. They now sit over the page rather than pushing it down, so the
+    /// glass has something to refract.
+    @ViewBuilder
     var padTopBar: some View {
-        padTopBarContent
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: BrowserChrome.barGap) {
+                padTopBarContent
+            }
+        } else {
+            padTopBarContent
+        }
     }
 
     var padToolbarLayout: ToolbarLayout { env.settings.padToolbarLayout }
@@ -116,12 +123,11 @@ extension BrowserShellView {
         GeometryReader { geo in
             let leadingWidth = Self.padClusterWidth(controlCount: padToolbarLayout.leading.count + 1)
             let trailingWidth = Self.padClusterWidth(controlCount: padToolbarLayout.trailing.count + 1)
-            // The outer 12-point margins, the bar's own 6-point inset and
-            // the two gaps between the clusters come out first; whatever is
-            // left is the field's.
+            // The bar's own 12-point margins and the two 6-point gaps between
+            // its pieces come out first; whatever is left is the field's.
             let fieldWidth = max(
                 64,
-                geo.size.width - 48 - leadingWidth - trailingWidth - 12
+                geo.size.width - 24 - leadingWidth - trailingWidth - 12
             )
 
             HStack(spacing: 6) {
@@ -144,6 +150,12 @@ extension BrowserShellView {
                 .padding(.horizontal, 4)
                 .frame(minWidth: BrowserChrome.barHeight)
                 .frame(height: BrowserChrome.barHeight)
+                .browserFloatingChrome(
+                    radius: BrowserRadius.omnibox,
+                    material: .thinMaterial,
+                    tintStrength: 0.32,
+                    elevation: .card
+                )
 
                 OmniboxView(
                     viewModel: omnibox,
@@ -171,16 +183,13 @@ extension BrowserShellView {
                 .padding(.horizontal, 4)
                 .frame(minWidth: BrowserChrome.barHeight)
                 .frame(height: BrowserChrome.barHeight)
+                .browserFloatingChrome(
+                    radius: BrowserRadius.omnibox,
+                    material: .thinMaterial,
+                    tintStrength: 0.32,
+                    elevation: .card
+                )
             }
-            .padding(.horizontal, 6)
-            .frame(height: BrowserChrome.barHeight)
-            .browserFloatingChrome(
-                radius: BrowserRadius.floating,
-                material: .thinMaterial,
-                tintStrength: 0.28,
-                elevation: .card,
-                interactive: false
-            )
             .padding(.horizontal, 12)
             .padding(.top, 8)
             .padding(.bottom, 6)
