@@ -252,7 +252,7 @@ public final class TranslationService {
 
         let raw: Any?
         do {
-            raw = try await webView.evaluateJavaScript(WebPageScripts.textSampleScript)
+            raw = try await evaluate(WebPageScripts.textSampleScript, in: webView, timeout: 8)
         } catch {
             return
         }
@@ -307,16 +307,25 @@ public final class TranslationService {
         lastErrorMessage = nil
         phase = .extracting
 
+        // A run that returns without reaching a terminal phase leaves the bar
+        // saying 正在翻译 forever. Every exit below is covered by a real result;
+        // this is the net for the one that is not.
+        defer {
+            if run == generation, isBusy {
+                phase = .failed("翻译没有完成，请重试。")
+            }
+        }
+
         // Install the document-side helpers, then undo any translation that is
         // already applied. Re-translating must start from the page's own text,
         // not from the previous translation.
-        _ = try? await webView.evaluateJavaScript(WebPageScripts.translationSupportScript)
-        _ = try? await webView.evaluateJavaScript(WebPageScripts.textRestoreScript)
+        _ = try? await evaluate(WebPageScripts.translationSupportScript, in: webView, timeout: 10)
+        _ = try? await evaluate(WebPageScripts.textRestoreScript, in: webView, timeout: 10)
         guard run == generation else { return }
 
         let raw: Any?
         do {
-            raw = try await webView.evaluateJavaScript(WebPageScripts.textExtractionScript)
+            raw = try await evaluate(WebPageScripts.textExtractionScript, in: webView, timeout: 15)
         } catch {
             fail(run, error.localizedDescription)
             return
@@ -387,8 +396,10 @@ public final class TranslationService {
                     segments: applied,
                     detected: detected
                 )
-                _ = try? await webView.evaluateJavaScript(
-                    "window.__velaStartTranslationObserver && window.__velaStartTranslationObserver();"
+                _ = try? await evaluate(
+                    "window.__velaStartTranslationObserver && window.__velaStartTranslationObserver();",
+                    in: webView,
+                    timeout: 5
                 )
                 appliedTarget = target
                 appliedUrl = extraction.url
@@ -399,8 +410,10 @@ public final class TranslationService {
             return
         }
 
-        _ = try? await webView.evaluateJavaScript(
-            "window.__velaStartTranslationObserver && window.__velaStartTranslationObserver();"
+        _ = try? await evaluate(
+            "window.__velaStartTranslationObserver && window.__velaStartTranslationObserver();",
+            in: webView,
+            timeout: 5
         )
 
         if !tabId.isEmpty {
@@ -424,8 +437,8 @@ public final class TranslationService {
         generation += 1
         dynamicWork.removeAll()
         appleFallbackActive = false
-        _ = try? await webView.evaluateJavaScript(WebPageScripts.translationSupportScript)
-        _ = try? await webView.evaluateJavaScript(WebPageScripts.textRestoreScript)
+        _ = try? await evaluate(WebPageScripts.translationSupportScript, in: webView, timeout: 10)
+        _ = try? await evaluate(WebPageScripts.textRestoreScript, in: webView, timeout: 10)
         if !syncedTabId.isEmpty {
             records.removeValue(forKey: syncedTabId)
         }
@@ -571,7 +584,10 @@ public final class TranslationService {
                status == 405 {
                 var ids: [Int] = []
                 var detected: String?
-                for unit in batch {
+                // Bounded: a 405 that applies to every single unit would
+                // otherwise cost one failed request per paragraph before the
+                // page is told anything.
+                for unit in batch.prefix(8) {
                     let single = try await requestBatch([unit], settings: settings, target: target)
                     ids.append(contentsOf: try await apply(single.payload, to: webView))
                     detected = detected ?? single.detectedLanguage
@@ -584,18 +600,29 @@ public final class TranslationService {
         }
         var ids = try await apply(result.payload, to: webView)
 
-        if Set(ids).count < batch.count {
+        // A batch that yielded nothing is not a few dropped paragraphs; the
+        // provider or the apply path is not working for this page. Retrying
+        // every unit one by one used to turn that into minutes of a bar
+        // sitting at 0/N with no result.
+        var unique = Set(ids)
+        guard !unique.isEmpty else {
+            throw TranslationError.scriptUnavailable
+        }
+
+        if unique.count < batch.count {
+            var retries = 0
             for unit in batch where !ids.contains(unit.id) {
+                // A handful of omitted units is worth repairing; a whole
+                // batch of them is a failing path, not a dropped paragraph.
+                guard retries < 6 else { break }
+                retries += 1
                 let single = try await requestBatch([unit], settings: settings, target: target)
                 let singleIds = try await apply(single.payload, to: webView)
                 ids.append(contentsOf: singleIds)
             }
+            unique = Set(ids)
         }
 
-        let unique = Set(ids)
-        guard !unique.isEmpty else {
-            throw TranslationError.scriptUnavailable
-        }
         return (unique.count, result.detectedLanguage)
     }
 
@@ -611,7 +638,7 @@ public final class TranslationService {
             script = "window.__velaApplyTranslations(\(literal));"
         }
 
-        let raw = try await webView.evaluateJavaScript(script)
+        let raw = try await evaluate(script, in: webView, timeout: 12)
         if let numbers = raw as? [NSNumber] {
             return numbers.map(\.intValue)
         }
@@ -627,6 +654,48 @@ public final class TranslationService {
             }
         }
         return []
+    }
+
+    /// Evaluates a page script with a deadline.
+    ///
+    /// `WKWebView.evaluateJavaScript` waits for the content process. A page
+    /// whose main thread is busy — a heavy news site, an animation loop, a
+    /// script stuck in its own work — can leave that call outstanding and the
+    /// translation bar parked at 正在翻译 with no error and no way out.
+    ///
+    /// A task group cannot rescue this: the group refuses to return until its
+    /// children finish, and the WebKit call is not cancellable, so the group
+    /// would wait beside the hung call. The completion form lets the deadline
+    /// resume the continuation on its own and leave WebKit's callback to be
+    /// discarded when (or if) it arrives.
+    private func evaluate(
+        _ script: String,
+        in webView: WKWebView,
+        timeout: TimeInterval
+    ) async throws -> Any? {
+        let gate = TranslationEvaluationGate()
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
+            webView.evaluateJavaScript(script) { result, error in
+                Task { @MainActor in
+                    guard !gate.finished else { return }
+                    gate.finished = true
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: result)
+                    }
+                }
+            }
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(timeout))
+                guard !gate.finished else { return }
+                gate.finished = true
+                continuation.resume(
+                    throwing: TranslationError.failed("页面没有响应翻译脚本，请稍后重试。")
+                )
+            }
+        }
     }
 
     private func jsStringLiteral(_ value: String) -> String {
@@ -1298,4 +1367,12 @@ public final class TranslationService {
             return Locale.current.localizedString(forLanguageCode: code) ?? code
         }
     }
+}
+
+
+/// A one-shot latch for the evaluation deadline, owned by the main actor
+/// because both the WebKit callback and the timeout resume from it.
+@MainActor
+private final class TranslationEvaluationGate {
+    var finished = false
 }

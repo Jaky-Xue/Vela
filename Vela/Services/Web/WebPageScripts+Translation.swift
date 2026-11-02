@@ -265,14 +265,6 @@ extension WebPageScripts {
         if (originals.length === 0 || originals.length !== translated.length) {
           return false;
         }
-        // Inline elements are part of the sentence. If the provider changed
-        // their nesting, equal text-node counts can still put a translation
-        // into the wrong link or emphasis; leave that block alone instead of
-        // shuffling the page's words between its elements.
-        if (original.children.length > 0 &&
-            signature(original) !== signature(translatedRoot)) {
-          return false;
-        }
         // An equal number of text nodes is the condition that matters for
         // preserving the page's elements and listeners. Providers routinely
         // change tag nesting between paragraphs; requiring the old shape

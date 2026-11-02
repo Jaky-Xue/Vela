@@ -37,7 +37,7 @@ protocol AppleTranslationBridging: AnyObject {
 @Observable
 final class AppleTranslationBridge: AppleTranslationBridging {
     private struct Job {
-        let id = UUID()
+        let id: UUID
         let texts: [String]
         let target: TranslationTargetLanguage
         let source: String?
@@ -63,9 +63,11 @@ final class AppleTranslationBridge: AppleTranslationBridging {
             )
         }
 
+        let jobId = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[String], Error>) in
                 let job = Job(
+                    id: jobId,
                     texts: texts,
                     target: target,
                     source: source,
@@ -93,7 +95,7 @@ final class AppleTranslationBridge: AppleTranslationBridging {
                 // A host view that never delivers a session must not leave the
                 // bridge permanently busy.
                 Task { @MainActor [weak self] in
-                    try? await Task.sleep(for: .seconds(25))
+                    try? await Task.sleep(for: .seconds(15))
                     guard let self, self.pending?.id == job.id else { return }
                     let stuck = self.pending
                     self.pending = nil
@@ -104,7 +106,13 @@ final class AppleTranslationBridge: AppleTranslationBridging {
             }
         } onCancel: {
             Task { @MainActor [weak self] in
-                guard let self, let job = self.pending else { return }
+                // Only the job this handler belongs to may be cancelled. By
+                // the time cancellation arrives the bridge may already be
+                // serving a newer request; clearing that one would fail work
+                // the user did not cancel.
+                guard let self,
+                      let job = self.pending,
+                      job.id == jobId else { return }
                 self.pending = nil
                 job.continuation.resume(throwing: CancellationError())
             }
