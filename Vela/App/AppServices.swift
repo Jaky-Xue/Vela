@@ -50,6 +50,20 @@ public final class AppServices {
     private var allocatedWindowCount = 0
     private var adBlockRefreshInFlight: Task<Void, Never>?
     private var adBlockRefreshRequested = false
+    /// Sources whose first download was already tried in this process.
+    ///
+    /// A failed fetch is not retried on every settings toggle; the user can
+    /// press 更新 on the source, and the next launch tries again.
+    private var adBlockDownloadAttempts: Set<String> = []
+    /// Called after a refresh when the compiled list may differ from the one
+    /// the open web views hold. A web view copies its rule lists when it is
+    /// built, so a list compiled a moment later never reaches a page that is
+    /// already showing. The window sets this to re-apply the list to its pool.
+    public var adBlockRulesDidChange: (() -> Void)?
+    /// The community lists subscribed on a fresh install. Their text is
+    /// downloaded rather than shipped, so an unreachable network leaves the
+    /// built-in list in charge instead of failing the install.
+    private static let defaultSubscriptionIds: Set<String> = ["easylist-china", "easylist"]
 
     public init() {
         let database = BrowserDatabase.shared
@@ -182,17 +196,77 @@ public final class AppServices {
             existing.append(source)
             changed = true
         }
+        // The built-in body is deliberately small: it ships in the binary and
+        // has to leave room under WebKit's rule cap. The two community lists
+        // are what make blocking cover the web in practice, so they are
+        // subscribed on a fresh install. Only the subscription entries are
+        // added here; their text arrives through `downloadMissingSubscriptions`
+        // on the first refresh.
+        for candidate in AdBlockCustomRuleSource.catalog
+            where Self.defaultSubscriptionIds.contains(candidate.id)
+                && !existing.contains(where: { $0.id == candidate.id }) {
+            existing.append(candidate)
+            changed = true
+        }
         if changed {
             settings.update { $0.adBlock.ruleSources = existing }
         }
     }
 
+    /// Fetches a default subscription whose text was never downloaded.
+    ///
+    /// One attempt per source per process. The text is stored on disk like a
+    /// user-added subscription, so every later launch compiles it without the
+    /// network; a failure is recorded on the source and retried on the next
+    /// launch or from its 更新 action.
+    @discardableResult
+    private func downloadMissingSubscriptions() async -> Bool {
+        var downloaded = false
+        for source in settings.adBlockSettings.ruleSources
+            where source.enabled && source.sourceType == .remote {
+            guard !adBlockDownloadAttempts.contains(source.id) else { continue }
+            guard adBlockRuleText(sourceId: source.id) == nil else { continue }
+            guard let url = URL(string: source.url), !source.url.isEmpty else { continue }
+
+            adBlockDownloadAttempts.insert(source.id)
+            do {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 15
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse,
+                      (200...299).contains(http.statusCode) else {
+                    throw URLError(.badServerResponse)
+                }
+                guard data.count <= 20 * 1024 * 1024,
+                      let text = String(data: data, encoding: .utf8),
+                      !text.isEmpty else {
+                    throw URLError(.cannotDecodeContentData)
+                }
+                try Self.writeFilterList(text, sourceId: source.id)
+                downloaded = true
+                settings.update { preferences in
+                    guard let index = preferences.adBlock.ruleSources.firstIndex(where: { $0.id == source.id }) else { return }
+                    preferences.adBlock.ruleSources[index].lastUpdatedAt = Date()
+                    preferences.adBlock.ruleSources[index].lastError = ""
+                    preferences.adBlock.ruleSources[index].ruleCount = text.split(whereSeparator: \.isNewline).count
+                }
+            } catch {
+                settings.update { preferences in
+                    guard let index = preferences.adBlock.ruleSources.firstIndex(where: { $0.id == source.id }) else { return }
+                    preferences.adBlock.ruleSources[index].lastError = "自动下载失败：\(error.localizedDescription)"
+                }
+            }
+        }
+        return downloaded
+    }
+
     /// Compiles the enabled filter lists into a `WKContentRuleList`.
     ///
-    /// Remote subscriptions are not fetched here: a launch must not block on the
-    /// network, and a list that has never been downloaded simply contributes
-    /// nothing until the user refreshes it. The built-in lists are always
-    /// available because they ship in the binary.
+    /// A launch compiles the built-in list first and then fetches any default
+    /// subscription that has never been downloaded, compiling again when one
+    /// arrives; the first page is therefore filtered without waiting on the
+    /// network. Lists the user added later are still fetched from their 更新
+    /// action.
     public func refreshAdBlockRules() async {
         // Rapid toggles and subscription refreshes used to start overlapping
         // compiles. One compile runs; requests that arrive while it is in
@@ -215,6 +289,25 @@ public final class AppServices {
     }
 
     private func performAdBlockRefresh() async {
+        // Compile what is on disk first. The built-in list ships in the binary,
+        // so the first page after launch is filtered without waiting on a
+        // subscription download.
+        await compileCurrentLists()
+
+        // The default subscriptions have no text on a fresh install. Fetching
+        // them here — once per process — is what makes the feature do
+        // something out of the box instead of compiling forty host rules. A
+        // successful download is compiled immediately, so the new rules apply
+        // without a relaunch.
+        if await downloadMissingSubscriptions() {
+            await compileCurrentLists()
+        }
+        adBlockRulesDidChange?()
+    }
+
+    /// Compiles the built-in list, the downloaded subscriptions and the local
+    /// rules as one content rule list.
+    private func compileCurrentLists() async {
         let adBlockSettings = settings.adBlockSettings
         var filterLists: [String: String] = AdBlockBuiltInRules.filterLists
 
@@ -246,7 +339,10 @@ public final class AppServices {
             )
         } catch {
             // A compile failure leaves the previous list in place, which is the
-            // correct fallback: the user keeps the blocking they had.
+            // correct fallback: the user keeps the blocking they had. The
+            // failure is recorded so the settings screen can say why a source
+            // the user just added is not contributing.
+            adBlock.recordCompileFailure(error)
         }
     }
 

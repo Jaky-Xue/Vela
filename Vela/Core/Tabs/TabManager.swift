@@ -247,6 +247,14 @@ public final class TabManager {
 
     public var liveWebViewCount: Int { webViews.count }
 
+    /// The views the pool currently holds, in no particular order.
+    ///
+    /// Used by the content blocker when a rule list compiled after these pages
+    /// were built has to be re-applied to them.
+    public func allWebViews() -> [WKWebView] {
+        Array(webViews.values)
+    }
+
     // MARK: - Creation
 
     /// Creates a tab and makes it active.

@@ -218,4 +218,19 @@ final class AdBlockContentRuleCompilationTests: XCTestCase {
         XCTAssertFalse(matches("https://example.com/"))
         XCTAssertFalse(matches("https://example.com/?ref=doubleclick.net"))
     }
+
+    /// The shape the compiler now emits for `example.com##.ad`: a
+    /// `css-display-none` action behind a domain trigger. WebKit has to accept
+    /// it, and the trigger is what keeps the hide off every other site.
+    func testAHostScopedCosmeticRuleCompiles() async throws {
+        let result = AdBlockRuleCompiler.compile(
+            filterList: "example.com,~shop.example.com##.ad-banner",
+            includeCosmetic: true
+        )
+        XCTAssertEqual(result.rules.count, 1)
+        XCTAssertEqual(result.rules.first?.action.type, "css-display-none")
+        XCTAssertEqual(result.rules.first?.trigger.ifDomain, ["*example.com"])
+        XCTAssertEqual(result.rules.first?.trigger.unlessDomain, ["*shop.example.com"])
+        _ = try await compile(result.rules, label: "scoped-cosmetic")
+    }
 }

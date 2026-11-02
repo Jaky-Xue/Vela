@@ -167,8 +167,28 @@ public enum AdBlockRuleCompiler {
 
             if includeCosmetic, let cosmetic = compileCosmetic(line) {
                 switch cosmetic {
-                case let .hide(selector):
-                    result.cosmeticSelectors.append(selector)
+                case let .hide(selector, includeDomains, excludeDomains):
+                    if includeDomains.isEmpty && excludeDomains.isEmpty {
+                        result.cosmeticSelectors.append(selector)
+                    } else {
+                        // A host-scoped `example.com##.ad` belongs in the rule
+                        // list, not in the injected stylesheet: WebKit's
+                        // `css-display-none` action carries the same
+                        // `if-domain`/`unless-domain` trigger a network rule
+                        // does. Flattening it into a global selector — which
+                        // is what this used to do — hid lookalike elements on
+                        // every unrelated site.
+                        result.rules.append(
+                            ContentBlockerRule(
+                                trigger: ContentBlockerRule.Trigger(
+                                    urlFilter: ".*",
+                                    ifDomain: includeDomains.isEmpty ? nil : includeDomains,
+                                    unlessDomain: excludeDomains.isEmpty ? nil : excludeDomains
+                                ),
+                                action: .hide(selector)
+                            )
+                        )
+                    }
                 case .unsupported:
                     result.unsupportedRuleCount += 1
                 case .invalid:
@@ -197,7 +217,7 @@ public enum AdBlockRuleCompiler {
     }
 
     private enum CosmeticOutcome {
-        case hide(String)
+        case hide(selector: String, includeDomains: [String], excludeDomains: [String])
         case unsupported
         case invalid
     }
@@ -232,7 +252,60 @@ public enum AdBlockRuleCompiler {
         // A cosmetic exception cannot be expressed: WebKit has no
         // "unhide this selector" action, so an exception on a host means the
         // caller has to leave the selector out of the list entirely.
-        return isException ? .unsupported : .hide(selector)
+        if isException { return .unsupported }
+
+        switch cosmeticScope(String(line[line.startIndex..<range.lowerBound])) {
+        case .global:
+            return .hide(selector: selector, includeDomains: [], excludeDomains: [])
+        case let .domains(include, exclude):
+            return .hide(selector: selector, includeDomains: include, excludeDomains: exclude)
+        case .invalid:
+            return .invalid
+        }
+    }
+
+    /// The host part of a cosmetic rule, before `##`.
+    ///
+    /// `example.com,~shop.example.com##.ad` applies to `example.com` and its
+    /// subdomains except the excluded one. WebKit's `if-domain` /
+    /// `unless-domain` take a leading `*` to mean "this host and its
+    /// subdomains", which is exactly ABP's scope, so the rule keeps its shape
+    /// instead of becoming a global hide.
+    private enum CosmeticScope {
+        case global
+        case domains(include: [String], exclude: [String])
+        case invalid
+    }
+
+    private static func cosmeticScope(_ raw: String) -> CosmeticScope {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return .global }
+
+        var include: [String] = []
+        var exclude: [String] = []
+        let allowed = CharacterSet(
+            charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_*"
+        )
+
+        for rawToken in trimmed.split(separator: ",") {
+            var name = rawToken.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty else { return .invalid }
+            let isNegated = name.hasPrefix("~")
+            if isNegated { name.removeFirst() }
+            // A regex host (`/ads\./`) has no `if-domain` spelling; a plain
+            // host is the only shape WebKit can take.
+            guard !name.isEmpty,
+                  name.rangeOfCharacter(from: allowed.inverted) == nil else {
+                return .invalid
+            }
+            let normalized = "*" + name.lowercased()
+            if isNegated {
+                exclude.append(normalized)
+            } else {
+                include.append(normalized)
+            }
+        }
+        return .domains(include: include, exclude: exclude)
     }
 
     /// Compiles one network rule.

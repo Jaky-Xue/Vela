@@ -52,14 +52,38 @@ struct PrivateBrowsingSettingsView: View {
             }
 
             Section {
+                // Turning the blur off exposes the private pages' thumbnails
+                // to whoever picks the phone up, so it asks for the same
+                // device-owner check the other protections ask for. Turning it
+                // on adds protection and needs no check. The check is not tied
+                // to 查看无痕标签页需要验证身份: the blur is the only protection
+                // left when that switch is off, and it has to be guarded on its
+                // own.
                 Toggle("模糊无痕标签页预览", isOn: Binding(
                     get: { env.settings.preferences.blurPrivateTabPreviews },
-                    set: { value in env.settings.update { $0.blurPrivateTabPreviews = value } }
+                    set: { value in
+                        guard !value, env.settings.preferences.blurPrivateTabPreviews else {
+                            env.settings.update { $0.blurPrivateTabPreviews = value }
+                            return
+                        }
+                        Task { @MainActor in
+                            switch await env.verifyDeviceOwner(reason: "关闭无痕预览模糊") {
+                            case .granted:
+                                env.settings.update { $0.blurPrivateTabPreviews = false }
+                            case .cancelled:
+                                break
+                            case .unavailable:
+                                lockError = "此设备未设置密码或面容 ID / 触控 ID，无法验证身份；预览模糊仍然开启。"
+                            case .failed:
+                                lockError = "验证未通过，预览模糊仍然开启。"
+                            }
+                        }
+                    }
                 ))
             } header: {
                 Text("标签页预览")
             } footer: {
-                Text("模糊的是标签卡里的网页截图，卡片本身和关闭按钮保持清晰。无痕标签卡不显示页面标题。")
+                Text("模糊的是标签卡里的网页截图，卡片本身和关闭按钮保持清晰。无痕标签卡不显示页面标题。关闭模糊需要先通过面容 ID、触控 ID 或设备密码验证。")
             }
 
             Section {
@@ -75,7 +99,7 @@ struct PrivateBrowsingSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .browserListSurface()
         .alert(
-            "无法关闭验证",
+            "无法完成验证",
             isPresented: Binding(
                 get: { lockError != nil },
                 set: { if !$0 { lockError = nil } }

@@ -86,6 +86,24 @@ public final class TranslationService {
     private var lastGoogleRequestAt: Date?
     private static let googleMinimumInterval: TimeInterval = 0.35
 
+    /// How long a proved-unreachable Google path is skipped.
+    ///
+    /// Five minutes meant a user who opened a second article a moment later
+    /// paid the dead timeout again. Half an hour is long enough that the
+    /// browser behaves like it learned the network's shape, and short enough
+    /// that turning a VPN on is picked up without a relaunch.
+    private static let googleFallbackCooldown: TimeInterval = 30 * 60
+
+    /// Reachability probe fired while the translation offer is on screen.
+    ///
+    /// The first tap used to pay the endpoint's timeout before the on-device
+    /// engine could take over. The probe runs the same tiny request while the
+    /// user reads the offer, so by the time they tap 翻译 the answer is known.
+    private var googleProbeAt: Date?
+    private var googleProbeInFlight = false
+
+    private static let browserUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+
     /// Set once a Google batch has fallen back to the on-device engine.
     ///
     /// A blocked endpoint would otherwise burn its timeout on every batch
@@ -280,6 +298,73 @@ public final class TranslationService {
         detected = language
         if let record = records[syncedTabId] {
             record.detected = language
+        }
+    }
+
+    /// Checks the key-less endpoint while the translation offer is on screen.
+    ///
+    /// It translates nothing; it only decides whether the next tap should start
+    /// on Google or go straight to the on-device engine. That is the difference
+    /// between a translation that starts immediately and one that waits out a
+    /// dead network path first.
+    public func preflightGoogle(
+        settings: TranslationSettings,
+        target: TranslationTargetLanguage
+    ) {
+        guard settings.provider == .google, appleBridge != nil else { return }
+        guard !appleFallbackActive else { return }
+        if let until = googleUnavailableUntil, until > Date() { return }
+        guard !googleProbeInFlight else { return }
+        if let probed = googleProbeAt, Date().timeIntervalSince(probed) < 60 { return }
+
+        googleProbeInFlight = true
+        googleProbeAt = Date()
+        let endpoint = settings.resolvedEndpoint
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let reachable = await self.probeGoogleReachability(endpoint: endpoint, target: target)
+            self.googleProbeInFlight = false
+            if reachable {
+                self.googleUnavailableUntil = nil
+            } else {
+                self.googleUnavailableUntil = Date().addingTimeInterval(Self.googleFallbackCooldown)
+            }
+        }
+    }
+
+    /// One tiny request against the endpoint. True when it answers with a
+    /// translation; any transport error, timeout or non-200 counts as
+    /// unreachable.
+    private func probeGoogleReachability(
+        endpoint: String,
+        target: TranslationTargetLanguage
+    ) async -> Bool {
+        guard var components = URLComponents(string: endpoint) else { return false }
+        var items = components.queryItems ?? []
+        items.append(contentsOf: [
+            URLQueryItem(name: "client", value: "gtx"),
+            URLQueryItem(name: "sl", value: "auto"),
+            URLQueryItem(name: "tl", value: target.googleCode),
+            URLQueryItem(name: "dt", value: "t"),
+            URLQueryItem(name: "q", value: "ok")
+        ])
+        components.queryItems = items
+        guard let url = components.url else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(Self.browserUserAgent, forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 2.5
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                return false
+            }
+            return !data.isEmpty
+        } catch {
+            return false
         }
     }
 
@@ -769,9 +854,16 @@ public final class TranslationService {
             if appleFallbackActive, let apple = await appleBatch(units, target: target) {
                 return apple
             }
-            if let until = googleUnavailableUntil, until > Date(),
-               let apple = await appleBatch(units, target: target) {
-                return apple
+            if let until = googleUnavailableUntil, until > Date() {
+                // Only when the on-device engine can take the batch without
+                // its language-pack download sheet: the probe this skip is
+                // based on can be a slow network rather than a blocked one,
+                // and a false positive must not pop that sheet over a page
+                // Google would have translated.
+                if await applePackReady(target: target),
+                   let apple = await appleBatch(units, target: target) {
+                    return apple
+                }
             }
 
             // Google is given every block in the batch wrapped in its own
@@ -796,8 +888,15 @@ public final class TranslationService {
                 // with no translation at all.
                 if let apple = await appleBatch(units, target: target) {
                     appleFallbackActive = true
-                    googleUnavailableUntil = Date().addingTimeInterval(5 * 60)
+                    googleUnavailableUntil = Date().addingTimeInterval(Self.googleFallbackCooldown)
                     return apple
+                }
+                // The fallback failed too. When the reason is knowable — a
+                // missing language pack, an unsupported pair — say that rather
+                // than reporting only the network error the user cannot act
+                // on.
+                if let explanation = await appleFallbackExplanation(target: target) {
+                    throw TranslationError.failed(explanation)
                 }
                 throw error
             }
@@ -840,6 +939,43 @@ public final class TranslationService {
                 map[unit.id] = value
             }
             return BatchResult(payload: .units(map), detectedLanguage: nil)
+        }
+    }
+
+    /// Whether the on-device engine can take a batch without first presenting
+    /// the system language-pack download.
+    private func applePackReady(target: TranslationTargetLanguage) async -> Bool {
+        guard let appleBridge else { return false }
+        guard let source = detected?.code, !source.isEmpty else { return false }
+        switch await appleBridge.languagePackStatus(source: source, target: target) {
+        case .installed, .unknown:
+            return true
+        case .needsDownload, .unsupported:
+            return false
+        }
+    }
+
+    /// Why the on-device engine could not take over from a failed Google
+    /// request, phrased so the user knows what to change. Nil when the failure
+    /// has no diagnosable cause; the original network error is then the honest
+    /// report.
+    private func appleFallbackExplanation(
+        target: TranslationTargetLanguage
+    ) async -> String? {
+        guard let appleBridge else {
+            return "网络翻译失败，此系统上没有可用的系统翻译。"
+        }
+        guard let source = detected?.code, !source.isEmpty else {
+            return "网络翻译失败；无法识别网页语言，系统翻译无法接手。"
+        }
+        let pair = "\(detected?.displayName ?? source) → \(target.displayName)"
+        switch await appleBridge.languagePackStatus(source: source, target: target) {
+        case .unsupported:
+            return "网络翻译失败；系统翻译不支持 \(pair)。请更换网络或翻译服务商。"
+        case .needsDownload:
+            return "网络翻译失败；系统翻译需要先下载 \(pair) 语言包。请到 设置 ▸ 网页翻译 下载后重试。"
+        case .installed, .unknown:
+            return nil
         }
     }
 
@@ -923,14 +1059,15 @@ public final class TranslationService {
         // to URLSession's default identifier; this also keeps a proxy that
         // filters unknown clients from answering 403/429 immediately.
         request.setValue(
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            Self.browserUserAgent,
             forHTTPHeaderField: "User-Agent"
         )
         request.httpBody = "q=\(formEncode(wrappedHTML))".data(using: .utf8)
         // A public endpoint either answers promptly or is blocked. Waiting a
         // full minute per batch is what made a broken Google path feel like a
-        // broken translator.
-        request.timeoutInterval = 6
+        // broken translator; four seconds covers a healthy round trip for a
+        // whole batch and keeps a dead path from being felt twice.
+        request.timeoutInterval = 4
 
         await paceGoogleRequest()
         do {
@@ -988,7 +1125,7 @@ public final class TranslationService {
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
             forHTTPHeaderField: "User-Agent"
         )
-        request.timeoutInterval = 6
+        request.timeoutInterval = 4
         await paceGoogleRequest()
         let data = try await send(request, maximumAttempts: 1)
         let parsed = try Self.parseGoogleResponse(data)

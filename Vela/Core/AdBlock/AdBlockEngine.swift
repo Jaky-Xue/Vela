@@ -254,6 +254,21 @@ public final class AdBlockEngine {
         // override all of them.
         combined.rules.append(contentsOf: exceptionRules(for: exceptedHosts))
 
+        // A combined set past WebKit's cap used to fail the whole compile —
+        // and a failed compile means the previous list stays in place, which on
+        // a fresh install is no list at all. Domain-scoped element hides are
+        // the cheapest rules to give up: the network rules are what actually
+        // stop requests, and the remaining global hides still cover the common
+        // selectors.
+        if combined.rules.count > AdBlockCompileResult.webKitRuleLimit {
+            let before = combined.rules.count
+            combined.rules.removeAll { rule in
+                guard rule.action.type == "css-display-none" else { return false }
+                return rule.trigger.ifDomain != nil || rule.trigger.unlessDomain != nil
+            }
+            combined.unsupportedRuleCount += before - combined.rules.count
+        }
+
         guard combined.rules.count <= AdBlockCompileResult.webKitRuleLimit else {
             throw AdBlockError.ruleListTooLarge(count: combined.rules.count)
         }
@@ -363,6 +378,16 @@ public final class AdBlockEngine {
 
     public func applyReport(hiddenCount: Int) {
         lastPageHiddenCount = hiddenCount
+    }
+
+    /// Records a compile WebKit refused.
+    ///
+    /// `compile` throws before it can replace anything, so the failure used to
+    /// be invisible: the previous list stayed attached and the screen kept its
+    /// old counts. Surfacing the message is what turns "the subscription I
+    /// added did nothing" into "WebKit refused the combined list".
+    public func recordCompileFailure(_ error: Error) {
+        lastError = error.localizedDescription
     }
 
     public func resetPageReport() {

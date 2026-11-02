@@ -65,6 +65,14 @@ struct AdBlockSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                if let compileError = env.adBlock.lastError {
+                    // WebKit refuses a whole list over one rule and does not
+                    // name it, so the message is shown verbatim; without this
+                    // row a refused list looks exactly like an empty one.
+                    Text(compileError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
                 if env.adBlock.lastPageHiddenCount > 0 {
                     LabeledContent("当前页面隐藏") {
                         Text("\(env.adBlock.lastPageHiddenCount) 个元素")

@@ -314,6 +314,56 @@ final class AdBlockRuleSafetyTests: XCTestCase {
         XCTAssertEqual(result.rules.count, 1)
         XCTAssertGreaterThanOrEqual(result.unsupportedRuleCount, 3)
     }
+
+    /// A host-scoped cosmetic rule keeps its host.
+    ///
+    /// The compiler used to take everything after `##` and drop the prefix, so
+    /// `example.com##.ad` hid `.ad` on every site the user visited. WebKit can
+    /// express the scope on a `css-display-none` action, so the rule belongs in
+    /// the list with an `if-domain` trigger instead of in the global stylesheet.
+    func testADomainScopedCosmeticRuleKeepsItsScope() {
+        let result = AdBlockRuleCompiler.compile(
+            filterList: """
+            example.com##.site-ad
+            ~trusted.example##.promo
+            ##.global-ad
+            """,
+            includeCosmetic: true
+        )
+
+        XCTAssertEqual(result.cosmeticSelectors, [".global-ad"])
+
+        let hides = result.rules.filter { $0.action.type == "css-display-none" }
+        XCTAssertEqual(hides.count, 2)
+
+        let included = hides.first { $0.trigger.ifDomain != nil }
+        XCTAssertEqual(included?.trigger.ifDomain, ["*example.com"])
+        XCTAssertEqual(included?.trigger.unlessDomain, nil)
+        XCTAssertEqual(included?.trigger.urlFilter, ".*")
+        XCTAssertEqual(included?.action.selector, ".site-ad")
+
+        let excluded = hides.first { $0.trigger.unlessDomain != nil }
+        XCTAssertEqual(excluded?.trigger.unlessDomain, ["*trusted.example"])
+        XCTAssertEqual(excluded?.trigger.ifDomain, nil)
+        XCTAssertEqual(excluded?.action.selector, ".promo")
+    }
+
+    /// A scoped selector has to stay out of the stylesheet the app injects on
+    /// every page; a global one still belongs there.
+    func testScopedCosmeticRulesDoNotLeakIntoTheGlobalStylesheet() {
+        let result = AdBlockRuleCompiler.compile(
+            filterList: """
+            example.com##.site-ad
+            ##.global-ad
+            """,
+            includeCosmetic: true
+        )
+        XCTAssertEqual(result.cosmeticSelectors, [".global-ad"])
+        XCTAssertFalse(
+            result.cosmeticSelectors.contains(".site-ad"),
+            "a scoped selector must not be injected on every site"
+        )
+    }
 }
 
 // MARK: - The built-in lists themselves

@@ -105,6 +105,14 @@ extension BrowserShellView {
         guard activeTab?.id == tab.id,
               !env.translation.isTranslated,
               !env.translation.isBusy else { return }
+
+        // The page is foreign and the offer is on screen. Check the key-less
+        // endpoint now, while nothing is waiting on it: a blocked path is then
+        // already known when the user taps 翻译, so the first batch starts on
+        // the on-device engine instead of paying a dead timeout.
+        if env.translation.detected != nil {
+            env.translation.preflightGoogle(settings: settings, target: settings.target)
+        }
         if let host = URL(string: tab.url)?.host,
            settings.rule(for: host) == .always,
            env.translation.detected != nil {

@@ -314,6 +314,26 @@ public final class BrowserWebCoordinator: NSObject {
         dynamicTranslationHandler?(json, tab.id, webView)
     }
 
+    /// Re-applies the compiled rule list to web views that already exist.
+    ///
+    /// A web view copies its rule lists when it is built, so a list compiled a
+    /// moment later — the common case on a fresh install, where the first
+    /// compile and the session restore race — never reaches that page. Editing
+    /// the live controller is what makes the next navigation, including a
+    /// reload, filtered by the current list; it is the same route user scripts
+    /// take when one is installed mid-session.
+    func reloadAdBlockRulesIntoOpenWebViews() {
+        guard let tabManager else { return }
+        let lists = adBlock.attachedRuleLists()
+        for webView in tabManager.allWebViews() {
+            let controller = webView.configuration.userContentController
+            controller.removeAllContentRuleLists()
+            for list in lists {
+                controller.add(list)
+            }
+        }
+    }
+
     func handleAdBlockReport(_ message: WKScriptMessage, webView: WKWebView) {
         guard let payload = message.body as? [String: Any],
               let count = payload["hiddenCount"] as? Int else { return }

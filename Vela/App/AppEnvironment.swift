@@ -134,6 +134,12 @@ public final class AppEnvironment {
                 settings: self.settings.translationSettings
             )
         }
+        // A compile that finishes after this window built its web views has
+        // to reach those pages; the closure walks the pool and re-applies the
+        // list. Set before boot so the first launch compile is covered.
+        services.adBlockRulesDidChange = { [weak coordinator] in
+            coordinator?.reloadAdBlockRulesIntoOpenWebViews()
+        }
         services.bootOnce()
         bootWindow()
 
@@ -355,10 +361,23 @@ public final class AppEnvironment {
             return .granted
         }
         if privateAccessUnlocked { return .granted }
+        let result = await verifyDeviceOwner(reason: reason)
+        if result == .granted { privateAccessUnlocked = true }
+        return result
+    }
 
+    /// Runs the system owner check without consulting the lock setting and
+    /// without unlocking anything.
+    ///
+    /// Turning a protection *off* is itself a decision the device owner should
+    /// make. 无痕预览模糊 is one of those protections: with it off, the tab
+    /// overview exposes private page thumbnails to anyone holding the phone,
+    /// even when 查看无痕标签页需要验证身份 is itself switched off. The check here
+    /// is therefore independent of that lock.
+    @discardableResult
+    public func verifyDeviceOwner(reason: String) async -> PrivateAccessResult {
         switch await DeviceAuthentication.evaluate(reason: reason) {
         case .success:
-            privateAccessUnlocked = true
             return .granted
         case .cancelled:
             return .cancelled
