@@ -223,14 +223,26 @@ final class AdBlockContentRuleCompilationTests: XCTestCase {
     /// `css-display-none` action behind a domain trigger. WebKit has to accept
     /// it, and the trigger is what keeps the hide off every other site.
     func testAHostScopedCosmeticRuleCompiles() async throws {
+        // WebKit allows one domain condition per trigger, so this is the
+        // include-only shape; the both-sides form is skipped by the compiler.
         let result = AdBlockRuleCompiler.compile(
-            filterList: "example.com,~shop.example.com##.ad-banner",
+            filterList: "example.com##.ad-banner",
             includeCosmetic: true
         )
         XCTAssertEqual(result.rules.count, 1)
         XCTAssertEqual(result.rules.first?.action.type, "css-display-none")
         XCTAssertEqual(result.rules.first?.trigger.ifDomain, ["*example.com"])
-        XCTAssertEqual(result.rules.first?.trigger.unlessDomain, ["*shop.example.com"])
-        _ = try await compile(result.rules, label: "scoped-cosmetic")
+        XCTAssertNil(result.rules.first?.trigger.unlessDomain)
+
+        // The exclusion-only shape is the other representable half and has to
+        // compile as well.
+        let excluded = AdBlockRuleCompiler.compile(
+            filterList: "~trusted.example##.promo",
+            includeCosmetic: true
+        )
+        XCTAssertEqual(excluded.rules.first?.trigger.unlessDomain, ["*trusted.example"])
+        XCTAssertNil(excluded.rules.first?.trigger.ifDomain)
+
+        _ = try await compile(result.rules + excluded.rules, label: "scoped-cosmetic")
     }
 }

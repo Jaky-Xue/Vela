@@ -348,6 +348,22 @@ final class AdBlockRuleSafetyTests: XCTestCase {
         XCTAssertEqual(excluded?.action.selector, ".promo")
     }
 
+    /// A rule that both includes and excludes hosts is skipped, not merged.
+    ///
+    /// WebKit's trigger accepts one domain condition, so there is no rule that
+    /// means "hide on example.com except shop.example.com". Turning it into an
+    /// include-only rule hides on the excluded host; turning it into a global
+    /// hide is worse still. The compiler counts it as unsupported.
+    func testACosmeticRuleWithBothSidesIsNotFlattened() {
+        let result = AdBlockRuleCompiler.compile(
+            filterList: "example.com,~shop.example.com##.ad-banner",
+            includeCosmetic: true
+        )
+        XCTAssertTrue(result.rules.isEmpty)
+        XCTAssertTrue(result.cosmeticSelectors.isEmpty)
+        XCTAssertEqual(result.unsupportedRuleCount, 1)
+    }
+
     /// A scoped selector has to stay out of the stylesheet the app injects on
     /// every page; a global one still belongs there.
     func testScopedCosmeticRulesDoNotLeakIntoTheGlobalStylesheet() {

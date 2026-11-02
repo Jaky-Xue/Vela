@@ -258,6 +258,12 @@ public enum AdBlockRuleCompiler {
         case .global:
             return .hide(selector: selector, includeDomains: [], excludeDomains: [])
         case let .domains(include, exclude):
+            // WebKit's trigger accepts exactly one domain condition, so a rule
+            // that both includes and excludes hosts has no spelling. Skipping
+            // it under-hides on the included hosts; merging it into a global
+            // hide would hide content on the hosts the list explicitly
+            // excluded, which is the worse failure.
+            guard include.isEmpty || exclude.isEmpty else { return .unsupported }
             return .hide(selector: selector, includeDomains: include, excludeDomains: exclude)
         case .invalid:
             return .invalid
