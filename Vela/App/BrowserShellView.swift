@@ -618,7 +618,7 @@ struct BrowserShellView: View {
     /// inside the safe area, where its own insets read zero; the height is
     /// needed to place a keyboard-relative card without assuming where the
     /// shell begins.
-    func applyWindowMetrics(_ metrics: ShellWindowMetrics) {
+    private func applyWindowMetrics(_ metrics: ShellWindowMetrics) {
         if abs(safeTop - metrics.insets.top) > 0.5 {
             safeTop = metrics.insets.top
         }
