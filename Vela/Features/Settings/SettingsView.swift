@@ -397,6 +397,7 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
 
     var id: String { rawValue }
 
+    @MainActor
     @ViewBuilder
     var view: some View {
         switch self {
