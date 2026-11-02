@@ -25,6 +25,10 @@ struct OmniboxSearchPageView: View {
     /// The gap between the top of the screen and the field, computed by the
     /// shell from the real screen geometry.
     var topGap: CGFloat
+    /// The part of the window below this page — the home-indicator strip when
+    /// the page sits inside the safe area. The keyboard's occlusion is measured
+    /// from the window's bottom, so this much of it is already below the page.
+    var bottomGap: CGFloat = 0
 
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
@@ -53,7 +57,7 @@ struct OmniboxSearchPageView: View {
             }
             // The list column, not the page, ends above a docked keyboard.
             // The field is an overlay and never moves with the keyboard.
-            .padding(.bottom, max(0, keyboardHeight))
+            .padding(.bottom, max(0, keyboardHeight - bottomGap))
 
             fieldRowInGlassContainer
                 .padding(.top, topGap)

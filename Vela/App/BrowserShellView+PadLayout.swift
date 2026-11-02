@@ -341,7 +341,10 @@ extension BrowserShellView {
                 viewModel: omnibox,
                 keyboardHeight: keyboardHeight,
                 cardMaxHeight: searchPageCardHeight,
-                topGap: searchPageTopGap
+                topGap: searchPageTopGap,
+                bottomGap: safeRectHeight > 0
+                    ? max(0, windowHeight - (shellOriginY + safeRectHeight))
+                    : safeBottom
             )
             .ignoresSafeArea(.keyboard)
             .transition(.opacity)
