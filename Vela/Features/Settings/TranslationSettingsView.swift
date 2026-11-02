@@ -106,7 +106,13 @@ struct TranslationSettingsView: View {
                             )
                         }
                     }
-                    .disabled(isPreparingPack)
+                    .disabled(isPreparingPack || !hasDetectedSource)
+
+                    if !hasDetectedSource {
+                        Text("先在网页中打开要翻译的页面，Vela 识别出网页语言后才能检查或下载语言包。")
+                            .font(.caption)
+                            .foregroundStyle(palette.secondaryText)
+                    }
 
                     if let packMessage {
                         Text(packMessage)
@@ -281,8 +287,16 @@ struct TranslationSettingsView: View {
         )
     }
 
+    private var hasDetectedSource: Bool {
+        !(env.translation.detected?.code ?? "").isEmpty
+    }
+
     private func preparePack() async {
         guard let bridge = env.appleTranslationBridge else { return }
+        guard hasDetectedSource else {
+            packMessage = "请先在网页中打开要翻译的页面，让 Vela 识别语言后再下载语言包。"
+            return
+        }
         isPreparingPack = true
         packMessage = nil
         defer { isPreparingPack = false }

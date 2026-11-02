@@ -357,20 +357,23 @@ public final class TranslationService {
         // The on-device engine cannot translate a pair whose language pack is
         // missing. Checking before the first batch is what lets the app say so
         // instead of parking the bar in a system download that never appears.
-        if settings.provider == .appleSystem,
-           let appleBridge,
-           let source = detected?.code,
-           !source.isEmpty {
-            switch await appleBridge.languagePackStatus(source: source, target: target) {
-            case .unsupported:
-                fail(run, "系统翻译不支持 \(detected?.displayName ?? source) → \(target.displayName)。")
+        if settings.provider == .appleSystem {
+            guard let source = detected?.code, !source.isEmpty else {
+                fail(run, "无法识别网页语言，暂时不能使用系统翻译。")
                 return
-            case .needsDownload:
-                // The session's prepareTranslation raises the system download
-                // prompt; the batch below waits for it.
-                break
-            case .installed, .unknown:
-                break
+            }
+            if let appleBridge {
+                switch await appleBridge.languagePackStatus(source: source, target: target) {
+                case .unsupported:
+                    fail(run, "系统翻译不支持 \(detected?.displayName ?? source) → \(target.displayName)。")
+                    return
+                case .needsDownload:
+                    // The session's prepareTranslation raises the system
+                    // download prompt; the batch below waits for it.
+                    break
+                case .installed, .unknown:
+                    break
+                }
             }
         }
 
@@ -404,7 +407,8 @@ public final class TranslationService {
             fail(run, "翻译已取消。")
             return
         } catch {
-            let message = error.localizedDescription
+            let provider = settings.provider.displayName
+            let message = "\(provider)失败：\(error.localizedDescription)"
             if applied > 0 {
                 // Partial results are kept: a page that translated its first
                 // half is more useful than one that reverted because a later
@@ -423,7 +427,7 @@ public final class TranslationService {
                 )
                 appliedTarget = target
                 appliedUrl = extraction.url
-                fail(run, "已翻译 \(applied)/\(total) 段：\(message)")
+                fail(run, "已翻译 \(applied)/\(total) 段（\(provider)）：\(error.localizedDescription)")
             } else {
                 fail(run, message)
             }

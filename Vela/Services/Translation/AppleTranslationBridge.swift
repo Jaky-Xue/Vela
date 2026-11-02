@@ -68,11 +68,22 @@ final class AppleTranslationBridge: AppleTranslationBridging {
         target: TranslationTargetLanguage,
         source: String?
     ) async throws -> [String] {
+        let normalizedSource = source?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // `prepareTranslation` has no sample to inspect: with a nil source it
+        // throws unableToIdentifyLanguage before any download prompt exists.
+        // A concrete source is the difference between a working download and
+        // a session that never starts.
+        guard let normalizedSource, !normalizedSource.isEmpty else {
+            throw TranslationError.failed("无法识别网页语言，暂时不能使用系统翻译。")
+        }
+
         // A job whose session never arrived used to block every later request
         // with "系统翻译正在处理另一批段落" for the life of the app. Replace it
         // and terminate the old waiter instead of refusing the new work.
         if let existing = pending {
             pending = nil
+            self.configuration?.invalidate()
             existing.continuation.resume(
                 throwing: TranslationError.failed("翻译会话已被新的请求取代。")
             )
@@ -85,22 +96,20 @@ final class AppleTranslationBridge: AppleTranslationBridging {
                     id: jobId,
                     texts: texts,
                     target: target,
-                    source: source,
+                    source: normalizedSource,
                     continuation: continuation
                 )
                 pending = job
 
-                let normalizedSource = source?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
                 let configuration = TranslationSession.Configuration(
-                    source: (normalizedSource?.isEmpty == false)
-                        ? Locale.Language(identifier: normalizedSource!)
-                        : nil,
+                    source: Locale.Language(identifier: normalizedSource),
                     target: Locale.Language(identifier: target.appleTranslationCode)
                 )
-                // A nil → value transition makes the modifier create a new
-                // session even when two consecutive batches target the same
-                // language.
+                // A nil → value transition alone is not enough: the modifier
+                // treats an equal configuration as the same request and does
+                // not run the closure again. Invalidate first, so the second
+                // and later batches of a page each get a live session.
+                self.configuration?.invalidate()
                 self.configuration = nil
                 Task { @MainActor [weak self] in
                     await Task.yield()
@@ -194,6 +203,7 @@ final class AppleTranslationBridge: AppleTranslationBridging {
         } catch {
             job.continuation.resume(throwing: error)
         }
+        configuration?.invalidate()
         configuration = nil
     }
 }
@@ -203,8 +213,10 @@ struct AppleTranslationHost: View {
     @Bindable var bridge: AppleTranslationBridge
 
     var body: some View {
+        // A full-size clear host, not a 1×1 stub: the task must be attached to
+        // a view the window actually lays out, and every batch needs the same
+        // live host. It draws nothing and takes no touches.
         Color.clear
-            .frame(width: 1, height: 1)
             .translationTask(bridge.configuration) { session in
                 await bridge.run(session)
             }
