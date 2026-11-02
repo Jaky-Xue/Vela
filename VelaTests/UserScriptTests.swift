@@ -20,6 +20,47 @@ final class UserScriptTests: XCTestCase {
         XCTAssertFalse(UserScriptService.isNewer("", than: "1.1"))
     }
 
+    func testVersionComparisonIgnoresALeadingVPrefix() {
+        // Authors write both `1.2` and `v1.2`. Comparing the raw tokens made
+        // "v1" and "1" different segments, so one side could never look newer.
+        XCTAssertFalse(UserScriptService.isNewer("v1.2", than: "1.2"))
+        XCTAssertTrue(UserScriptService.isNewer("v1.3", than: "v1.2"))
+        XCTAssertTrue(UserScriptService.isNewer("1.3", than: "v1.2"))
+        XCTAssertFalse(UserScriptService.isNewer("v1.2", than: "1.3"))
+    }
+
+    func testUpdateCandidatesPreferDeclaredEndpointsAndDeduplicate() {
+        let script = InstalledUserScriptState(
+            name: "Candidates",
+            source: "console.log('x');",
+            sourceUrl: "https://example.com/script.meta.js",
+            updateUrl: "https://example.com/script.meta.js",
+            downloadUrl: "https://example.com/script.user.js",
+            matches: ["https://example.com/*"]
+        )
+        XCTAssertEqual(
+            UserScriptService.updateCandidateURLs(for: script),
+            [
+                "https://example.com/script.meta.js",
+                "https://example.com/script.user.js"
+            ]
+        )
+
+        var sourceOnly = script
+        sourceOnly.updateUrl = ""
+        sourceOnly.downloadUrl = ""
+        XCTAssertEqual(
+            UserScriptService.updateCandidateURLs(for: sourceOnly),
+            ["https://example.com/script.meta.js"]
+        )
+
+        var fileOnly = script
+        fileOnly.updateUrl = ""
+        fileOnly.downloadUrl = ""
+        fileOnly.sourceUrl = "file:///tmp/script.user.js"
+        XCTAssertTrue(UserScriptService.updateCandidateURLs(for: fileOnly).isEmpty)
+    }
+
     func testMetadataKeepsRequireAndResourceDeclarations() throws {
         let text = """
         // ==UserScript==

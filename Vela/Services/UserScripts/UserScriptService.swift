@@ -113,6 +113,28 @@ public final class UserScriptService {
         reload()
     }
 
+    /// Points a script's update checks at a URL, or clears the override.
+    ///
+    /// A script installed from pasted code or a file can have `@updateURL`
+    /// missing, or a declaration that has gone stale. Without a way to name the
+    /// address, "检查更新" can only answer "没有更新地址" forever — which is not
+    /// a check, it is a dead end.
+    public func setUpdateURL(_ raw: String, for script: InstalledUserScriptState) throws {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            guard let url = URL(string: trimmed),
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https" else {
+                throw UserScriptServiceError.parseFailed("更新地址必须是 http 或 https 链接。")
+            }
+        }
+        var updated = script
+        updated.updateUrl = trimmed
+        updated.updatedAt = Date()
+        try repository.upsert(updated)
+        reload()
+    }
+
     // MARK: - Install and edit
 
     public func install(
@@ -189,6 +211,24 @@ public final class UserScriptService {
         }
         reload()
         return .success(UserScriptInstallOutcome(script: script, warnings: warnings))
+    }
+
+    /// Downloads and installs a script straight from a link.
+    ///
+    /// The `.user.js` install prompt uses this instead of fetching the file
+    /// itself. The link is the source of truth: the service follows a
+    /// metadata-only `.meta.js` to its `@downloadURL`, and the size ceiling
+    /// here only guards against a link that serves a video or an archive
+    /// rather than a script. A userscript with a large bundled payload is
+    /// still a script and is not rejected for its size.
+    public func installFromURL(_ url: URL) async -> Result<UserScriptInstallOutcome, Error> {
+        guard let fetched = await fetch(url.absoluteString, base: nil, limit: 64_000_000),
+              let text = Self.decodeText(fetched.data) else {
+            let failure = UserScriptServiceError.parseFailed("无法从该链接下载脚本。")
+            lastError = failure.localizedDescription
+            return .failure(failure)
+        }
+        return await install(text: text, source: .url, sourceUrl: url.absoluteString)
     }
 
     /// Saves an edited script, re-parsing its metadata block.
@@ -450,7 +490,7 @@ public final class UserScriptService {
         guard let relative = Self.metadataValue(in: text, key: "downloadurl")
                 ?? Self.metadataValue(in: text, key: "updateurl"),
               let resolved = URL(string: relative, relativeTo: URL(string: baseURL))?.absoluteString,
-              let fetched = await fetch(resolved, base: nil, limit: 8_000_000),
+              let fetched = await fetch(resolved, base: nil, limit: 64_000_000),
               let script = Self.decodeText(fetched.data) else {
             return text
         }
@@ -496,6 +536,11 @@ public final class UserScriptService {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
+        // An update check that reads the URL cache is not a check: script
+        // hosts cache their metadata and install endpoints aggressively, so a
+        // stale entry makes every "check for updates" answer with the version
+        // already installed.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("*/*", forHTTPHeaderField: "Accept")
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -517,56 +562,85 @@ public final class UserScriptService {
 
     // MARK: - Updates
 
-    /// Checks one script's update URL and applies a newer version.
+    /// Checks one script's update URLs and applies a newer version.
+    ///
+    /// The three URLs are tried in order rather than only the first one that
+    /// exists. A script's `@updateURL` may serve a metadata-only file (the
+    /// `.meta.js` convention), its `@downloadURL` may be the only live copy
+    /// after a rename, and the install address may be a gallery page rather
+    /// than the script itself. Stopping at the first URL turned any of those
+    /// into "check failed" while another address could still have answered.
     public func checkForUpdate(_ script: InstalledUserScriptState) async -> UserScriptUpdateResult {
-        let candidates = [script.updateUrl, script.downloadUrl, script.sourceUrl]
-        guard let rawURL = candidates.first(where: { value in
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return false }
-            return url.scheme == "http" || url.scheme == "https"
-        }) else {
+        let candidates = Self.updateCandidateURLs(for: script)
+        guard !candidates.isEmpty else {
+            markChecked(script)
             let result = UserScriptUpdateResult.noUpdateUrl
             updateStatus[script.id] = result.displayName
             return result
         }
 
-        guard let fetched = await fetch(rawURL, base: URL(string: script.sourceUrl), limit: 8_000_000),
-              let downloaded = Self.decodeText(fetched.data) else {
-            let result = UserScriptUpdateResult.failed("无法下载脚本")
+        var failures: [String] = []
+        var resolved: (candidate: UserScriptPackageCandidate, sourceURL: String)?
+
+        for rawURL in candidates {
+            guard let fetched = await fetch(rawURL, base: URL(string: script.sourceUrl), limit: 64_000_000),
+                  let downloaded = Self.decodeText(fetched.data) else {
+                failures.append("无法下载 \(rawURL)")
+                continue
+            }
+            let text = await fullScriptText(downloaded, baseURL: rawURL)
+            let parse = UserScriptParser.parse(text, installSource: .url, sourceUrl: rawURL)
+            guard parse.valid, let candidate = parse.candidate else {
+                failures.append("\(rawURL)：\(parse.errorMessage)")
+                continue
+            }
+            resolved = (candidate, rawURL)
+            break
+        }
+
+        guard let resolved else {
+            markChecked(script)
+            let result = UserScriptUpdateResult.failed(
+                failures.first ?? "无法下载脚本"
+            )
             updateStatus[script.id] = result.displayName
             return result
         }
 
-        let text = await fullScriptText(downloaded, baseURL: rawURL)
-        let parse = UserScriptParser.parse(text, installSource: .url, sourceUrl: rawURL)
-        guard parse.valid, let candidate = parse.candidate else {
-            let result = UserScriptUpdateResult.failed(parse.errorMessage)
-            updateStatus[script.id] = result.displayName
-            return result
-        }
-
+        let candidate = resolved.candidate
         let newer = Self.isNewer(candidate.version, than: script.version)
             || (candidate.version.isEmpty && script.version.isEmpty && candidate.source != script.source)
 
-        try? repository.setLastChecked(id: script.id)
-
         if newer {
-            var resolved = candidate
-            if resolved.updateUrl.isEmpty { resolved.updateUrl = script.updateUrl }
-            if resolved.downloadUrl.isEmpty { resolved.downloadUrl = script.downloadUrl }
-            if resolved.sourceUrl.isEmpty { resolved.sourceUrl = rawURL }
+            var updatedCandidate = candidate
+            if updatedCandidate.updateUrl.isEmpty { updatedCandidate.updateUrl = script.updateUrl }
+            if updatedCandidate.downloadUrl.isEmpty { updatedCandidate.downloadUrl = script.downloadUrl }
+            if updatedCandidate.sourceUrl.isEmpty { updatedCandidate.sourceUrl = resolved.sourceURL }
 
-            let dependencies = await resolveDependencies(for: resolved, reusing: script)
-            var updated = InstalledUserScriptState(candidate: resolved)
+            let dependencies = await resolveDependencies(for: updatedCandidate, reusing: script)
+            var updated = InstalledUserScriptState(candidate: updatedCandidate)
             updated.id = script.id
             updated.createdAt = script.createdAt
             updated.enabled = script.enabled
+            updated.installSource = script.installSource
+            // An inferred update address should not replace the install
+            // address the script was recorded with; only fill it when the
+            // remote file does not name one.
+            if updated.sourceUrl.isEmpty { updated.sourceUrl = script.sourceUrl }
             updated.lastCheckedAt = Date()
-            updated.resourceDeclarations = resolved.resourceDeclarations
+            updated.resourceDeclarations = updatedCandidate.resourceDeclarations
             updated.requireSources = dependencies.requireSources
             updated.resources = dependencies.resources
             updated.updatedAt = Date()
-            try? repository.upsert(updated)
+
+            do {
+                try repository.upsert(updated)
+            } catch {
+                markChecked(script)
+                let result = UserScriptUpdateResult.failed("保存更新失败：\(error.localizedDescription)")
+                updateStatus[script.id] = result.displayName
+                return result
+            }
             reload()
             let result = UserScriptUpdateResult.updated(from: script.version, to: candidate.version)
             updateStatus[script.id] = result.displayName
@@ -580,11 +654,42 @@ public final class UserScriptService {
             || script.resources.count != script.resourceDeclarations.count {
             _ = await refreshDependencies(for: script)
         }
+        markChecked(script)
         reload()
 
         let result = UserScriptUpdateResult.upToDate
         updateStatus[script.id] = result.displayName
         return result
+    }
+
+    /// The update addresses, in the order worth trying.
+    ///
+    /// A declared `@updateURL` is authoritative; a declared `@downloadURL` is
+    /// the script itself; the install address is last because it is the one
+    /// most likely to be a page. Duplicates are dropped so a script that
+    /// declares its install URL as both endpoints is fetched once.
+    static func updateCandidateURLs(for script: InstalledUserScriptState) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for raw in [script.updateUrl, script.downloadUrl, script.sourceUrl] {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let url = URL(string: trimmed),
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  seen.insert(trimmed).inserted else { continue }
+            result.append(trimmed)
+        }
+        return result
+    }
+
+    /// Writes the check time through both the repository and the in-memory
+    /// list. The detail screen reads the service's copy, so updating only the
+    /// database left "最近检查" showing the previous attempt after a failure.
+    private func markChecked(_ script: InstalledUserScriptState, at date: Date = Date()) {
+        try? repository.setLastChecked(id: script.id, at: date)
+        if let index = scripts.firstIndex(where: { $0.id == script.id }) {
+            scripts[index].lastCheckedAt = date
+        }
     }
 
     /// Checks every installed script, one at a time, and returns the results.
@@ -647,7 +752,15 @@ public final class UserScriptService {
     }
 
     private static func versionTokens(_ value: String) -> [String] {
-        value.lowercased()
+        var normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // `@version v1.2` and `@version 1.2` are the same version written two
+        // ways; without dropping the prefix the first token is "v1" on one
+        // side and "1" on the other, and the comparison reads the v-prefixed
+        // side as older forever.
+        if normalized.hasPrefix("v"), normalized.dropFirst().first?.isNumber == true {
+            normalized = String(normalized.dropFirst())
+        }
+        return normalized
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
             .filter { !$0.isEmpty }

@@ -27,14 +27,41 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
 
     /// Whether a URL names an installable user script.
     ///
-    /// The `.user.js` suffix is the convention every gallery and update server
-    /// uses (Greasy Fork, GitHub raw links, Tampermonkey's own update URLs), and
-    /// the path is checked rather than the response type because the decision
-    /// has to be made before the request is sent.
+    /// `.user.js` is the convention every gallery and update server uses. The
+    /// galleries that do not end their install links with it get their own
+    /// small rules, and both are path checks rather than response-type checks
+    /// because the decision has to be made before the request is sent. A raw
+    /// `.js` on GitHub is included because a great many scripts are installed
+    /// from there; if the file turns out not to be a userscript, the prompt's
+    /// install reports the parser's message and the user can cancel.
     static func isUserScriptURL(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https" else { return false }
-        return url.path.lowercased().hasSuffix(".user.js")
+
+        let host = (url.host ?? "").lowercased()
+        let path = url.path.lowercased()
+
+        if path.hasSuffix(".user.js") { return true }
+
+        // Greasy Fork's install link is `/scripts/<id>-<name>/code`.
+        if host == "greasyfork.org" || host.hasSuffix(".greasyfork.org"),
+           path.hasSuffix("/code") {
+            return true
+        }
+
+        // GitHub raw and gist raw links end in `.js`; the metadata block is
+        // in the file, not the URL.
+        if host == "raw.githubusercontent.com" || host == "gist.githubusercontent.com",
+           path.hasSuffix(".js") {
+            return true
+        }
+
+        // OpenUserJS install links are `/install/<user>/<name>`.
+        if host.hasSuffix("openuserjs.org"), path.contains("/install/") {
+            return true
+        }
+
+        return false
     }
 
     public nonisolated func webView(

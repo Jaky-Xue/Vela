@@ -482,7 +482,7 @@ public enum UserScriptUpdateResult: Equatable, Sendable {
         case let .updated(from, to):
             let old = from.isEmpty ? "无版本号" : "v\(from)"
             let new = to.isEmpty ? "无版本号" : "v\(to)"
-            return "已从 \(old) 更新到 \(new)"
+            return "已从 \(old) 更新到 \(new)；重新载入网页后生效"
         case .upToDate:
             return "已是最新版本"
         case .noUpdateUrl:

@@ -412,17 +412,22 @@ struct UserScriptsView: View {
                 return
             }
             isDownloading = true
+            // One download path for every link, the same one the .user.js
+            // prompt uses: the service follows a metadata-only update file to
+            // the script it names, bypasses the URL cache, and does not reject
+            // a large script because of its size.
             Task {
                 defer { isDownloading = false }
-                do {
-                    let (data, _) = try await URLSession.shared.data(from: url)
-                    guard let text = String(data: data, encoding: .utf8) else {
-                        installError = "无法读取该地址的内容。"
-                        return
+                let result = await env.userScripts.installFromURL(url)
+                switch result {
+                case let .success(outcome):
+                    installWarnings = outcome.warnings
+                    if outcome.warnings.isEmpty {
+                        installNotice = "已安装「\(outcome.script.displayName)」"
+                        showingInstall = false
                     }
-                    await install(text: text, source: .url, sourceUrl: trimmed)
-                } catch {
-                    installError = "下载失败：\(error.localizedDescription)"
+                case let .failure(error):
+                    installError = error.localizedDescription
                 }
             }
 
@@ -531,6 +536,10 @@ struct UserScriptDetailView: View {
     @State private var notice: String?
 
     @State private var showRuleEditor = false
+    @State private var showUpdateURLSheet = false
+    @State private var updateURLText = ""
+    @State private var updateURLError: String?
+    @State private var showSourceShare = false
     @State private var matchText = ""
     @State private var includeText = ""
     @State private var excludeText = ""
@@ -691,14 +700,18 @@ struct UserScriptDetailView: View {
                         Label("检查更新", systemImage: "arrow.clockwise")
                     }
                 }
-                .disabled(isChecking || (current.updateUrl.isEmpty
-                    && current.downloadUrl.isEmpty
-                    && current.sourceUrl.isEmpty))
+                .disabled(isChecking)
+
+                Button("设置更新地址", systemImage: "link") {
+                    updateURLText = current.updateUrl
+                    updateURLError = nil
+                    showUpdateURLSheet = true
+                }
             } header: {
                 Text("更新")
             } footer: {
                 if current.updateUrl.isEmpty && current.downloadUrl.isEmpty && current.sourceUrl.isEmpty {
-                    Text("这个脚本没有 @updateURL、@downloadURL 或安装地址，无法检查更新。")
+                    Text("这个脚本没有 @updateURL、@downloadURL 或安装地址。点按「设置更新地址」指定一个链接后再检查。")
                 } else {
                     Text("优先使用 @updateURL，其次 @downloadURL，最后使用安装地址。版本号或（无版本号时）代码内容变化才会替换。")
                 }
@@ -710,6 +723,9 @@ struct UserScriptDetailView: View {
                     // metadata block too, or every save fails to re-parse.
                     editedSource = env.userScripts.editableSource(for: current)
                     showEditor = true
+                }
+                Button("分享脚本源码", systemImage: "square.and.arrow.up") {
+                    showSourceShare = true
                 }
                 Button("删除脚本", systemImage: "trash", role: .destructive) {
                     showDeleteConfirm = true
@@ -732,6 +748,12 @@ struct UserScriptDetailView: View {
         .sheet(isPresented: $showRuleEditor) {
             ruleEditorSheet
         }
+        .sheet(isPresented: $showUpdateURLSheet) {
+            updateURLSheet
+        }
+        .sheet(isPresented: $showSourceShare) {
+            ShareSheet(items: [env.userScripts.editableSource(for: current)])
+        }
         .alert("删除「\(current.displayName)」？", isPresented: $showDeleteConfirm) {
             Button("取消", role: .cancel) {}
             Button("删除", role: .destructive) {
@@ -740,6 +762,55 @@ struct UserScriptDetailView: View {
             }
         } message: {
             Text("脚本保存的数据（GM_setValue）和依赖也会一起删除。")
+        }
+    }
+
+    private var updateURLSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("https://example.com/script.meta.js", text: $updateURLText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                } header: {
+                    Text("更新地址")
+                } footer: {
+                    Text("留空可以清除。检查更新时会依次尝试这个地址、@downloadURL 和安装地址；更新地址可以是脚本本身，也可以是只含元数据的 .meta.js。")
+                }
+
+                if let updateURLError {
+                    Section {
+                        Text(updateURLError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("设置更新地址")
+            .navigationBarTitleDisplayMode(.inline)
+            .browserListSurface()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showUpdateURLSheet = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { saveUpdateURL() }
+                }
+            }
+        }
+    }
+
+    private func saveUpdateURL() {
+        do {
+            try env.userScripts.setUpdateURL(updateURLText, for: current)
+            showUpdateURLSheet = false
+            updateURLError = nil
+            notice = updateURLText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "已清除更新地址。"
+                : "更新地址已保存。"
+        } catch {
+            updateURLError = error.localizedDescription
         }
     }
 
