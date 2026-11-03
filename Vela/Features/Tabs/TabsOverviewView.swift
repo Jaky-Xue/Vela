@@ -81,6 +81,21 @@ struct TabsOverviewView: View {
         }
     }
 
+    /// The count shown beside a mode's name.
+    ///
+    /// It matches the cards this screen draws, which includes the active home
+    /// tab's designed card when other pages exist. The toolbar badge keeps
+    /// counting pages only; that badge is about the strip, not this screen.
+    private func overviewTabCount(_ mode: BrowserSessionPrivacyMode) -> Int {
+        let tabs = mode == .private ? tabManager.privateTabs : tabManager.regularTabs
+        let realTabs = tabs.filter { !$0.isHome }
+        guard !realTabs.isEmpty else { return tabs.isEmpty ? 0 : 1 }
+        let includesActiveHome = tabs.contains {
+            $0.isHome && $0.id == tabManager.activeTabId
+        }
+        return realTabs.count + (includesActiveHome ? 1 : 0)
+    }
+
     private var pinnedTabs: [BrowserTabState] { visibleTabs.filter(\.pinned) }
     private var unpinnedTabs: [BrowserTabState] { visibleTabs.filter { !$0.pinned } }
 
@@ -311,14 +326,14 @@ struct TabsOverviewView: View {
         HStack(spacing: 4) {
             modeSegment(
                 title: "普通",
-                count: tabManager.displayedTabCount(privacyMode: .regular),
+                count: overviewTabCount(.regular),
                 isActive: !showPrivateTabs
             ) {
                 switchMode(to: false)
             }
             modeSegment(
                 title: "无痕",
-                count: tabManager.displayedTabCount(privacyMode: .private),
+                count: overviewTabCount(.private),
                 isActive: showPrivateTabs
             ) {
                 switchMode(to: true)
