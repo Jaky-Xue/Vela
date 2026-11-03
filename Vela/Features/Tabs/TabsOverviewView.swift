@@ -726,7 +726,7 @@ private struct TabCard: View {
     /// a picture of anything.
     @ViewBuilder
     private var thumbnail: some View {
-        if let snapshot {
+        if !tab.isHome, let snapshot {
             Image(uiImage: snapshot)
                 .resizable()
                 .scaledToFill()
@@ -735,9 +735,12 @@ private struct TabCard: View {
             ZStack {
                 palette.surface
                 if tab.isHome {
-                    Image(systemName: "house")
-                        .font(.system(size: 24))
-                        .foregroundStyle(palette.secondaryText.opacity(0.45))
+                    // The start page is native SwiftUI, so there is no web
+                    // view to photograph. The card draws the home's own
+                    // inventory instead of a lone house glyph: the favourites
+                    // shelf, the section folds, and the recently-closed card,
+                    // all at card scale.
+                    HomeTabPreview(isPrivate: tab.privacyMode == .private)
                 } else {
                     SiteIconView(
                         host: tab.displayHost,
