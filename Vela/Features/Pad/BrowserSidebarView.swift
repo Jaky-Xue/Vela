@@ -281,8 +281,8 @@ struct BrowserSidebarView: View {
                         // follow. A drawer left open over the page is the one
                         // place a private tab's name would be readable by
                         // whoever glances at the screen, so the row keeps its
-                        // shape, its active dot and its close button and
-                        // nothing that names the page.
+                        // shape, its selected-row tint and its close button
+                        // and nothing that names the page.
                         Text("无痕标签页")
                             .font(.system(size: 13, weight: isActive ? .semibold : .regular))
                             .foregroundStyle(palette.primaryText)
