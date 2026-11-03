@@ -371,7 +371,7 @@ final class WebViewContainerView: UIView {
     /// Split out so the four arrangements — edge-to-edge or already inside the
     /// safe area, protection on or off — are pinned by tests rather than only
     /// by trying them on a device.
-    static func topLayout(
+    nonisolated static func topLayout(
         originY: CGFloat,
         safeTop: CGFloat,
         desiredContentTop: CGFloat,
