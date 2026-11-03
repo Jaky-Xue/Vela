@@ -48,7 +48,7 @@ struct NavigationDiagnosticsView: View {
             } header: {
                 Text("诊断")
             } footer: {
-                Text("记录只保存在本次运行的记忆中，退出即清空；地址只记录到路径，不含查询参数。")
+                Text("记录只在本次运行中保留，地址不含查询参数。")
             }
 
             Section {
@@ -97,7 +97,7 @@ struct NavigationDiagnosticsView: View {
         }
         .navigationTitle("加载诊断")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
     }
 }
 

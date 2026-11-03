@@ -2,7 +2,11 @@
 //  GeneralSettingsView.swift
 //  Vela
 //
-//  Startup, tab, history-retention, reading and top-protection settings.
+//  Startup, tab and history retention, interface layout, and page display.
+//
+//  Three sections, each a place the setting acts on. Nothing here explains
+//  itself in a paragraph: a toggle is named for what it does, a picker shows
+//  the options, and the layout choices are their own pictures.
 //
 
 import SwiftUI
@@ -12,6 +16,7 @@ import UIKit
 
 struct GeneralSettingsView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.browserPalette) private var palette
 
     private static let retentionChoices: [(String, Int)] = [
         ("不自动清理", 0),
@@ -37,8 +42,6 @@ struct GeneralSettingsView: View {
                 ))
             } header: {
                 Text("启动")
-            } footer: {
-                Text("「在后台打开新标签页」关闭时，从网页打开的新标签页会立即切换过去。开启「不保留标签页」后，恢复选项不再适用。")
             }
 
             Section {
@@ -46,13 +49,7 @@ struct GeneralSettingsView: View {
                     get: { env.settings.preferences.tabsNotRetained ?? false },
                     set: { value in env.setTabsNotRetained(value) }
                 ))
-            } header: {
-                Text("标签页保留")
-            } footer: {
-                Text("开启后，浏览器不再保留任何标签页痕迹：退出应用不保存标签页、关闭的标签不会进入「最近关闭」、标签预览图片也不写入磁盘。当前打开的标签页不受影响。")
-            }
 
-            Section {
                 Toggle("不保留历史记录", isOn: Binding(
                     get: { env.settings.preferences.historyNotRetained ?? false },
                     set: { value in env.settings.update { $0.historyNotRetained = value } }
@@ -68,9 +65,7 @@ struct GeneralSettingsView: View {
                 }
                 .disabled(env.settings.preferences.historyNotRetained ?? false)
             } header: {
-                Text("历史记录保留")
-            } footer: {
-                Text("开启「不保留历史记录」后，新的访问和搜索不再写入历史；已有记录不会自动删除，可在「清除浏览数据」中清理。")
+                Text("保留")
             }
 
             Section {
@@ -78,33 +73,32 @@ struct GeneralSettingsView: View {
                     Button {
                         env.settings.interfaceLayout = mode
                     } label: {
-                        HStack(alignment: .top, spacing: 12) {
+                        HStack(spacing: 12) {
                             Image(systemName: mode.symbolName)
                                 .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(
+                                    env.settings.interfaceLayout == mode
+                                        ? palette.accent
+                                        : palette.secondaryText
+                                )
                                 .frame(width: 26)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(mode.displayName)
-                                    .foregroundStyle(.primary)
-                                Text(mode.detail)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+
+                            Text(mode.displayName)
+                                .foregroundStyle(palette.primaryText)
+
                             Spacer(minLength: 0)
+
                             if env.settings.interfaceLayout == mode {
                                 Image(systemName: "checkmark")
-                                    .foregroundStyle(.tint)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(palette.accent)
                             }
                         }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
-            } header: {
-                Text("界面布局")
-            } footer: {
-                Text("iPad 布局包含标签侧边栏、书签栏和双栏内容；系统 Split View / Stage Manager 调整窗口大小时，自动模式会按宽度切换。硬件键盘快捷键见菜单栏「浏览器」。")
-            }
 
-            Section {
                 Toggle(isOn: Binding(
                     get: { env.settings.preferences.forcedZoomEnabled ?? false },
                     set: { value in
@@ -112,27 +106,19 @@ struct GeneralSettingsView: View {
                         env.tabManager.applyGestureZoomToAllWebViews()
                     }
                 )) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("允许双指缩放")
-                        Text("打开后，所有页面都可以用双指放大或缩小，包括声明了 user-scalable=no 的页面。")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("允许双指缩放")
                 }
-                .tint(.accentColor)
 
                 Toggle("全局顶部保护", isOn: Binding(
                     get: { env.settings.preferences.topProtectionEnabled },
                     set: { value in env.settings.update { $0.topProtection = value } }
                 ))
             } header: {
-                Text("页面显示与缩放")
-            } footer: {
-                Text("双指缩放由手势决定；顶部保护让页面从状态栏下方开始，不再滚动到时钟底下。")
+                Text("界面与显示")
             }
         }
         .navigationTitle("通用")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
     }
 }

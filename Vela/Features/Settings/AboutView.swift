@@ -62,6 +62,6 @@ struct AboutView: View {
         }
         .navigationTitle("关于")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
     }
 }

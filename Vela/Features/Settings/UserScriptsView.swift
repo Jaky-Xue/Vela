@@ -79,21 +79,12 @@ struct UserScriptsView: View {
                     get: { env.settings.preferences.userScriptsEnabled },
                     set: { value in env.settings.update { $0.userScriptsEnabled = value } }
                 ))
-                Toggle(isOn: Binding(
+                Toggle("自动检查更新", isOn: Binding(
                     get: { env.settings.userScriptSettings.autoUpdateEnabled },
                     set: { value in
                         env.settings.updateUserScriptSettings { $0.autoUpdateEnabled = value }
                     }
-                )) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("自动检查更新")
-                        Text("启动时检查超过一天的脚本；也可以在列表里手动检查全部。")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } footer: {
-                Text("用户脚本在网页里运行，可以修改页面内容。无痕模式下不会执行任何脚本。")
+                ))
             }
 
             if scripts.isEmpty {
@@ -149,8 +140,6 @@ struct UserScriptsView: View {
                                 .controlSize(.small)
                         }
                     }
-                } footer: {
-                    Text("关闭的脚本会保留设置，但不会在页面上运行。左滑或长按可以删除。修改后需要重新载入网页才会生效。")
                 }
             }
 
@@ -169,7 +158,7 @@ struct UserScriptsView: View {
                 }
             }
         }
-        .browserListSurface()
+        .settingsList()
         .navigationTitle("用户脚本")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(
@@ -304,8 +293,6 @@ struct UserScriptsView: View {
                             .autocorrectionDisabled()
                     } header: {
                         Text("脚本代码")
-                    } footer: {
-                        Text("粘贴完整的用户脚本，包括开头的 // ==UserScript== 元数据块。")
                     }
 
                 case .url:
@@ -314,8 +301,6 @@ struct UserScriptsView: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .keyboardType(.URL)
-                    } footer: {
-                        Text("Vela 会下载该地址的内容、解析元数据，并把 @require / @resource 一起保存下来。")
                     }
 
                 case .file:
@@ -323,8 +308,6 @@ struct UserScriptsView: View {
                         Button("选择 .user.js 文件", systemImage: "doc.badge.plus") {
                             showingFilePicker = true
                         }
-                    } footer: {
-                        Text("也可以把脚本文件放到「文件」App 里，再从 Vela 导入。")
                     }
                 }
 
@@ -608,8 +591,6 @@ struct UserScriptDetailView: View {
                 }
             } header: {
                 Text("运行于")
-            } footer: {
-                Text("@match 使用站点通配语法（如 https://*.example.com/*），@include 支持更宽松的通配与 /正则/。两者至少保留一条，脚本才会在任何网页运行。")
             }
 
             if !current.excludes.isEmpty || !current.excludeMatches.isEmpty {
@@ -651,12 +632,6 @@ struct UserScriptDetailView: View {
                 }
             } header: {
                 Text("申请的权限")
-            } footer: {
-                if current.hasUnsupportedGrants {
-                    Text("带橙色标记的是华为扩展接口或原生窗口控制，iOS 上没有对应能力；脚本仍可安装，调用时会返回空值。跨域请求、Cookie、下载、打开标签和每标签存储都由 Vela 通过原生桥接提供。")
-                } else {
-                    Text("这些权限都由 Vela 提供：GM_xmlhttpRequest / GM_fetch 走系统网络层并带上当前网站的 Cookie，GM_cookie 读写 WebKit 的 Cookie 存储，GM_openInTab 和 GM_download 走浏览器自己的标签与下载队列。")
-                }
             }
 
             Section {
@@ -679,8 +654,6 @@ struct UserScriptDetailView: View {
                 .disabled(isRefreshingDependencies)
             } header: {
                 Text("依赖")
-            } footer: {
-                Text("@require 会在脚本之前执行；@resource 通过 GM_getResourceText / GM_getResourceURL 读取。")
             }
 
             Section {
@@ -709,12 +682,6 @@ struct UserScriptDetailView: View {
                 }
             } header: {
                 Text("更新")
-            } footer: {
-                if current.updateUrl.isEmpty && current.downloadUrl.isEmpty && current.sourceUrl.isEmpty {
-                    Text("这个脚本没有 @updateURL、@downloadURL 或安装地址。点按「设置更新地址」指定一个链接后再检查。")
-                } else {
-                    Text("优先使用 @updateURL，其次 @downloadURL，最后使用安装地址。版本号或（无版本号时）代码内容变化才会替换。")
-                }
             }
 
             Section {
@@ -775,8 +742,6 @@ struct UserScriptDetailView: View {
                         .keyboardType(.URL)
                 } header: {
                     Text("更新地址")
-                } footer: {
-                    Text("留空可以清除。检查更新时会依次尝试这个地址、@downloadURL 和安装地址；更新地址可以是脚本本身，也可以是只含元数据的 .meta.js。")
                 }
 
                 if let updateURLError {
@@ -789,7 +754,7 @@ struct UserScriptDetailView: View {
             }
             .navigationTitle("设置更新地址")
             .navigationBarTitleDisplayMode(.inline)
-            .browserListSurface()
+            .settingsList()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { showUpdateURLSheet = false }
@@ -833,8 +798,6 @@ struct UserScriptDetailView: View {
                         .frame(minHeight: 88)
                 } header: {
                     Text("@match · 每行一条")
-                } footer: {
-                    Text("Chrome 扩展的站点匹配语法：<scheme>://<host><path>，host 可以用 *.example.com，path 可以用 * 通配。")
                 }
 
                 Section {
@@ -845,8 +808,6 @@ struct UserScriptDetailView: View {
                         .frame(minHeight: 88)
                 } header: {
                     Text("@include · 每行一条")
-                } footer: {
-                    Text("对完整网址做通配匹配；以 / 开头和结尾时按正则表达式处理。")
                 }
 
                 Section {
@@ -867,8 +828,6 @@ struct UserScriptDetailView: View {
                         .frame(minHeight: 66)
                 } header: {
                     Text("@exclude-match · 每行一条")
-                } footer: {
-                    Text("排除规则优先于包含规则：地址先命中排除项时，脚本不会在该页运行。")
                 }
             }
             .navigationTitle("匹配规则")

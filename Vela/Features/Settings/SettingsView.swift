@@ -8,8 +8,9 @@
 //  was implemented: 浏览器 is the browser itself (startup, tabs, its own chrome
 //  and look), 网页与内容 is what happens inside a page, 隐私与安全 is what the
 //  app keeps or shows about its owner, and 诊断与关于 stays out of the way at
-//  the end. Each row carries one line of scope, so a user does not have to
-//  open three screens to find out which one owns the control they want.
+//  the end. The rows are deliberately wordless beyond their names and current
+//  values — the section already says the context, and the screen behind the
+//  row is where the detail belongs.
 //
 //  Only destinations with a backing implementation are listed, and the About
 //  page records which of the remaining ones are absent rather than shipping
@@ -42,9 +43,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "gearshape",
-                        tint: .gray,
-                        title: "通用",
-                        subtitle: "启动、标签页保留、历史记录、界面布局"
+                        title: "通用"
                     )
                 }
 
@@ -53,9 +52,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "paintpalette",
-                        tint: .purple,
                         title: "外观",
-                        subtitle: "明暗、配色、背景、主页图标",
                         detail: appearanceDetail
                     )
                 }
@@ -65,9 +62,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "dock.rectangle",
-                        tint: .teal,
-                        title: "工具栏",
-                        subtitle: "底部与 iPad 顶部工具栏的控件和顺序"
+                        title: "工具栏"
                     )
                 }
 
@@ -76,15 +71,11 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "square.grid.2x2",
-                        tint: .orange,
-                        title: "菜单面板",
-                        subtitle: "菜单里的快捷功能、排序与隐藏"
+                        title: "菜单面板"
                     )
                 }
             } header: {
                 Text("浏览器")
-            } footer: {
-                Text("浏览器本身的样子和操作方式。")
             }
 
             Section {
@@ -93,9 +84,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "magnifyingglass",
-                        tint: .blue,
                         title: "搜索引擎",
-                        subtitle: "默认搜索与地址栏推荐",
                         detail: env.settings.preferences.searchEngine.activeEngine.name
                     )
                 }
@@ -105,9 +94,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "safari",
-                        tint: .brown,
                         title: "网页标识",
-                        subtitle: "网站看到的设备与浏览器身份",
                         detail: userAgentDetail
                     )
                 }
@@ -117,9 +104,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "curlybraces",
-                        tint: .orange,
                         title: "用户脚本",
-                        subtitle: "安装、更新与运行时机",
                         detail: env.settings.preferences.userScriptsEnabled ? "" : "已关闭"
                     )
                 }
@@ -129,9 +114,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "eye.slash",
-                        tint: .gray,
                         title: "隐藏的元素",
-                        subtitle: "用元素选择器在各网站隐藏的内容",
                         detail: env.settings.manualElementHide.sites.isEmpty
                             ? ""
                             : "\(env.settings.manualElementHide.sites.count) 个网站"
@@ -139,8 +122,6 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("网页与内容")
-            } footer: {
-                Text("这些设置作用于打开的网页；网页本身的颜色和排版仍由网站决定。")
             }
 
             Section {
@@ -149,9 +130,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "key.fill",
-                        tint: .yellow,
                         title: "密码与保险箱",
-                        subtitle: "系统钥匙串保存的登录信息",
                         detail: env.passwords.credentials.isEmpty ? "" : "\(env.passwords.credentials.count) 条"
                     )
                 }
@@ -161,9 +140,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "eyeglasses",
-                        tint: .purple,
                         title: "无痕模式",
-                        subtitle: "身份验证、预览模糊与会话范围",
                         detail: env.settings.preferences.lockPrivateTabs ? "需验证" : "无需验证"
                     )
                 }
@@ -173,9 +150,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "lock.shield",
-                        tint: .cyan,
-                        title: "网站权限",
-                        subtitle: "相机、麦克风、位置、剪贴板与访问记录"
+                        title: "网站权限"
                     )
                 }
 
@@ -184,9 +159,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "arrow.up.forward.app",
-                        tint: .pink,
                         title: "外部应用跳转",
-                        subtitle: "把链接交给其他 App 打开",
                         detail: env.settings.preferences.externalNavigationDefault.displayName
                     )
                 }
@@ -196,9 +169,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "shield.lefthalf.filled",
-                        tint: .indigo,
                         title: "WebRTC 泄露防护",
-                        subtitle: "防止网页获取真实网络地址",
                         detail: env.settings.webRTCProtectionEnabled
                             ? env.settings.webRTCProtectionSelection.displayName
                             : "已关闭"
@@ -210,15 +181,11 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "trash",
-                        tint: .red,
-                        title: "清除浏览数据",
-                        subtitle: "历史、缓存、Cookie 与网站数据"
+                        title: "清除浏览数据"
                     )
                 }
             } header: {
                 Text("隐私与安全")
-            } footer: {
-                Text("密码和身份验证由系统钥匙串与面容 ID / 触控 ID 负责，Vela 不保存可逆向的凭据。")
             }
 
             Section {
@@ -227,9 +194,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "arrow.down.circle",
-                        tint: .blue,
                         title: "下载",
-                        subtitle: "保存位置、并发数与断点续传",
                         detail: "\(env.downloads.activeCount) 个进行中"
                     )
                 }
@@ -243,9 +208,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "waveform.path.ecg",
-                        tint: .teal,
                         title: "加载诊断",
-                        subtitle: "最近的网页加载记录与失败原因",
                         detail: "\(env.navigationLog.entries.count) 条"
                     )
                 }
@@ -255,9 +218,7 @@ struct SettingsView: View {
                 } label: {
                     settingsRow(
                         icon: "info.circle",
-                        tint: .gray,
-                        title: "关于 Vela",
-                        subtitle: "版本、许可与尚未实现的能力"
+                        title: "关于 Vela"
                     )
                 }
             } header: {
@@ -265,7 +226,7 @@ struct SettingsView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .browserListSurface()
+        .settingsList()
         .navigationDestination(item: $pushedDestination) { destination in
             destination.view
         }
@@ -312,38 +273,29 @@ struct SettingsView: View {
         }
     }
 
-    /// One settings row: an icon tile, the name, a one-line statement of what
-    /// the screen owns, and an optional current value.
+    /// One settings row: a themed icon tile, the name, and the value in force.
     ///
-    /// The second line is the information layering. Without it the root read
-    /// as a list of nouns — 通用, 外观, 工具栏 — and the only way to learn that
-    /// 通用 contained the history retention was to open it and come back.
+    /// The value is the only secondary line. It answers "what is set" — a
+    /// palette name, a count, a mode — without the row restating what its
+    /// screen contains; the root is a map, and opening a row is how a screen's
+    /// scope becomes known.
     private func settingsRow(
         icon: String,
-        tint: Color,
         title: String,
-        subtitle: String = "",
         detail: String = ""
     ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(palette.accent)
                 .frame(width: 28, height: 28)
-                .background(tint, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .shadow(color: tint.opacity(0.28), radius: 4, y: 1)
+                .background(
+                    palette.accent.opacity(0.13),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .foregroundStyle(palette.primaryText)
-                if !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(palette.secondaryText)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            Text(title)
+                .foregroundStyle(palette.primaryText)
 
             Spacer(minLength: 8)
 
@@ -354,7 +306,7 @@ struct SettingsView: View {
                     .lineLimit(1)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
     }
 }
 

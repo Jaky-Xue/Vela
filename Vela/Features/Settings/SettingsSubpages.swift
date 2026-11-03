@@ -35,13 +35,11 @@ struct SitePermissionsSettingsView: View {
                 }
             } header: {
                 Text("默认行为")
-            } footer: {
-                Text("「询问」会在页面上弹出确认，答案只作用到当前会话；「以后对这个网站都这样」会把答案按网站保存。系统层面拒绝时，这里的「允许」不生效。")
             }
 
             Section {
                 if siteRules.isEmpty {
-                    Text("还没有按网站保存的权限。提示里打开「以后对这个网站都这样」后，记录会出现在这里。")
+                    Text("还没有按网站保存的权限")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -79,7 +77,7 @@ struct SitePermissionsSettingsView: View {
 
             Section {
                 if env.permissionAudit.records.isEmpty {
-                    Text("还没有访问记录。网页请求权限时会记录在这里。")
+                    Text("还没有访问记录")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -110,21 +108,17 @@ struct SitePermissionsSettingsView: View {
                 }
             } header: {
                 Text("访问记录")
-            } footer: {
-                Text("记录只保存网站、权限类型、结果和作用范围，不保存页面地址或内容；最多保留 500 条。")
             }
 
             Section {
                 Label("相机、麦克风与定位", systemImage: "camera")
             } header: {
                 Text("系统权限")
-            } footer: {
-                Text("网页的「允许」还要经过 iOS 对 Vela 本身的授权。请到「设置 ▸ Vela」中开启；定位在首次使用时会由系统另行询问。")
             }
         }
         .navigationTitle("网站权限")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
     }
 }
 
@@ -143,7 +137,7 @@ struct ElementHideSettingsView: View {
         List {
             if env.settings.manualElementHide.sites.isEmpty {
                 Section {
-                    Text("还没有隐藏任何元素。在网页上用「隐藏元素」选中一块区域后，会记录在这里。")
+                    Text("还没有隐藏任何元素")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -177,7 +171,7 @@ struct ElementHideSettingsView: View {
         }
         .navigationTitle("隐藏的元素")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
     }
 }
 
@@ -201,8 +195,6 @@ struct ExternalNavigationSettingsView: View {
                 .pickerStyle(.segmented)
             } header: {
                 Text("默认行为")
-            } footer: {
-                Text("「唤起 App」链接（bilibili:// 等）默认被拦下；这里决定例外网站和 tel:、mailto: 等系统链接的处理。")
             }
 
             Section {
@@ -216,8 +208,6 @@ struct ExternalNavigationSettingsView: View {
                 }
             } header: {
                 Text("添加例外")
-            } footer: {
-                Text("填入主机名即可，不必带 https://。")
             }
 
             if !env.settings.preferences.externalNavigationRules.isEmpty {
@@ -247,14 +237,12 @@ struct ExternalNavigationSettingsView: View {
                     }
                 } header: {
                     Text("网站例外")
-                } footer: {
-                    Text("在弹窗里选择「总是允许此网站」也会把网站加到这里的。")
                 }
             }
         }
         .navigationTitle("外部应用跳转")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
     }
 
     /// Adds the typed host as an exception, defaulting to asking.
@@ -325,7 +313,7 @@ struct ClearDataView: View {
         }
         .navigationTitle("清除浏览数据")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
         .onAppear {
             // The counts come from the published history list, which is no
             // longer refreshed on every page load.
@@ -395,13 +383,8 @@ struct DownloadSettingsView: View {
                         env.settings.updateDownloadSettings { $0.directoryPreference = preference }
                     } label: {
                         HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(preference.displayName).foregroundStyle(.primary)
-                                Text(preference.detail)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.leading)
-                            }
+                            Text(preference.displayName)
+                                .foregroundStyle(.primary)
                             Spacer(minLength: 0)
                             if env.settings.downloadSettings.directoryPreference == preference {
                                 Image(systemName: "checkmark").foregroundStyle(.tint)
@@ -411,8 +394,6 @@ struct DownloadSettingsView: View {
                 }
             } header: {
                 Text("保存位置")
-            } footer: {
-                Text("下载保存在 Vela 的文件夹，或下载时自选位置。")
             }
 
             Section {
@@ -424,8 +405,6 @@ struct DownloadSettingsView: View {
                     get: { env.settings.downloadSettings.autoRemoveCompleted },
                     set: { value in env.settings.updateDownloadSettings { $0.autoRemoveCompleted = value } }
                 ))
-            } footer: {
-                Text("只删除列表条目，文件保留。")
             }
 
             Section {
@@ -460,12 +439,10 @@ struct DownloadSettingsView: View {
                 }
             } header: {
                 Text("传输")
-            } footer: {
-                Text("分片下载需要服务器支持 Range；服务器不支持时会自动退回单连接。超出并发数量的任务会进入队列，按创建顺序开始。")
             }
         }
         .navigationTitle("下载")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
     }
 }

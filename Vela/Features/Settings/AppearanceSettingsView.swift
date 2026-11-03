@@ -43,8 +43,6 @@ struct AppearanceSettingsView: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
             } header: {
                 Text("外观模式")
-            } footer: {
-                Text("「跟随系统」随系统设置实时切换；也可以直接轻点上面的浅色或深色预览立即切换。")
             }
 
             Section {
@@ -59,13 +57,8 @@ struct AppearanceSettingsView: View {
                                 .overlay {
                                     Circle().strokeBorder(palette.cardStroke, lineWidth: 0.5)
                                 }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(candidate.displayName)
-                                    .foregroundStyle(palette.primaryText)
-                                Text("\(candidate.light.accent.hexDescription) · \(candidate.dark.accent.hexDescription)")
-                                    .font(.caption2)
-                                    .foregroundStyle(palette.secondaryText)
-                            }
+                            Text(candidate.displayName)
+                                .foregroundStyle(palette.primaryText)
                             Spacer()
                             if env.settings.preferences.themePaletteId == candidate.id {
                                 Image(systemName: "checkmark")
@@ -112,13 +105,8 @@ struct AppearanceSettingsView: View {
                     } label: {
                         HStack(spacing: 12) {
                             BackgroundStyleSwatch(style: style)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(style.displayName)
-                                    .foregroundStyle(palette.primaryText)
-                                Text(style.summary)
-                                    .font(.caption2)
-                                    .foregroundStyle(palette.secondaryText)
-                            }
+                            Text(style.displayName)
+                                .foregroundStyle(palette.primaryText)
                             Spacer()
                             if env.settings.backgroundStyle == style {
                                 Image(systemName: "checkmark")
@@ -129,8 +117,6 @@ struct AppearanceSettingsView: View {
                 }
             } header: {
                 Text("背景")
-            } footer: {
-                Text("背景作用于主页、设置、书架与浮层，玻璃工具栏会折射它。网页本身保持网站自己的颜色；选择自定义图片时，下方样式暂不显示。")
             }
 
             Section {
@@ -185,13 +171,11 @@ struct AppearanceSettingsView: View {
                 .tint(palette.accent)
             } header: {
                 Text("主页图标")
-            } footer: {
-                Text("主页显示收藏的网站。图标大小、形状和间距即时生效；背景图片在上方「背景」中设置，它同时作用于主页与工具栏。")
             }
         }
         .navigationTitle("外观")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
         .sheet(isPresented: $showPhotoPicker) {
             PhotoLibraryPicker { image in
                 saveBackgroundImage(image)

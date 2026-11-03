@@ -47,8 +47,6 @@ struct PrivateBrowsingSettingsView: View {
                 ))
             } header: {
                 Text("身份验证")
-            } footer: {
-                Text("开启后，查看无痕标签页、切换无痕模式、从侧边栏进入无痕列表，都会先通过系统的面容 ID、触控 ID 或设备密码。验证只在应用处于前台时有效，退到后台或结束无痕会话后会重新锁定。")
             }
 
             Section {
@@ -82,8 +80,6 @@ struct PrivateBrowsingSettingsView: View {
                 ))
             } header: {
                 Text("标签页预览")
-            } footer: {
-                Text("模糊的是标签卡里的网页截图，卡片本身和关闭按钮保持清晰。无痕标签卡不显示页面标题。关闭模糊需要先通过面容 ID、触控 ID 或设备密码验证。")
             }
 
             Section {
@@ -92,12 +88,12 @@ struct PrivateBrowsingSettingsView: View {
             } header: {
                 Text("当前状态")
             } footer: {
-                Text("无痕标签页只存在于本次前台会话：退到后台或离开无痕模式时，标签页和网页数据都会被清除。")
+                Text("退到后台或离开无痕模式时，标签页与网页数据会被清除。")
             }
         }
         .navigationTitle("无痕模式")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
         .alert(
             "无法完成验证",
             isPresented: Binding(

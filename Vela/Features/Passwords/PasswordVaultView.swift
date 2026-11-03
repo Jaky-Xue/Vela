@@ -267,8 +267,6 @@ struct PasswordVaultView: View {
                         }
                     }
                 }
-            } footer: {
-                Text("密码只保存在本机钥匙串中，使用面容 ID / 触控 ID 或设备密码解锁，不会同步到其他设备。")
             }
 
             Section {
@@ -276,12 +274,10 @@ struct PasswordVaultView: View {
                     get: { env.settings.preferences.vaultRequireBiometrics ?? true },
                     set: { value in env.settings.update { $0.vaultRequireBiometrics = value } }
                 ))
-            } footer: {
-                Text("关闭后，打开保险箱不再要求面容 ID / 触控 ID 或设备密码；条目仍然只存放在钥匙串中。")
             }
         }
         .listStyle(.insetGrouped)
-        .browserListSurface(rowsAreCards: true)
+        .settingsList()
     }
 
     private func credentialRow(_ credential: VaultCredential) -> some View {
@@ -477,12 +473,10 @@ struct PasswordDetailView: View {
                     } label: {
                         Label("删除密码", systemImage: "trash")
                     }
-                } footer: {
-                    Text("创建于 \(record.createdAt.formatted(date: .abbreviated, time: .shortened))")
                 }
             }
             .listStyle(.insetGrouped)
-            .browserListSurface(rowsAreCards: true)
+            .settingsList()
             .navigationTitle(record.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -618,13 +612,6 @@ struct PasswordEditorView: View {
                     }
                 } header: {
                     Text("密码")
-                } footer: {
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                    } else {
-                        Text("保存后，密码只写入 iOS 钥匙串，不进入设置或数据库。")
-                    }
                 }
 
                 Section("备注") {

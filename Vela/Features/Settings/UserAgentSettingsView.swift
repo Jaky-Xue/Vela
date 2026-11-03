@@ -27,19 +27,6 @@ struct UserAgentSettingsView: View {
         return BrowserUserAgentPreset.all.first { $0.userAgent == stored }
     }
 
-    /// The name of what is in force. With the desktop-site toggle on and no
-    /// preset chosen, the identity is Vela's default in its desktop form —
-    /// saying just 「Vela 默认」 there would contradict the string below it.
-    private var effectivePresetTitle: String {
-        guard let preset = selectedPreset else { return "自定义" }
-        if preset.id == BrowserUserAgentPreset.all[0].id,
-           env.settings.preferences.customUserAgent.isEmpty,
-           env.settings.preferences.desktopSiteByDefault {
-            return "\(preset.title) · 桌面版"
-        }
-        return preset.title
-    }
-
     /// The string the next request will actually carry, computed the way the
     /// web view computes it — through `BrowserUserAgent.identity`, which is
     /// the one place that answers the question. Reading the stored fields
@@ -59,22 +46,9 @@ struct UserAgentSettingsView: View {
     var body: some View {
         List {
             Section {
-                HStack {
-                    Text("默认网页标识")
-                    Spacer(minLength: 8)
-                    Text(effectivePresetTitle)
-                        .foregroundStyle(.secondary)
-                }
-            } footer: {
-                Text("选择后，之后打开的页面都会以它出现。视频网站（如 YouTube）始终使用移动版 Safari 标识，以保证播放与字幕可用。")
-            }
-
-            Section {
                 presetRow(BrowserUserAgentPreset.all[0])
             } header: {
                 Text("自动")
-            } footer: {
-                Text("初始使用当前设备对应的标识：iPhone 用手机版，iPad 用平板版，Mac 用桌面版。手动选择下面的预设或填写自定义标识会覆盖它。")
             }
 
             Section("移动端网页") {
@@ -113,8 +87,6 @@ struct UserAgentSettingsView: View {
                 }
             } header: {
                 Text("自定义标识")
-            } footer: {
-                Text("填写后覆盖上面选择的预设。")
             }
 
             Section {
@@ -141,13 +113,11 @@ struct UserAgentSettingsView: View {
                 }
             } header: {
                 Text("当前标识")
-            } footer: {
-                Text("这是下一个页面请求实际会携带的字符串。")
             }
         }
         .navigationTitle("网页标识")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
     }
 
     /// One preset row with the reference screen's radio affordance: an empty
@@ -178,7 +148,7 @@ struct UserAgentSettingsView: View {
                 Spacer(minLength: 8)
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20, weight: .light))
-                    .foregroundStyle(isSelected ? Color.blue : Color.secondary.opacity(0.55))
+                    .foregroundStyle(isSelected ? palette.accent : palette.secondaryText.opacity(0.55))
             }
             .contentShape(Rectangle())
         }

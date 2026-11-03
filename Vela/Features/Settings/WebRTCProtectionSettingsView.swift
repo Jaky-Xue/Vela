@@ -24,18 +24,10 @@ struct WebRTCProtectionSettingsView: View {
     var body: some View {
         List {
             Section {
-                Toggle(isOn: Binding(
+                Toggle("启用 WebRTC 泄露防护", isOn: Binding(
                     get: { isEnabled },
                     set: { applyEnabled($0) }
-                )) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("启用 WebRTC 泄露防护")
-                        Text(isEnabled ? "文档开始脚本会按下方模式处理 peer connection。" : "关闭后不注入任何脚本，网页按引擎默认行为运行。")
-                            .font(.caption2)
-                            .foregroundStyle(palette.secondaryText)
-                    }
-                }
-                .tint(palette.accent)
+                ))
             } header: {
                 Text("防护开关")
             }
@@ -78,20 +70,12 @@ struct WebRTCProtectionSettingsView: View {
                 }
             } header: {
                 Text("防护模式")
-            } footer: {
-                Text("选择任一模式会自动打开防护。脚本在每个 frame 的文档开始时安装，先于网页自己的脚本；修改后会重新载入当前页面。")
             }
 
-            Section("说明") {
-                LabeledContent("当前状态", value: isEnabled ? selection.displayName : "已关闭")
-                Text("「防泄露」过滤带私有地址的 host 候选；「仅中继」强制 relay，需要网站自己的 TURN 服务；「完全禁用」会让依赖 WebRTC 的网页功能失效。本机地址必须完全不出现在任何信令中时，请选择「仅中继」。")
-                    .font(.footnote)
-                    .foregroundStyle(palette.secondaryText)
-            }
         }
         .navigationTitle("WebRTC 泄露防护")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
     }
 
     private func applyEnabled(_ enabled: Bool) {

@@ -47,26 +47,18 @@ struct ToolbarSettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-            } footer: {
-                Text(placement == .pad
-                     ? "iPad 顶部工具栏的侧边栏按钮和菜单是固定的，中间始终是地址栏；下面编辑两侧的其余控件。"
-                     : "手机布局的底部工具栏，地址栏固定在中间。")
             }
 
             Section {
                 controls(for: .leading)
             } header: {
                 sideHeader(.leading)
-            } footer: {
-                Text("拖动右侧手柄调整顺序，向左轻扫移除。")
             }
 
             Section {
                 controls(for: .trailing)
             } header: {
                 sideHeader(.trailing)
-            } footer: {
-                Text("每侧最多 \(ToolbarLayout.maximumPerSide) 个控件，中间始终是地址栏。")
             }
 
             Section {
@@ -85,7 +77,7 @@ struct ToolbarSettingsView: View {
         }
         .navigationTitle("工具栏")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
         .toolbar {
             EditButton()
         }

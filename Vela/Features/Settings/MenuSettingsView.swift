@@ -38,8 +38,6 @@ struct MenuSettingsView: View {
                     Spacer()
                     addMenu
                 }
-            } footer: {
-                Text("拖动排序，左滑移除。移除的内置项会进入下方「已隐藏」，随时可以加回来。")
             }
 
             if !layout.hiddenTiles.isEmpty {
@@ -64,8 +62,6 @@ struct MenuSettingsView: View {
                     }
                 } header: {
                     Text("已隐藏")
-                } footer: {
-                    Text("点一下即可重新显示在菜单中。")
                 }
             }
 
@@ -104,13 +100,11 @@ struct MenuSettingsView: View {
                     env.settings.menuLayout = layout.reset()
                 }
                 .foregroundStyle(palette.accent)
-            } footer: {
-                Text("恢复后，所有内置项按默认顺序显示，自定义快捷方式会被移除。")
             }
         }
         .navigationTitle("菜单面板")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
         .toolbar {
             EditButton()
         }
@@ -212,8 +206,6 @@ struct MenuShortcutEditorView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
-                } footer: {
-                    Text("没有写协议的网址会按 https 打开。")
                 }
 
                 Section("图标") {
@@ -250,7 +242,7 @@ struct MenuShortcutEditorView: View {
             }
             .navigationTitle("新建快捷方式")
             .navigationBarTitleDisplayMode(.inline)
-            .browserListSurface()
+            .settingsList()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") {

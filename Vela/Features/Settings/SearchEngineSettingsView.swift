@@ -52,8 +52,6 @@ struct SearchEngineSettingsView: View {
                 }
             } header: {
                 Text("在地址栏中可切换的引擎")
-            } footer: {
-                Text("关闭的引擎不出现在地址栏的切换列表里。")
             }
 
             Section {
@@ -84,8 +82,6 @@ struct SearchEngineSettingsView: View {
                 }
             } header: {
                 Text("自定义引擎")
-            } footer: {
-                Text("网址模板中用 {searchTerms} 表示搜索词。")
             }
 
             Section {
@@ -115,13 +111,11 @@ struct SearchEngineSettingsView: View {
                 ))
             } header: {
                 Text("搜索建议")
-            } footer: {
-                Text("关闭后地址栏不再显示任何建议。联网搜索推荐会在输入时向当前搜索引擎请求建议；无痕标签页始终只用本地记录，不会发出请求。")
             }
         }
         .navigationTitle("搜索引擎")
         .navigationBarTitleDisplayMode(.inline)
-        .browserListSurface()
+        .settingsList()
         .sheet(isPresented: $showingCustomEngineForm) {
             CustomSearchEngineForm(engine: nil) { engine in
                 env.settings.addCustomSearchEngine(engine)
@@ -171,8 +165,6 @@ private struct CustomSearchEngineForm: View {
                         .keyboardType(.URL)
                 } header: {
                     Text("网址模板")
-                } footer: {
-                    Text("用 {searchTerms} 表示搜索词。")
                 }
                 Section("主页（可选）") {
                     TextField("https://example.com", text: $homepage)
@@ -183,7 +175,7 @@ private struct CustomSearchEngineForm: View {
             }
             .navigationTitle(engine == nil ? "添加搜索引擎" : "编辑搜索引擎")
             .navigationBarTitleDisplayMode(.inline)
-            .browserListSurface()
+            .settingsList()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }

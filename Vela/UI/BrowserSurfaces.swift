@@ -105,6 +105,34 @@ extension View {
     }
 }
 
+// MARK: - Settings list
+
+/// The one treatment every settings screen uses.
+///
+/// The palette surface and the card rows already come from
+/// `browserListSurface`; this adds the two things a settings screen needs on
+/// top of it — the palette's accent on every switch, checkmark and segmented
+/// selection, so the controls stop being system blue against a themed
+/// surface, and one section rhythm across pages that each used to pick their
+/// own spacing.
+struct SettingsListStyle: ViewModifier {
+    @Environment(\.browserPalette) private var palette
+
+    func body(content: Content) -> some View {
+        content
+            .browserListSurface()
+            .tint(palette.accent)
+            .listSectionSpacing(14)
+    }
+}
+
+extension View {
+    /// Applies the settings screens' shared list treatment.
+    func settingsList() -> some View {
+        modifier(SettingsListStyle())
+    }
+}
+
 // MARK: - Floating chrome
 
 /// The treatment for a control that floats above the page rather than being a
