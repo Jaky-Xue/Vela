@@ -281,7 +281,7 @@ extension BrowserShellView {
         let image = renderer.image { _ in
             if let snapshot {
                 snapshot.frame = bounds
-                snapshot.drawHierarchy(in: bounds, afterScreenUpdates: true)
+                snapshot.drawHierarchy(in: bounds, afterScreenUpdates: false)
             } else {
                 window.drawHierarchy(in: bounds, afterScreenUpdates: false)
             }
