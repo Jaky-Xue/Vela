@@ -213,20 +213,20 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         //    this point after the request was built with the previous page's
         //    identifier. A YouTube link opened from another page therefore
         //    carried the iPad identifier and was served the desktop site — the
-        //    player this engine cannot caption. The load is cancelled and
+        //    player this engine cannot caption. The same gap ran the other way:
+        //    leaving a video site kept the phone identifier on the next host,
+        //    while the layout came from the new host. The load is cancelled and
         //    re-issued once, the way the app-link rewrite below does it, under
-        //    the identifier the destination host needs.
-        if navigationAction.navigationType == .linkActivated
+        //    the identity the destination needs.
+        if !tab.isOfflinePage,
+           navigationAction.navigationType == .linkActivated
             || navigationAction.navigationType == .other,
-           let host = url.host,
-           BrowserUserAgent.isVideoSiteHost(host),
            pendingIdentityReloads.remove(url.absoluteString) == nil {
-            let identity = BrowserUserAgent.identity(
-                custom: settings.preferences.customUserAgent,
-                prefersDesktop: settings.preferences.desktopSiteByDefault,
-                host: host
-            )
-            if webView.customUserAgent != identity.customUserAgent {
+            let identity = webIdentity(for: tab, url: url)
+            // `customUserAgent` reads back as the empty string after an
+            // assignment of nil, so the two spellings of "no override" are
+            // compared as one.
+            if (webView.customUserAgent ?? "") != (identity.customUserAgent ?? "") {
                 if pendingIdentityReloads.count > 16 {
                     pendingIdentityReloads.removeAll()
                 }
