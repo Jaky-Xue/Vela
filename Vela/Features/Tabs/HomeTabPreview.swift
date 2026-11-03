@@ -27,6 +27,10 @@ struct HomeTabPreview: View {
         [palette.accent, .blue, .green, .orange, .pink, .purple]
     }
 
+    /// Single-letter marks on the favourite tiles, so the miniature reads as a
+    /// shelf of sites rather than as a row of anonymous squares.
+    private let marks = ["V", "G", "B", "Y", "N", "R"]
+
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
@@ -53,8 +57,9 @@ struct HomeTabPreview: View {
                 )
 
                 VStack(alignment: .leading, spacing: max(6, height * 0.035)) {
-                    // 收藏
-                    bar(width: width * 0.16, height: max(3.5, height * 0.018))
+                    Text("收藏")
+                        .font(.system(size: max(7, width * 0.045), weight: .semibold))
+                        .foregroundStyle(palette.primaryText.opacity(isPrivate ? 0.3 : 0.78))
 
                     VStack(alignment: .leading, spacing: gap) {
                         ForEach(0..<2, id: \.self) { row in
@@ -71,8 +76,9 @@ struct HomeTabPreview: View {
                     }
 
                     if !compact {
-                        // 最近关闭
-                        bar(width: width * 0.2, height: max(3, height * 0.014))
+                        Text("最近关闭")
+                            .font(.system(size: max(6.5, width * 0.038), weight: .semibold))
+                            .foregroundStyle(palette.secondaryText.opacity(isPrivate ? 0.24 : 0.65))
                             .padding(.top, 1)
                         recentlyClosedCard(width: width)
                     }
@@ -98,9 +104,16 @@ struct HomeTabPreview: View {
 
     private func tileView(index: Int, size: CGFloat) -> some View {
         VStack(spacing: max(3, size * 0.1)) {
-            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                .fill(tints[index % tints.count].opacity(isPrivate ? 0.24 : 0.78))
-                .frame(width: size, height: size)
+            ZStack {
+                RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                    .fill(tints[index % tints.count].opacity(isPrivate ? 0.24 : 0.78))
+                if !isPrivate {
+                    Text(marks[index % marks.count])
+                        .font(.system(size: size * 0.34, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.92))
+                }
+            }
+            .frame(width: size, height: size)
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                 .fill(palette.secondaryText.opacity(isPrivate ? 0.13 : 0.34))
                 .frame(width: size * 0.68, height: max(2, size * 0.07))
@@ -137,11 +150,5 @@ struct HomeTabPreview: View {
             palette.card.opacity(isPrivate ? 0.25 : 0.62),
             in: RoundedRectangle(cornerRadius: max(6, width * 0.035), style: .continuous)
         )
-    }
-
-    private func bar(width: CGFloat, height: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: height / 2, style: .continuous)
-            .fill(palette.primaryText.opacity(isPrivate ? 0.28 : 0.58))
-            .frame(width: width, height: height)
     }
 }
