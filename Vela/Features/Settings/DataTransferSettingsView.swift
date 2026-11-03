@@ -142,11 +142,24 @@ struct DataTransferSettingsView: View {
         }
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        guard isWithinSizeLimit(url, bytes: 20 * 1024 * 1024) else {
+            summary = "文件超过 20 MB，已拒绝导入。"
+            return
+        }
         guard let html = try? String(contentsOf: url, encoding: .utf8) else {
             summary = "无法读取这个文件。"
             return
         }
         summary = transfer.importBookmarks(html: html).message
+    }
+
+    /// A user-supplied file is parsed in memory, so its size is checked before
+    /// it is read. A bookmark file is a few kilobytes; anything this large is
+    /// not what the format is for.
+    private func isWithinSizeLimit(_ url: URL, bytes limit: Int) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+        guard let size = values?.fileSize else { return true }
+        return size <= limit
     }
 
     private func importHistory(_ result: Result<[URL], Error>) {
@@ -156,6 +169,10 @@ struct DataTransferSettingsView: View {
         }
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        guard isWithinSizeLimit(url, bytes: 50 * 1024 * 1024) else {
+            summary = "文件超过 50 MB，已拒绝导入。"
+            return
+        }
         guard let data = try? Data(contentsOf: url) else {
             summary = "无法读取这个文件。"
             return

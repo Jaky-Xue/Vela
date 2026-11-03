@@ -33,7 +33,6 @@ public struct ImportedBookmarkNode: Identifiable, Sendable, Equatable {
         self.children = children
     }
 
-    public var isFolder: Bool { url == nil }
 }
 
 public enum BookmarkExchange {

@@ -42,7 +42,7 @@ struct ContentBlockerSettingsView: View {
 
             Section {
                 LabeledContent("规则数量") {
-                    Text(blocker.isReady ? "\(blocker.ruleCount) 条" : "编译中…")
+                    Text(ruleCountText)
                         .foregroundStyle(palette.secondaryText)
                 }
                 if let loadedAt = blocker.loadedAt {
@@ -79,12 +79,12 @@ struct ContentBlockerSettingsView: View {
                             .font(.footnote)
                     }
                     .onDelete { offsets in
-                        let hosts = settings.whitelistedHosts
+                        let current = settings.whitelistedHosts
+                        let removing = offsets.compactMap { index in
+                            current.indices.contains(index) ? current[index] : nil
+                        }
                         env.settings.updateContentBlocker { preferences in
-                            preferences.whitelistedHosts.removeAll { host in
-                                guard let index = hosts.firstIndex(of: host) else { return false }
-                                return offsets.contains(index)
-                            }
+                            preferences.whitelistedHosts.removeAll { removing.contains($0) }
                         }
                         env.applyContentBlockerSettings()
                     }
@@ -105,6 +105,15 @@ struct ContentBlockerSettingsView: View {
         .navigationTitle("广告拦截")
         .navigationBarTitleDisplayMode(.inline)
         .settingsList()
+    }
+
+    /// The count, or the state that explains why there is no count yet. An
+    /// error is not "编译中" — saying so would leave the screen waiting for a
+    /// compile that already failed.
+    private var ruleCountText: String {
+        if blocker.isReady { return "\(blocker.ruleCount) 条" }
+        if blocker.isCompiling { return "编译中…" }
+        return "未就绪"
     }
 
     private func isWhitelisted(_ host: String?) -> Bool {

@@ -315,26 +315,3 @@ enum BrowserUrlResolver {
     }
 }
 
-/// A determinate progress ring.
-///
-/// Not `ProgressView(.circular)` because the built-in one ignores a fractional
-/// value in its circular style on iOS and shows an indeterminate spinner, which
-/// for a progress indicator is worse than showing nothing.
-///
-/// The address bar no longer uses this — it draws the 2 pt line in
-/// `OmniboxView` — but the tab overview still marks a loading tab with it.
-struct ProgressRing: View {
-    var progress: Double
-    var lineWidth: CGFloat = 2
-
-    var body: some View {
-        Circle()
-            .trim(from: 0, to: max(0.02, min(1, progress)))
-            .stroke(
-                Color.accentColor,
-                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-            )
-            .rotationEffect(.degrees(-90))
-            .animation(.easeOut(duration: 0.15), value: progress)
-    }
-}

@@ -100,8 +100,6 @@ public struct SiteDisplaySettings: Codable, Equatable, Sendable {
         self.modes = modes
     }
 
-    public var count: Int { modes.count }
-
     /// The most specific rule that covers this page, if any.
     public func mode(forPageHost host: String) -> BrowserSiteDisplayMode? {
         for candidate in BrowserSiteHost.candidates(for: host) {

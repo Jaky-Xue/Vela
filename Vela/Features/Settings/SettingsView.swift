@@ -125,7 +125,7 @@ struct SettingsView: View {
                     ContentBlockerSettingsView()
                 } label: {
                     settingsRow(
-                        icon: "shield.lefthalf.filled",
+                        icon: "shield",
                         title: "广告拦截",
                         detail: contentBlockerDetail
                     )
@@ -282,8 +282,8 @@ struct SettingsView: View {
     private var contentBlockerDetail: String {
         guard env.settings.contentBlocker.enabled else { return "已关闭" }
         let blocker = env.services.contentBlocker
-        guard blocker.isReady else { return "编译中" }
-        return "\(blocker.ruleCount) 条规则"
+        if blocker.isReady { return "\(blocker.ruleCount) 条规则" }
+        return blocker.isCompiling ? "编译中" : "未就绪"
     }
 
     /// What the 网页标识 row says is in force — the same answer the identifier
@@ -347,7 +347,7 @@ struct SettingsView: View {
 
 /// A settings screen a context can ask for by name.
 ///
-/// The settings sheet is one NavigationStack; a context that says "翻译设置"
+/// The settings sheet is one NavigationStack; a context that says "网页标识"
 /// should land on that screen rather than on the root. Every case here has a
 /// row in `SettingsView`, so a deep link and the list cannot describe
 /// different screens.
@@ -357,6 +357,8 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
     case searchEngine
     case userAgent
     case userScripts
+    case contentBlocker
+    case dataTransfer
     case passwords
     case privateBrowsing
     case sitePermissions
@@ -378,6 +380,8 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
         case .searchEngine: SearchEngineSettingsView()
         case .userAgent: UserAgentSettingsView()
         case .userScripts: UserScriptsView()
+        case .contentBlocker: ContentBlockerSettingsView()
+        case .dataTransfer: DataTransferSettingsView()
         case .passwords: PasswordVaultView()
         case .privateBrowsing: PrivateBrowsingSettingsView()
         case .sitePermissions: SitePermissionsSettingsView()

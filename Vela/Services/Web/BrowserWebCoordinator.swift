@@ -966,7 +966,12 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
               let array = String(data: data, encoding: .utf8), array.count >= 2 else {
             return "\"\""
         }
+        // JSON leaves the JavaScript line separators unescaped; inside a JS
+        // string literal they would end the line and break the script, so they
+        // are written as escapes here.
         return String(array.dropFirst().dropLast())
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 }
 

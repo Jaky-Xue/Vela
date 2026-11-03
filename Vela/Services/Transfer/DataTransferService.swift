@@ -100,7 +100,9 @@ public struct DataTransferService {
         var added = 0
         var skipped = 0
         for entry in entries {
-            guard let url = URL(string: entry.url), url.scheme != nil else {
+            guard let url = URL(string: entry.url),
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https" else {
                 skipped += 1
                 continue
             }

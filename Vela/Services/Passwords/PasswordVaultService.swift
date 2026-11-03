@@ -224,8 +224,13 @@ public final class PasswordVaultService {
               let text = String(data: data, encoding: .utf8) else {
             return "\"\""
         }
-        // `["..."]` minus the brackets is the quoted, escaped string.
+        // `["..."]` minus the brackets is the quoted, escaped string. JSON does
+        // not escape the JavaScript line separators, and a credential that
+        // contains one would otherwise end the string literal and break the
+        // injected script.
         return String(text.dropFirst().dropLast())
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 
     static func fillScript(username: String, password: String) -> String {

@@ -38,23 +38,6 @@ public enum DownloadStatus: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// On iOS the equivalent fact is
-/// whether `WKDownload` produced resume data, which the delegate only reports
-/// once a transfer has actually started.
-public enum DownloadResumeCapability: String, Codable, Sendable, CaseIterable {
-    case unknown
-    case resumable
-    case notResumable = "not_resumable"
-
-    public var displayName: String {
-        switch self {
-        case .unknown: return "未知"
-        case .resumable: return "支持断点续传"
-        case .notResumable: return "不支持断点续传"
-        }
-    }
-}
-
 public struct DownloadFailure: Codable, Equatable, Sendable {
     public var reason: String
     public var errorCode: Int
