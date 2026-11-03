@@ -480,21 +480,20 @@ extension BrowserShellView {
                             ? padTopChromeHeight
                             : safeTop,
                         protectsStatusBar: protectsTop,
-                        // The page's layout viewport ends where the command
-                        // bar begins, not merely scrolls clear of it: fixed
-                        // footers, `100vh` layouts and pages that scroll
-                        // inside their own container all position themselves
-                        // against the web view's frame. The home-indicator
-                        // inset is the host's to add. Hiding the bar gives
-                        // the document the whole screen back.
+                        statusBarStrip: safeTop,
+                        // The page stays full bleed and keeps painting under
+                        // the glass. The host adds the home-indicator inset
+                        // and tells WebKit which part the bar covers, so fixed
+                        // footers, sticky bars and `100vh` layouts end above
+                        // it; the scroll inset keeps the document's own last
+                        // lines reachable. Hiding the bar gives the document
+                        // the whole screen back.
                         bottomChromeHeight: (usesPadLayout || chromeHidden)
                             ? 0
                             : BrowserChrome.barHeight + BrowserChrome.barGap,
-                        // The strip the bar sits in belongs to the shell now,
-                        // so it is painted in the page's own background. The
-                        // palette is the honest fallback for a document that
-                        // has not reported yet.
-                        pageBackdrop: Color(cssColor: tab.pageBackground) ?? palette.surface,
+                        // Behind the page while it bounces; the page itself
+                        // covers the screen, so the bar samples the document.
+                        pageColor: Color(cssColor: tab.pageBackground) ?? palette.surface,
                         // Applied when the view is actually attached: an
                         // off-screen web view has no zoomable geometry.
                         allowsGestureZoom: env.settings.preferences.forcedZoomEnabled ?? false,
@@ -506,12 +505,15 @@ extension BrowserShellView {
                         }
                     )
                     .id("web-\(tab.id)")
-                    // The page runs under the status bar, and under the home
-                    // indicator when the bar is hidden; while the bar is up
-                    // its frame stops at the bar's top edge. The container
-                    // still fills the window either way, which is what lets
-                    // the chrome sample a surface that reaches every edge.
-                    .ignoresSafeArea(.all)
+                    // 顶部保护 on: let SwiftUI end the host at the top safe
+                    // area, so the page cannot paint under the clock
+                    // regardless of what the window's inset reports say. Off:
+                    // the page runs edge to edge under the status bar too, and
+                    // the scroll inset keeps its first line clear. The bottom
+                    // is always full bleed; the bar's obstruction is told to
+                    // WebKit rather than carved out of the frame, so the
+                    // document still reaches the screen's bottom edge.
+                    .ignoresSafeArea(edges: protectsTop ? [.bottom, .horizontal] : .all)
                 } else {
                     // A cold tab with no web view at all. Materialising happens
                     // in `onAppear` rather than here: creating a web view during

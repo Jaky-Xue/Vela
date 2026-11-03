@@ -69,34 +69,32 @@ struct WebViewHost: UIViewRepresentable {
     /// strip and the container clips, so the page never renders there at all
     /// and the shell's surface colour shows.
     let protectsStatusBar: Bool
-    /// How much bottom chrome the page has to leave clear: the command bar's
-    /// height plus its gap. The home-indicator inset is *not* included — the
-    /// container adds the window's own safe-area bottom, so the number stays
-    /// right on the first layout pass and through a rotation instead of
-    /// waiting for the shell's metrics to arrive.
+    /// The status-bar strip, measured from the window's top edge.
     ///
-    /// A scroll inset alone was not enough. It keeps the *document's* last
-    /// lines scrollable clear of the bar, but a page whose footer is
-    /// `position: fixed`, whose layout is built on `100vh`, or whose content
-    /// scrolls inside its own container still lays out against the full
-    /// window — so its bottom edge, and every control the site puts there,
-    /// was drawn underneath the bar and could not be reached. Ending the web
-    /// view's frame where the bar begins makes the page's whole layout
-    /// viewport visible instead, which is the arrangement every one of those
-    /// page shapes understands.
+    /// Passed by the shell as well as read from the window: the two come from
+    /// different measurements, and a first layout pass can see either one as
+    /// zero. Taking the larger of the two is what keeps 全局顶部保护 from
+    /// deciding there is no strip to reserve and leaving the page under the
+    /// clock.
+    let statusBarStrip: CGFloat
+    /// The command bar's height plus its gap, or zero when the page owns the
+    /// whole bottom edge.
     ///
-    /// Zero when there is nothing to clear: the iPad layout puts its
-    /// navigation at the top, and a hidden command bar hands the page the
-    /// whole screen back.
+    /// The page stays full bleed — it paints to the bottom edge behind the
+    /// glass — and WebKit is told about the obstruction instead of being
+    /// shrunk to avoid it. The container adds the window's home-indicator
+    /// inset, so the number stays right on the first layout pass and through a
+    /// rotation. On iOS 26 `obscuredContentInsets` ends the page's layout
+    /// viewport above the bar, so a site's fixed footer, sticky bar or `100vh`
+    /// layout lands where it can be seen; the scroll view's content inset
+    /// keeps the document's own last lines reachable. A scroll inset alone
+    /// left fixed footers behind the glass; a shrunken frame left a band below
+    /// the page.
     let bottomChromeHeight: CGFloat
-    /// The colour the page paints behind itself.
-    ///
-    /// With the page ending above the bar, the strip the bar sits in belongs
-    /// to the shell rather than to the web view. Filling it with the page's
-    /// own background colour makes the document read as continuing under the
-    /// glass; without it the app's backdrop (a picture, or the palette
-    /// surface) showed as a band beneath every site.
-    let pageBackdrop: Color
+    /// The colour the page paints behind itself, used behind the document
+    /// while it bounces. The page itself covers the screen, so the bar samples
+    /// the document rather than a painted strip.
+    let pageColor: Color
     /// Whether 强制网页缩放 is on. It does not pick a factor; it removes the
     /// page's zoom lock so the standard pinch gesture works.
     let allowsGestureZoom: Bool
@@ -125,29 +123,29 @@ struct WebViewHost: UIViewRepresentable {
         container.attach(webView)
         container.topContentOffset = topContentOffset
         container.protectsStatusBar = protectsStatusBar
-        container.bottomChromeHeight = bottomChromeHeight
-        let backdrop = UIColor(pageBackdrop)
-        container.pageBackdrop = backdrop
+        container.statusBarStrip = statusBarStrip
+
+        let pageColour = UIColor(pageColor)
         // Overscroll shows the colour WebKit paints behind the document;
         // matching it to the page keeps a dark site from flashing white at
         // either end of a bounce.
-        if webView.underPageBackgroundColor != backdrop {
-            webView.underPageBackgroundColor = backdrop
+        if webView.underPageBackgroundColor != pageColour {
+            webView.underPageBackgroundColor = pageColour
         }
 
         let scrollView = webView.scrollView
-        // WebKit's own inset adjustment is off: the top is the container's
-        // job, because it is the only view that knows where it sits relative
-        // to the window's status bar, and the bottom is the frame's — a
-        // content inset there would only add scrollable blank space beneath a
-        // page that already ends above the bar.
+        // WebKit's own inset adjustment is off: the container owns the top,
+        // because it is the only view that knows where it sits relative to the
+        // window's status bar.
         if scrollView.contentInsetAdjustmentBehavior != .never {
             scrollView.contentInsetAdjustmentBehavior = .never
         }
-        if scrollView.contentInset.bottom != 0 {
-            scrollView.contentInset.bottom = 0
-            scrollView.verticalScrollIndicatorInsets.bottom = 0
-        }
+
+        // The container owns both halves of the bottom geometry: it adds the
+        // window's home-indicator inset, applies the scroll inset that keeps
+        // the document's last lines reachable, and reports the same area to
+        // WebKit as obscured so fixed and sticky content ends above the bar.
+        container.bottomChromeHeight = bottomChromeHeight
 
         // Applying the zoom is deliberately not part of this update path.
         // SwiftUI re-runs it for every shell change — opening the omnibox,
@@ -339,44 +337,6 @@ final class WebViewContainerView: UIView {
     /// so a web view swapped in under memory pressure lands below the strip
     /// the previous one was held to.
     private var topConstraint: NSLayoutConstraint?
-    /// The bottom constraint's constant carries `resolvedBottom` across
-    /// re-attaches, for the same reason.
-    private var bottomConstraint: NSLayoutConstraint?
-
-    /// The command bar's height plus its gap, or zero when the page owns the
-    /// whole bottom edge.
-    var bottomChromeHeight: CGFloat = 0 {
-        didSet {
-            guard abs(bottomChromeHeight - oldValue) > 0.5 else { return }
-            updateBottomLayout()
-        }
-    }
-
-    /// How far above the container's bottom edge the web view is held.
-    private var resolvedBottom: CGFloat = 0 {
-        didSet {
-            bottomConstraint?.constant = -resolvedBottom
-            backdropHeight?.constant = resolvedBottom
-        }
-    }
-
-    /// Fills the strip the command bar sits in with the page's own background.
-    ///
-    /// A dedicated view rather than the container's own background: the
-    /// container also fronts the status-bar strip when 顶部保护 is on, and
-    /// painting that with a white page's colour would put the light status-bar
-    /// ink of a dark-mode app on white. Only the ground the bar stands on is
-    /// the page's.
-    private let backdrop = UIView()
-    private var backdropHeight: NSLayoutConstraint?
-
-    /// The colour behind the page, filling the strip the command bar sits in.
-    var pageBackdrop: UIColor = .clear {
-        didSet {
-            guard !pageBackdrop.isEqual(oldValue) else { return }
-            backdrop.backgroundColor = pageBackdrop
-        }
-    }
 
     /// Where the page's content should start, from the window's top edge.
     var topContentOffset: CGFloat = 0 {
@@ -388,13 +348,45 @@ final class WebViewContainerView: UIView {
         didSet { updateTopLayout() }
     }
 
+    /// The status-bar strip as the shell measured it. The window's own inset is
+    /// used as well; the larger of the two wins, so a first pass that reads
+    /// either as zero cannot leave the page under the clock.
+    var statusBarStrip: CGFloat = 0 {
+        didSet { updateTopLayout() }
+    }
+
+    /// The command bar's height plus its gap, or zero when the page owns the
+    /// whole bottom edge.
+    var bottomChromeHeight: CGFloat = 0 {
+        didSet {
+            guard abs(bottomChromeHeight - oldValue) > 0.5 else { return }
+            updateBottomLayout()
+        }
+    }
+
+    /// The part of the web view's top the status bar and top chrome cover.
+    private var resolvedTopInset: CGFloat = 0
+    /// The part of the web view's bottom the command bar and the home
+    /// indicator cover.
+    private var resolvedBottomInset: CGFloat = 0
+
     /// How much of the container's top the web view is held below.
     private var reservedTop: CGFloat = 0 {
         didSet { topConstraint?.constant = reservedTop }
     }
 
+    /// Observes the window's safe area, so a pass that ran before the insets
+    /// resolved is corrected even if no frame change follows.
+    private var safeAreaObservation: NSKeyValueObservation?
+
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        safeAreaObservation?.invalidate()
+        safeAreaObservation = window?.observe(\.safeAreaInsets, options: [.new]) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                self?.setNeedsLayout()
+            }
+        }
         updateTopLayout()
         updateBottomLayout()
     }
@@ -408,44 +400,46 @@ final class WebViewContainerView: UIView {
         updateBottomLayout()
     }
 
-    /// Resolves the bottom clearance from the window.
+    /// Resolves how much of the web view's bottom the chrome covers.
     ///
     /// The bar's top edge is `safeBottom + chromeHeight` above the window's
     /// bottom — the shell lays the floating bar out inside the safe area and
-    /// owes only its gap from there. The container can be flush with the
-    /// window's bottom (it is, on both layouts) or inside the safe area; the
-    /// subtraction against its own frame keeps either arrangement honest and
-    /// stops the home indicator being counted twice.
+    /// owes only its gap from there. Measuring against the container's own
+    /// frame keeps either arrangement honest and stops the home indicator
+    /// being counted twice.
     private func updateBottomLayout() {
-        ensureBackdrop()
-        guard let window, bottomChromeHeight > 0 else {
-            resolvedBottom = 0
+        guard let window else {
+            if resolvedBottomInset != 0 {
+                resolvedBottomInset = 0
+                applyBottomInsets()
+            }
             return
         }
-        let desiredFromWindow = window.safeAreaInsets.bottom + bottomChromeHeight
+        // Zero means the page owns the whole bottom edge — the bar is hidden,
+        // or this is the iPad layout — so the home indicator is not an
+        // obstruction to reserve for.
+        let barTopFromWindow = bottomChromeHeight > 0
+            ? window.safeAreaInsets.bottom + bottomChromeHeight
+            : 0
         let frameInWindow = convert(bounds, to: window)
         let containerBottomFromWindow = max(0, window.bounds.maxY - frameInWindow.maxY)
-        let resolved = max(0, desiredFromWindow - containerBottomFromWindow)
-        if abs(resolvedBottom - resolved) > 0.5 {
-            resolvedBottom = resolved
+        let resolved = max(0, barTopFromWindow - containerBottomFromWindow)
+        if abs(resolvedBottomInset - resolved) > 0.5 {
+            resolvedBottomInset = resolved
+            applyBottomInsets()
         }
     }
 
-    /// Installs the backdrop strip under the web view on first use.
-    private func ensureBackdrop() {
-        guard backdrop.superview == nil else { return }
-        backdrop.translatesAutoresizingMaskIntoConstraints = false
-        backdrop.isUserInteractionEnabled = false
-        backdrop.backgroundColor = pageBackdrop
-        insertSubview(backdrop, at: 0)
-        let height = backdrop.heightAnchor.constraint(equalToConstant: resolvedBottom)
-        NSLayoutConstraint.activate([
-            backdrop.leadingAnchor.constraint(equalTo: leadingAnchor),
-            backdrop.trailingAnchor.constraint(equalTo: trailingAnchor),
-            backdrop.bottomAnchor.constraint(equalTo: bottomAnchor),
-            height
-        ])
-        backdropHeight = height
+    /// The scroll inset that makes the document's end reachable above the bar
+    /// and the obscured inset that moves fixed, sticky and `100vh` content out
+    /// from under it. Both are the same number and serve different layers.
+    private func applyBottomInsets() {
+        if let scrollView = attachedWebView?.scrollView,
+           abs(scrollView.contentInset.bottom - resolvedBottomInset) > 0.5 {
+            scrollView.contentInset.bottom = resolvedBottomInset
+            scrollView.verticalScrollIndicatorInsets.bottom = resolvedBottomInset
+        }
+        applyObscuredInsets()
     }
 
     /// Resolves both halves of the top layout from the window.
@@ -465,6 +459,7 @@ final class WebViewContainerView: UIView {
         let resolved = Self.topLayout(
             originY: originY,
             safeTop: window.safeAreaInsets.top,
+            statusBarStrip: statusBarStrip,
             desiredContentTop: topContentOffset,
             protectsStatusBar: protectsStatusBar
         )
@@ -478,6 +473,36 @@ final class WebViewContainerView: UIView {
             scrollView.contentInset.top = resolved.inset
             scrollView.verticalScrollIndicatorInsets.top = resolved.inset
         }
+        if abs(resolvedTopInset - resolved.inset) > 0.5 {
+            resolvedTopInset = resolved.inset
+            applyObscuredInsets()
+        }
+    }
+
+    /// Tells WebKit where app-drawn chrome covers the page.
+    ///
+    /// `obscuredContentInsets` shrinks the layout viewport without moving the
+    /// painted page: the document still runs edge to edge under the glass,
+    /// while `position: fixed`, sticky bars and `100vh` sections land where
+    /// they can be seen. It is not a scroll inset — the content inset above
+    /// and below stays the reachability mechanism — which is why both are
+    /// set to the same numbers.
+    ///
+    /// The top value is the resolved scroll inset, not the window's safe area:
+    /// a host already below the status bar has nothing left to obscure, and
+    /// the iPad's floating top bar is chrome over the page exactly as the
+    /// phone's clock is.
+    private func applyObscuredInsets() {
+        guard #available(iOS 26.0, *), let webView = attachedWebView else { return }
+        let insets = UIEdgeInsets(
+            top: resolvedTopInset,
+            left: 0,
+            bottom: resolvedBottomInset,
+            right: 0
+        )
+        if webView.obscuredContentInsets != insets {
+            webView.obscuredContentInsets = insets
+        }
     }
 
     /// The pure arithmetic behind the top layout.
@@ -488,10 +513,15 @@ final class WebViewContainerView: UIView {
     nonisolated static func topLayout(
         originY: CGFloat,
         safeTop: CGFloat,
+        statusBarStrip: CGFloat? = nil,
         desiredContentTop: CGFloat,
         protectsStatusBar: Bool
     ) -> (reserved: CGFloat, inset: CGFloat) {
-        let reserved = protectsStatusBar ? max(0, safeTop - originY) : 0
+        // Two measurements of the same strip, taken in different places. The
+        // larger one wins: a zero from either source is a timing artefact, not
+        // an answer.
+        let strip = max(0, max(safeTop, statusBarStrip ?? 0))
+        let reserved = protectsStatusBar ? max(0, strip - originY) : 0
         let desired = max(0, desiredContentTop)
         let inset = max(0, desired - (originY + reserved))
         return (reserved, inset)
@@ -509,19 +539,21 @@ final class WebViewContainerView: UIView {
         webView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(webView)
         let top = webView.topAnchor.constraint(equalTo: topAnchor, constant: reservedTop)
-        let bottom = webView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -resolvedBottom)
         NSLayoutConstraint.activate([
             top,
-            bottom,
             webView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: trailingAnchor)
+            webView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            webView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
         topConstraint = top
-        bottomConstraint = bottom
         attachedWebView = webView
         // A re-attached web view inherits this container's current strip and
-        // scroll inset rather than whatever its previous container left.
+        // scroll inset rather than whatever its previous container left —
+        // including the obscured insets, which belong to the view and outlive
+        // a detach.
         updateTopLayout()
+        updateBottomLayout()
+        applyObscuredInsets()
     }
 
     /// Removes the web view from the hierarchy without releasing it.

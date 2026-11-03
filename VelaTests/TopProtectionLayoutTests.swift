@@ -76,4 +76,20 @@ final class TopProtectionLayoutTests: XCTestCase {
         XCTAssertEqual(safeArea.reserved, 0, accuracy: 0.001)
         XCTAssertEqual(safeArea.inset, 120, accuracy: 0.001)
     }
+
+    func testAStaleWindowInsetDoesNotDropTheProtectionStrip() {
+        // The shell's measurement and the window's are two readings of the
+        // same strip. A first pass that sees one of them as zero must still
+        // hold the page below the clock rather than treating the zero as an
+        // answer.
+        let layout = WebViewContainerView.topLayout(
+            originY: 0,
+            safeTop: 0,
+            statusBarStrip: 59,
+            desiredContentTop: 59,
+            protectsStatusBar: true
+        )
+        XCTAssertEqual(layout.reserved, 59, accuracy: 0.001)
+        XCTAssertEqual(layout.inset, 0, accuracy: 0.001)
+    }
 }

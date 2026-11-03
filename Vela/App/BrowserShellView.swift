@@ -553,11 +553,6 @@ struct BrowserShellView: View {
         .onChange(of: env.settings.preferences.themePaletteId) { _, _ in
             updateChromeForeground()
         }
-        .onChange(of: activeTab?.pageBackground) { _, _ in
-            // The page reported its own background, which is what the bar's
-            // glass now sits on. The ink follows it.
-            updateChromeForeground()
-        }
         .onChange(of: colorScheme) { _, _ in
             updateChromeForeground()
         }
