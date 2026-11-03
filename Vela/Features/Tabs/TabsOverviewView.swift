@@ -34,6 +34,9 @@ struct TabsOverviewView: View {
     /// the actual surface; `nil` means it could not be taken, in which case
     /// the card shows an honest identity placeholder.
     var homePreview: UIImage? = nil
+    /// The home tab the print belongs to. A print from one mode or tab is
+    /// never shown on another card.
+    var homePreviewTabId: String? = nil
     /// Closes the overview. The overview is a layer in the shell's own
     /// hierarchy rather than a presented controller, so there is no
     /// presentation to dismiss — the shell owns the flag, and hands the way
@@ -517,7 +520,7 @@ struct TabsOverviewView: View {
                                     aspectBucket: bucket,
                                     isActive: tab.id == tabManager.activeTabId,
                                     blurPreview: tab.privacyMode == .private && env.settings.preferences.blurPrivateTabPreviews,
-                                    homePreview: homePreview,
+                                    homePreview: tab.id == homePreviewTabId ? homePreview : nil,
                                     onSelect: { activate(tab) },
                                     onClose: {
                                         withAnimation(.snappy(duration: 0.25)) {

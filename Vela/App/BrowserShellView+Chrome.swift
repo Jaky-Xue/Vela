@@ -240,7 +240,12 @@ extension BrowserShellView {
     /// the page behind it. A private home is deliberately not printed; its
     /// card keeps the honest identity placeholder.
     func presentTabsOverview() {
-        homePreview = captureHomePreview()
+        homePreview = nil
+        homePreviewTabId = nil
+        if let tab = activeTab, tab.isHome, let print = captureHomePreview() {
+            homePreview = print
+            homePreviewTabId = tab.id
+        }
         withAnimation(.snappy(duration: 0.3)) {
             showTabsOverview = true
         }

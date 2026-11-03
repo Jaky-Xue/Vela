@@ -51,6 +51,9 @@ struct BrowserShellView: View {
     /// The home is native SwiftUI, so it has no web view to photograph; this
     /// is what the home tab's card shows instead of an invented miniature.
     @State var homePreview: UIImage?
+    /// The home tab the print belongs to. A preview taken in 无痕 mode must
+    /// never appear on a regular home card after a mode switch.
+    @State var homePreviewTabId: String?
     @State var showQRScanner = false
     @State var qrCopyNotice: String?
     @State var showBookmarks = false
@@ -372,9 +375,11 @@ struct BrowserShellView: View {
             if showTabsOverview {
                 TabsOverviewView(
                     homePreview: homePreview,
+                    homePreviewTabId: homePreviewTabId,
                     onClose: {
                         showTabsOverview = false
                         homePreview = nil
+                        homePreviewTabId = nil
                     }
                 )
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -962,6 +967,7 @@ struct BrowserShellView: View {
     private func handleScenePhaseChanged(_ phase: ScenePhase) {
         guard phase == .background, showTabsOverview else { return }
         homePreview = nil
+        homePreviewTabId = nil
         if !tabManager.privateTabs.isEmpty || tabManager.activeTab == nil {
             showTabsOverview = false
         }
