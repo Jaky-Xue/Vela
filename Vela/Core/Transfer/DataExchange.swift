@@ -155,7 +155,7 @@ public enum BookmarkExchange {
               match.numberOfRanges > 2,
               let urlRange = Range(match.range(at: 1), in: line),
               let titleRange = Range(match.range(at: 2), in: line) else { return nil }
-        let url = String(line[urlRange])
+        let url = unescape(String(line[urlRange]))
         let lowered = url.lowercased()
         guard lowered.hasPrefix("http://") || lowered.hasPrefix("https://") else { return nil }
         return (url, String(line[titleRange]))

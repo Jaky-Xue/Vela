@@ -28,12 +28,17 @@ final class DataExchangeTests: XCTestCase {
         let html = BookmarkExchange.netscapeHTML(roots: [("书签栏", [bookmark, folder])])
         let parsed = BookmarkExchange.parseNetscapeHTML(html)
 
-        XCTAssertEqual(parsed.count, 2)
-        XCTAssertEqual(parsed[0].url, "https://example.com/")
-        XCTAssertEqual(parsed[0].title, "Example")
-        XCTAssertEqual(parsed[1].title, "News")
-        XCTAssertEqual(parsed[1].children.count, 1)
-        XCTAssertEqual(parsed[1].children[0].url, "https://news.example.com/")
+        // The outer <DL> of a Netscape document holds the two root folders, so
+        // the parsed tree has one top-level folder with the two entries below.
+        XCTAssertEqual(parsed.count, 1)
+        let root = parsed[0]
+        XCTAssertEqual(root.title, "书签栏")
+        XCTAssertEqual(root.children.count, 2)
+        XCTAssertEqual(root.children[0].url, "https://example.com/")
+        XCTAssertEqual(root.children[0].title, "Example")
+        XCTAssertEqual(root.children[1].title, "News")
+        XCTAssertEqual(root.children[1].children.count, 1)
+        XCTAssertEqual(root.children[1].children[0].url, "https://news.example.com/")
     }
 
     func testImportSkipsNonWebSchemes() {
