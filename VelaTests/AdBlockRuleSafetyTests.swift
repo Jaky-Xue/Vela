@@ -385,19 +385,21 @@ final class AdBlockRuleSafetyTests: XCTestCase {
 // MARK: - The built-in lists themselves
 
 final class AdBlockBuiltInRulesTests: XCTestCase {
-    func testTheShippedSourcesAreEnabledAndNamed() {
-        let sources = AdBlockBuiltInRules.sources
-        XCTAssertEqual(sources.count, 3)
-        XCTAssertTrue(sources.allSatisfy(\.enabled))
-        XCTAssertTrue(sources.allSatisfy { !$0.name.isEmpty })
-        XCTAssertEqual(Set(sources.map(\.id)).count, sources.count)
+    /// The shipped lists are keyed by the three identifiers the app names; the
+    /// blocker compiles them into one combined rule list.
+    func testTheShippedListsAreKeyedByTheirIdentifiers() {
+        let expected = Set([
+            AdBlockBuiltInRules.builtInSourceId,
+            AdBlockBuiltInRules.smoothModeSourceId,
+            AdBlockBuiltInRules.appPromotionBannerSourceId
+        ])
+        XCTAssertEqual(Set(AdBlockBuiltInRules.filterLists.keys), expected)
+        XCTAssertEqual(AdBlockBuiltInRules.filterLists.count, 3)
     }
 
-    func testEverySourceHasTextToCompile() {
-        for source in AdBlockBuiltInRules.sources {
-            let text = AdBlockBuiltInRules.filterLists[source.id]
-            XCTAssertNotNil(text, "\(source.id) has no filter list text")
-            XCTAssertFalse(text?.isEmpty ?? true)
+    func testEveryListHasTextToCompile() {
+        for (id, text) in AdBlockBuiltInRules.filterLists {
+            XCTAssertFalse(text.isEmpty, "\(id) has no filter list text")
         }
     }
 
