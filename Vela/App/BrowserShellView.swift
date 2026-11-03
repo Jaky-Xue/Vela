@@ -47,6 +47,10 @@ struct BrowserShellView: View {
     @State var omnibox: OmniboxViewModel
 
     @State var showTabsOverview = false
+    /// A print of the real home surface taken before the overview covers it.
+    /// The home is native SwiftUI, so it has no web view to photograph; this
+    /// is what the home tab's card shows instead of an invented miniature.
+    @State var homePreview: UIImage?
     @State var showQRScanner = false
     @State var qrCopyNotice: String?
     @State var showBookmarks = false
@@ -367,7 +371,11 @@ struct BrowserShellView: View {
             // provably does.
             if showTabsOverview {
                 TabsOverviewView(
-                    onClose: { showTabsOverview = false }
+                    homePreview: homePreview,
+                    onClose: {
+                        showTabsOverview = false
+                        homePreview = nil
+                    }
                 )
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                 .zIndex(20)
@@ -953,6 +961,7 @@ struct BrowserShellView: View {
     @MainActor
     private func handleScenePhaseChanged(_ phase: ScenePhase) {
         guard phase == .background, showTabsOverview else { return }
+        homePreview = nil
         if !tabManager.privateTabs.isEmpty || tabManager.activeTab == nil {
             showTabsOverview = false
         }

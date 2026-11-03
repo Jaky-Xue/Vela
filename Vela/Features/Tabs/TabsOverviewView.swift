@@ -28,6 +28,12 @@ struct TabsOverviewView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
+    /// A print of the real home surface, taken when the overview was opened
+    /// from it. A native SwiftUI home has no `WKWebView` to photograph, and a
+    /// drawn-in miniature would be content the user never saved. The print is
+    /// the actual surface; `nil` means it could not be taken, in which case
+    /// the card shows an honest identity placeholder.
+    var homePreview: UIImage? = nil
     /// Closes the overview. The overview is a layer in the shell's own
     /// hierarchy rather than a presented controller, so there is no
     /// presentation to dismiss — the shell owns the flag, and hands the way
@@ -511,6 +517,7 @@ struct TabsOverviewView: View {
                                     aspectBucket: bucket,
                                     isActive: tab.id == tabManager.activeTabId,
                                     blurPreview: tab.privacyMode == .private && env.settings.preferences.blurPrivateTabPreviews,
+                                    homePreview: homePreview,
                                     onSelect: { activate(tab) },
                                     onClose: {
                                         withAnimation(.snappy(duration: 0.25)) {
@@ -656,6 +663,7 @@ private struct TabCard: View {
     var aspectBucket: Int
     var isActive: Bool
     var blurPreview: Bool
+    var homePreview: UIImage?
     var onSelect: () -> Void
     var onClose: () -> Void
     var onPin: () -> Void
@@ -759,16 +767,19 @@ private struct TabCard: View {
                 .resizable()
                 .scaledToFill()
                 .blur(radius: blurPreview ? Self.previewBlurRadius : 0)
+        } else if tab.isHome, let homePreview {
+            // The real home surface, printed before the overview covered it.
+            // Nothing here is invented: the user sees their own favourites,
+            // their own recently-closed list and their own background.
+            Image(uiImage: homePreview)
+                .resizable()
+                .scaledToFill()
+                .blur(radius: blurPreview ? Self.previewBlurRadius : 0)
         } else {
             ZStack {
                 palette.surface
                 if tab.isHome {
-                    // The start page is native SwiftUI, so there is no web
-                    // view to photograph. The card draws the home's own
-                    // inventory instead of a lone house glyph: the favourites
-                    // shelf, the section folds, and the recently-closed card,
-                    // all at card scale.
-                    HomeTabPreview(isPrivate: tab.privacyMode == .private)
+                    HomeTabPlaceholder(isPrivate: tab.privacyMode == .private)
                 } else {
                     SiteIconView(
                         host: tab.displayHost,
@@ -957,5 +968,29 @@ private struct OverviewGlass<S: InsettableShape>: ViewModifier {
 private extension View {
     func overviewGlass<S: InsettableShape>(_ shape: S) -> some View {
         modifier(OverviewGlass(shape: shape))
+    }
+}
+
+
+/// The card's honest fallback when there is no print of the home.
+///
+/// A capture can fail, for example before the home has rendered. The fallback
+/// shows the mode and nothing else; no tiles, names or rows are invented.
+private struct HomeTabPlaceholder: View {
+    var isPrivate: Bool
+    @Environment(\.browserPalette) private var palette
+
+    var body: some View {
+        ZStack {
+            palette.surface
+            VStack(spacing: 7) {
+                Image(systemName: isPrivate ? "eyeglasses" : "house")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(palette.secondaryText.opacity(0.55))
+                Text(isPrivate ? "无痕主页" : "主页")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(palette.secondaryText.opacity(0.7))
+            }
+        }
     }
 }
