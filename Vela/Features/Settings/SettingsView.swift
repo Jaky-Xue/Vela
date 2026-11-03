@@ -81,7 +81,9 @@ struct SettingsView: View {
                     settingsRow(
                         icon: "arrow.down.circle",
                         title: "下载",
-                        detail: "\(env.downloads.activeCount) 个进行中"
+                        detail: env.downloads.activeCount > 0
+                            ? "\(env.downloads.activeCount) 个进行中"
+                            : ""
                     )
                 }
             } header: {
@@ -205,7 +207,9 @@ struct SettingsView: View {
                     settingsRow(
                         icon: "waveform.path.ecg",
                         title: "加载诊断",
-                        detail: "\(env.navigationLog.entries.count) 条"
+                        detail: env.navigationLog.entries.count > 0
+                            ? "\(env.navigationLog.entries.count) 条"
+                            : ""
                     )
                 }
 

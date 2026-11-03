@@ -193,8 +193,6 @@ struct ExternalNavigationSettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-            } header: {
-                Text("默认行为")
             }
 
             Section {
