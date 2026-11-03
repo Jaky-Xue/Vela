@@ -429,6 +429,30 @@ final class BrowserUserAgentTests: XCTestCase {
         XCTAssertTrue(phoneDesktop.isDesktop)
     }
 
+    /// A site's own choice outranks the device, the global preset and the
+    /// video-site exception: it is the most specific answer there is.
+    func testASiteChoiceOutranksEveryOtherIdentityRule() {
+        let phoneDesktop = BrowserUserAgent.identity(
+            custom: BrowserUserAgent.mobileIdentifier,
+            prefersDesktop: false,
+            host: "www.youtube.com",
+            device: .phone,
+            siteMode: .desktop
+        )
+        XCTAssertEqual(phoneDesktop.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertTrue(phoneDesktop.isDesktop)
+
+        let padMobile = BrowserUserAgent.identity(
+            custom: "",
+            prefersDesktop: true,
+            host: "example.com",
+            device: .pad,
+            siteMode: .mobile
+        )
+        XCTAssertEqual(padMobile.customUserAgent, BrowserUserAgent.mobileIdentifier)
+        XCTAssertFalse(padMobile.isDesktop)
+    }
+
     /// The explicit iPad preset is the way back to a site's tablet page, and it
     /// asks for the mobile layout while claiming a tablet.
     func testTheIPadPresetKeepsTheTabletIdentity() {
@@ -682,5 +706,56 @@ final class PresetSummaryTests: XCTestCase {
         let preset = BrowserUserAgentPreset.all.first { $0.id == "safari-macos" }
         guard let preset else { return XCTFail("the macOS preset is gone") }
         XCTAssertEqual(preset.claimedSummary, "macOS 10.15.7 · Safari 26")
+    }
+}
+
+// MARK: - Per-site display
+
+/// The stored 桌面/手机 choices: host normalization, parent-domain matching,
+/// and the viewport script that makes 桌面版 a layout rather than only a header.
+final class SiteDisplayTests: XCTestCase {
+    func testHostsAreNormalized() {
+        XCTAssertEqual(
+            BrowserSiteHost.normalize("https://WWW.Example.com:443/path"),
+            "example.com"
+        )
+        XCTAssertEqual(BrowserSiteHost.normalize("m.example.com"), "m.example.com")
+        XCTAssertEqual(BrowserSiteHost.normalize("  "), "")
+    }
+
+    func testARuleCoversSubdomainsAndNotLookalikes() {
+        var settings = SiteDisplaySettings.default
+        settings.set(.desktop, forPageHost: "example.com")
+        XCTAssertEqual(settings.mode(forPageHost: "www.example.com"), .desktop)
+        XCTAssertEqual(settings.mode(forPageHost: "m.example.com"), .desktop)
+        XCTAssertNil(settings.mode(forPageHost: "notexample.com"))
+        XCTAssertNil(settings.mode(forPageHost: "example.org"))
+    }
+
+    func testTheMostSpecificRuleWins() {
+        var settings = SiteDisplaySettings.default
+        settings.set(.desktop, forPageHost: "example.com")
+        settings.set(.mobile, forPageHost: "m.example.com")
+        XCTAssertEqual(settings.mode(forPageHost: "m.example.com"), .mobile)
+        XCTAssertEqual(settings.mode(forPageHost: "www.example.com"), .desktop)
+    }
+
+    func testClearingOneSiteLeavesTheOthers() {
+        var settings = SiteDisplaySettings.default
+        settings.set(.desktop, forPageHost: "a.example")
+        settings.set(.mobile, forPageHost: "b.example")
+        settings.set(nil, forPageHost: "a.example")
+        XCTAssertNil(settings.mode(forPageHost: "a.example"))
+        XCTAssertEqual(settings.mode(forPageHost: "b.example"), .mobile)
+    }
+
+    func testTheDesktopViewportScriptLiftsOnlyADeviceWidthDeclaration() {
+        let script = WebPageScripts.desktopViewportScript
+        XCTAssertTrue(script.contains("1200"), script)
+        XCTAssertTrue(script.contains("device-width"), script)
+        XCTAssertTrue(script.contains("initial-scale"), script)
+        // The rewrite is gated on the site's own declaration; a page that
+        // named its own width already made a desktop choice.
+        XCTAssertTrue(script.contains("test(content)"), script)
     }
 }

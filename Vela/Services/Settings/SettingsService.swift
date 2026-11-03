@@ -27,6 +27,7 @@ public final class SettingsService {
         static let manualElementHide = "org.vela.browser.manual-element-hide"
         static let appearanceMode = "org.vela.browser.appearance-mode"
         static let navigationDiagnostics = "org.vela.browser.navigation-diagnostics"
+        static let siteDisplay = "org.vela.browser.site-display"
     }
 
     public private(set) var preferences: BrowserPreferences {
@@ -62,6 +63,13 @@ public final class SettingsService {
         didSet { persist(navigationDiagnostics, key: Key.navigationDiagnostics) }
     }
 
+    /// Per-site 桌面/手机 choices. A document of its own for the same decode
+    /// reason, and because the list grows without re-encoding the preferences
+    /// document on every change.
+    public private(set) var siteDisplay: SiteDisplaySettings {
+        didSet { persist(siteDisplay, key: Key.siteDisplay) }
+    }
+
     /// The user-script manager's own document: automatic update checks and
     /// the time the last full pass ran.
     public private(set) var userScriptSettings: UserScriptSettings {
@@ -83,6 +91,11 @@ public final class SettingsService {
         self.navigationDiagnostics = Self.load(
             NavigationDiagnosticsSettings.self,
             key: Key.navigationDiagnostics,
+            from: defaults
+        ) ?? .default
+        self.siteDisplay = Self.load(
+            SiteDisplaySettings.self,
+            key: Key.siteDisplay,
             from: defaults
         ) ?? .default
         self.userScriptSettings = Self.load(
@@ -164,6 +177,30 @@ public final class SettingsService {
         var copy = manualElementHide
         mutate(&copy)
         manualElementHide = copy
+    }
+
+    // MARK: - Per-site display
+
+    /// The site's own 桌面/手机 choice, if it has one.
+    public func siteDisplayMode(forPageHost host: String) -> BrowserSiteDisplayMode? {
+        siteDisplay.mode(forPageHost: host)
+    }
+
+    /// Sets or clears a site's choice. The automatic identity is the absence
+    /// of an entry, not a third stored value.
+    public func setSiteDisplayMode(
+        _ mode: BrowserSiteDisplayMode?,
+        forPageHost host: String
+    ) {
+        var copy = siteDisplay
+        copy.set(mode, forPageHost: host)
+        guard copy != siteDisplay else { return }
+        siteDisplay = copy
+    }
+
+    public func clearSiteDisplayModes() {
+        guard !siteDisplay.modes.isEmpty else { return }
+        siteDisplay = .default
     }
 
     public func updateNavigationDiagnostics(_ mutate: (inout NavigationDiagnosticsSettings) -> Void) {

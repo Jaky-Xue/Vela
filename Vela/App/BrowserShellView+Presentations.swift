@@ -96,6 +96,11 @@ extension BrowserShellView {
                 isDesktopSiteOn: activeTab.map {
                     env.webCoordinator.webIdentity(for: $0).isDesktop
                 } ?? false,
+                onResetSiteDisplay: {
+                    guard let tab = activeTab else { return }
+                    showMenu = false
+                    resetSiteDisplayMode(for: tab)
+                },
                 pageTitle: menuPanelTitle,
                 onPerform: handleMenuAction,
                 onOpenShortcut: handleMenuShortcut,

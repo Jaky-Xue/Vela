@@ -619,7 +619,8 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // by construction. Main frame only, because the checks a site's risk
         // control runs happen on the page itself, and per-frame injection
         // would multiply the cost for no page that reads it in a subframe.
-        if let customAgent = webIdentity(for: tab, url: url).customUserAgent,
+        let pageIdentity = webIdentity(for: tab, url: url)
+        if let customAgent = pageIdentity.customUserAgent,
            let consistency = WebPageScripts.identityConsistencyScript(userAgent: customAgent) {
             controller.addUserScript(
                 WKUserScript(source: consistency, injectionTime: .atDocumentStart, forMainFrameOnly: true)
@@ -638,6 +639,24 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                     )
                 )
             }
+        }
+        // 桌面版: a `width=device-width` page is laid out at 1200 CSS pixels
+        // and scaled to fit, so a 768–1024-wide iPad enters the site's desktop
+        // breakpoints instead of its tablet ones. Added after the forced-zoom
+        // rewrite so it runs last at each injection time; it keeps
+        // `user-scalable=yes`, so the two features agree.
+        if pageIdentity.isDesktop,
+           settings.preferences.desktopViewportEnabled ?? true {
+            // Document end, once the site's own viewport declaration has been
+            // parsed. The script re-checks on DOMContentLoaded and load for a
+            // meta a site adds later.
+            controller.addUserScript(
+                WKUserScript(
+                    source: WebPageScripts.desktopViewportScript,
+                    injectionTime: .atDocumentEnd,
+                    forMainFrameOnly: true
+                )
+            )
         }
         controller.addUserScript(
             WKUserScript(
@@ -877,13 +896,17 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     /// it is leaving when the policy callback runs, and a site that branches on
     /// the identifier has to be read from where the request is going.
     public func webIdentity(for tab: BrowserTabState, url: URL?) -> BrowserWebIdentity {
-        BrowserUserAgent.identity(
+        let host = url?.host
+        return BrowserUserAgent.identity(
             custom: settings.preferences.customUserAgent,
             prefersDesktop: settings.preferences.desktopSiteByDefault,
             // The host the tab is on or heading to — `load` writes the URL
             // before the web view exists, and `didCommit` keeps it current, so
             // a site that branches on the identifier is read from here.
-            host: url?.host
+            host: host,
+            // The site's own 桌面/手机 choice, when it has one. Read on every
+            // request, so clearing it takes effect on the next navigation.
+            siteMode: host.flatMap { settings.siteDisplayMode(forPageHost: $0) }
         )
     }
 

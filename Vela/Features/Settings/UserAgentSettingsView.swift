@@ -83,6 +83,10 @@ struct UserAgentSettingsView: View {
                         $0.customUserAgent = ""
                         $0.desktopSiteByDefault = false
                     }
+                    // A full reset is the one action that also drops the
+                    // per-site choices: everything returns to the automatic
+                    // identity.
+                    env.settings.clearSiteDisplayModes()
                     apply(reload: true)
                 }
             } header: {
@@ -125,6 +129,45 @@ struct UserAgentSettingsView: View {
                 }
             } header: {
                 Text("当前标识")
+            }
+
+            Section {
+                Toggle("桌面版按桌面宽度排版", isOn: Binding(
+                    get: { env.settings.preferences.desktopViewportEnabled ?? true },
+                    set: { value in
+                        env.settings.update { $0.desktopViewportEnabled = value }
+                        apply(reload: true)
+                    }
+                ))
+            } header: {
+                Text("桌面排版")
+            } footer: {
+                Text("桌面版下把 width=device-width 的页面按 1200 的桌面宽度排版并等比缩放，让 768–1024 宽的 iPad 也进入桌面断点。个别网站排版异常时可关闭。")
+            }
+
+            if !env.settings.siteDisplay.modes.isEmpty {
+                Section {
+                    ForEach(env.settings.siteDisplay.sortedHosts) { entry in
+                        HStack {
+                            Text(entry.host)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 8)
+                            Text(entry.mode.title)
+                                .foregroundStyle(palette.secondaryText)
+                        }
+                        .font(.footnote)
+                    }
+
+                    Button("清除所有站点设置", role: .destructive) {
+                        env.settings.clearSiteDisplayModes()
+                        apply(reload: true)
+                    }
+                } header: {
+                    Text("按站点设置")
+                } footer: {
+                    Text("在菜单的「桌面网站」里为单个网站选择桌面版或手机版；长按该图标可恢复自动。")
+                }
             }
         }
         .navigationTitle("网页标识")

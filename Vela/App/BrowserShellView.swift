@@ -1349,35 +1349,36 @@ struct BrowserShellView: View {
         }
     }
 
-    /// Flips the page between the desktop and the phone version.
+    /// Flips the site under the tab between the desktop and the phone page.
     ///
-    /// The switch is decided from the identity in force, not from the stored
-    /// flag: an iPad's automatic identity is already the desktop one, so the
-    /// flag is false while the page is desktop. Turning it off there names the
-    /// phone page explicitly — clearing the fields would land back on the same
-    /// desktop identity, and the switch would look dead. On a phone, off is the
-    /// automatic identity, which is already the phone page.
+    /// The choice belongs to the site, not to the browser: a site that only
+    /// works in one layout should keep its answer on the next visit without
+    /// dragging every other site with it. The switch is decided from the
+    /// identity in force, so an iPad whose automatic identity is desktop is
+    /// told "手机版" on the first tap, and the entry overrides the automatic
+    /// rule on later visits.
     func toggleDesktopSite(for tab: BrowserTabState) {
+        guard let host = pageHost(for: tab) else { return }
         let isDesktopNow = env.webCoordinator.webIdentity(for: tab).isDesktop
-        env.settings.update {
-            if isDesktopNow {
-                switch BrowserDeviceClass.current {
-                case .pad, .mac:
-                    $0.customUserAgent = BrowserUserAgent.mobileIdentifier
-                case .phone:
-                    $0.customUserAgent = ""
-                }
-                $0.desktopSiteByDefault = false
-            } else {
-                // On is the desktop identity, and it outranks a stored preset;
-                // leaving one in place would make this look like it did
-                // nothing.
-                $0.customUserAgent = ""
-                $0.desktopSiteByDefault = true
-            }
-        }
+        env.settings.setSiteDisplayMode(isDesktopNow ? .mobile : .desktop, forPageHost: host)
         tabManager.applyUserAgentToAllWebViews()
         _ = tabManager.reload(tab: tab)
+    }
+
+    /// Returns the site under the tab to the automatic identity.
+    func resetSiteDisplayMode(for tab: BrowserTabState) {
+        guard let host = pageHost(for: tab) else { return }
+        env.settings.setSiteDisplayMode(nil, forPageHost: host)
+        tabManager.applyUserAgentToAllWebViews()
+        _ = tabManager.reload(tab: tab)
+    }
+
+    /// The host a site preference belongs to: the tab's committed URL, or the
+    /// web view's when the tab is between navigations.
+    func pageHost(for tab: BrowserTabState) -> String? {
+        if let host = URL(string: tab.url)?.host, !host.isEmpty { return host }
+        if let host = tabManager.webView(for: tab.id)?.url?.host, !host.isEmpty { return host }
+        return nil
     }
 
     func reloadActiveTab() {

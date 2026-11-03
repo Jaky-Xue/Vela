@@ -222,9 +222,31 @@ public enum BrowserUserAgent {
         custom: String,
         prefersDesktop: Bool,
         host: String? = nil,
-        device: BrowserDeviceClass = .current
+        device: BrowserDeviceClass = .current,
+        siteMode: BrowserSiteDisplayMode? = nil
     ) -> BrowserWebIdentity {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // A site's own choice is the most specific answer there is, and it
+        // outranks the global preset, the desktop toggle and the video-site
+        // exception. It is how a site that only works in one layout gets that
+        // layout without dragging every other site with it.
+        if let siteMode {
+            switch siteMode {
+            case .desktop:
+                return BrowserWebIdentity(
+                    applicationNameForUserAgent: safariTail,
+                    customUserAgent: desktopIdentifier,
+                    isDesktop: true
+                )
+            case .mobile:
+                return BrowserWebIdentity(
+                    applicationNameForUserAgent: safariTail,
+                    customUserAgent: mobileIdentifier,
+                    isDesktop: false
+                )
+            }
+        }
 
         // Video sites get an answer of their own on a phone, ahead of the
         // automatic identity; only a hand-typed identifier outranks it.

@@ -33,6 +33,9 @@ struct MenuPanelView: View {
     /// 桌面网站 tile is a switch too, and a switch with no state is a switch
     /// the user cannot tell they already are on.
     var isDesktopSiteOn: Bool = false
+    /// Clears the current site's 桌面/手机 choice. The panel does not know the
+    /// host; the shell holds the tab and supplies the action.
+    var onResetSiteDisplay: (() -> Void)? = nil
     /// What the panel is acting on — the page's title, or "菜单" on a
     /// page-less surface. Drawn in the header row.
     var pageTitle: String
@@ -214,6 +217,11 @@ struct MenuPanelView: View {
             if tile.action == .privateTab && isPrivateMode {
                 Button("离开无痕模式", systemImage: "eyeglasses.slash", role: .destructive) {
                     onPerform(.leavePrivate)
+                }
+            }
+            if tile.action == .desktopSite, let onResetSiteDisplay {
+                Button("恢复此站点的自动设置", systemImage: "arrow.uturn.backward") {
+                    onResetSiteDisplay()
                 }
             }
         }

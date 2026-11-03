@@ -530,6 +530,10 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// `user-scalable=no` 的页面。Optional for decode compatibility — an
     /// absent key must not reset the rest of the document.
     public var forcedZoomEnabled: Bool?
+    /// 桌面版按桌面宽度排版：桌面标识下，把站点声明的 `width=device-width`
+    /// 视口抬到 1200 的桌面宽度再等比缩放，让 768–1024 宽的 iPad 也进入站点
+    /// 的桌面断点。Optional for decode compatibility; absent means on.
+    public var desktopViewportEnabled: Bool?
 
     public init(
         searchEngine: SearchEngineSettings = .default,
@@ -573,7 +577,8 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         historyNotRetained: Bool? = nil,
         tabsNotRetained: Bool? = nil,
         novelPageMode: String? = nil,
-        forcedZoomEnabled: Bool? = nil
+        forcedZoomEnabled: Bool? = nil,
+        desktopViewportEnabled: Bool? = nil
     ) {
         self.searchEngine = searchEngine
         self.webSecurity = webSecurity
@@ -617,6 +622,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.tabsNotRetained = tabsNotRetained
         self.novelPageMode = novelPageMode
         self.forcedZoomEnabled = forcedZoomEnabled
+        self.desktopViewportEnabled = desktopViewportEnabled
     }
 
     /// The resolved switch: protection is on unless explicitly turned off.
