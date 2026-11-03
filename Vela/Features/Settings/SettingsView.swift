@@ -74,6 +74,16 @@ struct SettingsView: View {
                         title: "菜单面板"
                     )
                 }
+
+                NavigationLink {
+                    DownloadSettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "arrow.down.circle",
+                        title: "下载",
+                        detail: "\(env.downloads.activeCount) 个进行中"
+                    )
+                }
             } header: {
                 Text("浏览器")
             }
@@ -186,20 +196,6 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("隐私与安全")
-            }
-
-            Section {
-                NavigationLink {
-                    DownloadSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "arrow.down.circle",
-                        title: "下载",
-                        detail: "\(env.downloads.activeCount) 个进行中"
-                    )
-                }
-            } header: {
-                Text("下载与数据")
             }
 
             Section {
