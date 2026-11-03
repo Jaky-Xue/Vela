@@ -80,16 +80,13 @@ struct WebViewHost: UIViewRepresentable {
     /// The command bar's height plus its gap, or zero when the page owns the
     /// whole bottom edge.
     ///
-    /// The page stays full bleed — it paints to the bottom edge behind the
-    /// glass — and WebKit is told about the obstruction instead of being
-    /// shrunk to avoid it. The container adds the window's home-indicator
-    /// inset, so the number stays right on the first layout pass and through a
-    /// rotation. On iOS 26 `obscuredContentInsets` ends the page's layout
-    /// viewport above the bar, so a site's fixed footer, sticky bar or `100vh`
-    /// layout lands where it can be seen; the scroll view's content inset
-    /// keeps the document's own last lines reachable. A scroll inset alone
-    /// left fixed footers behind the glass; a shrunken frame left a band below
-    /// the page.
+    /// The page keeps its full layout and stays full bleed: it paints to the
+    /// bottom edge, and the bar floats translucently over it, so the document
+    /// is visible through the glass rather than ending above a reserved band.
+    /// The container adds the window's home-indicator inset, so the number
+    /// stays right on the first layout pass and through a rotation. Only the
+    /// scroll view's bottom inset is reserved — enough for the document's own
+    /// last lines to be scrolled clear of the bar while it is up.
     let bottomChromeHeight: CGFloat
     /// The colour the page paints behind itself, used behind the document
     /// while it bounces. The page itself covers the screen, so the bar samples
@@ -141,10 +138,9 @@ struct WebViewHost: UIViewRepresentable {
             scrollView.contentInsetAdjustmentBehavior = .never
         }
 
-        // The container owns both halves of the bottom geometry: it adds the
-        // window's home-indicator inset, applies the scroll inset that keeps
-        // the document's last lines reachable, and reports the same area to
-        // WebKit as obscured so fixed and sticky content ends above the bar.
+        // The container owns the bottom geometry: it adds the window's
+        // home-indicator inset and applies the scroll inset that keeps the
+        // document's last lines reachable above the bar.
         container.bottomChromeHeight = bottomChromeHeight
 
         // Applying the zoom is deliberately not part of this update path.
@@ -364,8 +360,6 @@ final class WebViewContainerView: UIView {
         }
     }
 
-    /// The part of the web view's top the status bar and top chrome cover.
-    private var resolvedTopInset: CGFloat = 0
     /// The part of the web view's bottom the command bar and the home
     /// indicator cover.
     private var resolvedBottomInset: CGFloat = 0
@@ -430,16 +424,14 @@ final class WebViewContainerView: UIView {
         }
     }
 
-    /// The scroll inset that makes the document's end reachable above the bar
-    /// and the obscured inset that moves fixed, sticky and `100vh` content out
-    /// from under it. Both are the same number and serve different layers.
+    /// The scroll inset that makes the document's end reachable above the bar.
+    /// The page's layout is deliberately not shrunk: the bar floats over it,
+    /// and the document's own content is what shows through the glass.
     private func applyBottomInsets() {
-        if let scrollView = attachedWebView?.scrollView,
-           abs(scrollView.contentInset.bottom - resolvedBottomInset) > 0.5 {
-            scrollView.contentInset.bottom = resolvedBottomInset
-            scrollView.verticalScrollIndicatorInsets.bottom = resolvedBottomInset
-        }
-        applyObscuredInsets()
+        guard let scrollView = attachedWebView?.scrollView,
+              abs(scrollView.contentInset.bottom - resolvedBottomInset) > 0.5 else { return }
+        scrollView.contentInset.bottom = resolvedBottomInset
+        scrollView.verticalScrollIndicatorInsets.bottom = resolvedBottomInset
     }
 
     /// Resolves both halves of the top layout from the window.
@@ -472,36 +464,6 @@ final class WebViewContainerView: UIView {
            abs(scrollView.contentInset.top - resolved.inset) > 0.5 {
             scrollView.contentInset.top = resolved.inset
             scrollView.verticalScrollIndicatorInsets.top = resolved.inset
-        }
-        if abs(resolvedTopInset - resolved.inset) > 0.5 {
-            resolvedTopInset = resolved.inset
-            applyObscuredInsets()
-        }
-    }
-
-    /// Tells WebKit where app-drawn chrome covers the page.
-    ///
-    /// `obscuredContentInsets` shrinks the layout viewport without moving the
-    /// painted page: the document still runs edge to edge under the glass,
-    /// while `position: fixed`, sticky bars and `100vh` sections land where
-    /// they can be seen. It is not a scroll inset — the content inset above
-    /// and below stays the reachability mechanism — which is why both are
-    /// set to the same numbers.
-    ///
-    /// The top value is the resolved scroll inset, not the window's safe area:
-    /// a host already below the status bar has nothing left to obscure, and
-    /// the iPad's floating top bar is chrome over the page exactly as the
-    /// phone's clock is.
-    private func applyObscuredInsets() {
-        guard #available(iOS 26.0, *), let webView = attachedWebView else { return }
-        let insets = UIEdgeInsets(
-            top: resolvedTopInset,
-            left: 0,
-            bottom: resolvedBottomInset,
-            right: 0
-        )
-        if webView.obscuredContentInsets != insets {
-            webView.obscuredContentInsets = insets
         }
     }
 
@@ -548,12 +510,9 @@ final class WebViewContainerView: UIView {
         topConstraint = top
         attachedWebView = webView
         // A re-attached web view inherits this container's current strip and
-        // scroll inset rather than whatever its previous container left —
-        // including the obscured insets, which belong to the view and outlive
-        // a detach.
+        // scroll insets rather than whatever its previous container left.
         updateTopLayout()
         updateBottomLayout()
-        applyObscuredInsets()
     }
 
     /// Removes the web view from the hierarchy without releasing it.

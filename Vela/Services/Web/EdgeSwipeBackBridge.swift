@@ -61,18 +61,18 @@ struct EdgeSwipeBackBridge: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var parent: EdgeSwipeBackBridge?
-        var recognizer: UIScreenEdgePanGestureRecognizer?
+        var recognizer: LeftEdgeBackGestureRecognizer?
 
         /// Installs the recognizer on the view directly below the window, and
         /// re-runs on every move to a window: SwiftUI can rebuild the bridge,
         /// and the recognizer has to follow the hierarchy it ends up in.
         func attach(from bridgeView: UIView) {
             if recognizer == nil {
-                let edge = UIScreenEdgePanGestureRecognizer(
+                let edge = LeftEdgeBackGestureRecognizer(
                     target: self,
                     action: #selector(edgePanned(_:))
                 )
-                edge.edges = .left
+                edge.edgeWidth = 44
                 edge.delegate = self
                 recognizer = edge
             }
@@ -89,7 +89,7 @@ struct EdgeSwipeBackBridge: UIViewRepresentable {
             recognizer.isEnabled = parent?.isEnabled ?? false
         }
 
-        @objc private func edgePanned(_ sender: UIScreenEdgePanGestureRecognizer) {
+        @objc private func edgePanned(_ sender: LeftEdgeBackGestureRecognizer) {
             let translation = max(0, sender.translation(in: sender.view).x)
 
             switch sender.state {
@@ -122,5 +122,82 @@ final class EdgeSwipeBridgeView: UIView {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil { onMoveToWindow?() }
+    }
+}
+
+/// The left-edge pan, with a start band wide enough to find.
+///
+/// `UIScreenEdgePanGestureRecognizer` only accepts touches inside the system's
+/// own bezel, which on a phone in a case is a few points wide — the gesture
+/// then reads as unreliable rather than as a feature. This recognizer accepts
+/// a 44-point strip and fails the moment the movement is vertical, so a page
+/// scroll that happens to start near the edge keeps its scroll.
+final class LeftEdgeBackGestureRecognizer: UIGestureRecognizer {
+    /// How far from the leading edge a touch may start and still count.
+    var edgeWidth: CGFloat = 44
+
+    private var startPoint: CGPoint = .zero
+    private var previousPoint: CGPoint = .zero
+    private var previousTimestamp: TimeInterval = 0
+    private var translationValue: CGPoint = .zero
+    private var velocityValue: CGPoint = .zero
+
+    func translation(in view: UIView?) -> CGPoint { translationValue }
+    func velocity(in view: UIView?) -> CGPoint { velocityValue }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let touch = touches.first, let view else { return }
+        startPoint = touch.location(in: view)
+        previousPoint = startPoint
+        previousTimestamp = touch.timestamp
+        translationValue = .zero
+        velocityValue = .zero
+        state = startPoint.x <= edgeWidth ? .possible : .failed
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let touch = touches.first, let view else { return }
+        let point = touch.location(in: view)
+        translationValue = CGPoint(
+            x: point.x - startPoint.x,
+            y: point.y - startPoint.y
+        )
+        let interval = max(touch.timestamp - previousTimestamp, 0.001)
+        velocityValue = CGPoint(
+            x: (point.x - previousPoint.x) / interval,
+            y: (point.y - previousPoint.y) / interval
+        )
+        previousPoint = point
+        previousTimestamp = touch.timestamp
+
+        switch state {
+        case .possible:
+            // Vertical intent belongs to the page. Fail before the scroll
+            // view's own recognizer is cancelled.
+            if abs(translationValue.y) > abs(translationValue.x),
+               abs(translationValue.y) > 6 {
+                state = .failed
+                return
+            }
+            if abs(translationValue.x) > 6 {
+                state = .began
+            }
+        case .began, .changed:
+            state = .changed
+        default:
+            break
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        if state == .began || state == .changed {
+            state = .ended
+        } else if state == .possible {
+            state = .failed
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .cancelled
     }
 }

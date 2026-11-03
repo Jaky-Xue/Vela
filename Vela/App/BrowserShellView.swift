@@ -366,7 +366,7 @@ struct BrowserShellView: View {
     @ViewBuilder var swipeBackIndicator: some View {
         if isSwipeBackTracking || swipeBackTranslation > 0.5 {
             EdgeSwipeBackIndicator(
-                intensity: min(1, swipeBackProgress / 0.3),
+                intensity: min(1, swipeBackProgress / 0.22),
                 armed: swipeBackArmed,
                 isCompleting: isSwipeBackCompleting
             )
@@ -732,7 +732,7 @@ struct BrowserShellView: View {
         guard edgeSwipeBackEnabled, !isSwipeBackCompleting else { return }
         isSwipeBackTracking = true
         swipeBackTranslation = max(0, translation)
-        let armed = safeRectWidth > 0 && swipeBackTranslation > safeRectWidth * 0.26
+        let armed = safeRectWidth > 0 && swipeBackTranslation > safeRectWidth * 0.18
         if armed != swipeBackArmed {
             swipeBackArmed = armed
             if armed {
@@ -747,9 +747,9 @@ struct BrowserShellView: View {
         swipeBackArmed = false
 
         let width = max(safeRectWidth, 320)
-        // A short but fast flick completes; so does a slow drag past roughly a
-        // quarter of the screen. Anything else springs home.
-        let shouldComplete = translation > width * 0.26 || velocity > 550
+        // A short but fast flick completes; so does a slow drag past roughly
+        // a fifth of the screen. Anything else springs home.
+        let shouldComplete = translation > width * 0.18 || velocity > 450
 
         guard shouldComplete else {
             withAnimation(Self.swipeBackSettle) {
