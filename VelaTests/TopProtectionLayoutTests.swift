@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import UIKit
 @testable import Vela
 
 final class TopProtectionLayoutTests: XCTestCase {
