@@ -48,6 +48,12 @@ extension BrowserShellView {
                     .zIndex(1)
             }
         }
+        // The hint lives outside the bar's clipped column: placed inside it,
+        // the strip's own height cut the pill away.
+        .overlay(alignment: .top) {
+            padChromeDragHint
+                .padding(.top, chromeHidden ? 0 : padBarsHeight + 4)
+        }
         .animation(Self.chromeAnimation, value: chromeHidden)
         .animation(Self.sidebarAnimation, value: showPadSidebar)
     }
@@ -99,12 +105,73 @@ extension BrowserShellView {
     /// glass has something to refract.
     @ViewBuilder
     var padTopBar: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: BrowserChrome.barGap) {
+        Group {
+            if #available(iOS 26.0, *) {
+                GlassEffectContainer(spacing: BrowserChrome.barGap) {
+                    padTopBarContent
+                }
+            } else {
                 padTopBarContent
             }
-        } else {
-            padTopBarContent
+        }
+        // Safari-like gestures on the bar itself: an upward flick tucks the
+        // top bar (and the bookmarks strip) away; a downward flick returns to
+        // the home surface. The recognizer lives outside the glass container:
+        // attaching it to the content inside put a layer between the drag and
+        // the bar, and the swipe stopped arriving.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 16)
+                .onChanged { value in
+                    guard !omnibox.isEditing, !chromeHidden else { return }
+                    let vertical = value.translation.height
+                    guard abs(vertical) > abs(value.translation.width) else { return }
+                    padChromeDragTranslation = vertical
+                    let home = vertical > 48
+                    let hide = vertical < -48
+                    if home != padChromeHomeArmed {
+                        padChromeHomeArmed = home
+                        if home {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        }
+                    }
+                    padChromeHideArmed = hide
+                }
+                .onEnded { value in
+                    let vertical = value.translation.height
+                    padChromeDragTranslation = 0
+                    padChromeHomeArmed = false
+                    padChromeHideArmed = false
+                    guard !omnibox.isEditing, !chromeHidden else { return }
+                    guard abs(vertical) > abs(value.translation.width) else { return }
+                    if vertical < -48 {
+                        setChromeHidden(true)
+                    } else if vertical > 48 {
+                        openHomeTab()
+                    }
+                }
+        )
+    }
+
+    /// The iPad bar's drag readout: the release the finger is heading for.
+    @ViewBuilder
+    var padChromeDragHint: some View {
+        if abs(padChromeDragTranslation) > 10, !chromeHidden, !omnibox.isEditing {
+            let returnsHome = padChromeDragTranslation > 0
+            let armed = returnsHome ? padChromeHomeArmed : padChromeHideArmed
+            Text(returnsHome ? "释放后返回首页" : "释放后收起工具栏")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(armed ? palette.onAccent : palette.primaryText)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background {
+                    Capsule().fill(armed ? palette.accent : palette.controlFill)
+                }
+                .overlay {
+                    Capsule().strokeBorder(palette.cardStroke, lineWidth: 0.5)
+                }
+                .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+                .allowsHitTesting(false)
+                .animation(.easeOut(duration: 0.15), value: armed)
         }
     }
 
@@ -194,21 +261,6 @@ extension BrowserShellView {
             .frame(width: geo.size.width, height: Self.padTopBarHeight, alignment: .top)
         }
         .frame(height: Self.padTopBarHeight)
-        // Safari-like gestures on the bar itself: an upward flick tucks the
-        // top bar (and the bookmarks strip) away; a downward flick returns to
-        // the home surface.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 16)
-                .onEnded { value in
-                    let vertical = value.translation.height
-                    guard abs(vertical) > abs(value.translation.width) else { return }
-                    if vertical < -48 {
-                        setChromeHidden(true)
-                    } else if vertical > 48 {
-                        openHomeTab()
-                    }
-                }
-        )
     }
 
     /// The width one of the iPad bar's fixed clusters takes: four points of

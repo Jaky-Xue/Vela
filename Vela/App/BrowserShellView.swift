@@ -121,6 +121,11 @@ struct BrowserShellView: View {
     /// Whether that upward drag has passed the distance that opens the home
     /// surface. Drives the hint's filled state and its haptic.
     @State var chromeHomeArmed = false
+    /// The iPad top bar's vertical drag: how far the finger has moved and
+    /// which of its two releases is armed.
+    @State var padChromeDragTranslation: CGFloat = 0
+    @State var padChromeHomeArmed = false
+    @State var padChromeHideArmed = false
 
     /// Whether the drag-to-hide gesture may act.
     ///
