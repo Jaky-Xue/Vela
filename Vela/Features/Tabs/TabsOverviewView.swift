@@ -60,7 +60,20 @@ struct TabsOverviewView: View {
     private var visibleTabs: [BrowserTabState] {
         let tabs = showPrivateTabs ? tabManager.privateTabs : tabManager.regularTabs
         let realTabs = tabs.filter { !$0.isHome }
-        let listed = realTabs.isEmpty ? tabs : realTabs
+        // The home tab is the strip's filler rather than a page card, so it
+        // stays out of the grid while other pages exist — except when the user
+        // is looking at it. The active home tab is the surface being left
+        // behind, and its card is what makes the overview read as a pull-back
+        // from the start page instead of a jump to a page-only list.
+        let activeHome = tabs.first { $0.isHome && $0.id == tabManager.activeTabId }
+        let listed: [BrowserTabState]
+        if realTabs.isEmpty {
+            listed = tabs
+        } else if let activeHome {
+            listed = [activeHome] + realTabs
+        } else {
+            listed = realTabs
+        }
         guard !searchQuery.isEmpty else { return listed }
         return listed.filter {
             $0.displayTitle.localizedCaseInsensitiveContains(searchQuery)
