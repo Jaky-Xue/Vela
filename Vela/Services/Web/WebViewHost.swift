@@ -354,14 +354,27 @@ final class WebViewContainerView: UIView {
 
     /// How far above the container's bottom edge the web view is held.
     private var resolvedBottom: CGFloat = 0 {
-        didSet { bottomConstraint?.constant = -resolvedBottom }
+        didSet {
+            bottomConstraint?.constant = -resolvedBottom
+            backdropHeight?.constant = resolvedBottom
+        }
     }
+
+    /// Fills the strip the command bar sits in with the page's own background.
+    ///
+    /// A dedicated view rather than the container's own background: the
+    /// container also fronts the status-bar strip when 顶部保护 is on, and
+    /// painting that with a white page's colour would put the light status-bar
+    /// ink of a dark-mode app on white. Only the ground the bar stands on is
+    /// the page's.
+    private let backdrop = UIView()
+    private var backdropHeight: NSLayoutConstraint?
 
     /// The colour behind the page, filling the strip the command bar sits in.
     var pageBackdrop: UIColor = .clear {
         didSet {
             guard !pageBackdrop.isEqual(oldValue) else { return }
-            backgroundColor = pageBackdrop
+            backdrop.backgroundColor = pageBackdrop
         }
     }
 
@@ -404,6 +417,7 @@ final class WebViewContainerView: UIView {
     /// subtraction against its own frame keeps either arrangement honest and
     /// stops the home indicator being counted twice.
     private func updateBottomLayout() {
+        ensureBackdrop()
         guard let window, bottomChromeHeight > 0 else {
             resolvedBottom = 0
             return
@@ -415,6 +429,23 @@ final class WebViewContainerView: UIView {
         if abs(resolvedBottom - resolved) > 0.5 {
             resolvedBottom = resolved
         }
+    }
+
+    /// Installs the backdrop strip under the web view on first use.
+    private func ensureBackdrop() {
+        guard backdrop.superview == nil else { return }
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        backdrop.isUserInteractionEnabled = false
+        backdrop.backgroundColor = pageBackdrop
+        insertSubview(backdrop, at: 0)
+        let height = backdrop.heightAnchor.constraint(equalToConstant: resolvedBottom)
+        NSLayoutConstraint.activate([
+            backdrop.leadingAnchor.constraint(equalTo: leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: trailingAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: bottomAnchor),
+            height
+        ])
+        backdropHeight = height
     }
 
     /// Resolves both halves of the top layout from the window.
