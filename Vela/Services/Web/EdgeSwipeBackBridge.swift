@@ -15,7 +15,7 @@ import UIKit
 /// SwiftUI has no edge-pan gesture, and a SwiftUI strip along the edge is
 /// not the answer either: it would sit above the page and intercept its
 /// touches, leaving a dead band down the left side of every document. So the
-/// recognizer is a `UIScreenEdgePanGestureRecognizer` installed on the view
+/// recognizer is a `LeftEdgeBackGestureRecognizer` installed on the view
 /// directly below the window — an ancestor whose recognizer sees touches
 /// delivered anywhere inside it, the web view included, without a
 /// hit-testing view of its own. Presented sheets live in their own
@@ -27,9 +27,8 @@ import UIKit
 /// `BrowserShellView.edgeSwipeBackEnabled`.
 struct EdgeSwipeBackBridge: UIViewRepresentable {
     var isEnabled: Bool
-    /// The finger's horizontal travel from the edge. The shell moves the page
-    /// with this value, so the gesture is interactive rather than a switch
-    /// that fires at the end.
+    /// The finger's horizontal travel from the edge. Drives the back arrow,
+    /// which follows the finger; the page itself does not move.
     var onChanged: (CGFloat) -> Void = { _ in }
     /// The distance and velocity at release. The shell decides whether the
     /// swipe completes or springs back.
