@@ -120,6 +120,7 @@ struct SettingsListStyle: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .listStyle(.insetGrouped)
             .browserListSurface()
             .tint(palette.accent)
             .listSectionSpacing(14)
