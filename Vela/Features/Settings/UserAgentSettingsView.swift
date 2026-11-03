@@ -32,15 +32,15 @@ struct UserAgentSettingsView: View {
     /// the one place that answers the question. Reading the stored fields
     /// directly instead is what let this row show the mobile identifier while
     /// pages were receiving the desktop one.
-    private var effectiveOutgoingIdentifier: String {
-        let identity = BrowserUserAgent.identity(
+    private var effectiveOutgoingIdentity: BrowserWebIdentity {
+        BrowserUserAgent.identity(
             custom: env.settings.preferences.customUserAgent,
             prefersDesktop: env.settings.preferences.desktopSiteByDefault
         )
-        return identity.customUserAgent
-            ?? (env.settings.preferences.desktopSiteByDefault
-                ? BrowserUserAgent.desktopIdentifier
-                : BrowserUserAgent.deviceIdentifier)
+    }
+
+    private var effectiveOutgoingIdentifier: String {
+        effectiveOutgoingIdentity.customUserAgent ?? BrowserUserAgent.deviceIdentifier
     }
 
     var body: some View {
@@ -90,6 +90,18 @@ struct UserAgentSettingsView: View {
             }
 
             Section {
+                HStack {
+                    Text("网页布局")
+                    Spacer()
+                    // The other half of the identity: the identifier decides
+                    // what the site is told, this is how WebKit lays the
+                    // document out. Showing them together is what makes a
+                    // mismatch visible instead of mysterious.
+                    Text(effectiveOutgoingIdentity.isDesktop ? "桌面版" : "手机版")
+                        .foregroundStyle(palette.secondaryText)
+                }
+                .font(.footnote)
+
                 Text(effectiveOutgoingIdentifier)
                     .font(.system(size: 12, design: .monospaced))
                     .textSelection(.enabled)

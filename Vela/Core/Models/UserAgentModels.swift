@@ -14,6 +14,40 @@
 import Foundation
 import UIKit
 
+/// The kind of device an identifier should describe.
+///
+/// The app's own rule, and the one the identifier screen's 自动 row promises:
+/// a phone presents the phone's own page, an iPad presents the desktop page
+/// the way a Mac does, and a Mac presents the desktop page. The iPad half is
+/// deliberate. Tablet layouts are the narrowest branch of most sites' desktop
+/// code and the one that ages worst; the desktop layout is the one the site's
+/// authors actually test, and it is what a tablet can show in landscape.
+///
+/// It is a value rather than a read of `UIDevice` at every call site so a test
+/// can say which device it is describing, and `current` is read once — the
+/// idiom of a running app cannot change.
+public enum BrowserDeviceClass: Sendable {
+    case phone
+    case pad
+    case mac
+
+    public static let current: BrowserDeviceClass = {
+        switch UIDevice.current.userInterfaceIdiom {
+        case .pad: return .pad
+        case .mac: return .mac
+        default: return .phone
+        }
+    }()
+
+    /// Whether the automatic identity for this device is a desktop one.
+    public var prefersDesktopIdentity: Bool {
+        switch self {
+        case .pad, .mac: return true
+        case .phone: return false
+        }
+    }
+}
+
 /// A user-agent preset the identifier screen offers.
 ///
 /// `userAgent` is the literal string a page will receive; `nil` means the
@@ -34,7 +68,7 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
     /// parentheses, the engine half from the browser token at the tail.
     var claimedSummary: String {
         guard let ua = userAgent, !ua.isEmpty else {
-            return "按当前设备自动选择：iPhone 手机版、iPad 平板版、Mac 桌面版"
+            return "按当前设备自动选择：iPhone 手机版，iPad 与 Mac 桌面版"
         }
 
         var device = ""
@@ -52,6 +86,13 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
                     .replacingOccurrences(of: " like Mac OS X", with: "")
                     .replacingOccurrences(of: "_", with: ".")
                 device = "iPhone · iOS \(version)"
+            } else if tokens.first == "iPad",
+                      let os = tokens.first(where: { $0.hasPrefix("CPU OS ") }) {
+                let version = os
+                    .replacingOccurrences(of: "CPU OS ", with: "")
+                    .replacingOccurrences(of: " like Mac OS X", with: "")
+                    .replacingOccurrences(of: "_", with: ".")
+                device = "iPad · iPadOS \(version)"
             } else if let os = tokens.first(where: { $0.hasPrefix("Android ") }) {
                 let phone = tokens.last == os ? "" : tokens.last ?? ""
                 device = phone.isEmpty ? os : "\(phone) · \(os)"
@@ -90,6 +131,11 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
         BrowserUserAgentPreset(
             id: "safari-iphone", title: "Safari iPhone",
             userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",
+            isDesktop: false
+        ),
+        BrowserUserAgentPreset(
+            id: "safari-ipad", title: "Safari iPad",
+            userAgent: BrowserUserAgent.padIdentifier,
             isDesktop: false
         ),
         BrowserUserAgentPreset(
@@ -157,16 +203,26 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
 
 public enum BrowserUserAgent {
     /// The tail WebKit should append to its own identifier.
-    public static var safariTail: String {
-        "Version/\(operatingSystemVersion) Mobile/15E148 Safari/604.1"
-    }
+    ///
+    /// Held as a constant: the system's version numbers cannot change while
+    /// the app is running, and this string is read on every navigation and
+    /// every settings redraw. Rebuilding it each time was measurable churn in
+    /// exactly the hot path — the identity is asked for before each request.
+    public static let safariTail = "Version/\(operatingSystemVersion) Mobile/15E148 Safari/604.1"
 
     /// How a tab should identify itself, given the user's settings — and the
     /// host it is about to open, which one family of sites branches on.
+    ///
+    /// `device` is explicit so a test can ask what a particular device would
+    /// present. The identifier and the *rendering mode* are decided together:
+    /// a desktop identifier beside a mobile content mode is a page that is
+    /// told it is a computer and laid out as a phone, which is the mismatch
+    /// that made the identifier look broken on an iPad.
     public static func identity(
         custom: String,
         prefersDesktop: Bool,
-        host: String? = nil
+        host: String? = nil,
+        device: BrowserDeviceClass = .current
     ) -> BrowserWebIdentity {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -187,24 +243,33 @@ public enum BrowserUserAgent {
            trimmed.isEmpty || BrowserUserAgentPreset.isPreset(trimmed) {
             return BrowserWebIdentity(
                 applicationNameForUserAgent: safariTail,
-                customUserAgent: mobileIdentifier
+                customUserAgent: mobileIdentifier,
+                isDesktop: false
             )
         }
 
         // Someone who typed a string asked for that exact value. Letting the
         // desktop toggle override it is what made the field look broken.
         if !trimmed.isEmpty {
-            return BrowserWebIdentity(applicationNameForUserAgent: safariTail, customUserAgent: trimmed)
-        }
-        if prefersDesktop {
             return BrowserWebIdentity(
                 applicationNameForUserAgent: safariTail,
-                customUserAgent: desktopIdentifier
+                customUserAgent: trimmed,
+                isDesktop: looksDesktop(trimmed)
             )
         }
-        // The default: no custom identifier at all, so WebKit appends the tail to
-        // its own prefix and the result is what Safari would have sent on this
-        // device.
+        // The automatic identity, or the desktop toggle. An iPad is in the
+        // desktop branch by default: its tablet layout is the branch sites
+        // test least, and the desktop page is the one that works in landscape.
+        if prefersDesktop || device.prefersDesktopIdentity {
+            return BrowserWebIdentity(
+                applicationNameForUserAgent: safariTail,
+                customUserAgent: desktopIdentifier,
+                isDesktop: true
+            )
+        }
+        // A phone with no override: no custom identifier at all, so WebKit
+        // appends the tail to its own prefix and the result is what Safari
+        // would have sent on this device.
         return BrowserWebIdentity(applicationNameForUserAgent: safariTail)
     }
 
@@ -218,31 +283,48 @@ public enum BrowserUserAgent {
         return domains.contains { lowered == $0 || lowered.hasSuffix(".\($0)") }
     }
 
+    /// Whether a hand-typed identifier claims a desktop browser.
+    ///
+    /// Decided from the platform tokens rather than from the preset list,
+    /// because a typed string is exactly the case the list cannot answer. The
+    /// mobile markers are checked first: an Android tablet's identifier has
+    /// no `Mobile/` token but is still a mobile page.
+    public static func looksDesktop(_ userAgent: String) -> Bool {
+        let lowered = userAgent.lowercased()
+        if lowered.contains("mobile")
+            || lowered.contains("android")
+            || lowered.contains("iphone")
+            || lowered.contains("ipad")
+            || lowered.contains("ipod") {
+            return false
+        }
+        return lowered.contains("macintosh")
+            || lowered.contains("windows nt")
+            || lowered.contains("x11")
+            || lowered.contains("cros")
+            || lowered.contains("linux")
+    }
+
     /// The identifier the running device should present by default.
     ///
     /// The automatic preset is the initial choice, and this is what makes it
-    /// mean "the device you are holding": an iPhone claims a phone, an iPad a
-    /// tablet, and a Mac a desktop. The default path still lets WebKit build
-    /// its own identifier (which is the most current one); this value is used
-    /// to show the user what that identifier is and as the base for the
-    /// explicit presets.
+    /// mean "the device you are holding": an iPhone claims a phone, and an
+    /// iPad claims a Mac — the desktop identity its automatic mode uses. The
+    /// phone default path still lets WebKit build its own identifier (which is
+    /// the most current one); this value is used to show the user what that
+    /// identifier is and as the base for the explicit presets.
     public static var deviceIdentifier: String {
-        switch UIDevice.current.userInterfaceIdiom {
-        case .pad:
-            return padIdentifier
-        case .mac:
-            return desktopIdentifier
-        default:
-            return mobileIdentifier
-        }
+        BrowserDeviceClass.current.prefersDesktopIdentity ? desktopIdentifier : mobileIdentifier
     }
 
-    /// A complete iPad identifier, for the automatic tablet identity.
-    public static var padIdentifier: String {
-        "Mozilla/5.0 (iPad; CPU OS "
-            + "\(operatingSystemVersion.replacingOccurrences(of: ".", with: "_")) like Mac OS X) "
-            + "AppleWebKit/605.1.15 (KHTML, like Gecko) \(safariTail)"
-    }
+    /// A complete iPad identifier, for the explicit Safari iPad preset.
+    ///
+    /// It is no longer the automatic identity on an iPad — that is the desktop
+    /// one — but it stays available for a site whose tablet layout is what the
+    /// user wants.
+    public static let padIdentifier = "Mozilla/5.0 (iPad; CPU OS "
+        + "\(operatingSystemVersion.replacingOccurrences(of: ".", with: "_")) like Mac OS X) "
+        + "AppleWebKit/605.1.15 (KHTML, like Gecko) \(safariTail)"
 
     /// A complete desktop identifier, for the "请求桌面网站" toggle.
     ///
@@ -258,9 +340,7 @@ public enum BrowserUserAgent {
     /// desktop mode would be presenting the old one while the default path — the
     /// mobile identifier, assembled by WebKit from its own prefix — stays correct
     /// without a change here.
-    public static var desktopIdentifier: String {
-        desktopForm(of: mobileIdentifier)
-    }
+    public static let desktopIdentifier: String = desktopForm(of: mobileIdentifier)
 
     /// The identifier a phone-sized tab presents, reconstructed.
     ///
@@ -268,17 +348,19 @@ public enum BrowserUserAgent {
     /// is that string written out. It is used as the base for the desktop form
     /// above, and the settings screen compares it against the identifier a real
     /// page reports so the two can be seen to agree.
-    public static var mobileIdentifier: String {
-        "Mozilla/5.0 (iPhone; CPU iPhone OS "
-            + "\(operatingSystemVersion.replacingOccurrences(of: ".", with: "_")) like Mac OS X) "
-            + "AppleWebKit/605.1.15 (KHTML, like Gecko) \(safariTail)"
-    }
+    ///
+    /// A constant because every token in it is fixed for the life of the
+    /// process; the identity is read before every navigation and on every
+    /// settings redraw, and rebuilding the string there bought nothing.
+    public static let mobileIdentifier = "Mozilla/5.0 (iPhone; CPU iPhone OS "
+        + "\(operatingSystemVersion.replacingOccurrences(of: ".", with: "_")) like Mac OS X) "
+        + "AppleWebKit/605.1.15 (KHTML, like Gecko) \(safariTail)"
 
     /// `26.1`, as the system reports it.
-    static var operatingSystemVersion: String {
+    static let operatingSystemVersion: String = {
         let version = ProcessInfo.processInfo.operatingSystemVersion
         return "\(version.majorVersion).\(version.minorVersion)"
-    }
+    }()
 
     /// Rewrites a mobile Safari identifier into a desktop one.
     ///

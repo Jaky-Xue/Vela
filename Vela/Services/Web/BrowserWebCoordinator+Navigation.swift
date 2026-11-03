@@ -67,15 +67,38 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
     public nonisolated func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        preferences: WKWebpagePreferences,
+        decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
     ) {
         // The decision itself is taken on the main actor, because it reads the
         // tab registry and writes history. WebKit holds the navigation until the
         // handler is called and accepts an asynchronous answer for this
         // callback, which is what makes the hop safe.
         Task { @MainActor in
-            decisionHandler(self.resolvePolicy(for: navigationAction, in: webView))
+            // The rendering half of the identity belongs to this navigation,
+            // and decides it alongside the policy. Without it a desktop
+            // identifier only changed the header: WebKit kept the mobile
+            // viewport, the mobile `navigator.platform` and the mobile
+            // `100vh`, so a site that reads the document rather than the
+            // header saw a phone and laid out a phone. This is the same switch
+            // Safari's 请求桌面网站 flips.
+            preferences.preferredContentMode = self.preferredContentMode(
+                for: navigationAction.request.url,
+                in: webView
+            )
+            decisionHandler(self.resolvePolicy(for: navigationAction, in: webView), preferences)
         }
+    }
+
+    /// The layout WebKit should give a navigation, read from the identity the
+    /// request itself will carry.
+    @MainActor
+    func preferredContentMode(
+        for url: URL?,
+        in webView: WKWebView
+    ) -> WKWebpagePreferences.ContentMode {
+        guard let tab = tab(for: webView) else { return .recommended }
+        return webIdentity(for: tab, url: url).isDesktop ? .desktop : .mobile
     }
 
     @MainActor

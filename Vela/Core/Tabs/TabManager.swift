@@ -1112,8 +1112,24 @@ public struct BrowserWebIdentity: Equatable, Sendable {
     /// a desktop platform, or a string the user typed.
     public var customUserAgent: String?
 
-    public init(applicationNameForUserAgent: String, customUserAgent: String? = nil) {
+    /// Whether the page should be laid out as a desktop document.
+    ///
+    /// The identifier and this flag are two halves of one claim. WebKit picks
+    /// the *rendering* — the viewport it makes, `navigator.platform`, the
+    /// `100vh` it reports — from a page preference, not from the header
+    /// string; setting only `customUserAgent` told a site it was a Mac while
+    /// changing nothing about how the document was laid out. The coordinator
+    /// maps this onto `WKWebpagePreferences.preferredContentMode`, which is
+    /// the same switch Safari's 请求桌面网站 uses.
+    public var isDesktop: Bool
+
+    public init(
+        applicationNameForUserAgent: String,
+        customUserAgent: String? = nil,
+        isDesktop: Bool = false
+    ) {
         self.applicationNameForUserAgent = applicationNameForUserAgent
         self.customUserAgent = customUserAgent
+        self.isDesktop = isDesktop
     }
 }

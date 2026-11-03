@@ -838,7 +838,15 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // platform token and the WebKit version token come from the system that
         // is actually running — which is what keeps the identifier correct on a
         // new iOS without a change to this project.
-        configuration.applicationNameForUserAgent = webIdentity(for: tab).applicationNameForUserAgent
+        let identity = webIdentity(for: tab)
+        configuration.applicationNameForUserAgent = identity.applicationNameForUserAgent
+        // The rendering half of the identity, set before the first request so a
+        // tab's first page is laid out correctly rather than only after a
+        // policy callback has run. The per-navigation callback in
+        // `BrowserWebCoordinator+Navigation.swift` keeps it right when the
+        // identity changes site by site.
+        configuration.defaultWebpagePreferences.preferredContentMode =
+            identity.isDesktop ? .desktop : .mobile
 
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
@@ -860,13 +868,22 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     /// web-view site, so there is exactly one place that answers "what does a tab
     /// look like to a site" and the per-tab and global paths cannot disagree.
     public func webIdentity(for tab: BrowserTabState) -> BrowserWebIdentity {
+        webIdentity(for: tab, url: URL(string: tab.url))
+    }
+
+    /// The identity for a specific destination.
+    ///
+    /// A navigation in flight passes its own URL: the tab still names the page
+    /// it is leaving when the policy callback runs, and a site that branches on
+    /// the identifier has to be read from where the request is going.
+    public func webIdentity(for tab: BrowserTabState, url: URL?) -> BrowserWebIdentity {
         BrowserUserAgent.identity(
             custom: settings.preferences.customUserAgent,
             prefersDesktop: settings.preferences.desktopSiteByDefault,
             // The host the tab is on or heading to — `load` writes the URL
             // before the web view exists, and `didCommit` keeps it current, so
             // a site that branches on the identifier is read from here.
-            host: URL(string: tab.url)?.host
+            host: url?.host
         )
     }
 

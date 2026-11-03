@@ -320,9 +320,11 @@ final class BrowserUrlResolverTests: XCTestCase {
 /// sends neither `Version/` nor `Safari/`, and a site that looks for them treats
 /// their absence as an embedded browser.
 ///
-/// The third property is the one that makes the first survive an OS release: the
-/// default identity sets *no* custom identifier, so WebKit builds the whole string
-/// from its own platform and engine tokens and Vela only appends the Safari tail.
+/// The third property is the one that makes the first survive an OS release: on a
+/// phone the default identity sets *no* custom identifier, so WebKit builds the
+/// whole string from its own platform and engine tokens and Vela only appends the
+/// Safari tail. An iPad is the exception it has to be — WebKit will not claim a
+/// Mac on its own — and there the platform token is the only part written down.
 /// Nothing here has to be revised for iOS 27.
 @MainActor
 final class BrowserUserAgentTests: XCTestCase {
@@ -336,16 +338,90 @@ final class BrowserUserAgentTests: XCTestCase {
         XCTAssertFalse(tail.contains("Version/17.0"))
     }
 
-    /// The default leaves the whole prefix to WebKit.
+    /// The default leaves the whole prefix to WebKit — on a phone.
     ///
     /// This is the property that adapts to a new OS by itself: Vela does not name
     /// the platform, and it does not name the engine's version token either —
     /// writing that down is the same mistake as writing down `Version/17.0`, one
-    /// layer down.
+    /// layer down. The device is stated rather than read so the test says which
+    /// device it means, not which simulator happens to run it.
     func testTheDefaultIdentityWritesNoCustomIdentifier() {
-        let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false)
+        let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false, device: .phone)
         XCTAssertNil(identity.customUserAgent)
+        XCTAssertFalse(identity.isDesktop)
         XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.safariTail)
+    }
+
+    /// An iPad's automatic identity is the desktop one, and it asks for the
+    /// desktop layout with it.
+    ///
+    /// The identifier and the rendering flag are two halves of one claim: a Mac
+    /// header over a mobile document is a page told it is a computer and laid
+    /// out as a phone. The tablet branches of most sites are also the ones that
+    /// age worst and the ones that break in landscape, which is the reason an
+    /// iPad presents the desktop page even without the desktop toggle.
+    func testAnIPadPresentsTheDesktopIdentityAutomatically() {
+        let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false, device: .pad)
+        guard let desktop = identity.customUserAgent else {
+            return XCTFail("an iPad has to name the desktop platform explicitly")
+        }
+        XCTAssertTrue(desktop.contains("Macintosh"), desktop)
+        XCTAssertFalse(desktop.contains("Mobile/"), desktop)
+        XCTAssertTrue(identity.isDesktop)
+        // The same identity the explicit desktop toggle produces.
+        XCTAssertEqual(
+            identity,
+            BrowserUserAgent.identity(custom: "", prefersDesktop: true, device: .phone)
+        )
+    }
+
+    /// A typed identifier decides the layout from its own platform tokens.
+    func testACustomIdentifierDecidesTheLayoutItClaims() {
+        XCTAssertTrue(
+            BrowserUserAgent.identity(
+                custom: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                prefersDesktop: false,
+                device: .pad
+            ).isDesktop
+        )
+        XCTAssertFalse(
+            BrowserUserAgent.identity(
+                custom: "Mozilla/5.0 (Linux; Android 16; Pixel 10)",
+                prefersDesktop: false,
+                device: .phone
+            ).isDesktop
+        )
+        XCTAssertFalse(
+            BrowserUserAgent.identity(custom: "MyAgent/9", prefersDesktop: false, device: .phone).isDesktop
+        )
+    }
+
+    /// The video-site exception stays a mobile identity even on an iPad: the
+    /// player this engine can caption is the mobile one.
+    func testAVideoSiteKeepsTheMobileIdentityOnAPad() {
+        let identity = BrowserUserAgent.identity(
+            custom: "",
+            prefersDesktop: false,
+            host: "www.youtube.com",
+            device: .pad
+        )
+        XCTAssertEqual(identity.customUserAgent, BrowserUserAgent.mobileIdentifier)
+        XCTAssertFalse(identity.isDesktop)
+    }
+
+    /// The explicit iPad preset is the way back to a site's tablet page, and it
+    /// asks for the mobile layout while claiming a tablet.
+    func testTheIPadPresetKeepsTheTabletIdentity() {
+        guard let preset = BrowserUserAgentPreset.all.first(where: { $0.id == "safari-ipad" }) else {
+            return XCTFail("no iPad preset")
+        }
+        let identity = BrowserUserAgent.identity(
+            custom: preset.userAgent ?? "",
+            prefersDesktop: preset.isDesktop,
+            device: .pad
+        )
+        XCTAssertTrue(identity.customUserAgent?.contains("(iPad;") == true)
+        XCTAssertFalse(identity.isDesktop)
     }
 
     func testACustomIdentifierBecomesTheOverride() {
@@ -526,7 +602,7 @@ final class PresetSummaryTests: XCTestCase {
     func testTheDefaultPresetDescribesDeviceFollowing() {
         XCTAssertEqual(
             BrowserUserAgentPreset.all[0].claimedSummary,
-            "按当前设备自动选择：iPhone 手机版、iPad 平板版、Mac 桌面版"
+            "按当前设备自动选择：iPhone 手机版，iPad 与 Mac 桌面版"
         )
     }
 
@@ -540,6 +616,16 @@ final class PresetSummaryTests: XCTestCase {
         let preset = BrowserUserAgentPreset.all.first { $0.id == "safari-iphone" }
         guard let preset else { return XCTFail("the iPhone preset is gone") }
         XCTAssertEqual(preset.claimedSummary, "iPhone · iOS 26.0 · Safari 26")
+    }
+
+    /// The iPad preset is the explicit tablet page — not the automatic identity
+    /// any more, but the one a site whose tablet layout is wanted receives.
+    func testTheIPadPresetNamesATabletAndItsEngine() {
+        let preset = BrowserUserAgentPreset.all.first { $0.id == "safari-ipad" }
+        guard let preset else { return XCTFail("the iPad preset is gone") }
+        XCTAssertTrue(preset.claimedSummary.hasPrefix("iPad · iPadOS "), preset.claimedSummary)
+        XCTAssertTrue(preset.claimedSummary.contains("Safari "), preset.claimedSummary)
+        XCTAssertFalse(preset.isDesktop)
     }
 
     func testTheAndroidPresetNamesThePhoneAndTheEngine() {

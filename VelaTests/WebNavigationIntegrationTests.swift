@@ -607,6 +607,12 @@ final class WebNavigationIntegrationTests: XCTestCase {
             (webView.customUserAgent ?? "").isEmpty,
             "the default should set no override: \(webView.customUserAgent ?? "-")"
         )
+        // A phone's default is the mobile layout, and WebKit is told so before
+        // the first request rather than being left to guess.
+        XCTAssertEqual(
+            webView.configuration.defaultWebpagePreferences.preferredContentMode,
+            .mobile
+        )
 
         let value = try? await webView.evaluateJavaScript("navigator.userAgent")
         let identifier = value as? String ?? ""
@@ -640,6 +646,14 @@ final class WebNavigationIntegrationTests: XCTestCase {
             return XCTFail("no web view")
         }
         XCTAssertEqual(webView.customUserAgent?.contains("Macintosh"), true)
+        // The other half of the claim: WebKit lays the document out as a
+        // desktop one. Without this a Mac identifier came with a mobile
+        // viewport and a mobile `navigator.platform`.
+        XCTAssertEqual(
+            webView.configuration.defaultWebpagePreferences.preferredContentMode,
+            .desktop,
+            "a desktop identifier has to bring the desktop layout with it"
+        )
 
         let value = try? await webView.evaluateJavaScript("navigator.userAgent")
         let identifier = value as? String ?? ""

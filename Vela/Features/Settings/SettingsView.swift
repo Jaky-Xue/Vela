@@ -266,10 +266,10 @@ struct SettingsView: View {
         if env.settings.preferences.desktopSiteByDefault {
             return "桌面版"
         }
-        switch UIDevice.current.userInterfaceIdiom {
-        case .pad: return "自动 · iPad"
-        case .mac: return "自动 · Mac"
-        default: return "自动 · iPhone"
+        switch BrowserDeviceClass.current {
+        case .pad: return "自动 · iPad 桌面版"
+        case .mac: return "自动 · Mac 桌面版"
+        case .phone: return "自动 · iPhone"
         }
     }
 

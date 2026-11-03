@@ -1369,13 +1369,29 @@ struct BrowserShellView: View {
     }
 
     func toggleDesktopSite(for tab: BrowserTabState) {
-        let next = !env.settings.preferences.desktopSiteByDefault
-        // The menu item is an explicit choice between the two built-in
-        // identifiers, so it clears a custom one. Leaving the custom string in
-        // place would make this look like it did nothing.
+        // Decided from the identity in force, not from the stored flag. On an
+        // iPad the automatic identity is already the desktop one, so the flag
+        // is false while the page is desktop; turning it "off" there has to
+        // name the tablet page explicitly or the tap would clear a custom
+        // string and land back on the same desktop page — an item that visibly
+        // does nothing.
+        let isDesktopNow = env.webCoordinator.webIdentity(for: tab).isDesktop
         env.settings.update {
-            $0.desktopSiteByDefault = next
-            $0.customUserAgent = ""
+            if isDesktopNow {
+                switch BrowserDeviceClass.current {
+                case .pad:
+                    $0.customUserAgent = BrowserUserAgent.padIdentifier
+                case .phone, .mac:
+                    $0.customUserAgent = ""
+                }
+                $0.desktopSiteByDefault = false
+            } else {
+                // The menu item is an explicit choice of the desktop identity,
+                // so it clears a custom string; leaving one in place would make
+                // this look like it did nothing.
+                $0.customUserAgent = ""
+                $0.desktopSiteByDefault = true
+            }
         }
         tabManager.applyUserAgentToAllWebViews()
         _ = tabManager.reload(tab: tab)

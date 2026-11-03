@@ -74,6 +74,11 @@ extension BrowserShellView {
         // is chrome the user did not ask for.
         .opacity(omnibox.isEditing ? 0 : chromeHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
         .allowsHitTesting(!chromeHidden && !omnibox.isEditing)
+        // The bar's transparent gaps and its margins are part of the drag
+        // surface. Without a content shape the gesture began only on the
+        // rendered pieces — the omnibox and the two button clusters — so a
+        // finger that landed between them started a drag the bar never heard.
+        .contentShape(Rectangle())
         .animation(Self.chromeAnimation, value: chromeHidden)
         .animation(Self.chromeAnimation, value: omnibox.isEditing)
         // Dragging the bar downward dismisses it, off the bottom edge the way
@@ -121,31 +126,40 @@ extension BrowserShellView {
                     }
                 }
         )
-        .overlay(alignment: .top) { chromeHomeHint }
+        .overlay(alignment: .top) { chromeDragHint }
         .accessibilityHidden(chromeHidden)
     }
 
-    /// The promise shown while the command bar — the search field included —
-    /// is dragged upward. It fills once releasing will actually open the home
-    /// surface, so the gesture never fires without warning.
-    @ViewBuilder var chromeHomeHint: some View {
-        if chromeLiftOffset < -6, !chromeHidden, !omnibox.isEditing {
-            Text("释放后返回首页")
+    /// The promise shown while the command bar is dragged: 释放后收起工具栏 for
+    /// a downward drag, 释放后返回首页 for an upward one, the same readout the
+    /// iPad top bar shows. It fills once releasing will commit, so the gesture
+    /// never fires without warning — and, just as important, the phone layout
+    /// announces that the bar can be dragged at all.
+    @ViewBuilder var chromeDragHint: some View {
+        let isHiding = chromeDragOffset > 6
+        let isReturningHome = chromeLiftOffset < -6
+        if (isHiding || isReturningHome), !chromeHidden, !omnibox.isEditing {
+            let armed = isHiding ? chromeDragOffset > 56 : chromeHomeArmed
+            // The upward travel is deliberately damped (the bar lifts a third
+            // of the finger's distance), so its hint is scaled back up to
+            // reach full opacity at the same distance the gesture arms.
+            let travel = isHiding ? chromeDragOffset : abs(chromeLiftOffset) * 2
+            Text(isHiding ? "释放后收起工具栏" : "释放后返回首页")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(chromeHomeArmed ? palette.onAccent : palette.primaryText)
+                .foregroundStyle(armed ? palette.onAccent : palette.primaryText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background {
-                    Capsule().fill(chromeHomeArmed ? palette.accent : palette.controlFill)
+                    Capsule().fill(armed ? palette.accent : palette.controlFill)
                 }
                 .overlay {
                     Capsule().strokeBorder(palette.cardStroke, lineWidth: 0.5)
                 }
                 .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
                 .offset(y: -46)
-                .opacity(min(1, abs(chromeLiftOffset) / 20))
+                .opacity(min(1, travel / 20))
                 .allowsHitTesting(false)
-                .animation(.easeOut(duration: 0.15), value: chromeHomeArmed)
+                .animation(.easeOut(duration: 0.15), value: armed)
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
         }
     }
