@@ -25,7 +25,6 @@ enum ToolbarControl: String, CaseIterable, Codable, Sendable, Identifiable, Hash
     case bookmarks
     case history
     case downloads
-    case reader
     case novel
     case bookshelf
     case passwords
@@ -46,7 +45,6 @@ enum ToolbarControl: String, CaseIterable, Codable, Sendable, Identifiable, Hash
         case .bookmarks: return "书签"
         case .history: return "历史记录"
         case .downloads: return "下载"
-        case .reader: return "文章阅读"
         case .novel: return "小说模式"
         case .bookshelf: return "书架"
         case .passwords: return "密码"
@@ -69,7 +67,6 @@ enum ToolbarControl: String, CaseIterable, Codable, Sendable, Identifiable, Hash
         case .bookmarks: return "book"
         case .history: return "clock.arrow.circlepath"
         case .downloads: return "arrow.down.circle"
-        case .reader: return "doc.plaintext"
         case .novel: return "text.book.closed"
         case .bookshelf: return "books.vertical"
         case .passwords: return "key.fill"
@@ -84,7 +81,7 @@ enum ToolbarControl: String, CaseIterable, Codable, Sendable, Identifiable, Hash
     /// Whether the control needs a loaded page to have an effect.
     var requiresPage: Bool {
         switch self {
-        case .share, .reader, .novel, .find, .reload:
+        case .share, .novel, .find, .reload:
             return true
         default:
             return false

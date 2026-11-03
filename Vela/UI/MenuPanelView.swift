@@ -29,6 +29,10 @@ struct MenuPanelView: View {
     var isPrivateMode: Bool
     /// Whether 无痕模式 is on — the tile is a switch, and this is its state.
     var isPrivateBrowsingOn: Bool
+    /// Whether the page in front of the panel is the desktop version. The
+    /// 桌面网站 tile is a switch too, and a switch with no state is a switch
+    /// the user cannot tell they already are on.
+    var isDesktopSiteOn: Bool = false
     /// What the panel is acting on — the page's title, or "菜单" on a
     /// page-less surface. Drawn in the header row.
     var pageTitle: String
@@ -151,7 +155,8 @@ struct MenuPanelView: View {
         // 无痕模式 draws its state on the tile: the accent wash and the
         // corner badge read as "on" the way a checkmarked row would in a list
         // menu.
-        let isModeOn = tile.action == .privateTab && isPrivateBrowsingOn
+        let isModeOn = (tile.action == .privateTab && isPrivateBrowsingOn)
+            || (tile.action == .desktopSite && isDesktopSiteOn)
         let symbol = tile.symbolName
         return Button {
             guard enabled else { return }

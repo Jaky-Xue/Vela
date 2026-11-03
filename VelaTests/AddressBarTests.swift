@@ -396,17 +396,37 @@ final class BrowserUserAgentTests: XCTestCase {
         )
     }
 
-    /// The video-site exception stays a mobile identity even on an iPad: the
-    /// player this engine can caption is the mobile one.
-    func testAVideoSiteKeepsTheMobileIdentityOnAPad() {
-        let identity = BrowserUserAgent.identity(
+    /// The video-site exception is a phone's. An iPad that asks for the desktop
+    /// page gets it on YouTube too — the exception used to outrank the desktop
+    /// toggle there, so 桌面网站 visibly did nothing on that site.
+    func testAVideoSiteFollowsTheDeviceWhenTheDeviceWantsDesktop() {
+        let phone = BrowserUserAgent.identity(
+            custom: "",
+            prefersDesktop: false,
+            host: "www.youtube.com",
+            device: .phone
+        )
+        XCTAssertEqual(phone.customUserAgent, BrowserUserAgent.mobileIdentifier)
+        XCTAssertFalse(phone.isDesktop)
+
+        let pad = BrowserUserAgent.identity(
             custom: "",
             prefersDesktop: false,
             host: "www.youtube.com",
             device: .pad
         )
-        XCTAssertEqual(identity.customUserAgent, BrowserUserAgent.mobileIdentifier)
-        XCTAssertFalse(identity.isDesktop)
+        XCTAssertEqual(pad.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertTrue(pad.isDesktop)
+
+        // The explicit desktop toggle on a phone gets the same answer.
+        let phoneDesktop = BrowserUserAgent.identity(
+            custom: "",
+            prefersDesktop: true,
+            host: "www.youtube.com",
+            device: .phone
+        )
+        XCTAssertEqual(phoneDesktop.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertTrue(phoneDesktop.isDesktop)
     }
 
     /// The explicit iPad preset is the way back to a site's tablet page, and it
@@ -489,6 +509,23 @@ final class BrowserUserAgentTests: XCTestCase {
         let mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/604.1"
         XCTAssertEqual(BrowserUserAgent.desktopForm(of: mac), mac)
+    }
+
+    /// A desktop Safari claim carries MacIntel to the page, so a site that
+    /// reads the platform rather than the header does not still see a tablet.
+    func testTheDesktopSafariClaimReportsAMacPlatform() {
+        guard let script = WebPageScripts.identityConsistencyScript(
+            userAgent: BrowserUserAgent.desktopIdentifier
+        ) else {
+            return XCTFail("a desktop claim has to align the platform")
+        }
+        XCTAssertTrue(script.contains("MacIntel"), script)
+        XCTAssertFalse(script.contains("userAgentData"), script)
+
+        // The phone identity is WebKit's own; nothing needs aligning.
+        XCTAssertNil(
+            WebPageScripts.identityConsistencyScript(userAgent: BrowserUserAgent.mobileIdentifier)
+        )
     }
 }
 

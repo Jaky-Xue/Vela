@@ -1,6 +1,6 @@
 # Vela
 
-**一个 iOS 原生浏览器。** 标签页、广告过滤、用户脚本、阅读模式、小说模式与书架、密码与保险箱、无痕浏览都在，而且全都跑在这台设备上。
+**一个 iOS 原生浏览器。** 标签页、广告过滤、用户脚本、小说模式与书架、密码与保险箱、无痕浏览都在，而且全都跑在这台设备上。
 
 [![最新版本](https://img.shields.io/github/v/release/Jaky-Xue/Vela?label=%E4%B8%8B%E8%BD%BD&color=blue)](https://github.com/Jaky-Xue/Vela/releases/latest)
 [![许可证](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
@@ -56,7 +56,6 @@ iOS 不允许安装没有签名的应用，所以 `.ipa` 需要用自己的 Appl
 - 广告与内容过滤：Adblock Plus 语法编译成 `WKContentRuleList`，支持内置规则、远程订阅、自定义规则、站点白名单和元素隐藏
 - 手动隐藏页面元素：元素选择器会生成稳定的 CSS 选择器，跳过 `css-1x2y3z` 这种每次发版都变的类名
 - 用户脚本：按 Tampermonkey 元数据安装、编辑、检查更新和删除；解析 `@match`/`@include`/`@require`/`@resource`/`@run-at`，安装时下载依赖；`GM_*` 值存储、菜单命令、`GM_xmlhttpRequest`/`GM_fetch`/`GM_cookie`/`GM_download`/`GM_openInTab`/每标签存储通过原生桥接执行，两个脚本的全局互不覆盖
-- 阅读模式：按可读性评分提取正文，用原生阅读界面呈现
 - 小说模式与书架：提取书名、作者、正文和上一章/下一章链接，加入书架并记住阅读进度；章节正文缓存，可离线继续；阅读时有目录（从网站目录页解析）、上下章（页面无链接时用目录补足）以及上下滚动 / 整屏翻页两种翻页方式，阅读层会隐藏浏览器工具栏
 - 密码与保险箱：条目只写入 iOS 钥匙串（`ThisDeviceOnly`），面容 ID / 触控 ID / 设备密码解锁，可一键填充当前网页的登录表单
 - 网页标识：自动跟随设备——iPhone 用手机版，iPad 和 Mac 用桌面版（iPad 的网页按桌面布局渲染，横屏也和桌面一致）；也可选 Safari iPad 平板版、Safari / Chrome / Edge / Firefox 预设或自定义 User-Agent，标识和网页布局一起切换；初始即为自动模式

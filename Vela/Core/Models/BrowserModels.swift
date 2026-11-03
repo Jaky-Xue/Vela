@@ -457,7 +457,6 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var blurPrivateTabPreviews: Bool
     public var customUserAgent: String
     public var desktopSiteByDefault: Bool
-    public var readerModeAvailable: Bool
     public var userScriptsEnabled: Bool
     public var homepageUrl: String
     public var themePaletteId: String
@@ -500,7 +499,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// back on the left, tabs and menu on the right.
     public var toolbarLeadingItems: [String]?
     public var toolbarTrailingItems: [String]?
-    /// 阅读模式与小说模式共用的字号与外观偏好。Optional for the decode reason
+    /// 小说阅读器的字号与外观偏好。Optional for the decode reason
     /// above: an absent key must not reset the rest of the document.
     public var readerFontSize: Double?
     public var readerAppearance: String?
@@ -547,7 +546,6 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         blurPrivateTabPreviews: Bool = true,
         customUserAgent: String = "",
         desktopSiteByDefault: Bool = false,
-        readerModeAvailable: Bool = true,
         userScriptsEnabled: Bool = true,
         homepageUrl: String = "about:home",
         themePaletteId: String = "default",
@@ -591,7 +589,6 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.blurPrivateTabPreviews = blurPrivateTabPreviews
         self.customUserAgent = customUserAgent
         self.desktopSiteByDefault = desktopSiteByDefault
-        self.readerModeAvailable = readerModeAvailable
         self.userScriptsEnabled = userScriptsEnabled
         self.homepageUrl = homepageUrl
         self.themePaletteId = themePaletteId

@@ -272,8 +272,6 @@ extension BrowserShellView {
             return canGoBack
         case .home:
             return activeTab != nil
-        case .reader:
-            return canActOnPage && env.settings.preferences.readerModeAvailable
         case .share, .novel, .find, .reload:
             return canActOnPage
         default:
@@ -375,9 +373,6 @@ extension BrowserShellView {
             showHistory = true
         case .downloads:
             showDownloads = true
-        case .reader:
-            guard env.settings.preferences.readerModeAvailable else { return }
-            activateReaderMode()
         case .novel:
             activateNovelMode()
         case .bookshelf:
@@ -486,14 +481,6 @@ extension BrowserShellView {
             } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
                 chromeForegroundIsLight = backdropIsLight
             }
-            return
-        }
-
-        if isReaderActive,
-           let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
-            // The reader redraws the article on the palette surface; there is
-            // no page behind the bar to sample.
-            chromeForegroundIsLight = backdropIsLight
             return
         }
 

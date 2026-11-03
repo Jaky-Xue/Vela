@@ -226,20 +226,26 @@ public enum BrowserUserAgent {
     ) -> BrowserWebIdentity {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Video sites get an answer of their own, ahead of every preset and of
-        // the desktop toggle; only a hand-typed identifier outranks it. YouTube
-        // is the case that matters. Its player is built for the browser it
-        // believes it is talking to, and every identity this app can claim is a
-        // lie to it: the iPad and desktop identifiers land the desktop site and
-        // its sign-in wall, and a preset that claims Chrome leaves the mobile
-        // player's captions unrendered, because the renderer it selects expects
-        // Chrome. The mobile Safari identifier is the one shape whose player,
-        // playback and captions work on this engine.
+        // Video sites get an answer of their own on a phone, ahead of the
+        // automatic identity; only a hand-typed identifier outranks it.
+        // YouTube is the case that matters. Its player is built for the
+        // browser it believes it is talking to, and the phone identifier is
+        // the one shape whose mobile player, playback and captions work on
+        // this engine.
+        //
+        // The exception stops at the phone. It used to outrank the desktop
+        // toggle and every preset, so on an iPad — whose automatic identity is
+        // the desktop one — YouTube stayed mobile no matter what the user
+        // chose, and the menu's 桌面网站 item visibly did nothing there. A
+        // device that has asked for the desktop page gets the desktop page,
+        // video sites included; the desk is the user's call.
         //
         // A preset is a choice of identity rather than a hand-written string,
         // so it yields here. A string the user typed is kept: that is the exact
         // value they asked for.
         if let host, isVideoSiteHost(host),
+           !prefersDesktop,
+           !device.prefersDesktopIdentity,
            trimmed.isEmpty || BrowserUserAgentPreset.isPreset(trimmed) {
             return BrowserWebIdentity(
                 applicationNameForUserAgent: safariTail,

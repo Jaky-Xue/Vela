@@ -93,6 +93,9 @@ extension BrowserShellView {
                 canActOnPage: canActOnPage,
                 isPrivateMode: activeTab?.privacyMode == .private,
                 isPrivateBrowsingOn: env.settings.preferences.privateBrowsingMode ?? false,
+                isDesktopSiteOn: activeTab.map {
+                    env.webCoordinator.webIdentity(for: $0).isDesktop
+                } ?? false,
                 pageTitle: menuPanelTitle,
                 onPerform: handleMenuAction,
                 onOpenShortcut: handleMenuShortcut,

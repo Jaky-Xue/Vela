@@ -87,9 +87,6 @@ struct BrowserShellView: View {
     /// The debounce behind the find field. Typing is what runs the search.
     @State var findDebounceTask: Task<Void, Never>?
 
-    @State var isReaderActive = false
-    @State var readerArticle: ReaderArticle?
-
     /// The novel reader's layer, when one is open.
     ///
     /// It is a value rather than two optionals so opening a different book or
@@ -281,7 +278,7 @@ struct BrowserShellView: View {
         if novelSession != nil { return false }
         if showsBackgroundPictureAtRoot { return false }
         guard let tab = activeTab else { return true }
-        if tab.isHome || isReaderActive || tab.loadState.isFailure { return true }
+        if tab.isHome || tab.loadState.isFailure { return true }
         return tabManager.webView(for: tab.id) == nil
     }
 
@@ -699,7 +696,6 @@ struct BrowserShellView: View {
         // not to the page they cover.
         guard !showTabsOverview, !showQRScanner, !showPadSidebar else { return false }
         guard let tab = activeTab else { return false }
-        if isReaderActive { return true }
         if tab.isHome { return !tab.url.isEmpty }
         if tab.loadState.isFailure { return true }
         guard tabManager.webView(for: tab.id) != nil else { return false }
@@ -798,11 +794,6 @@ struct BrowserShellView: View {
     func handleEdgeSwipeBack() {
         guard novelSession == nil else { return }
         guard !omnibox.isEditing, !showFindBar else { return }
-        if isReaderActive {
-            isReaderActive = false
-            readerArticle = nil
-            return
-        }
         guard activeTab != nil else { return }
         goBack()
     }
@@ -961,8 +952,6 @@ struct BrowserShellView: View {
         if !isSwipeBackCompleting {
             swipeBackTranslation = 0
         }
-        isReaderActive = false
-        readerArticle = nil
         showFindBar = false
         findQuery = ""
         chromeHidden = false
@@ -1100,8 +1089,6 @@ struct BrowserShellView: View {
     /// one-way door.
     func goHome(_ tab: BrowserTabState) {
         tabManager.webView(for: tab.id)?.stopLoading()
-        isReaderActive = false
-        readerArticle = nil
         showFindBar = false
         findQuery = ""
         env.webCoordinator.clearFindInPage()
@@ -1231,12 +1218,6 @@ struct BrowserShellView: View {
             showShareSheet = true
         case .findInPage:
             showFindBar = true
-        case .reader:
-            // The general setting gates the entry: with reader mode switched
-            // off, the menu item does nothing rather than opening a mode the
-            // user asked the browser not to offer.
-            guard env.settings.preferences.readerModeAvailable else { break }
-            activateReaderMode()
         case .saveOfflinePage:
             saveOfflinePage()
         case .offlinePages:
@@ -1368,61 +1349,35 @@ struct BrowserShellView: View {
         }
     }
 
+    /// Flips the page between the desktop and the phone version.
+    ///
+    /// The switch is decided from the identity in force, not from the stored
+    /// flag: an iPad's automatic identity is already the desktop one, so the
+    /// flag is false while the page is desktop. Turning it off there names the
+    /// phone page explicitly — clearing the fields would land back on the same
+    /// desktop identity, and the switch would look dead. On a phone, off is the
+    /// automatic identity, which is already the phone page.
     func toggleDesktopSite(for tab: BrowserTabState) {
-        // Decided from the identity in force, not from the stored flag. On an
-        // iPad the automatic identity is already the desktop one, so the flag
-        // is false while the page is desktop; turning it "off" there has to
-        // name the tablet page explicitly or the tap would clear a custom
-        // string and land back on the same desktop page — an item that visibly
-        // does nothing.
         let isDesktopNow = env.webCoordinator.webIdentity(for: tab).isDesktop
         env.settings.update {
             if isDesktopNow {
                 switch BrowserDeviceClass.current {
-                case .pad:
-                    $0.customUserAgent = BrowserUserAgent.padIdentifier
-                case .phone, .mac:
+                case .pad, .mac:
+                    $0.customUserAgent = BrowserUserAgent.mobileIdentifier
+                case .phone:
                     $0.customUserAgent = ""
                 }
                 $0.desktopSiteByDefault = false
             } else {
-                // The menu item is an explicit choice of the desktop identity,
-                // so it clears a custom string; leaving one in place would make
-                // this look like it did nothing.
+                // On is the desktop identity, and it outranks a stored preset;
+                // leaving one in place would make this look like it did
+                // nothing.
                 $0.customUserAgent = ""
                 $0.desktopSiteByDefault = true
             }
         }
         tabManager.applyUserAgentToAllWebViews()
         _ = tabManager.reload(tab: tab)
-    }
-
-    func activateReaderMode() {
-        guard let tab = activeTab, !tab.isHome,
-              let webView = tabManager.webView(for: tab.id) else { return }
-        let identity = TabDocumentIdentity(tab: tab)
-        Task {
-            let article = await ReaderModeService.extract(from: webView, url: tab.url)
-            // The extraction is asynchronous; a tab switch or a navigation
-            // while it runs means the article belongs to a document the user
-            // has left.
-            guard identity.matches(activeTab) else { return }
-            if let article {
-                readerArticle = article
-                isReaderActive = true
-            } else {
-                // Extraction failed, which is the normal outcome on a non-article
-                // page. Rather than a silent no-op, the shell marks the surface
-                // with the failure so the user knows the button worked.
-                readerArticle = ReaderArticle(
-                    title: "无法提取正文",
-                    byline: "",
-                    contentHtml: "<p>这个页面看起来不是一篇文章，无法用文章阅读打开。如果是小说章节，请使用「小说模式」。</p>",
-                    url: tab.url
-                )
-                isReaderActive = true
-            }
-        }
     }
 
     func reloadActiveTab() {

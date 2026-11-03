@@ -117,13 +117,36 @@ public enum WebPageScripts {
     ///   would be its own mismatch.
     /// * A Firefox claim gains Firefox's empty vendor and nothing else —
     ///   Firefox has no `userAgentData` either.
-    /// * Vela's default and the Safari presets send no script at all:
-    ///   WebKit already is Safari, and its surface is consistent by
-    ///   construction.
+    /// * A desktop Safari claim (a Mac identifier without `Mobile/`) gains
+    ///   `navigator.platform = "MacIntel"`. On an iPad the automatic identity
+    ///   is exactly this claim, and a page that reads the platform rather than
+    ///   the header would otherwise still be told it is a tablet.
+    /// * Vela's phone default sends no script at all: WebKit already is
+    ///   Safari, and its surface is consistent by construction.
     ///
     /// Returns nil when there is nothing to align.
     public static func identityConsistencyScript(userAgent: String) -> String? {
         let lowered = userAgent.lowercased()
+
+        // A desktop Safari claim is a Mac platform claim. WebKit's desktop
+        // content mode reports `MacIntel` by itself on an iPad, so this is
+        // usually a no-op; it is here for the case where only the header was
+        // honoured and the page's platform check still read the tablet.
+        if lowered.contains("macintosh"), !lowered.contains("mobile") {
+            return """
+            (function () {
+              if (window.__velaIdentityConsistency === true) { return; }
+              window.__velaIdentityConsistency = true;
+              try {
+                Object.defineProperty(Navigator.prototype, 'platform', {
+                  get: function () { return 'MacIntel'; },
+                  configurable: true
+                });
+              } catch (error) {}
+            })();
+            """
+        }
+
         let claimsChromiumData = lowered.contains("chrome/") || lowered.contains("edg/")
         let claimsCriOS = lowered.contains("crios/")
         let claimsFirefox = lowered.contains("firefox/")

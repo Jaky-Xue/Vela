@@ -445,26 +445,7 @@ extension BrowserShellView {
 
     @ViewBuilder
     var mainSurface: some View {
-        if isReaderActive, let article = readerArticle {
-            // Reading mode replaces the page rather than covering it. Its own
-            // header sits below the chrome, and the article still scrolls
-            // under the glass.
-            ReaderView(
-                article: article,
-                onClose: {
-                    isReaderActive = false
-                    readerArticle = nil
-                }
-            )
-            .id("reader")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .safeAreaInset(edge: .top) { padTopClearance }
-            .safeAreaInset(edge: .bottom) {
-                // The command bar floats over the surface's tail; the spacer
-                // keeps the article's last lines scrollable above it.
-                Color.clear.frame(height: bottomChromeClearance)
-            }
-        } else if let tab = activeTab {
+        if let tab = activeTab {
             // A stable identity per tab keeps SwiftUI from rebuilding the
             // representable when the tab strip changes.
             Group {

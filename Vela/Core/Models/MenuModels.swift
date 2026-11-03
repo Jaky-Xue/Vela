@@ -20,7 +20,6 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
     case addBookmark
     case share
     case findInPage
-    case reader
     case novel
     case bookshelf
     case passwords
@@ -47,7 +46,6 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .addBookmark: return "添加书签"
         case .share: return "分享"
         case .findInPage: return "查找网页"
-        case .reader: return "文章阅读"
         case .novel: return "小说模式"
         case .bookshelf: return "书架"
         case .passwords: return "密码与保险箱"
@@ -72,7 +70,6 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .addBookmark: return "bookmark"
         case .share: return "square.and.arrow.up"
         case .findInPage: return "magnifyingglass"
-        case .reader: return "doc.plaintext"
         case .novel: return "text.book.closed"
         case .bookshelf: return "books.vertical"
         case .passwords: return "key.fill"
@@ -97,7 +94,7 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
     /// reference panels grey out what a page-less context cannot do.
     var requiresPage: Bool {
         switch self {
-        case .addBookmark, .share, .findInPage, .reader, .novel,
+        case .addBookmark, .share, .findInPage, .novel,
              .hideElements, .desktopSite, .saveOfflinePage, .reload:
             return true
         default:
