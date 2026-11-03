@@ -27,9 +27,8 @@ final class PageDisplayTests: XCTestCase {
     }
 
     func testTheLegacyRGBFormIsRead() {
-        let color = Color(cssColor: "rgb(255, 255, 255)")
-        XCTAssertNotNil(color)
-        guard let sample = color.flatMap { components(of: $0) } else {
+        guard let color = Color(cssColor: "rgb(255, 255, 255)"),
+              let sample = components(of: color) else {
             return XCTFail("a plain RGB colour did not parse")
         }
         XCTAssertEqual(sample.red, 1, accuracy: 0.001)
@@ -39,7 +38,8 @@ final class PageDisplayTests: XCTestCase {
     }
 
     func testTheAlphaChannelIsHonoured() {
-        guard let sample = Color(cssColor: "rgba(0, 0, 0, 0.5)").flatMap { components(of: $0) } else {
+        guard let color = Color(cssColor: "rgba(0, 0, 0, 0.5)"),
+              let sample = components(of: color) else {
             return XCTFail("an RGBA colour did not parse")
         }
         XCTAssertEqual(sample.red, 0, accuracy: 0.001)
@@ -47,7 +47,8 @@ final class PageDisplayTests: XCTestCase {
     }
 
     func testPercentageChannelsAreRead() {
-        guard let sample = Color(cssColor: "rgb(50%, 50%, 50%)").flatMap { components(of: $0) } else {
+        guard let color = Color(cssColor: "rgb(50%, 50%, 50%)"),
+              let sample = components(of: color) else {
             return XCTFail("a percentage colour did not parse")
         }
         XCTAssertEqual(sample.red, 0.5, accuracy: 0.002)
