@@ -32,6 +32,7 @@ public final class BrowserWebCoordinator: NSObject {
     // MARK: - Collaborators
 
     let settings: SettingsService
+    let contentBlocker: ContentBlocker
     let history: HistoryService
     let downloads: DownloadService
     let userScripts: UserScriptRepository
@@ -119,6 +120,7 @@ public final class BrowserWebCoordinator: NSObject {
     public init(
         overlays: WebPageOverlays,
         settings: SettingsService,
+        contentBlocker: ContentBlocker,
         history: HistoryService,
         downloads: DownloadService,
         userScripts: UserScriptRepository,
@@ -127,6 +129,7 @@ public final class BrowserWebCoordinator: NSObject {
     ) {
         self.overlays = overlays
         self.settings = settings
+        self.contentBlocker = contentBlocker
         self.history = history
         self.downloads = downloads
         self.userScripts = userScripts
@@ -806,6 +809,26 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
 
     /// Builds the configuration for a tab.
     ///
+    /// Re-attaches the compiled rule list to every open web view.
+    ///
+    /// A web view copies its rule lists when it is built, so a list that
+    /// finishes compiling after a page exists — the common case on a fresh
+    /// launch, where the session can restore before the compile returns — has
+    /// to be applied to the live controller. Editing it is what makes the next
+    /// navigation, including a reload, filtered by the current list.
+    public func reloadContentBlockerIntoOpenWebViews() {
+        guard let tabManager else { return }
+        for webView in tabManager.allWebViews() {
+            let controller = webView.configuration.userContentController
+            controller.removeAllContentRuleLists()
+            guard let tab = tab(for: webView),
+                  let list = contentBlocker.ruleList(forHost: URL(string: tab.url)?.host) else {
+                continue
+            }
+            controller.add(list)
+        }
+    }
+
     /// The two decisions that matter:
     ///
     /// * Data store. Private tabs share this window's non-persistent store,
@@ -824,6 +847,11 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
 
         let controller = WKUserContentController()
         configuration.userContentController = controller
+        // 广告拦截. Attached before the first request, from the list compiled
+        // at launch; a page whose host is whitelisted gets nothing.
+        if let list = contentBlocker.ruleList(forHost: URL(string: tab.url)?.host) {
+            controller.add(list)
+        }
 
         // Message handlers. The coordinator is the handler for all of them; the
         // name on the message decides the branch.

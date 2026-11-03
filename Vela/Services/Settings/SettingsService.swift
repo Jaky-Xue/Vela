@@ -28,6 +28,7 @@ public final class SettingsService {
         static let appearanceMode = "org.vela.browser.appearance-mode"
         static let navigationDiagnostics = "org.vela.browser.navigation-diagnostics"
         static let siteDisplay = "org.vela.browser.site-display"
+        static let contentBlocker = "org.vela.browser.content-blocker"
     }
 
     public private(set) var preferences: BrowserPreferences {
@@ -70,6 +71,11 @@ public final class SettingsService {
         didSet { persist(siteDisplay, key: Key.siteDisplay) }
     }
 
+    /// 广告拦截: the switch and the sites it leaves alone.
+    public private(set) var contentBlocker: ContentBlockerSettings {
+        didSet { persist(contentBlocker, key: Key.contentBlocker) }
+    }
+
     /// The user-script manager's own document: automatic update checks and
     /// the time the last full pass ran.
     public private(set) var userScriptSettings: UserScriptSettings {
@@ -96,6 +102,11 @@ public final class SettingsService {
         self.siteDisplay = Self.load(
             SiteDisplaySettings.self,
             key: Key.siteDisplay,
+            from: defaults
+        ) ?? .default
+        self.contentBlocker = Self.load(
+            ContentBlockerSettings.self,
+            key: Key.contentBlocker,
             from: defaults
         ) ?? .default
         self.userScriptSettings = Self.load(
@@ -201,6 +212,14 @@ public final class SettingsService {
     public func clearSiteDisplayModes() {
         guard !siteDisplay.modes.isEmpty else { return }
         siteDisplay = .default
+    }
+
+    // MARK: - Content blocking
+
+    public func updateContentBlocker(_ mutate: (inout ContentBlockerSettings) -> Void) {
+        var copy = contentBlocker
+        mutate(&copy)
+        contentBlocker = copy
     }
 
     public func updateNavigationDiagnostics(_ mutate: (inout NavigationDiagnosticsSettings) -> Void) {

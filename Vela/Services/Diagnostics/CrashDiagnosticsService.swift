@@ -25,12 +25,21 @@ public final class CrashDiagnosticsService {
     /// The reason of the last uncaught Objective-C exception, if one was
     /// recorded before the process terminated.
     public private(set) var lastException: String?
+    /// The last interactions of the previous session, newest last. Written on
+    /// every note, so a crash on the next launch still has the actions that led
+    /// to it — the one piece of context a crash report cannot supply.
+    public private(set) var previousSessionBreadcrumbs: String?
 
     private let subscriber = DiagnosticSubscriber()
+    private var breadcrumbs: [String] = []
     private static let exceptionKey = "org.vela.browser.last-uncaught-exception"
+    private static let breadcrumbKey = "org.vela.browser.session-breadcrumbs"
+    private static let breadcrumbLimit = 24
 
     public init() {
         lastException = UserDefaults.standard.string(forKey: Self.exceptionKey)
+        previousSessionBreadcrumbs = UserDefaults.standard.string(forKey: Self.breadcrumbKey)
+        UserDefaults.standard.removeObject(forKey: Self.breadcrumbKey)
         subscriber.owner = self
         MXMetricManager.shared.add(subscriber)
         NSSetUncaughtExceptionHandler { exception in
@@ -48,14 +57,35 @@ public final class CrashDiagnosticsService {
         metricKitReport = report
     }
 
+    /// Appends one interaction to this session's trail. The write is small and
+    /// happens on a user action, not per frame.
+    public func recordBreadcrumb(_ label: String) {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let time = Date().formatted(date: .omitted, time: .standard)
+        breadcrumbs.append("[\(time)] \(trimmed)")
+        if breadcrumbs.count > Self.breadcrumbLimit {
+            breadcrumbs.removeFirst(breadcrumbs.count - Self.breadcrumbLimit)
+        }
+        UserDefaults.standard.set(
+            breadcrumbs.joined(separator: "\n"),
+            forKey: Self.breadcrumbKey
+        )
+    }
+
     public func clear() {
         metricKitReport = nil
         lastException = nil
+        previousSessionBreadcrumbs = nil
+        breadcrumbs.removeAll()
         UserDefaults.standard.removeObject(forKey: Self.exceptionKey)
+        UserDefaults.standard.removeObject(forKey: Self.breadcrumbKey)
     }
 
     public var hasAnyReport: Bool {
-        metricKitReport != nil || lastException != nil
+        metricKitReport != nil
+            || lastException != nil
+            || !(previousSessionBreadcrumbs ?? "").isEmpty
     }
 
     public var reportText: String {
@@ -65,6 +95,9 @@ public final class CrashDiagnosticsService {
         }
         if let metricKitReport, !metricKitReport.isEmpty {
             parts.append(metricKitReport)
+        }
+        if let previousSessionBreadcrumbs, !previousSessionBreadcrumbs.isEmpty {
+            parts.append("上次会话最后动作：\n" + previousSessionBreadcrumbs)
         }
         return parts.isEmpty ? "暂无崩溃/卡顿报告。" : parts.joined(separator: "\n")
     }

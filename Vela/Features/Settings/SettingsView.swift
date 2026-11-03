@@ -122,6 +122,16 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
+                    ContentBlockerSettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "shield.lefthalf.filled",
+                        title: "广告拦截",
+                        detail: contentBlockerDetail
+                    )
+                }
+
+                NavigationLink {
                     ElementHideSettingsView()
                 } label: {
                     settingsRow(
@@ -202,6 +212,20 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
+                    DataTransferSettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "arrow.up.arrow.down.circle",
+                        title: "导入与导出",
+                        detail: ""
+                    )
+                }
+            } header: {
+                Text("数据")
+            }
+
+            Section {
+                NavigationLink {
                     NavigationDiagnosticsView()
                 } label: {
                     settingsRow(
@@ -252,6 +276,14 @@ struct SettingsView: View {
             .first { $0.id == env.settings.preferences.themePaletteId }?
             .displayName ?? BrowserPalette.default.displayName
         return "\(paletteName) · \(env.settings.appearanceMode.displayName)"
+    }
+
+    /// What the 广告拦截 row says is in force.
+    private var contentBlockerDetail: String {
+        guard env.settings.contentBlocker.enabled else { return "已关闭" }
+        let blocker = env.services.contentBlocker
+        guard blocker.isReady else { return "编译中" }
+        return "\(blocker.ruleCount) 条规则"
     }
 
     /// What the 网页标识 row says is in force — the same answer the identifier

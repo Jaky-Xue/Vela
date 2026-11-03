@@ -72,6 +72,14 @@ struct NavigationDiagnosticsView: View {
                     Label("清空记录", systemImage: "trash")
                 }
                 .disabled(entries.isEmpty && !env.services.crashDiagnostics.hasAnyReport)
+
+                #if DEBUG
+                Button(role: .destructive) {
+                    fatalError("Vela 诊断测试崩溃")
+                } label: {
+                    Label("制造一次崩溃（仅 Debug）", systemImage: "exclamationmark.triangle")
+                }
+                #endif
             }
 
             Section("崩溃与卡顿") {
@@ -79,6 +87,16 @@ struct NavigationDiagnosticsView: View {
                     .font(.caption.monospaced())
                     .foregroundStyle(palette.secondaryText)
                     .textSelection(.enabled)
+            }
+
+            if let breadcrumbs = env.services.crashDiagnostics.previousSessionBreadcrumbs,
+               !breadcrumbs.isEmpty {
+                Section("上次会话最后动作") {
+                    Text(breadcrumbs)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(palette.secondaryText)
+                        .textSelection(.enabled)
+                }
             }
 
             if entries.isEmpty {

@@ -58,6 +58,9 @@ public final class AppEnvironment {
 
     public func noteInteraction(_ label: String) {
         lastInteraction = label
+        // The same note is the breadcrumb trail that survives the process: a
+        // launch crash then has the actions that preceded it.
+        services.crashDiagnostics.recordBreadcrumb(label)
     }
 
     /// Bumped when a private session begins and when it ends. A reader created
@@ -82,6 +85,7 @@ public final class AppEnvironment {
         let coordinator = BrowserWebCoordinator(
             overlays: overlays,
             settings: services.settings,
+            contentBlocker: services.contentBlocker,
             history: services.history,
             downloads: services.downloads,
             userScripts: services.userScriptRepository,
@@ -96,6 +100,11 @@ public final class AppEnvironment {
             windowId: windowId
         )
         coordinator.attach(tabManager: tabManager)
+        // The rule list may finish compiling after the session's web views
+        // exist; this is what puts it on those pages too.
+        services.contentBlocker.onChange = { [weak coordinator] in
+            coordinator?.reloadContentBlockerIntoOpenWebViews()
+        }
         tabManager.onPrivateSessionStarted = { [weak self] in
             self?.beginPrivateSession()
         }
@@ -251,6 +260,15 @@ public final class AppEnvironment {
     /// place that keeps the copy in step.
     public func applyNavigationDiagnosticsSettings() {
         navigationLog.settings = settings.navigationDiagnostics
+    }
+
+    /// Pushes 广告拦截 changes onto the open pages and reloads the active one,
+    /// because a rule list only affects requests made after it is attached.
+    public func applyContentBlockerSettings() {
+        services.contentBlocker.noteSettingsChanged()
+        if let tab = tabManager.activeTab {
+            _ = tabManager.reload(tab: tab)
+        }
     }
 
     // MARK: - Preferences with a window side effect

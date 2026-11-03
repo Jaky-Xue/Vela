@@ -313,6 +313,7 @@ final class BrowserHarness {
         let userScripts = UserScriptRepository(database: database)
         let sessions = TabSessionRepository(database: database)
         let permissionAudit = PermissionAuditService()
+        let contentBlocker = ContentBlocker(settings: settings)
 
         let navigationLog = NavigationLog()
         self.navigationLog = navigationLog
@@ -321,6 +322,7 @@ final class BrowserHarness {
         let coordinator = BrowserWebCoordinator(
             overlays: overlays,
             settings: settings,
+            contentBlocker: contentBlocker,
             history: history,
             downloads: downloads,
             userScripts: userScripts,

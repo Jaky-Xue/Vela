@@ -42,6 +42,8 @@ public final class AppServices {
     /// Crashes and hangs reported by MetricKit, plus the last uncaught
     /// exception reason. This is process-wide, like the rest of the services.
     public let crashDiagnostics: CrashDiagnosticsService
+    /// 广告拦截: the built-in filter list and the sites it leaves alone.
+    public let contentBlocker: ContentBlocker
 
     /// Set when the database could not be opened. Every window shows the same
     /// error, because there is only one database.
@@ -58,6 +60,7 @@ public final class AppServices {
         self.settings = settings
         self.commands = BrowserCommandCenter()
         self.crashDiagnostics = CrashDiagnosticsService()
+        self.contentBlocker = ContentBlocker(settings: settings)
         self.permissionAudit = PermissionAuditService()
 
         // The picture used to belong to the home alone; it is the shell's
@@ -163,6 +166,11 @@ public final class AppServices {
         // exists, and restoring them later would duplicate another window's
         // tabs into the first one.
         try? tabSessions.removeSessions(except: [TabSessionRepository.defaultWindowId])
+
+        // The rule list is compiled once; the first pages of the session may
+        // be built before it is ready, and the environment re-attaches it when
+        // `onChange` fires.
+        contentBlocker.prepare()
     }
 
     /// Removes WebKit's browsing data, after the caller has already cleared
