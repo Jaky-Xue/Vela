@@ -93,9 +93,17 @@ extension BrowserShellView {
                     if value.translation.height > 0 {
                         chromeDragOffset = value.translation.height
                         chromeLiftOffset = 0
+                        chromeHomeArmed = false
                     } else {
                         chromeLiftOffset = max(-36, value.translation.height * 0.35)
                         chromeDragOffset = 0
+                        let armed = value.translation.height < -64
+                        if armed != chromeHomeArmed {
+                            chromeHomeArmed = armed
+                            if armed {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            }
+                        }
                     }
                 }
                 .onEnded { value in
@@ -106,13 +114,40 @@ extension BrowserShellView {
                             openHomeTab()
                         }
                     }
+                    chromeHomeArmed = false
                     withAnimation(Self.chromeAnimation) {
                         chromeDragOffset = 0
                         chromeLiftOffset = 0
                     }
                 }
         )
+        .overlay(alignment: .top) { chromeHomeHint }
         .accessibilityHidden(chromeHidden)
+    }
+
+    /// The promise shown while the command bar — the search field included —
+    /// is dragged upward. It fills once releasing will actually open the home
+    /// surface, so the gesture never fires without warning.
+    @ViewBuilder var chromeHomeHint: some View {
+        if chromeLiftOffset < -6, !chromeHidden, !omnibox.isEditing {
+            Text("释放后返回首页")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(chromeHomeArmed ? palette.onAccent : palette.primaryText)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background {
+                    Capsule().fill(chromeHomeArmed ? palette.accent : palette.controlFill)
+                }
+                .overlay {
+                    Capsule().strokeBorder(palette.cardStroke, lineWidth: 0.5)
+                }
+                .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+                .offset(y: -46)
+                .opacity(min(1, abs(chromeLiftOffset) / 20))
+                .allowsHitTesting(false)
+                .animation(.easeOut(duration: 0.15), value: chromeHomeArmed)
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+        }
     }
 
     @ViewBuilder var floatingToolsInGlassContainer: some View {

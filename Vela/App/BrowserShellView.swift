@@ -118,6 +118,9 @@ struct BrowserShellView: View {
     /// that returns to the home surface. The bar lifts a little with the
     /// finger as the promise of what releasing will do.
     @State var chromeLiftOffset: CGFloat = 0
+    /// Whether that upward drag has passed the distance that opens the home
+    /// surface. Drives the hint's filled state and its haptic.
+    @State var chromeHomeArmed = false
 
     /// Whether the drag-to-hide gesture may act.
     ///
@@ -163,6 +166,9 @@ struct BrowserShellView: View {
     @State var swipeBackTranslation: CGFloat = 0
     @State var isSwipeBackTracking = false
     @State var isSwipeBackCompleting = false
+    /// Whether the drag has passed the distance that commits the back action.
+    /// Drives the filled state of the arrow and its one haptic.
+    @State var swipeBackArmed = false
 
     /// Whether the surface the chrome floats over reads light — a bright
     /// wallpaper, a pale page — and the bar should therefore draw black ink.
@@ -323,6 +329,7 @@ struct BrowserShellView: View {
                 swipeBackTransformed(contentSurface)
             }
         }
+        .overlay(alignment: .leading) { swipeBackIndicator }
         .background { safeAreaReader }
         // The shell is laid out inside the safe area, so `safeTop` and
         // `safeBottom` read from its geometry are zero — the clock and the
@@ -343,6 +350,23 @@ struct BrowserShellView: View {
                 onEnded: { handleSwipeBackEnded($0, velocity: $1) },
                 onCancelled: { handleSwipeBackCancelled() }
             )
+        }
+    }
+
+    /// The Android-style back arrow: the edge gesture's only visual.
+    ///
+    /// It follows the finger, grows toward the release threshold and fills in
+    /// once the swipe will commit; holding keeps it exactly where the finger
+    /// is. The page itself never moves.
+    @ViewBuilder var swipeBackIndicator: some View {
+        if isSwipeBackTracking || swipeBackTranslation > 0.5 {
+            EdgeSwipeBackIndicator(
+                intensity: min(1, swipeBackProgress / 0.3),
+                armed: swipeBackArmed,
+                isCompleting: isSwipeBackCompleting
+            )
+            .padding(.leading, BrowserChrome.sideInset + 2)
+            .allowsHitTesting(false)
         }
     }
 
@@ -570,10 +594,11 @@ struct BrowserShellView: View {
             handleScenePhaseChanged(phase)
         }
         .onChange(of: edgeSwipeBackEnabled) { _, enabled in
-            // The page can gain history mid-gesture (a navigation committing),
-            // which hands the gesture to WebKit. Do not leave the page parked.
+            // A navigation can retire the step a tracked swipe was going to
+            // take. Do not leave the arrow parked on screen.
             guard !enabled, !isSwipeBackCompleting else { return }
             isSwipeBackTracking = false
+            swipeBackArmed = false
             withAnimation(Self.swipeBackSettle) {
                 swipeBackTranslation = 0
             }
@@ -673,7 +698,10 @@ struct BrowserShellView: View {
         if tab.isHome { return !tab.url.isEmpty }
         if tab.loadState.isFailure { return true }
         guard tabManager.webView(for: tab.id) != nil else { return false }
-        return !tab.canGoBack
+        // Every page has a back step — its own history, the tab that opened
+        // it, or the home fallback — and WebKit's interactive gesture is off,
+        // so the arrow owns the edge in all of them.
+        return true
     }
 
     /// The swipe's progress as a fraction of the window's width. Drives the
@@ -684,43 +712,34 @@ struct BrowserShellView: View {
         return min(max(swipeBackTranslation / safeRectWidth, 0), 1)
     }
 
-    /// The moving half of the swipe: the page follows the finger, gains rounded
-    /// corners as it leaves the edge, and casts a shadow onto the surface it
-    /// reveals. Chrome is deliberately outside this transform — the bars stay
-    /// put while the document moves under them, the way Safari's does.
+    /// The page does not move during an edge swipe.
+    ///
+    /// The gesture is drawn by its own arrow at the edge — the Android
+    /// predictive-back shape — so releasing a completed swipe does not tear
+    /// the document off the screen the user was reading. The wrapper stays
+    /// because both layouts call it; the identity is the design.
     @ViewBuilder
     func swipeBackTransformed<V: View>(_ view: V) -> some View {
-        if swipeBackTranslation > 0 {
-            view
-                .offset(x: swipeBackTranslation)
-                .scaleEffect(1 - swipeBackProgress * 0.015, anchor: .leading)
-                .clipShape(
-                    RoundedRectangle(cornerRadius: 28 * swipeBackProgress, style: .continuous)
-                )
-                .shadow(
-                    color: .black.opacity(0.18 * swipeBackProgress),
-                    radius: 18,
-                    x: -6,
-                    y: 0
-                )
-        } else {
-            // A resting page must not be clipped. `clipShape` clips to the
-            // view's safe-area frame, and the web view deliberately paints
-            // past it to the screen's bottom edge; applying the shape at rest
-            // cut that overflow into the blank strip under the page.
-            view
-        }
+        view
     }
 
     func handleSwipeBackChanged(_ translation: CGFloat) {
         guard edgeSwipeBackEnabled, !isSwipeBackCompleting else { return }
         isSwipeBackTracking = true
         swipeBackTranslation = max(0, translation)
+        let armed = safeRectWidth > 0 && swipeBackTranslation > safeRectWidth * 0.26
+        if armed != swipeBackArmed {
+            swipeBackArmed = armed
+            if armed {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+        }
     }
 
     func handleSwipeBackEnded(_ translation: CGFloat, velocity: CGFloat) {
         guard isSwipeBackTracking, !isSwipeBackCompleting else { return }
         isSwipeBackTracking = false
+        swipeBackArmed = false
 
         let width = max(safeRectWidth, 320)
         // A short but fast flick completes; so does a slow drag past roughly a
@@ -737,18 +756,12 @@ struct BrowserShellView: View {
         isSwipeBackCompleting = true
         let swipedTabId = activeTab?.id
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(Self.swipeBackSettle) {
-            // Past the trailing edge, so the completion swap cannot flash a
-            // strip of the old page still on screen.
-            swipeBackTranslation = width + 48
-        }
-        // Complete the navigation once the page is off the edge, then put the
-        // new document at the origin with no animation: it must not slide in
-        // from under the previous page's resting position.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
-            // The bar stays tappable while the page slides, so the tab can
-            // change underneath the animation. A swipe belongs to the page it
-            // started on; do not go back on a tab the user just switched to.
+        // Nothing slides off the edge now — the arrow is the whole animation —
+        // so the navigation completes on the next runloop instead of waiting
+        // out a page transition.
+        DispatchQueue.main.async {
+            // A swipe belongs to the page it started on; do not go back on a
+            // tab the user switched to between the press and the release.
             guard activeTab?.id == swipedTabId else {
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
@@ -771,6 +784,7 @@ struct BrowserShellView: View {
     func handleSwipeBackCancelled() {
         guard isSwipeBackTracking else { return }
         isSwipeBackTracking = false
+        swipeBackArmed = false
         withAnimation(Self.swipeBackSettle) {
             swipeBackTranslation = 0
         }
@@ -938,6 +952,7 @@ struct BrowserShellView: View {
     private func handleActiveTabChanged() {
         // A swipe belongs to the page it started on.
         isSwipeBackTracking = false
+        swipeBackArmed = false
         if !isSwipeBackCompleting {
             swipeBackTranslation = 0
         }
@@ -1895,5 +1910,46 @@ private struct WindowSafeAreaReader: UIViewRepresentable {
             lastReported = metrics
             onChange?(metrics)
         }
+    }
+}
+
+// MARK: - Edge-swipe indicator
+
+/// The arrow that stands in for the page sliding during an edge swipe.
+///
+/// Android's predictive-back gesture is the reference: a pill at the edge that
+/// grows with the drag and inverts to a filled accent once releasing will
+/// commit. It is a readout of the gesture, not a decoration — the page stays
+/// exactly where it is.
+private struct EdgeSwipeBackIndicator: View {
+    /// 0...1 across the first three tenths of the screen's width.
+    var intensity: CGFloat
+    /// Whether releasing now would complete the back action.
+    var armed: Bool
+    /// The release has been accepted and the navigation is about to run.
+    var isCompleting: Bool
+
+    @Environment(\.browserPalette) private var palette
+
+    var body: some View {
+        let diameter = 46 + 12 * intensity
+        Image(systemName: "arrow.left")
+            .font(.system(size: 18 + 4 * intensity, weight: .semibold))
+            .foregroundStyle(armed ? palette.onAccent : palette.primaryText)
+            .frame(width: diameter, height: diameter)
+            .background {
+                Circle()
+                    .fill(armed ? palette.accent : palette.controlFill)
+            }
+            .overlay {
+                Circle()
+                    .strokeBorder(palette.cardStroke, lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.18 * intensity), radius: 14, y: 4)
+            .scaleEffect(armed ? 1.06 : 1)
+            .offset(x: 4 + 24 * intensity)
+            .opacity(isCompleting ? 0 : min(1, intensity * 2.6))
+            .animation(.spring(response: 0.24, dampingFraction: 0.72), value: armed)
+            .animation(.easeOut(duration: 0.16), value: isCompleting)
     }
 }

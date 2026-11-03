@@ -672,7 +672,11 @@ public final class TabManager {
         webView.navigationDelegate = configurationProvider.navigationDelegate
         webView.uiDelegate = configurationProvider.uiDelegate
 
-        webView.allowsBackForwardNavigationGestures = true
+        // The screen-edge back gesture is Vela's own: it draws the Android
+        // predictive-back arrow and does not slide the page. WebKit's
+        // interactive gesture would take the same edge and show its own
+        // translation animation, so it stands down.
+        webView.allowsBackForwardNavigationGestures = false
         webView.allowsLinkPreview = true
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         // A tab opened after an appearance switch starts in the style the app
