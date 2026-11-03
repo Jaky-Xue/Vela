@@ -584,11 +584,7 @@ struct TabsOverviewView: View {
 
     private var lockedState: some View {
         VStack(spacing: BrowserSpacing.regular) {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 34))
-                .foregroundStyle(palette.accent)
-                .frame(width: 64, height: 64)
-                .background(palette.accent.opacity(0.12), in: Circle())
+            AccentGlyphBadge(systemImage: "lock.fill", size: 64, iconSize: 28)
             Text("无痕标签页已锁定")
                 .font(.headline)
                 .foregroundStyle(palette.primaryText)

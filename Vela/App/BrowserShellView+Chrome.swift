@@ -456,6 +456,17 @@ extension BrowserShellView {
             return
         }
 
+        // With the page ending above the bar, the glass sits on the
+        // page-background strip rather than on the document itself, so the
+        // reported colour is the exact backdrop the ink has to live on. The
+        // snapshot below remains the fallback for a document that has not
+        // reported one yet.
+        if let background = Color(cssColor: tab.pageBackground),
+           let backdropIsLight = ChromeBackdrop.surfaceIsLight(background, scheme: colorScheme) {
+            chromeForegroundIsLight = backdropIsLight
+            return
+        }
+
         guard let webView = tabManager.webView(for: tab.id) else { return }
         let tabId = tab.id
         let scheme = colorScheme
@@ -475,9 +486,10 @@ extension BrowserShellView {
         }
     }
 
-    /// A small print of the web view's bottom strip — the region the command
-    /// bar covers. The web view runs edge to edge, so this is the backdrop the
-    /// ink has to live on.
+    /// A small print of the web view's bottom strip — the page just above the
+    /// command bar. The bar sits on the page-background colour the document
+    /// reports; this is the fallback for a page that has not reported one, and
+    /// the strip immediately above the bar is the nearest honest answer.
     func takeBottomStripSnapshot(webView: WKWebView) async -> UIImage? {
         let stripHeight = min(140, webView.bounds.height)
         guard stripHeight > 0, webView.bounds.width > 0 else { return nil }

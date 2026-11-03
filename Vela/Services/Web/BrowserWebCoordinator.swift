@@ -229,7 +229,7 @@ public final class BrowserWebCoordinator: NSObject {
         case .scroll:
             handleScrollMessage(message, tab: tab, webView: webView)
         case .pageMetrics:
-            handlePageMetricsMessage(message)
+            handlePageMetricsMessage(message, tab: tab)
         case .elementPick:
             handleElementPickMessage(message, tab: tab)
         case .permissionAsk:
@@ -308,13 +308,22 @@ public final class BrowserWebCoordinator: NSObject {
         tab.scrollOffsetY = offset
     }
 
-    func handlePageMetricsMessage(_ message: WKScriptMessage) {
+    func handlePageMetricsMessage(_ message: WKScriptMessage, tab: BrowserTabState) {
         guard let payload = message.body as? [String: Any] else { return }
         if let find = payload["findResult"] as? [String: Any] {
             overlays.findResult = FindResult(
                 count: find["count"] as? Int ?? 0,
                 index: find["index"] as? Int ?? -1
             )
+        }
+        // The page's own background, sampled at the bottom edge of its
+        // viewport. The value stays a string here — the model has no business
+        // importing SwiftUI — and the shell falls back to the palette when it
+        // cannot parse one.
+        if let background = payload["pageBackground"] as? String,
+           !background.isEmpty,
+           tab.pageBackground != background {
+            tab.pageBackground = background
         }
     }
 
@@ -635,6 +644,16 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                 source: WebPageScripts.scrollReporter,
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: false
+            )
+        )
+        // The page ends above the command bar, so the strip the bar sits in is
+        // painted by the shell. This is what tells it which colour the page
+        // itself uses there.
+        controller.addUserScript(
+            WKUserScript(
+                source: WebPageScripts.pageBackgroundReporter,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
             )
         )
         // Manual element hides. The selector belongs to the host, so the

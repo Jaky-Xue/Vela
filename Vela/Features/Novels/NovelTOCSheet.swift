@@ -38,7 +38,7 @@ struct NovelTOCSheet: View {
                         EmptyState(
                             systemImage: "list.bullet.rectangle",
                             title: "没有找到目录",
-                            message: "这个网站可能没有可解析的目录页，或目录需要在网页里打开。"
+                            message: "这个网站没有可解析的目录。"
                         )
                     }
                 } else {

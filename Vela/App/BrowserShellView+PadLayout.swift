@@ -480,7 +480,21 @@ extension BrowserShellView {
                             ? padTopChromeHeight
                             : safeTop,
                         protectsStatusBar: protectsTop,
-                        bottomContentInset: bottomChromeClearance,
+                        // The page's layout viewport ends where the command
+                        // bar begins, not merely scrolls clear of it: fixed
+                        // footers, `100vh` layouts and pages that scroll
+                        // inside their own container all position themselves
+                        // against the web view's frame. The home-indicator
+                        // inset is the host's to add. Hiding the bar gives
+                        // the document the whole screen back.
+                        bottomChromeHeight: (usesPadLayout || chromeHidden)
+                            ? 0
+                            : BrowserChrome.barHeight + BrowserChrome.barGap,
+                        // The strip the bar sits in belongs to the shell now,
+                        // so it is painted in the page's own background. The
+                        // palette is the honest fallback for a document that
+                        // has not reported yet.
+                        pageBackdrop: Color(cssColor: tab.pageBackground) ?? palette.surface,
                         // Applied when the view is actually attached: an
                         // off-screen web view has no zoomable geometry.
                         allowsGestureZoom: env.settings.preferences.forcedZoomEnabled ?? false,
@@ -492,15 +506,11 @@ extension BrowserShellView {
                         }
                     )
                     .id("web-\(tab.id)")
-                    // The phone layout runs the page edge to edge, so the
-                    // floating bar has safe-area content to refract. The iPad
-                    // layout keeps the page inside its column and below the top
-                    // bar, but still lets it run under the home indicator so no
-                    // strip of background shows beneath the document.
-                    // The page runs under the status bar, the floating
-                    // chrome and the home indicator; the content inset is
-                    // what keeps its first and last lines readable. This is
-                    // the arrangement Safari uses on both idioms.
+                    // The page runs under the status bar, and under the home
+                    // indicator when the bar is hidden; while the bar is up
+                    // its frame stops at the bar's top edge. The container
+                    // still fills the window either way, which is what lets
+                    // the chrome sample a surface that reaches every edge.
                     .ignoresSafeArea(.all)
                 } else {
                     // A cold tab with no web view at all. Materialising happens
@@ -520,7 +530,6 @@ extension BrowserShellView {
             EmptyState(
                 systemImage: "square.on.square",
                 title: "没有标签页",
-                message: "新建一个标签页就可以开始浏览了。",
                 actionTitle: "新建标签页",
                 action: { tabManager.createTab(openSource: .user) }
             )

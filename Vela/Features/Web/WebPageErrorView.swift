@@ -44,11 +44,7 @@ struct WebPageErrorView: View {
         VStack(spacing: BrowserSpacing.regular) {
             Spacer(minLength: 0)
 
-            Image(systemName: symbolName)
-                .font(.system(size: 30, weight: .regular))
-                .foregroundStyle(palette.secondaryText)
-                .frame(width: 64, height: 64)
-                .background(palette.controlFill, in: Circle())
+            AccentGlyphBadge(systemImage: symbolName, size: 64, iconSize: 28)
 
             VStack(spacing: BrowserSpacing.tight) {
                 Text(failure.title)

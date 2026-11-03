@@ -42,7 +42,7 @@ struct NovelBookshelfView: View {
                     EmptyState(
                         systemImage: "books.vertical",
                         title: "书架还是空的",
-                        message: "在任意小说章节页面打开「菜单 → 小说模式」，这本书就会出现在这里，并记住你读到的位置。",
+                        message: "在章节页打开「菜单 → 小说模式」即可收藏。",
                         actionTitle: "完成",
                         action: { dismiss() }
                     )

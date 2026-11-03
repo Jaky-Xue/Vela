@@ -118,7 +118,7 @@ struct NovelReaderView: View {
                     EmptyState(
                         systemImage: "book.closed",
                         title: "无法打开这一章",
-                        message: statusMessage ?? "这一页没有可阅读的正文，可能需要在浏览器中打开。",
+                        message: statusMessage ?? "这一页没有正文。",
                         actionTitle: "在浏览器中打开",
                         action: openCurrentInBrowser
                     )

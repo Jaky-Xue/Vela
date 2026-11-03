@@ -101,7 +101,7 @@ struct UserScriptsView: View {
                     EmptyState(
                         systemImage: "curlybraces",
                         title: "还没有用户脚本",
-                        message: "脚本可以给网页加功能，例如去除浮窗、增强阅读体验。点按下方「安装新脚本」粘贴代码、从网址下载或导入文件；在网页里点按 .user.js 链接也会直接打开安装页。"
+                        message: "从代码、文件或网址安装，给网页加上你自己的功能。"
                     )
                     .listRowBackground(Color.clear)
                 }
@@ -110,7 +110,7 @@ struct UserScriptsView: View {
                     EmptyState(
                         systemImage: "magnifyingglass",
                         title: "没有匹配的脚本",
-                        message: "换个关键词试试，可以搜索脚本名称、说明或它运行的网站。"
+                        message: "可以搜索脚本名称、说明或它运行的网站。"
                     )
                     .listRowBackground(Color.clear)
                 }

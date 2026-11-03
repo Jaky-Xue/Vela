@@ -379,6 +379,15 @@ public final class BrowserTabState: Identifiable {
     /// page that says "not found" — conflating the two is what makes a browser
     /// show a network-error page over a working page.
     public var serverStatus: Int
+    /// The background colour the page paints behind itself, as the CSS
+    /// `rgb(r, g, b)` string the injected bridge reports.
+    ///
+    /// Runtime-only. The web view's frame ends above the command bar now, so
+    /// the strip the bar sits in belongs to the shell; painting it with this
+    /// colour is what keeps the page reading as one continuous surface under
+    /// the glass. Cleared when a navigation starts, so a previous document's
+    /// colour cannot sit under the next one's chrome.
+    public var pageBackground: String = ""
     /// The URL of the document this tab has actually committed and is showing.
     ///
     /// Written in exactly one place — `didCommit` — because that is the only

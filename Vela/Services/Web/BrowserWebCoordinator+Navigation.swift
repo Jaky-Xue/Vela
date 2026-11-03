@@ -491,6 +491,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         tab.estimatedProgress = 0
         tab.lastFailure = nil
         tab.serverStatus = 0
+        tab.pageBackground = ""
         tab.runtimeState = tab.id == tabManager?.activeTabId ? .active : .background
 
         log(tab: tab, serial: serial, event: .start, url: url)

@@ -239,10 +239,13 @@ struct BrowserShellView: View {
 
     /// What the bottom chrome takes from a surface's tail.
     ///
-    /// In the phone layout the web view runs edge to edge, so the home
-    /// indicator's inset is part of the clearance. In the iPad layout the
-    /// content column already ends at the safe area, and only the floating bar
-    /// overlaps it.
+    /// In the phone layout the home indicator's inset is part of the
+    /// clearance: the native surfaces — home, reader and the error page —
+    /// reserve this much so their last row stays above the floating bar. The
+    /// web view is cleared by the host itself, which ends its frame at the
+    /// bar's top edge and adds the inset from the window. In the iPad layout
+    /// the content column already ends at the safe area, and only the
+    /// floating bar overlaps it.
     var bottomChromeClearance: CGFloat {
         // The iPad layout puts the navigation in a top bar, so the page can run
         // to the bottom edge of its column.
@@ -548,6 +551,11 @@ struct BrowserShellView: View {
             updateChromeForeground()
         }
         .onChange(of: env.settings.preferences.themePaletteId) { _, _ in
+            updateChromeForeground()
+        }
+        .onChange(of: activeTab?.pageBackground) { _, _ in
+            // The page reported its own background, which is what the bar's
+            // glass now sits on. The ink follows it.
             updateChromeForeground()
         }
         .onChange(of: colorScheme) { _, _ in

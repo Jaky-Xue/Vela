@@ -119,16 +119,16 @@ struct NewTabHomeView: View {
                     // An empty home used to be a blank field, which reads as a
                     // failed page rather than a start page. One quiet line is
                     // enough to make the space intentional.
-                    VStack(spacing: 12) {
-                        Image(systemName: isPrivate ? "eyeglasses" : "safari")
-                            .font(.system(size: 38, weight: .light))
-                            .foregroundStyle(homeSecondaryText.opacity(0.65))
+                    VStack(spacing: 14) {
+                        AccentGlyphBadge(
+                            systemImage: isPrivate ? "eyeglasses" : "safari",
+                            size: 76,
+                            iconSize: 34
+                        )
                         Text(isPrivate ? "无痕浏览" : "开始浏览")
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(homePrimaryText)
-                        Text(isPrivate
-                             ? "这个标签页的访问记录不会留下。"
-                             : "从地址栏输入网址；把常用网站加入收藏后会出现在这里。")
+                        Text(isPrivate ? "不留下访问记录" : "输入网址，或收藏常用网站")
                             .font(.footnote)
                             .foregroundStyle(homeSecondaryText)
                             .multilineTextAlignment(.center)

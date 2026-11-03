@@ -12,19 +12,27 @@ import SwiftUI
 /// "no bookmarks", "no history" and "no downloads" cannot drift apart.
 ///
 /// `ContentUnavailableView` rather than a hand-built stack: it already handles
-/// Dynamic Type, the icon weight and the centred alignment inside a scroll view.
+/// Dynamic Type and the centred alignment inside a scroll view. The icon sits
+/// on a soft accent badge instead of standing alone as a grey glyph — an empty
+/// surface is the first thing a new user sees, and one lit element gives the
+/// space a subject without adding a sentence.
 struct EmptyState: View {
     var systemImage: String
     var title: String
+    /// The one supporting line. Optional: an empty state whose title already
+    /// says everything (or whose action button does) does not need to explain
+    /// itself twice.
     var message: String
     /// An optional primary action, e.g. "新建标签页" on an empty tab list.
     var actionTitle: String?
     var action: (() -> Void)?
 
+    @Environment(\.browserPalette) private var palette
+
     init(
         systemImage: String,
         title: String,
-        message: String,
+        message: String = "",
         actionTitle: String? = nil,
         action: (() -> Void)? = nil
     ) {
@@ -37,15 +45,64 @@ struct EmptyState: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label(title, systemImage: systemImage)
+            VStack(spacing: BrowserSpacing.compact + 2) {
+                AccentGlyphBadge(systemImage: systemImage)
+
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(palette.primaryText)
+            }
         } description: {
-            Text(message)
+            if !message.isEmpty {
+                Text(message)
+                    .foregroundStyle(palette.secondaryText)
+            }
         } actions: {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(.borderedProminent)
+                    .tint(palette.accent)
             }
         }
+    }
+}
+
+/// The icon badge the empty and error surfaces share: a light glyph on a soft
+/// accent disc.
+///
+/// One lit element gives an otherwise empty surface a subject, and reusing it
+/// is what keeps "no downloads", "connection failed" and the blank start page
+/// reading as one family rather than three unrelated illustrations.
+struct AccentGlyphBadge: View {
+    var systemImage: String
+    var size: CGFloat = 68
+    var iconSize: CGFloat = 30
+
+    @Environment(\.browserPalette) private var palette
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: iconSize, weight: .light))
+            .foregroundStyle(palette.accent)
+            .frame(width: size, height: size)
+            .background {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                palette.accent.opacity(0.20),
+                                palette.accent.opacity(0.04)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            .overlay {
+                Circle()
+                    .strokeBorder(palette.accent.opacity(0.18), lineWidth: 0.5)
+            }
+            .accessibilityHidden(true)
     }
 }
 

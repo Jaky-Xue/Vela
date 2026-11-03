@@ -24,14 +24,9 @@ struct ElementPickerBanner: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(palette.accent)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("轻点要隐藏的元素")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(palette.primaryText)
-                Text("选中后会询问是否隐藏，可随时取消。")
-                    .font(.system(size: 10))
-                    .foregroundStyle(palette.secondaryText)
-            }
+            Text("轻点要隐藏的元素")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(palette.primaryText)
 
             Spacer(minLength: 8)
 

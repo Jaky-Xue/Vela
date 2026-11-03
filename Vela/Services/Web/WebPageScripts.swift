@@ -261,39 +261,137 @@ public enum WebPageScripts {
         return String(array.dropFirst().dropLast())
     }
 
-    // MARK: - Viewport and safe area
+    // MARK: - Page background
 
-    /// Reports viewport metrics and applies the bottom safe-area inset.
+    /// Reports the colour the page paints behind itself.
     ///
-    /// `BrowserWebViewportCoordinator`. The inset is applied to the document
-    /// element rather than by shrinking the web view, because shrinking the web
-    /// view would make fixed-position page chrome sit above the toolbar, which
-    /// looks like a rendering bug to the user.
-    public static func safeAreaScript(bottomInset: Double, toolbarClearance: Double, topInset: Double) -> String {
-        """
-        (function () {
-          var root = document.documentElement;
-          if (!root) { return; }
-          var styleId = '__vela_safe_area_style';
-          var style = document.getElementById(styleId);
-          if (!style) {
-            style = document.createElement('style');
-            style.id = styleId;
-            (document.head || root).appendChild(style);
+    /// The web view's frame ends above the command bar, so the strip the bar
+    /// sits in is painted by the shell. Using the document's own background
+    /// there keeps the page reading as one continuous surface under the
+    /// glass; without it the app's backdrop showed as a band beneath every
+    /// site.
+    ///
+    /// The colour is read from `body` and then `html` — the page's own
+    /// declared surface — and only when both are transparent does it walk up
+    /// from the element painted at the bottom of the viewport, which is the
+    /// one shape that follows a page whose colour lives on a full-height
+    /// wrapper rather than on the document. Reports are de-duplicated, and
+    /// the handful of calls per load is deliberately not a frame-rate
+    /// observer: the strip only has to be right, not live.
+    public static let pageBackgroundReporter = """
+    (function () {
+      if (window.__velaPageBackgroundInstalled === true) { return; }
+      window.__velaPageBackgroundInstalled = true;
+      var HANDLER = '\(Handler.pageMetrics.rawValue)';
+      var last = '';
+
+      function parseColour(value) {
+        var match = /rgba?\\(([^)]+)\\)/i.exec(value || '');
+        if (!match) { return null; }
+        var parts = match[1].split(',');
+        if (parts.length < 3) { return null; }
+        var alpha = parts.length > 3 ? parseFloat(parts[3]) : 1;
+        if (isNaN(alpha)) { alpha = 1; }
+        return {
+          red: parseFloat(parts[0]) || 0,
+          green: parseFloat(parts[1]) || 0,
+          blue: parseFloat(parts[2]) || 0,
+          alpha: alpha
+        };
+      }
+
+      function isOpaque(value) {
+        var colour = parseColour(value);
+        return !!colour && colour.alpha > 0.01;
+      }
+
+      // The canvas WebKit paints behind a page that declares no background:
+      // white, unless the page opted into a dark colour scheme.
+      function canvasColour() {
+        var scheme = '';
+        try {
+          scheme = String(window.getComputedStyle(document.documentElement).colorScheme || '').toLowerCase();
+        } catch (_error) {
+        }
+        var prefersDark = false;
+        try {
+          prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        } catch (_error) {
+        }
+        var isDark = scheme.indexOf('dark') >= 0 &&
+          (scheme.indexOf('light') < 0 || prefersDark);
+        return isDark ? 'rgb(0, 0, 0)' : 'rgb(255, 255, 255)';
+      }
+
+      // Composites a translucent colour onto the canvas colour.
+      function normalize(value) {
+        var colour = parseColour(value);
+        if (!colour) { return canvasColour(); }
+        var canvas = canvasColour();
+        var base = /rgb\\(\\s*0\\s*,\\s*0\\s*,\\s*0\\s*\\)/i.test(canvas) ? 0 : 255;
+        function blend(channel) {
+          var mixed = channel * colour.alpha + base * (1 - colour.alpha);
+          return Math.round(Math.min(255, Math.max(0, mixed)));
+        }
+        return 'rgb(' + blend(colour.red) + ', ' + blend(colour.green) + ', ' + blend(colour.blue) + ')';
+      }
+
+      function sample() {
+        try {
+          // `body` and `html` first: when either paints a background it is
+          // the page's own surface, not whatever content happens to sit at
+          // the bottom edge at this instant.
+          var roots = [document.body, document.documentElement];
+          for (var i = 0; i < roots.length; i++) {
+            if (!roots[i]) { continue; }
+            var rootBackground = window.getComputedStyle(roots[i]).backgroundColor;
+            if (isOpaque(rootBackground)) { return normalize(rootBackground); }
           }
-          // A page that declares a viewport-fit of cover draws under the
-          // toolbar; one that does not needs the padding to be visible at all.
-          style.textContent =
-            ':root { --vela-safe-area-bottom: \(Int(bottomInset))px; --vela-safe-area-top: \(Int(topInset))px; }' +
-            'body { padding-bottom: \(Int(bottomInset + toolbarClearance))px !important; }';
-          try {
-            root.style.setProperty('--vela-safe-area-bottom', '\(Int(bottomInset))px');
-            root.style.setProperty('--vela-safe-area-top', '\(Int(topInset))px');
-          } catch (_error) {
+          // A page painted on a full-height wrapper leaves both transparent;
+          // follow the paint upward from the bottom edge instead.
+          var element = document.elementFromPoint(
+            Math.max(1, window.innerWidth / 2),
+            Math.max(1, window.innerHeight - 2)
+          );
+          while (element) {
+            var background = window.getComputedStyle(element).backgroundColor;
+            if (isOpaque(background)) { return normalize(background); }
+            element = element.parentElement;
           }
-        })();
-        """
-    }
+        } catch (_error) {
+        }
+        return canvasColour();
+      }
+
+      function report() {
+        try {
+          var colour = sample();
+          if (colour === last) { return; }
+          last = colour;
+          if (window.webkit && window.webkit.messageHandlers &&
+              window.webkit.messageHandlers[HANDLER]) {
+            window.webkit.messageHandlers[HANDLER].postMessage({ pageBackground: colour });
+          }
+        } catch (_error) {
+        }
+      }
+
+      report();
+      // Lazy images, web fonts and framework-rendered shells can hand the page
+      // its real background after the document-end pass.
+      window.setTimeout(report, 350);
+      window.setTimeout(report, 1200);
+      window.addEventListener('pageshow', report);
+      window.addEventListener('resize', report);
+      try {
+        var scheme = window.matchMedia('(prefers-color-scheme: dark)');
+        if (scheme && scheme.addEventListener) {
+          scheme.addEventListener('change', report);
+        }
+      } catch (_error) {
+      }
+    })();
+    """
 
     // MARK: - Scroll
 
