@@ -314,28 +314,6 @@ public enum BrowserUserAgent {
         return domains.contains { lowered == $0 || lowered.hasSuffix(".\($0)") }
     }
 
-    /// Whether a hand-typed identifier claims a desktop browser.
-    ///
-    /// Decided from the platform tokens rather than from the preset list,
-    /// because a typed string is exactly the case the list cannot answer. The
-    /// mobile markers are checked first: an Android tablet's identifier has
-    /// no `Mobile/` token but is still a mobile page.
-    public static func looksDesktop(_ userAgent: String) -> Bool {
-        let lowered = userAgent.lowercased()
-        if lowered.contains("mobile")
-            || lowered.contains("android")
-            || lowered.contains("iphone")
-            || lowered.contains("ipad")
-            || lowered.contains("ipod") {
-            return false
-        }
-        return lowered.contains("macintosh")
-            || lowered.contains("windows nt")
-            || lowered.contains("x11")
-            || lowered.contains("cros")
-            || lowered.contains("linux")
-    }
-
     /// The identifier the running device should present by default.
     ///
     /// The automatic preset is the initial choice, and this is what makes it

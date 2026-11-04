@@ -44,7 +44,20 @@ struct UserAgentSettingsView: View {
     }
 
     private var effectiveOutgoingIdentifier: String {
-        effectiveOutgoingIdentity.customUserAgent ?? BrowserUserAgent.deviceIdentifier
+        if let custom = effectiveOutgoingIdentity.customUserAgent {
+            return custom
+        }
+        // WebKit builds its own identifier when there is no override. Show the
+        // one for the layout the identity chose rather than always the device's
+        // desktop form: 桌面网站 can ask an iPad for the mobile page.
+        if effectiveOutgoingIdentity.isDesktop {
+            return BrowserUserAgent.desktopIdentifier
+        }
+        switch BrowserDeviceClass.current {
+        case .phone: return BrowserUserAgent.mobileIdentifier
+        case .pad: return BrowserUserAgent.padIdentifier
+        case .mac: return BrowserUserAgent.desktopIdentifier
+        }
     }
 
     var body: some View {
