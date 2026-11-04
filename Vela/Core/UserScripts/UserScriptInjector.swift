@@ -161,6 +161,12 @@ public enum UserScriptInjector {
           var RESOURCES = \(resourcesJSON);
           var RESOURCE_URLS = \(resourceURLsJSON);
           var REQUIRE_URLS = \(requireURLsJSON);
+          // Only a script that asked for `@grant window.onurlchange` has any
+          // use for a wrapped history, and patching the page's own
+          // `pushState`/`replaceState` for every userscript page is a change
+          // to the page's environment nobody requested. Scripts that did not
+          // ask leave the page's history untouched.
+          var WATCH_URL_CHANGE = \(script.grants.contains(.windowOnUrlchange) ? "true" : "false");
 
           var valueStore = \(valuesJSON);
           var valueListeners = {};
@@ -396,7 +402,45 @@ public enum UserScriptInjector {
           api.GM_addStyle = function (css) {
             var style = document.createElement('style');
             style.textContent = String(css);
-            (document.head || document.documentElement).appendChild(style);
+            style.setAttribute('data-vela-userscript', SCRIPT_ID);
+            // A document-start script runs before the parser has made
+            // <head>. Appending the style to <html> at that moment works,
+            // but it puts it *ahead* of the page's own stylesheets in
+            // document order, so every rule the page declares beats the
+            // script's and a theme or layout fix silently does nothing.
+            // Append into the head when there is one; otherwise keep the
+            // style in the document and move it into the head as soon as
+            // the parser creates it.
+            function place() {
+              var head = document.head || document.getElementsByTagName('head')[0];
+              if (!head) { return false; }
+              head.appendChild(style);
+              return true;
+            }
+            if (place()) { return style; }
+            try {
+              (document.documentElement || document.head || document.body || document)
+                .appendChild(style);
+            } catch (_error) {
+            }
+            // Poll for the head the parser is about to create, so the move
+            // happens at the first possible moment rather than at
+            // DOMContentLoaded after the page has already painted with the
+            // wrong cascade; the event is the backstop for a page that builds
+            // its head from a script.
+            var placed = false;
+            var attempts = 0;
+            function relocate() {
+              if (placed) { return; }
+              placed = place();
+              if (placed) {
+                document.removeEventListener('DOMContentLoaded', relocate);
+                return;
+              }
+              if (++attempts < 40) { window.setTimeout(relocate, 25); }
+            }
+            relocate();
+            document.addEventListener('DOMContentLoaded', relocate);
             return style;
           };
 
@@ -926,7 +970,12 @@ public enum UserScriptInjector {
           // many user scripts are not strict-mode safe.
 
           // `window.onurlchange` is opt-in through @grant in Tampermonkey.
+          // The patch is installed once per page even when several scripts
+          // grant it: each copy would otherwise wrap the previous one, so a
+          // single pushState would run every script's reporter.
           (function () {
+            if (!WATCH_URL_CHANGE || window.__velaUrlChangePatched) { return; }
+            window.__velaUrlChangePatched = true;
             var lastUrl = String(window.location.href || '');
             function report() {
               var nextUrl = String(window.location.href || '');
@@ -957,20 +1006,46 @@ public enum UserScriptInjector {
           })();
 
           with (api) {
-            // @require dependencies, in declaration order, before the script.
+            // @require dependencies, in declaration order, before the script,
+            // then the script itself. All of it waits for the run-at the
+            // metadata asked for.
+            //
+            // WKWebView only offers document start and document end, so
+            // document-idle used to execute at document end — hundreds of
+            // milliseconds before the page finished. A script that builds UI
+            // from the loaded document (a panel sized to the content, a
+            // translation that walks the body) ran against a half-built page
+            // and left it looking wrong. Idle means idle: wait for `load`.
+            var runScript = function () {
         \(requiresBlock)
 
-            try {
-              (function () {
+              try {
+                (function () {
         \(script.source)
-              }).call(window);
-            } catch (error) {
-              api.GM_log('脚本执行出错：' + (error && error.message ? error.message : String(error)));
-              post({
-                type: 'executionError',
-                scriptId: SCRIPT_ID,
-                message: String(error && error.message ? error.message : error)
-              });
+                }).call(window);
+              } catch (error) {
+                api.GM_log('脚本执行出错：' + (error && error.message ? error.message : String(error)));
+                post({
+                  type: 'executionError',
+                  scriptId: SCRIPT_ID,
+                  message: String(error && error.message ? error.message : error)
+                });
+              }
+            };
+
+            if (SCRIPT_RUN_AT === 'document-idle' && document.readyState !== 'complete') {
+              var hasRun = false;
+              var runOnce = function () {
+                if (hasRun) { return; }
+                hasRun = true;
+                runScript();
+              };
+              window.addEventListener('load', runOnce, { once: true });
+              // A page that never finishes loading — an image that hangs, a
+              // socket kept open — must not keep the script waiting forever.
+              window.setTimeout(runOnce, 5000);
+            } else {
+              runScript();
             }
           }
         })();

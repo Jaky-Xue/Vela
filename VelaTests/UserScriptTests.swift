@@ -222,4 +222,98 @@ final class UserScriptTests: XCTestCase {
         XCTAssertTrue(source.contains("runCallback(details.ontimeout, response)"))
         XCTAssertTrue(source.contains("runCallback(details.onabort, response)"))
     }
+
+    func testHistoryIsLeftAloneUnlessTheScriptAskedForUrlChanges() throws {
+        func bootstrap(grants: [UserScriptGrant]) throws -> String {
+            let script = InstalledUserScriptState(
+                name: "History Test",
+                version: "1.0",
+                source: "window.__velaBodyRan = true;",
+                matches: ["*://*/*"],
+                grants: grants,
+                runAt: .documentStart
+            )
+            let built = UserScriptInjector.makeUserScripts(
+                for: [script],
+                url: try XCTUnwrap(URL(string: "https://example.com/")),
+                valuesByScriptId: [:],
+                tabId: "tab-1"
+            )
+            return try XCTUnwrap(built.scripts.first?.source)
+        }
+
+        // Wrapping the page's own pushState/replaceState is a change to the
+        // page's environment; a script that never asked for onurlchange must
+        // not cause it.
+        XCTAssertTrue(try bootstrap(grants: [.none]).contains("var WATCH_URL_CHANGE = false;"))
+        XCTAssertTrue(
+            try bootstrap(grants: [.windowOnUrlchange]).contains("var WATCH_URL_CHANGE = true;")
+        )
+    }
+
+    func testTheHistoryPatchInstallsOncePerPage() throws {
+        let script = InstalledUserScriptState(
+            name: "History Once",
+            version: "1.0",
+            source: "window.__velaBodyRan = true;",
+            matches: ["*://*/*"],
+            grants: [.windowOnUrlchange],
+            runAt: .documentStart
+        )
+        let built = UserScriptInjector.makeUserScripts(
+            for: [script],
+            url: try XCTUnwrap(URL(string: "https://example.com/")),
+            valuesByScriptId: [:],
+            tabId: "tab-1"
+        )
+        let source = try XCTUnwrap(built.scripts.first?.source)
+        // Several scripts may grant it; only the first may wrap history.
+        XCTAssertTrue(source.contains("window.__velaUrlChangePatched"))
+    }
+
+    func testIdleScriptsRunWhenThePageHasFinishedLoading() throws {
+        let script = InstalledUserScriptState(
+            name: "Idle Test",
+            version: "1.0",
+            source: "window.__velaBodyRan = true;",
+            matches: ["*://*/*"],
+            grants: [.none],
+            runAt: .documentIdle
+        )
+        let built = UserScriptInjector.makeUserScripts(
+            for: [script],
+            url: try XCTUnwrap(URL(string: "https://example.com/")),
+            valuesByScriptId: [:],
+            tabId: "tab-1"
+        )
+        let source = try XCTUnwrap(built.scripts.first?.source)
+        // WKWebView has no idle hook; the bootstrap has to wait for load (with
+        // a timeout for pages that never finish) rather than run at document
+        // end against a half-built page.
+        XCTAssertTrue(source.contains("var SCRIPT_RUN_AT = \"document-idle\";"))
+        XCTAssertTrue(source.contains("addEventListener('load', runOnce"))
+        XCTAssertTrue(source.contains("setTimeout(runOnce, 5000)"))
+    }
+
+    func testAddedStylesLandInTheHeadOnceItExists() throws {
+        let script = InstalledUserScriptState(
+            name: "Style Test",
+            version: "1.0",
+            source: "GM_addStyle('body{color:red}');",
+            matches: ["*://*/*"],
+            grants: [.gmAddStyle],
+            runAt: .documentStart
+        )
+        let built = UserScriptInjector.makeUserScripts(
+            for: [script],
+            url: try XCTUnwrap(URL(string: "https://example.com/")),
+            valuesByScriptId: [:],
+            tabId: "tab-1"
+        )
+        let source = try XCTUnwrap(built.scripts.first?.source)
+        // A document-start style appended to <html> is ordered ahead of the
+        // page's own stylesheets and loses the cascade.
+        XCTAssertTrue(source.contains("getElementsByTagName('head')"))
+        XCTAssertTrue(source.contains("data-vela-userscript"))
+    }
 }
