@@ -287,6 +287,14 @@ struct SettingsView: View {
 
     /// One settings row: a themed icon tile, the name, and the value in force.
     ///
+    /// The tile is a solid accent square with the glyph in the palette's
+    /// on-accent ink. A tinted wash behind an accent-coloured glyph — what
+    /// this used to be — is two neighbouring values of the same hue, and at
+    /// 13 points the icon dissolved into its own background. Solid fill and
+    /// inverted ink give the row a clear first mark at a glance, which is
+    /// what a settings index needs, and the soft highlight across the top
+    /// keeps the square from reading as flat.
+    ///
     /// The value is the only secondary line. It answers "what is set" — a
     /// palette name, a count, a mode — without the row restating what its
     /// screen contains; the root is a map, and opening a row is how a screen's
@@ -298,13 +306,23 @@ struct SettingsView: View {
     ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(palette.accent)
-                .frame(width: 28, height: 28)
+                .font(.system(size: 14, weight: .semibold))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(palette.onAccent)
+                .frame(width: 29, height: 29)
                 .background(
-                    palette.accent.opacity(0.13),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    LinearGradient(
+                        colors: [palette.accent, palette.accent.opacity(0.82)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    in: RoundedRectangle(cornerRadius: 8.5, style: .continuous)
                 )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
+                        .allowsHitTesting(false)
+                }
 
             Text(title)
                 .foregroundStyle(palette.primaryText)

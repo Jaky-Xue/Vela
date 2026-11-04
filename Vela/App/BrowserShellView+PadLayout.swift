@@ -522,9 +522,22 @@ extension BrowserShellView {
                         // and tells WebKit which part the bar covers, so fixed
                         // footers, sticky bars and `100vh` layouts end above
                         // it; the scroll inset keeps the document's own last
-                        // lines reachable. Hiding the bar gives the document
-                        // the whole screen back.
-                        bottomChromeHeight: (usesPadLayout || chromeHidden)
+                        // lines reachable.
+                        //
+                        // The inset deliberately does *not* follow
+                        // `chromeHidden`. Reserving it only while the bar is up
+                        // made hiding the bar change the document's scrollable
+                        // range, and a scroll view resting at the end of a
+                        // document clamps to the new range the instant the
+                        // inset shrinks: the page jumped up, that jump arrived
+                        // as an upward scroll, the shell read it as "the user
+                        // wants the controls" and put the bar straight back.
+                        // On a long page scrolled to its end — exactly where
+                        // people hide the bar — the two fed each other and the
+                        // bar flickered. A constant inset keeps the page still
+                        // when the bar leaves, at the cost of a little extra
+                        // scroll range past the last line.
+                        bottomChromeHeight: usesPadLayout
                             ? 0
                             : BrowserChrome.barHeight + BrowserChrome.barGap,
                         // Behind the page while it bounces; the page itself

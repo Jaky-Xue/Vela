@@ -29,6 +29,7 @@
 //  being three pieces of state that have to be kept in step by hand.
 //
 
+import QuartzCore
 import SwiftUI
 import UIKit
 import WebKit
@@ -142,6 +143,13 @@ struct BrowserShellView: View {
     /// Whether that upward drag has passed the distance that opens the home
     /// surface. Drives the hint's filled state and its haptic.
     @State var chromeHomeArmed = false
+    /// Whether the command bar's drag has committed to its vertical axis.
+    ///
+    /// Decided once per gesture rather than re-derived from the running
+    /// translation: a thumb drag is never perfectly straight, and judging it
+    /// by the total at release is what let a clear downward swipe read as a
+    /// sideways one.
+    @State var chromeDragIsVertical = false
     /// The iPad top bar's vertical drag: how far the finger has moved and
     /// which of its two releases is armed.
     @State var padChromeDragTranslation: CGFloat = 0
@@ -1020,65 +1028,44 @@ struct BrowserShellView: View {
 
     // MARK: - Scrolling
 
-    /// Collapses the chrome as the page scrolls down and restores it on any
-    /// upward movement.
+    /// Collapses the chrome as the page scrolls down and restores it when the
+    /// user turns back.
     ///
-    /// The restore is nearly unconditional on direction rather than
-    /// proportional to distance: a user who scrolls up even slightly is looking
-    /// for the controls, and making them scroll a threshold's worth first is
-    /// the behaviour that makes a collapsing toolbar feel broken. The hide,
-    /// conversely, waits for a deliberate distance of downward travel, so a
-    /// page that jiggles under a refresh does not bounce the bar.
+    /// The decision itself lives in `ShellScrollTracker.consume`, where both
+    /// sides are thresholds on travel: a deliberate downward distance to hide,
+    /// and an upward reversal that holds for a couple of frames to show. The
+    /// asymmetry still favours the return — getting the controls back is the
+    /// user's intent far more often than hiding them again — but "upward" has
+    /// to mean the user, not the page: bounce and scroll anchoring are what
+    /// used to flip the bar back and forth on busy pages.
     func handleScroll(offset: Double) {
-        let previous = scrollTracker.lastOffset
-        // The offset is tracked even while the chrome is pinned: the search
-        // page can move the page under it, and a stale reading here would make
-        // the first scroll after closing it jump by that distance.
-        scrollTracker.lastOffset = offset
-        let delta = offset - previous
-
         // An open omnibox or an active find pins the chrome: the user is
         // working in it, and sliding it away mid-sentence would be hostile.
-        guard !omnibox.isEditing, !showFindBar else { return }
-
-        // At the top of the document the bar is always back; there is nothing
-        // above the page start to hide it for.
-        if offset <= 2 {
-            scrollTracker.accumulation = 0
-            scrollTracker.upwardTravel = 0
-            setChromeHidden(false)
+        // The offset is still tracked while pinned — the search page can move
+        // the page under it, and a stale reading here would make the first
+        // scroll after closing it jump by that distance.
+        guard !omnibox.isEditing, !showFindBar else {
+            scrollTracker.lastOffset = offset
+            scrollTracker.resetTravel()
             return
         }
 
-        guard abs(delta) > 0.25 else { return }
-
-        if delta > 0 {
-            // Downward travel accumulates toward a hide. A flick reports
-            // smaller steps than a slow drag, so the threshold is measured in
-            // distance travelled rather than in any single step.
-            scrollTracker.upwardTravel = 0
-            scrollTracker.accumulation = max(0, scrollTracker.accumulation + delta)
-            if scrollTracker.accumulation > 44 {
-                scrollTracker.accumulation = 0
-                setChromeHidden(true)
-            }
-        } else {
-            // An upward flick is a request for the controls and shows them at
-            // once. Small negative steps inside a downward fling are bounce,
-            // not a reversal: they must not erase the distance already
-            // travelled, which is what made the bar fail to hide on some
-            // pages.
-            scrollTracker.upwardTravel -= delta
-            if scrollTracker.upwardTravel > 6 {
-                scrollTracker.accumulation = 0
-                scrollTracker.upwardTravel = 0
-                setChromeHidden(false)
-            }
+        switch scrollTracker.consume(offset: offset, now: CACurrentMediaTime()) {
+        case .hide:
+            setChromeHidden(true)
+        case .show:
+            setChromeHidden(false)
+        case .none:
+            break
         }
     }
 
     func setChromeHidden(_ hidden: Bool) {
         guard chromeHidden != hidden else { return }
+        // Whatever distance was being counted belonged to the state that just
+        // ended; carrying it into the next one would let a few stray points
+        // flip the bar straight back.
+        scrollTracker.resetTravel()
         if !hidden {
             // A drag that was interrupted (an edge swipe, a tab switch, a
             // call banner) never reaches `onEnded`. Leaving its offset behind
@@ -1087,6 +1074,7 @@ struct BrowserShellView: View {
             chromeDragOffset = 0
             chromeLiftOffset = 0
             chromeHomeArmed = false
+            chromeDragIsVertical = false
             padChromeDragTranslation = 0
             padChromeHomeArmed = false
             padChromeHideArmed = false
@@ -1772,8 +1760,21 @@ struct BrowserShellView: View {
     }
 }
 
+/// What a scroll sample asks the chrome to do.
+enum ChromeScrollAction: Equatable {
+    case none
+    case hide
+    case show
+}
+
 /// Mutable scroll bookkeeping for the shell. A reference box so per-frame
 /// writes do not invalidate the view tree.
+///
+/// The whole decision lives here rather than in the shell so it can be pinned
+/// by tests: collapsing the chrome is a small state machine with thresholds on
+/// both sides, and the two failures that matter — a bar that will not stay
+/// hidden and a bar that flickers with a page that jiggles — are both decided
+/// by these numbers.
 final class ShellScrollTracker {
     var lastOffset: Double = 0
     /// Downward distance accumulated toward the next hide.
@@ -1781,6 +1782,87 @@ final class ShellScrollTracker {
     /// Upward distance since the last downward step. Kept separate so a
     /// bounce's small negative steps do not zero the hide in progress.
     var upwardTravel: CGFloat = 0
+    /// When the current upward run began, in `CACurrentMediaTime` seconds, or
+    /// -1 when no run is in progress. A reversal has to hold for a moment —
+    /// one frame of drift must not bring the bar back.
+    var upwardBeganAt: CFTimeInterval = -1
+
+    /// Downward travel that commits a hide. Small enough that a flick hides
+    /// the bar in a couple of frames, large enough that a single jiggle does
+    /// not.
+    static let hideDistance: CGFloat = 44
+    /// Upward travel that asks for the controls back.
+    static let showDistance: CGFloat = 20
+    /// How long that upward travel has to hold. Two frames at 60 Hz; a
+    /// deliberate swipe crosses it without noticing, a one-frame page shift
+    /// does not.
+    static let showSustain: CFTimeInterval = 0.045
+    /// Movement in a single sample beyond this is the document re-laying
+    /// itself out rather than a finger.
+    static let jumpDistance: Double = 140
+
+    func resetTravel() {
+        accumulation = 0
+        upwardTravel = 0
+        upwardBeganAt = -1
+    }
+
+    /// Folds one scroll offset into the state and says what the chrome should
+    /// do about it.
+    func consume(offset: Double, now: CFTimeInterval) -> ChromeScrollAction {
+        let previous = lastOffset
+        lastOffset = offset
+        let delta = offset - previous
+
+        // At the top of the document the bar is always back; there is nothing
+        // above the page start to hide it for.
+        if offset <= 2 {
+            resetTravel()
+            return .show
+        }
+
+        // More movement in one sample than a finger can produce — a lazy image
+        // landing above the viewport, a script scrolling to an anchor, the
+        // page restoring its own position — is the document moving under the
+        // user, not the user scrolling. Re-baseline on it rather than count it
+        // toward either threshold.
+        if abs(delta) > Self.jumpDistance {
+            resetTravel()
+            return .none
+        }
+
+        guard abs(delta) > 0.25 else { return .none }
+
+        if delta > 0 {
+            // Downward travel accumulates toward a hide. A flick reports
+            // smaller steps than a slow drag, so the threshold is measured in
+            // distance travelled rather than in any single step.
+            upwardTravel = 0
+            upwardBeganAt = -1
+            accumulation = max(0, accumulation + CGFloat(delta))
+            if accumulation > Self.hideDistance {
+                resetTravel()
+                return .hide
+            }
+            return .none
+        }
+
+        // An upward flick is a request for the controls, but it has to be a
+        // *reversal*: a page that oscillates by a few points — bounce at the
+        // end of a fling, scroll anchoring as lazy content arrives, a sticky
+        // header pushed back into place — was flipping the bar on every frame
+        // of its jiggle. Asking for a little distance and a little time costs
+        // a deliberate swipe two frames and ignores the jitter entirely. Small
+        // negative steps still must not erase the distance already travelled
+        // toward a hide.
+        if upwardBeganAt < 0 { upwardBeganAt = now }
+        upwardTravel -= CGFloat(delta)
+        if upwardTravel > Self.showDistance, now - upwardBeganAt >= Self.showSustain {
+            resetTravel()
+            return .show
+        }
+        return .none
+    }
 }
 
 // MARK: - Novel session
