@@ -710,7 +710,7 @@ final class PresetSummaryTests: XCTestCase {
     func testTheDefaultPresetDescribesDeviceFollowing() {
         XCTAssertEqual(
             BrowserUserAgentPreset.all[0].claimedSummary,
-            "按当前设备自动选择：iPhone 手机版，iPad 与 Mac 桌面版"
+            "按当前设备与「桌面网站」的默认选择自动决定"
         )
     }
 
