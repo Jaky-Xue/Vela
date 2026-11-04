@@ -10,9 +10,8 @@ import UIKit
 
 // MARK: - About
 
-/// The attribution line below is what the GPL-3.0 licence and the upstream
-/// trademark policy require; everything else on the screen stays out of the
-/// way of the icon, the name and the version.
+/// The licence line below is the one legal fact this screen carries;
+/// everything else stays out of the way of the icon, the name and the version.
 struct AboutView: View {
     /// Read from the bundle rather than written down: a version typed into a
     /// string is the one fact in this screen guaranteed to drift from the
@@ -52,12 +51,14 @@ struct AboutView: View {
             }
 
             Section {
-                Text("Vela 是 Aira Browser（GPL-3.0）的 iOS 移植版，以自己的名称与视觉标识分发。")
+                Text("Vela 是专为 iOS 设计的浏览器，以 GNU General Public License v3.0 发布。")
                     .font(.footnote)
+                Text("完整许可与署名说明见源代码中的 LICENSE-NOTICE.md。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 Link("GNU General Public License v3.0", destination: URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!)
-                Link("Aira Browser 上游仓库", destination: URL(string: "https://github.com/mason173/aira-browser")!)
             } header: {
-                Text("许可与致谢")
+                Text("许可")
             }
         }
         .navigationTitle("关于")

@@ -47,41 +47,55 @@ struct AddBookmarkChoiceSheet: View {
             .padding(.horizontal, BrowserSpacing.regular)
             .padding(.top, BrowserSpacing.regular)
 
-            VStack(spacing: 0) {
-                ForEach([BookmarkRootRole.toolbar, .other]) { role in
-                    folderRow(role)
+            // The sheet opens at 400 pt in portrait, but a landscape iPhone
+            // has less height than that: the destination rows and the home
+            // toggle scroll rather than being clipped, and the 添加 button
+            // stays pinned where the thumb expects it.
+            ScrollView {
+                VStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        ForEach([BookmarkRootRole.toolbar, .other]) { role in
+                            folderRow(role)
 
-                    if role != .other {
-                        Rectangle()
-                            .fill(palette.separator)
-                            .frame(height: 0.5)
-                            .padding(.leading, 64)
+                            if role != .other {
+                                Rectangle()
+                                    .fill(palette.separator)
+                                    .frame(height: 0.5)
+                                    .padding(.leading, 64)
+                            }
+                        }
                     }
+                    .background(palette.controlFill.opacity(0.4))
+                    .clipShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+                    .padding(.horizontal, BrowserSpacing.regular)
+                    .padding(.top, BrowserSpacing.loose)
+
+                    HStack(spacing: BrowserSpacing.compact) {
+                        Image(systemName: "house")
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 36, height: 36)
+                            .background(palette.controlFill.opacity(0.7), in: Circle())
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("同时添加到主页收藏")
+                                .font(.system(size: 15, weight: .medium))
+                            Text("主页收藏与书签分开保存")
+                                .font(.caption)
+                                .foregroundStyle(palette.secondaryText)
+                        }
+
+                        Spacer(minLength: 0)
+
+                        Toggle("", isOn: $addToHome)
+                            .labelsHidden()
+                    }
+                    .padding(.horizontal, BrowserSpacing.regular)
+                    .padding(.top, BrowserSpacing.loose)
+                    .padding(.bottom, BrowserSpacing.regular)
                 }
+                .frame(maxWidth: .infinity)
             }
-            .background(palette.controlFill.opacity(0.4))
-            .clipShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
-            .padding(.horizontal, BrowserSpacing.regular)
-            .padding(.top, BrowserSpacing.loose)
-
-            HStack(spacing: BrowserSpacing.compact) {
-                Image(systemName: "house")
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 36, height: 36)
-                    .background(palette.controlFill.opacity(0.7), in: Circle())
-
-                Text("同时添加到主页")
-                    .font(.system(size: 15, weight: .medium))
-
-                Spacer(minLength: 0)
-
-                Toggle("", isOn: $addToHome)
-                    .labelsHidden()
-            }
-            .padding(.horizontal, BrowserSpacing.regular)
-            .padding(.top, BrowserSpacing.loose)
-
-            Spacer(minLength: 0)
+            .scrollBounceBehavior(.basedOnSize)
 
             Button {
                 onAdd()
@@ -98,7 +112,7 @@ struct AddBookmarkChoiceSheet: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .browserSurfaceBackground(opacity: 0.72)
-        .presentationDetents([.height(400)])
+        .presentationDetents([.height(400), .large])
         .presentationDragIndicator(.hidden)
     }
 
@@ -159,8 +173,13 @@ struct AddBookmarkChoiceSheet: View {
     private func onAdd() {
         let parentNodeId = env.bookmarks.rootNodeId(for: chosenRole)
         let node = env.bookmarks.addBookmark(url: url, title: title, parentNodeId: parentNodeId)
-        if addToHome, let id = node?.id ?? env.bookmarks.bookmark(for: url)?.id {
-            HomeBookmarkStore.add(id)
+        if addToHome, let saved = node ?? env.bookmarks.bookmark(for: url) {
+            // The tile gets a copy of the name and address. Editing it later
+            // is a home affair; the bookmark stays the bookmark list's.
+            env.homeFavorites.add(
+                url: saved.url ?? url,
+                title: saved.title
+            )
         }
         dismiss()
     }

@@ -2,57 +2,22 @@
 //  NewTabHomeView.swift
 //  Vela
 //
-//  The native new-tab surface: the user's bookmarks, and recently closed tabs.
+//  The native new-tab surface: the user's own favourites, and recently closed
+//  tabs.
 //
 //  The surface is native rather than a web document because there is no
 //  custom-homepage runtime to load one into.
 //
-//  The grid shows the bookmark store — every saved URL, flattened from both
-//  roots — because the home page and the bookmark list are the same inventory
-//  seen from two places: what the user saved is what the user wants one tap
-//  away, and keeping a third copy of that answer ("most visited") only
-//  guaranteed the three lists disagreed. Saving on this surface adds to the
-//  store, deleting removes from it, and both are visible everywhere else.
+//  Favourites are their own store, not a view of the bookmarks. The old grid
+//  held bookmark ids, so a bookmark rename or deletion reached the home and a
+//  home edit reached the bookmarks; the two lists were one list seen twice.
+//  A tile is a copy now — its own name, address and name-visibility — and both
+//  directions are independent. A bookmark can still be saved *to* the home in
+//  the add sheet, but from that moment the tile belongs to the home.
 //
 
 import SwiftUI
 import UIKit
-
-/// Which bookmarks the home grid shows.
-///
-/// The home is a curation, not an index: a bookmark reaches it either through
-/// the add sheet's "同时添加到主页" switch or through the home's own add tile,
-/// and it leaves through the tile's long-press menu. The ids live in the
-/// defaults store; the first launch after this store existed seeds it with
-/// every bookmark there is, so the grid the user already had does not vanish
-/// underneath them.
-enum HomeBookmarkStore {
-    static let idsKey = "org.vela.browser.home-bookmark-ids"
-    static let seededKey = "org.vela.browser.home-bookmarks-seeded"
-
-    static func homeIds(among allIds: [String]) -> Set<String> {
-        let defaults = UserDefaults.standard
-        if !defaults.bool(forKey: seededKey) {
-            let seed = Set(allIds)
-            defaults.set(Array(seed), forKey: idsKey)
-            defaults.set(true, forKey: seededKey)
-            return seed
-        }
-        return Set(defaults.stringArray(forKey: idsKey) ?? [])
-    }
-
-    static func add(_ id: String) {
-        var ids = Set(UserDefaults.standard.stringArray(forKey: idsKey) ?? [])
-        ids.insert(id)
-        UserDefaults.standard.set(Array(ids), forKey: idsKey)
-    }
-
-    static func remove(_ id: String) {
-        var ids = Set(UserDefaults.standard.stringArray(forKey: idsKey) ?? [])
-        ids.remove(id)
-        UserDefaults.standard.set(Array(ids), forKey: idsKey)
-    }
-}
 
 struct NewTabHomeView: View {
     @Environment(AppEnvironment.self) private var env
@@ -70,7 +35,9 @@ struct NewTabHomeView: View {
     /// scrolls, and its bounce reports offsets that return to zero — so its
     /// drags are what the command bar listens to.
     var onChromeSwipe: ((CGFloat) -> Void)? = nil
-    @State private var bookmarkNodes: [BookmarkNode] = []
+    /// The tile being edited, and whether the sheet is creating a new one.
+    @State private var editingFavorite: HomeFavorite?
+    @State private var showingNewFavorite = false
     /// The width of the content column, measured once per layout. The
     /// favourites grid uses it to choose a column count that suits the window
     /// instead of always drawing five over-stretched cells.
@@ -83,7 +50,7 @@ struct NewTabHomeView: View {
     /// Whether the custom picture is bright enough to need dark text.
     @State private var backgroundIsLight = true
 
-    @AppStorage("org.vela.browser.home-bookmarks-expanded") private var bookmarksExpanded = true
+    @AppStorage("org.vela.browser.home-bookmarks-expanded") private var favoritesExpanded = true
     @AppStorage("org.vela.browser.home-recently-closed-expanded") private var recentlyClosedExpanded = false
 
     var body: some View {
@@ -103,19 +70,19 @@ struct NewTabHomeView: View {
                     .padding(.top, 2)
                 }
 
-                // The home carries what the user has saved: the favourites
-                // grid, and the recently-closed list behind it. There is no
-                // add tile — a bookmark joins the home when it is added, so
-                // an empty collection hides its section rather than offering
-                // a control the flow no longer needs.
-                if !bookmarkNodes.isEmpty {
-                    bookmarkBlock
+                // The home carries its own favourites shelf, and the
+                // recently-closed list behind it. The section's plus is how a
+                // tile is added without saving a bookmark first — the two
+                // stores are independent now, so the home needs its own door
+                // in.
+                if showsFavoriteSection {
+                    favoriteBlock
                 }
                 if !recentlyClosed.isEmpty {
                     recentlyClosedBlock
                 }
 
-                if bookmarkNodes.isEmpty && recentlyClosed.isEmpty {
+                if favorites.isEmpty && recentlyClosed.isEmpty {
                     // An empty home used to be a blank field, which reads as a
                     // failed page rather than a start page. One quiet line is
                     // enough to make the space intentional.
@@ -128,10 +95,27 @@ struct NewTabHomeView: View {
                         Text(isPrivate ? "无痕浏览" : "开始浏览")
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(homePrimaryText)
-                        Text(isPrivate ? "不留下访问记录" : "输入网址，或收藏常用网站")
+                        Text(isPrivate ? "不留下访问记录" : "输入网址，或添加主页收藏")
                             .font(.footnote)
                             .foregroundStyle(homeSecondaryText)
                             .multilineTextAlignment(.center)
+
+                        // 无痕模式 keeps the shelf read-only: adding here would
+                        // write a shared favourite from a private session.
+                        if !isPrivate {
+                            Button {
+                                showingNewFavorite = true
+                            } label: {
+                                Label("添加主页收藏", systemImage: "plus")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(homePrimaryText)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(palette.controlFill.opacity(0.7), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 2)
+                        }
                     }
                     .shadow(color: homeTextShadow, radius: 8, y: 1)
                     .frame(maxWidth: .infinity)
@@ -177,8 +161,24 @@ struct NewTabHomeView: View {
         .task(id: env.settings.preferences.backgroundImageStamp) {
             reloadBackgroundImage()
         }
-        .onAppear {
-            loadBookmarks()
+        .sheet(item: $editingFavorite) { favorite in
+            HomeFavoriteEditSheet(favorite: favorite) { title, url, showsTitle in
+                env.homeFavorites.update(
+                    id: favorite.id,
+                    title: title,
+                    url: url,
+                    showsTitle: showsTitle
+                )
+            }
+            .environment(env)
+            .browserAmbientSheet()
+        }
+        .sheet(isPresented: $showingNewFavorite) {
+            HomeFavoriteEditSheet(favorite: nil) { title, url, showsTitle in
+                env.homeFavorites.add(url: url, title: title, showsTitle: showsTitle)
+            }
+            .environment(env)
+            .browserAmbientSheet()
         }
     }
 
@@ -191,37 +191,55 @@ struct NewTabHomeView: View {
         _ title: String,
         count: Int? = nil,
         isExpanded: Binding<Bool>,
+        addAction: (() -> Void)? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: BrowserSpacing.compact + 2) {
-            Button {
-                withAnimation(.snappy(duration: 0.24)) { isExpanded.wrappedValue.toggle() }
-            } label: {
-                HStack(spacing: 7) {
-                    Text(title)
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(homePrimaryText)
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.snappy(duration: 0.24)) { isExpanded.wrappedValue.toggle() }
+                } label: {
+                    HStack(spacing: 7) {
+                        Text(title)
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(homePrimaryText)
 
-                    if let count {
-                        Text("\(count)")
-                            .font(.caption.weight(.medium))
-                            .monospacedDigit()
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(palette.controlFill.opacity(0.75), in: Capsule())
-                            .foregroundStyle(homeSecondaryText)
+                        if let count {
+                            Text("\(count)")
+                                .font(.caption.weight(.medium))
+                                .monospacedDigit()
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(palette.controlFill.opacity(0.75), in: Capsule())
+                                .foregroundStyle(homeSecondaryText)
+                        }
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(homeSecondaryText.opacity(0.65))
+                            .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
                     }
-
-                    Spacer(minLength: 0)
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(homeSecondaryText.opacity(0.65))
-                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+
+                // A section that owns its own inventory needs its own way in.
+                // The plus is small and sits beside the fold so the title row
+                // still reads as one line.
+                if let addAction {
+                    Button(action: addAction) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(homeSecondaryText)
+                            .frame(width: 28, height: 28)
+                            .background(palette.controlFill.opacity(0.75), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("添加收藏")
+                }
             }
-            .buttonStyle(.plain)
 
             if isExpanded.wrappedValue {
                 content()
@@ -276,32 +294,20 @@ struct NewTabHomeView: View {
         backgroundIsLight = ChromeBackdrop.topStripIsLight(image) ?? true
     }
 
-    // MARK: - Bookmarks
+    // MARK: - Favourites
 
-    /// Flattens both bookmark roots into the grid's inventory, depth-first and
-    /// in saved order, then keeps only the ones the user has put on the home
-    /// surface. Folders are walked through, not shown: the home grid is
-    /// destinations only.
-    private func loadBookmarks() {
-        var all: [BookmarkNode] = []
+    /// The home's own shelf. Reading the service directly is what makes a
+    /// rename, a name-visibility flip or a removal repaint the grid without a
+    /// reload call at the call site.
+    private var favorites: [HomeFavorite] {
+        env.homeFavorites.favorites
+    }
 
-        func walk(_ items: [BookmarkTreeItem]) {
-            for item in items {
-                if item.node.isFolder {
-                    walk(item.children)
-                } else if item.node.url != nil {
-                    all.append(item.node)
-                }
-            }
-        }
-
-        for role in [BookmarkRootRole.toolbar, .other] {
-            guard let rootId = env.bookmarks.rootNodeId(for: role) else { continue }
-            walk(env.bookmarks.children(of: rootId))
-        }
-
-        let homeIds = HomeBookmarkStore.homeIds(among: all.map(\.id))
-        bookmarkNodes = all.filter { homeIds.contains($0.id) }
+    /// Whether one tile draws its name. A tile that has never been edited
+    /// follows the 外观 ▸ 主页图标 default; once it has an opinion of its own,
+    /// that wins.
+    private func showsTitle(for favorite: HomeFavorite) -> Bool {
+        favorite.showsTitle ?? (env.settings.preferences.homeTileShowsTitle ?? true)
     }
 
     /// How many favourites fit in a row at the measured width.
@@ -317,8 +323,26 @@ struct NewTabHomeView: View {
         return max(3, min(10, count))
     }
 
-    private var bookmarkBlock: some View {
-        homeSection("收藏", isExpanded: $bookmarksExpanded) {
+    /// The shelf is on the regular home even when empty if there is anything
+    /// else on screen: its header is where the add button lives. A private
+    /// home with nothing on it keeps the single quiet empty state.
+    private var showsFavoriteSection: Bool {
+        !favorites.isEmpty || (!isPrivate && !recentlyClosed.isEmpty)
+    }
+
+    /// The plus is a regular-mode affordance: a private session must not
+    /// write a shared favourite.
+    private var addFavoriteAction: (() -> Void)? {
+        guard !isPrivate else { return nil }
+        return { showingNewFavorite = true }
+    }
+
+    private var favoriteBlock: some View {
+        homeSection(
+            "收藏",
+            isExpanded: $favoritesExpanded,
+            addAction: addFavoriteAction
+        ) {
             // Laid out in eager rows rather than a lazy grid. A lazy grid that
             // survives a rotation keeps the cell geometry it laid out for the
             // old width — the stranded-rows failure the tab overview fixes by
@@ -327,15 +351,22 @@ struct NewTabHomeView: View {
             // here and determinism is worth more. The tail is padded with
             // spacers, so every tile keeps the width a full row gives it
             // however many tiles the last row holds.
-            VStack(spacing: tileSpacing) {
-                ForEach(bookmarkRows) { row in
-                    HStack(alignment: .top, spacing: tileSpacing) {
-                        ForEach(row.nodes) { node in
-                            bookmarkCell(node)
-                        }
-                        ForEach(0..<(tileColumnCount - row.nodes.count), id: \.self) { _ in
-                            Color.clear
-                                .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: tileSpacing) {
+                if favorites.isEmpty {
+                    Text("还没有收藏。点右上角的 + 添加。")
+                        .font(.footnote)
+                        .foregroundStyle(homeSecondaryText)
+                        .padding(.vertical, 4)
+                } else {
+                    ForEach(favoriteRows) { row in
+                        HStack(alignment: .top, spacing: tileSpacing) {
+                            ForEach(row.favorites) { favorite in
+                                favoriteCell(favorite)
+                            }
+                            ForEach(0..<(tileColumnCount - row.favorites.count), id: \.self) { _ in
+                                Color.clear
+                                    .frame(maxWidth: .infinity)
+                            }
                         }
                     }
                 }
@@ -343,19 +374,20 @@ struct NewTabHomeView: View {
         }
     }
 
-    /// The favourites chunked into rows of five.
-    private struct BookmarkRow: Identifiable {
-        let nodes: [BookmarkNode]
-        var id: String { nodes.map(\.id).joined(separator: "-") }
+    /// The favourites chunked into rows of `tileColumnCount`.
+    private struct FavoriteRow: Identifiable {
+        let favorites: [HomeFavorite]
+        var id: String { favorites.map(\.id).joined(separator: "-") }
     }
 
-    private var bookmarkRows: [BookmarkRow] {
-        stride(from: 0, to: bookmarkNodes.count, by: tileColumnCount).map { start in
-            BookmarkRow(nodes: Array(bookmarkNodes[start..<min(start + tileColumnCount, bookmarkNodes.count)]))
+    private var favoriteRows: [FavoriteRow] {
+        stride(from: 0, to: favorites.count, by: tileColumnCount).map { start in
+            let end = min(start + tileColumnCount, favorites.count)
+            return FavoriteRow(favorites: Array(favorites[start..<end]))
         }
     }
 
-    /// The tile customisation from 主页 settings, resolved to concrete values.
+    /// The tile customisation from 外观 ▸ 主页图标, resolved to concrete values.
     private var tileIconSize: CGFloat {
         CGFloat(env.settings.preferences.homeTileIconSize ?? 40)
     }
@@ -364,64 +396,60 @@ struct NewTabHomeView: View {
         CGFloat(env.settings.preferences.homeTileSpacing ?? 12)
     }
 
-    /// The chosen shape, as the corner radius the icon tile is drawn with.
-    /// A square tile at half its size in radius is a circle, so the three
-    /// settings land on three radii and nothing else about the tile changes.
     private var tileCornerRadius: CGFloat? {
-        switch env.settings.preferences.homeTileShape ?? "rounded" {
-        case "circle": return tileIconSize / 2
-        case "square": return 3
-        default: return nil
-        }
+        HomeTileStyle.cornerRadius(
+            shape: env.settings.preferences.homeTileShape,
+            iconSize: tileIconSize
+        )
     }
 
-    /// A bookmark tile: the site's icon on its own uniform tile, and nothing
-    /// else — the icon is the label, the way a home screen reads. Size, shape
-    /// and spacing answer to 主页 settings; the tile itself is the icon
-    /// component's, so every favourite reads as one shelf of equals.
-    private func bookmarkCell(_ node: BookmarkNode) -> some View {
-        Button {
-            guard let url = BrowserUrlResolver.storedUrl(node.url) else { return }
+    /// A favourite tile. The icon is the tile; the name below it is a choice
+    /// the long-press editor owns. Size, shape and spacing answer to 主页设置;
+    /// the tile itself is the shared `HomeFavoriteTile`, so the settings
+    /// preview draws the same thing.
+    private func favoriteCell(_ favorite: HomeFavorite) -> some View {
+        let titleVisible = showsTitle(for: favorite)
+        return Button {
+            guard let url = BrowserUrlResolver.storedUrl(favorite.url) else { return }
             onNavigate(url)
         } label: {
-            VStack(spacing: 6) {
-                SiteIconView(
-                    host: node.displayHost,
-                    size: tileIconSize,
-                    cornerRadius: tileCornerRadius
-                )
-                Text(node.title.isEmpty ? node.displayHost : node.title)
-                    .font(.system(size: 11, weight: .medium))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(homePrimaryText)
-                    .shadow(color: homeTextShadow, radius: 3, y: 1)
-                    .frame(maxWidth: .infinity)
-            }
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity)
+            HomeFavoriteTile(
+                favorite: favorite,
+                showsTitle: titleVisible,
+                iconSize: tileIconSize,
+                cornerRadius: tileCornerRadius,
+                titleColor: homePrimaryText,
+                titleShadow: homeTextShadow
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(HomeTileButtonStyle())
         .contextMenu {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {
-                guard let url = BrowserUrlResolver.storedUrl(node.url) else { return }
+                guard let url = BrowserUrlResolver.storedUrl(favorite.url) else { return }
                 env.tabManager.openTab(
                     url: url,
                     openSource: .shortcut,
                     activate: false
                 )
             }
-            Button("从主页移除", systemImage: "minus.square", role: .destructive) {
-                HomeBookmarkStore.remove(node.id)
-                loadBookmarks()
+            Button("编辑", systemImage: "pencil") {
+                editingFavorite = favorite
             }
-            Button("删除书签", systemImage: "trash", role: .destructive) {
-                env.bookmarks.removeNode(id: node.id)
-                loadBookmarks()
+            Button(
+                titleVisible ? "隐藏名称" : "显示名称",
+                systemImage: titleVisible ? "eye.slash" : "eye"
+            ) {
+                env.homeFavorites.setShowsTitle(id: favorite.id, value: !titleVisible)
+            }
+            Divider()
+            // Removing a tile removes the tile and nothing else. The store is
+            // the home's; the bookmark list is a different inventory.
+            Button("从主页移除", systemImage: "minus.square", role: .destructive) {
+                env.homeFavorites.remove(id: favorite.id)
             }
         }
-        .accessibilityLabel(node.title.isEmpty ? node.displayHost : node.title)
+        .accessibilityLabel(favorite.displayTitle)
     }
 
     // MARK: - Recently closed

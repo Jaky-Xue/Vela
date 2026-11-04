@@ -34,6 +34,24 @@ import UIKit
 import WebKit
 import UniformTypeIdentifiers
 
+/// A presentation requested from the menu panel.
+///
+/// The menu is itself a sheet; a destination it opens is a second one. They
+/// are two steps now — close, then present — rather than one update that asks
+/// UIKit to do both at once.
+enum MenuPresentation: Equatable {
+    case addBookmark
+    case share
+    case bookmarks
+    case history
+    case downloads
+    case offlinePages
+    case settings
+    case bookshelf
+    case passwords
+    case qrScanner
+}
+
 struct BrowserShellView: View {
     @Environment(AppEnvironment.self) var env
     @Environment(\.browserPalette) var palette
@@ -74,6 +92,12 @@ struct BrowserShellView: View {
     /// tab later.
     @State var bookshelfSourceTabId = ""
     @State var showMenu = false
+    /// A screen the menu asked for. Presenting it is deferred until the menu
+    /// sheet's dismissal has completed: showing a second sheet in the same
+    /// update as `showMenu = false` is a UIKit presentation race, and it is
+    /// what made 添加书签 and 书签 occasionally read as dead or wedge. The
+    /// menu sheet's `onDismiss` runs the request.
+    @State var pendingMenuPresentation: MenuPresentation?
     /// Whether the iPad layout's sidebar drawer is open.
     @State var showPadSidebar = false
     @State var showAddBookmarkChoice = false
@@ -1186,20 +1210,24 @@ struct BrowserShellView: View {
     }
 
     /// Runs one tile from the menu panel.
+    ///
+    /// The menu closes first. A destination that is itself a sheet is queued
+    /// and presented from the menu sheet's `onDismiss` — the same update cannot
+    /// both dismiss one sheet and present another without racing UIKit's
+    /// presentation machinery.
     func handleMenuAction(_ action: VelaMenuAction) {
         env.noteInteraction("菜单:\(action.rawValue)")
         showMenu = false
         guard let tab = activeTab else {
             switch action {
-            case .bookmarks: showBookmarks = true
-            case .history: showHistory = true
-            case .downloads: showDownloads = true
-            case .offlinePages: showOfflinePages = true
-            case .settings: openSettings()
-            case .bookshelf: openBookshelf()
-            case .passwords: showPasswords = true
-            case .scanQRCode:
-                showQRScanner = true
+            case .bookmarks: queueMenuPresentation(.bookmarks)
+            case .history: queueMenuPresentation(.history)
+            case .downloads: queueMenuPresentation(.downloads)
+            case .offlinePages: queueMenuPresentation(.offlinePages)
+            case .settings: queueMenuPresentation(.settings)
+            case .bookshelf: queueMenuPresentation(.bookshelf)
+            case .passwords: queueMenuPresentation(.passwords)
+            case .scanQRCode: queueMenuPresentation(.qrScanner)
             case .privateTab:
                 // No tab on screen does not make the switch a tab factory:
                 // turning 无痕模式 on here materialises the private home it
@@ -1213,21 +1241,21 @@ struct BrowserShellView: View {
 
         switch action {
         case .addBookmark:
-            showAddBookmarkChoice = true
+            queueMenuPresentation(.addBookmark)
         case .share:
-            showShareSheet = true
+            queueMenuPresentation(.share)
         case .findInPage:
             showFindBar = true
         case .saveOfflinePage:
             saveOfflinePage()
         case .offlinePages:
-            showOfflinePages = true
+            queueMenuPresentation(.offlinePages)
         case .novel:
             activateNovelMode()
         case .bookshelf:
-            openBookshelf()
+            queueMenuPresentation(.bookshelf)
         case .passwords:
-            showPasswords = true
+            queueMenuPresentation(.passwords)
         case .hideElements:
             guard let webView = tabManager.webView(for: tab.id) else { return }
             // The script goes into the current document; no reload, so the
@@ -1238,13 +1266,13 @@ struct BrowserShellView: View {
         case .home:
             openHomeTab()
         case .bookmarks:
-            showBookmarks = true
+            queueMenuPresentation(.bookmarks)
         case .history:
-            showHistory = true
+            queueMenuPresentation(.history)
         case .downloads:
-            showDownloads = true
+            queueMenuPresentation(.downloads)
         case .scanQRCode:
-            showQRScanner = true
+            queueMenuPresentation(.qrScanner)
         case .privateTab:
             // The tile is 无痕模式's switch: on, everything new routes private
             // and the browser lands on the private home; off, routing returns
@@ -1269,7 +1297,30 @@ struct BrowserShellView: View {
         case .reload:
             reloadActiveTab()
         case .settings:
-            openSettings()
+            queueMenuPresentation(.settings)
+        }
+    }
+
+    /// Queues a destination behind the menu sheet's dismissal.
+    func queueMenuPresentation(_ presentation: MenuPresentation) {
+        pendingMenuPresentation = presentation
+    }
+
+    /// Opens the screen a menu tile asked for, now that the menu is gone.
+    func performPendingMenuPresentation() {
+        guard let presentation = pendingMenuPresentation else { return }
+        pendingMenuPresentation = nil
+        switch presentation {
+        case .addBookmark: showAddBookmarkChoice = true
+        case .share: showShareSheet = true
+        case .bookmarks: showBookmarks = true
+        case .history: showHistory = true
+        case .downloads: showDownloads = true
+        case .offlinePages: showOfflinePages = true
+        case .settings: openSettings()
+        case .bookshelf: openBookshelf()
+        case .passwords: showPasswords = true
+        case .qrScanner: showQRScanner = true
         }
     }
 

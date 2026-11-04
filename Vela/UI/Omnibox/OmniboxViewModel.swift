@@ -708,26 +708,34 @@ public final class OmniboxViewModel {
     /// the alternative is a paste permission prompt on every focus, the warning
     /// is the cheaper half of the trade.
     private func refreshClipboardHint() {
-        let pasteboard = UIPasteboard.general
-        guard pasteboard.hasStrings else {
-            clipboardHint = nil
-            return
-        }
-        pasteboard.detectPatterns(for: [.probableWebURL]) { result in
-            let isUrl: Bool
-            switch result {
-            case .success(let patterns): isUrl = patterns.contains(.probableWebURL)
-            case .failure: isUrl = false
+        // `hasStrings` can block while iOS answers whether the access is
+        // allowed, and this method is called from the tap that opens the
+        // address bar. Deferring the read to the next main-loop turn keeps
+        // that tap from waiting on the pasteboard; the hint arrives a frame
+        // later, which is invisible.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isEditing else { return }
+            let pasteboard = UIPasteboard.general
+            guard pasteboard.hasStrings else {
+                self.clipboardHint = nil
+                return
             }
-            Task { @MainActor [weak self] in
-                guard let self, self.isEditing else { return }
-                self.clipboardHint = OmniboxClipboardHint.from(
-                    hasProbableWebURL: isUrl,
-                    // Re-read rather than trusting the check above: the
-                    // detection is asynchronous, and the user can copy something
-                    // else while it is in flight.
-                    hasStrings: pasteboard.hasStrings
-                )
+            pasteboard.detectPatterns(for: [.probableWebURL]) { result in
+                let isUrl: Bool
+                switch result {
+                case .success(let patterns): isUrl = patterns.contains(.probableWebURL)
+                case .failure: isUrl = false
+                }
+                Task { @MainActor [weak self] in
+                    guard let self, self.isEditing else { return }
+                    self.clipboardHint = OmniboxClipboardHint.from(
+                        hasProbableWebURL: isUrl,
+                        // Re-read rather than trusting the check above: the
+                        // detection is asynchronous, and the user can copy
+                        // something else while it is in flight.
+                        hasStrings: pasteboard.hasStrings
+                    )
+                }
             }
         }
     }

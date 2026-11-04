@@ -111,7 +111,7 @@ WebViewHost ──▶ WebViewContainerView ──weak──▶ WKWebView
 | `TabsOverviewView` | `TabManager`、`TabPreviewStore`（经 manager）、`Passwords`（私有锁） | 也直接 `takeSnapshot` |
 | `BookmarksView` / `HistoryView` / `DownloadsView` / `OfflinePagesView` / `NovelBookshelfView` / `PasswordVaultView` | 对应 Service + `AppEnvironment` | 打开链接时直接调 `tabManager.openTab` |
 | `Settings/*` | `AppEnvironment`（主要是 `settings`；广告过滤页还调 `refreshAdBlockRules`） | 设置页直接触发编译 |
-| `NewTabHomeView` | `BookmarkService`、`TabManager`，并用 `UserDefaults` 存主页收藏 id | 主页是书签的第二视图 |
+| `NewTabHomeView` | `HomeFavoritesService`、`TabManager` | 主页收藏是独立文档，与书签互不影响 |
 | `TranslationBar` | `TranslationService` + WebView | |
 | `Omnibox/*` | `OmniboxViewModel` → `TabManager` / 三个查询服务 | |
 
@@ -211,7 +211,7 @@ coordinator 响应策略（不可渲染）
 | `SettingsService` | 9（另有 174 处 `env.settings`） | 几乎所有功能读设置 |
 | `DownloadService` | 6 | 环境、coordinator、下载页、脚本桥 |
 | `HistoryService` | 6 | 环境、coordinator、地址栏、历史页 |
-| `BookmarkService` | 6 | 环境、coordinator、地址栏、书签页、主页 |
+| `BookmarkService` | 6 | 环境、coordinator、地址栏、书签页、主页迁移 |
 | `AdBlockEngine` | 4 | 环境、services、coordinator、设置页 |
 | `TranslationService` | 3 | 环境、外壳、翻译栏 |
 | `AppEnvironment` | 27 个 Feature 文件 + 5 个 App 文件 | 服务定位器 |
@@ -252,8 +252,8 @@ coordinator 响应策略（不可渲染）
 | 导航动作 | shell 的 `goBack/openHomeTab/reloadActiveTab`、菜单 action、工具栏 control、硬件命令、总览/侧栏 | 同一动作 3–5 个入口，行为大体一致，但 `reload`/`find` 的分支各写一份 |
 | 打开链接 | `TabManager.openTab`（正确单一入口），但书签/历史/主页/侧栏都各自决定 `activate` 与隐私参数 | 参数默认值不一致的风险 |
 | 标签页标题/图标派生 | `BrowserTabState.displayTitle/displayHost`（单一），视图各自处理空值 | 基本无重复 |
-| 设置持久化 | `SettingsService.update`（单一），但 `HomeBookmarkStore`、`OmniboxViewModel` 直接写 `UserDefaults` | 两套绕过设置服务的持久化路径 |
-| 书签“主页收藏” | `HomeBookmarkStore` 用 `UserDefaults` 存 id，书签本体在 SQLite | 删除书签后 id 残留；主页需每次过滤 |
+| 设置持久化 | `SettingsService.update`（单一），但 `HomeFavoritesService`、`OmniboxViewModel` 直接写 `UserDefaults` | 两套绕过设置服务的持久化路径 |
+| 主页收藏 | `HomeFavoritesService` 自己的 JSON 文档，书签本体在 SQLite | 已独立：书签删除/改名不再影响主页，反之亦然 |
 | 加载状态判定 | `TabLoadState.isInFlight/isFailure/hasCommittedDocument` + `needsPageFetch`（集中） | 良好，无重复 |
 | 错误分类 | `TabNavigationFailure.make`（集中） | 良好 |
 

@@ -482,6 +482,10 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var homeTileIconSize: Double?
     public var homeTileShape: String?
     public var homeTileSpacing: Double?
+    /// 主页收藏是否在图标下面显示名称。这是默认值：单个收藏在长按编辑里
+    /// 可以覆盖它。Optional for the decode reason every new preference here
+    /// carries — an absent key must not reset the rest of the document.
+    public var homeTileShowsTitle: Bool?
     /// 全局顶部保护：页面内容只从系统状态栏下方开始，不滚动到时钟底下。
     ///
     /// Optional for the same reason `homeBackgroundStamp` is — the preferences
@@ -560,6 +564,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         homeTileIconSize: Double? = nil,
         homeTileShape: String? = nil,
         homeTileSpacing: Double? = nil,
+        homeTileShowsTitle: Bool? = nil,
         backgroundStyle: String? = nil,
         toolbarLeadingItems: [String]? = nil,
         toolbarTrailingItems: [String]? = nil,
@@ -604,6 +609,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.homeTileIconSize = homeTileIconSize
         self.homeTileShape = homeTileShape
         self.homeTileSpacing = homeTileSpacing
+        self.homeTileShowsTitle = homeTileShowsTitle
         self.backgroundStyle = backgroundStyle
         self.toolbarLeadingItems = toolbarLeadingItems
         self.toolbarTrailingItems = toolbarTrailingItems

@@ -120,6 +120,16 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
+                HomeIconDesignPreview()
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+
+                Toggle("显示图标名称", isOn: Binding(
+                    get: { env.settings.preferences.homeTileShowsTitle ?? true },
+                    set: { value in
+                        env.settings.update { $0.homeTileShowsTitle = value }
+                    }
+                ))
+
                 HStack {
                     Text("图标大小")
                     Spacer()
@@ -171,6 +181,8 @@ struct AppearanceSettingsView: View {
                 .tint(palette.accent)
             } header: {
                 Text("主页图标")
+            } footer: {
+                Text("显示图标名称是未单独设置的收藏的默认值。长按主页上的收藏可以编辑名称和网址，也可以只隐藏那一个图标的名称。")
             }
         }
         .navigationTitle("外观")
@@ -462,6 +474,56 @@ private struct BackgroundStyleSwatch: View {
                 Color(red: 0.60, green: 0.82, blue: 0.98),
                 Color(red: 0.82, green: 0.74, blue: 0.98)
             ]
+        }
+    }
+}
+
+// MARK: - Home icon preview
+
+/// The real favourites, drawn with the settings above, so 主页图标 shows the
+/// shelf the home will actually draw instead of a picture of one.
+///
+/// The tiles are the user's own; with no favourites there is nothing honest to
+/// draw, so the row says so rather than standing in coloured squares.
+private struct HomeIconDesignPreview: View {
+    @Environment(AppEnvironment.self) private var env
+    @Environment(\.browserPalette) private var palette
+
+    var body: some View {
+        let preferences = env.settings.preferences
+        let iconSize = CGFloat(preferences.homeTileIconSize ?? 40)
+        let spacing = CGFloat(preferences.homeTileSpacing ?? 12)
+        let cornerRadius = HomeTileStyle.cornerRadius(
+            shape: preferences.homeTileShape,
+            iconSize: iconSize
+        )
+        let showsTitleByDefault = preferences.homeTileShowsTitle ?? true
+        let favorites = Array(env.homeFavorites.favorites.prefix(4))
+
+        if favorites.isEmpty {
+            Text("主页还没有收藏。添加收藏后，这里会按当前设置显示图标的实际效果。")
+                .font(.footnote)
+                .foregroundStyle(palette.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(alignment: .top, spacing: spacing) {
+                ForEach(favorites) { favorite in
+                    HomeFavoriteTile(
+                        favorite: favorite,
+                        showsTitle: favorite.showsTitle ?? showsTitleByDefault,
+                        iconSize: iconSize,
+                        cornerRadius: cornerRadius,
+                        titleColor: palette.primaryText
+                    )
+                }
+                // Four columns even when the shelf is shorter, which is the
+                // width the home gives a tile in a full row.
+                ForEach(0..<(4 - favorites.count), id: \.self) { _ in
+                    Color.clear
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 }

@@ -73,6 +73,32 @@ public final class BookmarkService {
         (try? repository.search(query)) ?? []
     }
 
+    /// Every live bookmark in the order the home grid walks the tree: 书签栏
+    /// first, then 其他书签, depth-first, with a folder entered where it sits.
+    ///
+    /// `allBookmarks` answers newest-first, which is right for a manager and
+    /// wrong for a shelf: the home's one-time migration into its own store has
+    /// to keep the order the user was already looking at.
+    public func bookmarkNodesInTreeOrder() -> [BookmarkNode] {
+        var ordered: [BookmarkNode] = []
+
+        func walk(_ items: [BookmarkTreeItem]) {
+            for item in items {
+                if item.node.isFolder {
+                    walk(item.children)
+                } else if item.node.url != nil {
+                    ordered.append(item.node)
+                }
+            }
+        }
+
+        for role in [BookmarkRootRole.toolbar, .other] {
+            guard let rootId = rootNodeId(for: role) else { continue }
+            walk(children(of: rootId))
+        }
+        return ordered
+    }
+
     /// The bookmark for a URL, if any — what the toolbar's star reflects.
     public func bookmark(for url: String) -> BookmarkNode? {
         try? repository.isBookmarked(url: url)

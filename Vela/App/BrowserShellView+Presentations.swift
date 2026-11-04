@@ -87,7 +87,10 @@ extension BrowserShellView {
             .browserListSurface()
             .browserAmbientSheet()
         }
-        .sheet(isPresented: $showMenu) {
+        // The menu is a sheet, and 添加书签/书签/etc. are second sheets. The
+        // destination waits for this dismissal to finish rather than asking
+        // UIKit to dismiss and present in the same update.
+        .sheet(isPresented: $showMenu, onDismiss: { performPendingMenuPresentation() }) {
             MenuPanelView(
                 tiles: env.settings.menuLayout.visibleTiles,
                 canActOnPage: canActOnPage,

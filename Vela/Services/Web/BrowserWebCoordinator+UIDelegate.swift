@@ -379,7 +379,6 @@ extension BrowserWebCoordinator: WKUIDelegate {
 
     /// The long-press menu for a link or image.
     ///
-    /// menu spec in `docs/aira-web-longpress-context-menu-implementation.md`.
     /// Returning nil keeps WebKit's own menu, which already offers open, copy,
     /// share and save-image; Vela adds its own entries through the shell instead
     /// of rebuilding the system menu.

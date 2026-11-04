@@ -15,6 +15,11 @@ struct ContentBlockerSettingsView: View {
     private var settings: ContentBlockerSettings { env.settings.contentBlocker }
     private var blocker: ContentBlocker { env.services.contentBlocker }
 
+    /// A site typed into the whitelist field. The active tab is not always a
+    /// page — opening 设置 from the home leaves no host to add — so the list
+    /// needs a way in that does not depend on what is behind the sheet.
+    @State private var newHost = ""
+
     /// The site in front of the settings sheet, as a whitelist candidate.
     private var activeHost: String? {
         guard let tab = env.tabManager.activeTab,
@@ -90,6 +95,26 @@ struct ContentBlockerSettingsView: View {
                     }
                 }
 
+                HStack(spacing: BrowserSpacing.compact) {
+                    TextField("输入网站，如 example.com", text: $newHost)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .onSubmit { addEnteredSite() }
+
+                    Button("添加") {
+                        addEnteredSite()
+                    }
+                    .disabled(!canAddEnteredSite)
+                }
+
+                if !newHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   normalizedNewHost == nil {
+                    Text("请输入网站域名，如 example.com。")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+
                 Button {
                     addActiveSite()
                 } label: {
@@ -121,9 +146,37 @@ struct ContentBlockerSettingsView: View {
         return settings.isExcepted(host: host)
     }
 
+    /// The typed field, normalised, or nil when it does not look like a site.
+    /// A bare word is a search term, not a host; accepting it would put a row
+    /// on the list that can never match a page.
+    private var normalizedNewHost: String? {
+        let normalized = BrowserSiteHost.normalize(newHost)
+        guard !normalized.isEmpty,
+              !normalized.contains(" "),
+              normalized == "localhost" || normalized.contains(".") else {
+            return nil
+        }
+        return normalized
+    }
+
+    private var canAddEnteredSite: Bool {
+        guard let host = normalizedNewHost else { return false }
+        return !settings.isExcepted(host: host)
+    }
+
+    private func addEnteredSite() {
+        guard let host = normalizedNewHost, !settings.isExcepted(host: host) else { return }
+        addSite(host)
+        newHost = ""
+    }
+
     private func addActiveSite() {
         guard let host = activeHost else { return }
-        let normalized = BrowserSiteHost.normalize(host)
+        addSite(host)
+    }
+
+    private func addSite(_ rawHost: String) {
+        let normalized = BrowserSiteHost.normalize(rawHost)
         guard !normalized.isEmpty else { return }
         env.settings.updateContentBlocker { preferences in
             if !preferences.whitelistedHosts.contains(normalized) {

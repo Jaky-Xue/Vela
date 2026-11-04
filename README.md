@@ -179,11 +179,3 @@ VelaTests/      单元测试
 GPL-3.0，全文见 [`LICENSE`](LICENSE)，署名与商标说明见 [`LICENSE-NOTICE.md`](LICENSE-NOTICE.md)。
 
 ---
-
-## 项目源头
-
-Vela 起源于 **Aira Browser**——一个鸿蒙 NEXT 上的开源浏览器，同样以 GPL-3.0 发布。Vela 保留了它的数据表结构与功能语义，在 iOS 上重新实现，[`PORTING.md`](PORTING.md) 记录了两者的逐模块对应关系。
-
-除此之外两者没有关系：Vela 是独立项目，不是 Aira 的官方版本，也不受其背书或赞助。
-
-上游项目：<https://github.com/mason173/aira-browser>

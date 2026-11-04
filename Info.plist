@@ -38,9 +38,9 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.9.40</string>
+	<string>3.9.41</string>
 	<key>CFBundleVersion</key>
-	<string>43</string>
+	<string>44</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>
@@ -103,8 +103,8 @@
 		<true/>
 	</dict>
 
-	<!-- External application navigation, mirroring Aira's ExternalNavigationLaunchService.
-	     Without these entries canOpenURL always returns false and the prompt never appears. -->
+	<!-- External application navigation. Without these entries canOpenURL
+	     always returns false and the prompt never appears. -->
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>http</string>

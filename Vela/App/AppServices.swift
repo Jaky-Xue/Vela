@@ -19,6 +19,10 @@ public final class AppServices {
     public let database: BrowserDatabase
     public let settings: SettingsService
     public let bookmarks: BookmarkService
+    /// The home's favourites shelf. Independent of the bookmark store: a
+    /// favourite is a copy of a name and address, so bookmark edits and
+    /// deletions cannot reach it.
+    public let homeFavorites: HomeFavoritesService
     public let history: HistoryService
     public let downloads: DownloadService
     /// The process-wide record of site-permission answers.
@@ -58,6 +62,7 @@ public final class AppServices {
 
         let settings = SettingsService()
         self.settings = settings
+        self.homeFavorites = HomeFavoritesService()
         self.commands = BrowserCommandCenter()
         self.crashDiagnostics = CrashDiagnosticsService()
         self.contentBlocker = ContentBlocker(settings: settings)
@@ -143,6 +148,12 @@ public final class AppServices {
         didBoot = true
 
         bookmarks.reload()
+        // The home's shelf used to be bookmark ids; carry the grid an existing
+        // install already had into the independent store exactly once.
+        homeFavorites.reload()
+        homeFavorites.migrateFromLegacyHomeStoreIfNeeded(
+            bookmarks: bookmarks.bookmarkNodesInTreeOrder()
+        )
         history.reload()
         downloads.reload()
         // Background URLSession events can arrive before the first window is

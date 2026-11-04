@@ -86,7 +86,36 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                 for: navigationAction.request.url,
                 in: webView
             )
+            // The rule list belongs to the page, not to the web view that was
+            // born showing another site. A tab that navigates from a blocked
+            // site to an excepted one otherwise keeps the old site's list, so
+            // 白名单 appears to do nothing until a new tab is opened. Only a
+            // main-frame navigation changes the page; an iframe must not speak
+            // for the tab.
+            if navigationAction.targetFrame?.isMainFrame == true,
+               let scheme = navigationAction.request.url?.scheme?.lowercased(),
+               scheme == "http" || scheme == "https" {
+                self.syncContentBlocker(
+                    forHost: navigationAction.request.url?.host,
+                    in: webView
+                )
+            }
             decisionHandler(self.resolvePolicy(for: navigationAction, in: webView), preferences)
+        }
+    }
+
+    /// Makes this web view's rule list match the page it is navigating to.
+    ///
+    /// WebKit copies the attached lists when a web view is built, and there is
+    /// no public way to read them back. Rebuilding the attachment from the
+    /// destination host is therefore the only way to honour a whitelist entry
+    /// for a site reached in a tab that already existed.
+    @MainActor
+    func syncContentBlocker(forHost host: String?, in webView: WKWebView) {
+        let controller = webView.configuration.userContentController
+        controller.removeAllContentRuleLists()
+        if let list = contentBlocker.ruleList(forHost: host) {
+            controller.add(list)
         }
     }
 

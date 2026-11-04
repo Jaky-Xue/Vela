@@ -377,8 +377,16 @@ struct OmniboxTextField: UIViewRepresentable {
                 }
             }
         } else {
+            // Resigning is deferred for the same reason focus is: called
+            // inside `updateUIView` it re-enters UIKit's layout pass while
+            // the search page is being removed, which is the shape of the
+            // landscape address-bar stall. One runloop later the field is
+            // still there to give the keyboard back.
             if field.isFirstResponder {
-                field.resignFirstResponder()
+                DispatchQueue.main.async { [weak field] in
+                    guard let field, field.isFirstResponder else { return }
+                    field.resignFirstResponder()
+                }
             }
             // Taps fall through to the SwiftUI catcher over the bar, which is
             // what opens the session.

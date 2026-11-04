@@ -23,7 +23,7 @@ GitHub Actions 的 macOS 机器        →   编译出未签名的 IPA
    cd G:/ClaudeWork/VelaBrowserIOS
    git init
    git add .
-   git commit -m "Vela: Aira Browser iOS port"
+   git commit -m "Vela: iOS 浏览器"
    git remote add origin https://github.com/<你的用户名>/<仓库名>.git
    git push -u origin main
    ```

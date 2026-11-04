@@ -44,7 +44,7 @@
 | 构建 | Xcode 16 文件系统同步组（objectVersion 77），新增文件无需改 `project.pbxproj` |
 | 测试目标 | 仅有 `VelaTests`，**无 UI 测试 target** |
 
-工程文档：`ARCHITECTURE.md`（分层说明）、`PORTING.md`（Aira 3.7.4 → Vela 映射）、
+工程文档：`ARCHITECTURE.md`（分层说明）、`PORTING.md`（移植映射与署名）、
 `NAVIGATION_FIX_REPORT.md`、`BUILD_WITHOUT_MAC.md`、`README.md`。
 
 ---

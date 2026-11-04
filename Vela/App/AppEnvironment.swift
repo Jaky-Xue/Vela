@@ -143,6 +143,7 @@ public final class AppEnvironment {
     public var database: BrowserDatabase { services.database }
     public var settings: SettingsService { services.settings }
     public var bookmarks: BookmarkService { services.bookmarks }
+    public var homeFavorites: HomeFavoritesService { services.homeFavorites }
     public var history: HistoryService { services.history }
     public var downloads: DownloadService { services.downloads }
     public var permissionAudit: PermissionAuditService { services.permissionAudit }
