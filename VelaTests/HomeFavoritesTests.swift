@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import CoreGraphics
 @testable import Vela
 
 @MainActor
@@ -125,5 +126,38 @@ final class HomeFavoritesTests: XCTestCase {
         service.migrateFromLegacyHomeStoreIfNeeded(bookmarks: bookmarks)
         service.migrateFromLegacyHomeStoreIfNeeded(bookmarks: [])
         XCTAssertEqual(service.favorites.map(\.id).count, 1)
+    }
+}
+
+/// The home grid's geometry is a value, so the spacing control can be tested
+/// without a rendered shelf.
+///
+/// The previous column count was derived from a minimum cell width that the
+/// row then stretched, so the visible gap was mostly leftover cell width and
+/// the slider changed it by a fraction of its nominal range.
+final class HomeTileGeometryTests: XCTestCase {
+    func testASpacingStepTurnsIntoTheSameGapBetweenCells() {
+        let width: CGFloat = 358
+        let icon: CGFloat = 40
+        let tight = HomeTileStyle.columnCount(width: width, iconSize: icon, spacing: 8)
+        let loose = HomeTileStyle.columnCount(width: width, iconSize: icon, spacing: 28)
+
+        // Both arrangements lay out the cells plus the requested gaps without
+        // overflowing the row.
+        let cell = HomeTileStyle.cellWidth(iconSize: icon)
+        XCTAssertLessThanOrEqual(CGFloat(tight) * cell + CGFloat(tight - 1) * 8, width)
+        XCTAssertLessThanOrEqual(CGFloat(loose) * cell + CGFloat(loose - 1) * 28, width)
+        XCTAssertGreaterThanOrEqual(tight, loose)
+    }
+
+    func testACellHoldsTheIconAndSomeRoomForItsName() {
+        XCTAssertEqual(HomeTileStyle.cellWidth(iconSize: 28), 68)
+        XCTAssertEqual(HomeTileStyle.cellWidth(iconSize: 40), 68)
+        XCTAssertEqual(HomeTileStyle.cellWidth(iconSize: 64), 80)
+    }
+
+    func testANarrowWindowStillGetsAColumn() {
+        XCTAssertEqual(HomeTileStyle.columnCount(width: 0, iconSize: 40, spacing: 12), 3)
+        XCTAssertEqual(HomeTileStyle.columnCount(width: 120, iconSize: 64, spacing: 28), 1)
     }
 }

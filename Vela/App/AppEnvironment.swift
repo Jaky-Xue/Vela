@@ -34,34 +34,16 @@ public final class AppEnvironment {
     public let overlays: WebPageOverlays
     public let webCoordinator: BrowserWebCoordinator
     public let tabManager: TabManager
-    /// The structured record of recent navigations in this window.
-    public let navigationLog: NavigationLog
     /// The private session's novel shelf, created on demand and dropped when
     /// the session ends. It runs on its own in-memory database, so nothing it
     /// writes can reach the regular novel tables.
     private var privateNovelService: NovelLibraryService?
-
-    /// Records stalls the navigation log cannot see: its entries are written by
-    /// WebKit callbacks, and those stop during a main-thread hang.
-    private var hangMonitor: MainThreadHangMonitor?
 
     /// Called synchronously at the start of an accepted private-session end,
     /// before tabs close. The shell uses it to take the private reader off the
     /// hierarchy first, so the reader's loader tasks and library are part of
     /// the shutdown's order rather than a later SwiftUI side effect.
     public var onPrivateSessionWillEnd: (() -> Void)?
-
-    /// The last shell action, used as context when the hang watchdog records a
-    /// stall. The watchdog cannot sample the blocked stack safely; knowing the
-    /// page and the control that preceded the stall is the next best clue.
-    public private(set) var lastInteraction = ""
-
-    public func noteInteraction(_ label: String) {
-        lastInteraction = label
-        // The same note is the breadcrumb trail that survives the process: a
-        // launch crash then has the actions that preceded it.
-        services.crashDiagnostics.recordBreadcrumb(label)
-    }
 
     /// Bumped when a private session begins and when it ends. A reader created
     /// in an earlier generation compares its captured value against this one
@@ -79,8 +61,10 @@ public final class AppEnvironment {
         let overlays = WebPageOverlays()
         self.overlays = overlays
 
-        let navigationLog = NavigationLog(settings: services.settings.navigationDiagnostics)
-        self.navigationLog = navigationLog
+        // The navigation record is inert: the diagnostics screen and the
+        // startup watchers that fed it are gone, but the coordinator's log
+        // parameter stays for the tests that read the record directly.
+        let navigationLog = NavigationLog(settings: NavigationDiagnosticsSettings(enabled: false))
 
         let coordinator = BrowserWebCoordinator(
             overlays: overlays,
@@ -121,21 +105,6 @@ public final class AppEnvironment {
         }
         services.bootOnce()
         bootWindow()
-
-        let monitor = MainThreadHangMonitor { [weak self] durationMs in
-            guard let self else { return }
-            let tab = self.tabManager.activeTab
-            self.navigationLog.recordHang(
-                durationMs: durationMs,
-                tabId: tab?.id ?? "",
-                navigationSerial: tab?.navigationSerial ?? 0,
-                phase: tab?.loadState ?? .idle,
-                url: tab?.url ?? "",
-                note: self.lastInteraction
-            )
-        }
-        hangMonitor = monitor
-        monitor.start()
     }
 
     // MARK: - Shared services, forwarded
@@ -250,17 +219,6 @@ public final class AppEnvironment {
     /// opening regular tabs with the mode on.
     public func refreshPrivateBrowsingRouting() {
         syncPrivateBrowsingRouting()
-    }
-
-    // MARK: - Diagnostics
-
-    /// Pushes the diagnostics switches into the log.
-    ///
-    /// The log holds its own copy of the settings so a record does not have to
-    /// consult the settings service on every navigation event; this is the one
-    /// place that keeps the copy in step.
-    public func applyNavigationDiagnosticsSettings() {
-        navigationLog.settings = settings.navigationDiagnostics
     }
 
     /// Pushes 广告拦截 changes onto the open pages and reloads the active one,

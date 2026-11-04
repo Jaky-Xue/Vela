@@ -927,8 +927,9 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         let host = url?.host
         return BrowserUserAgent.identity(
             custom: settings.preferences.customUserAgent,
-            // The old toggle is folded into `siteDisplayDefault`; it is no
-            // longer a separate input. 桌面网站 owns the layout default.
+            // 桌面网站 is no longer a separate layout input: the string the
+            // tab presents decides the layout, so this is only the fallback
+            // for the automatic identity.
             prefersDesktop: false,
             // The host the tab is on or heading to — `load` writes the URL
             // before the web view exists, and `didCommit` keeps it current, so
@@ -936,8 +937,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             host: host,
             // The site's own 桌面/手机 choice, when it has one. Read on every
             // request, so clearing it takes effect on the next navigation.
-            siteMode: host.flatMap { settings.siteDisplayMode(forPageHost: $0) },
-            globalMode: settings.siteDisplayDefault.mode
+            siteMode: host.flatMap { settings.siteDisplayMode(forPageHost: $0) }
         )
     }
 

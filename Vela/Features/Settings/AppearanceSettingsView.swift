@@ -493,6 +493,7 @@ private struct HomeIconDesignPreview: View {
         let preferences = env.settings.preferences
         let iconSize = CGFloat(preferences.homeTileIconSize ?? 40)
         let spacing = CGFloat(preferences.homeTileSpacing ?? 12)
+        let cellWidth = HomeTileStyle.cellWidth(iconSize: iconSize)
         let cornerRadius = HomeTileStyle.cornerRadius(
             shape: preferences.homeTileShape,
             iconSize: iconSize
@@ -506,24 +507,39 @@ private struct HomeIconDesignPreview: View {
                 .foregroundStyle(palette.secondaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            HStack(alignment: .top, spacing: spacing) {
-                ForEach(favorites) { favorite in
-                    HomeFavoriteTile(
-                        favorite: favorite,
-                        showsTitle: favorite.showsTitle ?? showsTitleByDefault,
-                        iconSize: iconSize,
-                        cornerRadius: cornerRadius,
-                        titleColor: palette.primaryText
-                    )
-                }
-                // Four columns even when the shelf is shorter, which is the
-                // width the home gives a tile in a full row.
-                ForEach(0..<(4 - favorites.count), id: \.self) { _ in
-                    Color.clear
-                        .frame(maxWidth: .infinity)
-                }
+            // Fixed-width cells with the row centred, the same geometry the
+            // home uses. Four equal-share columns were drawn before, which
+            // made the picture's spacing disagree with the shelf's and let a
+            // large icon plus a wide spacing overflow the row.
+            //
+            // The width is measured so the preview drops to the number of
+            // tiles that actually fit, exactly as the home does.
+            let anyTitleShown = favorites.contains {
+                $0.showsTitle ?? showsTitleByDefault
             }
-            .frame(maxWidth: .infinity)
+            let rowHeight = iconSize + (anyTitleShown ? 32 : 10)
+            GeometryReader { geo in
+                let fitting = HomeTileStyle.columnCount(
+                    width: geo.size.width,
+                    iconSize: iconSize,
+                    spacing: spacing
+                )
+                let visible = Array(favorites.prefix(max(1, min(4, fitting))))
+                HStack(alignment: .top, spacing: spacing) {
+                    ForEach(visible) { favorite in
+                        HomeFavoriteTile(
+                            favorite: favorite,
+                            showsTitle: favorite.showsTitle ?? showsTitleByDefault,
+                            iconSize: iconSize,
+                            cornerRadius: cornerRadius,
+                            titleColor: palette.primaryText
+                        )
+                        .frame(width: cellWidth)
+                    }
+                }
+                .frame(width: geo.size.width, alignment: .center)
+            }
+            .frame(height: rowHeight)
         }
     }
 }

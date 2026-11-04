@@ -456,11 +456,11 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var lockPrivateTabs: Bool
     public var blurPrivateTabPreviews: Bool
     public var customUserAgent: String
-    /// The pre-split desktop toggle. It is kept for decoding old documents and
-    /// as the fallback for `desktopSiteDefault`; new code writes the latter.
+    /// The pre-split desktop toggle. Kept so an existing install's document
+    /// still decodes; the layout now follows 网页标识, so nothing reads it.
     public var desktopSiteByDefault: Bool
-    /// 桌面网站's global default: "automatic", "desktop" or "mobile". Optional
-    /// for the decode reason every new preference here carries.
+    /// The retired 桌面网站 global default. Kept for the same decode reason and
+    /// read by nothing: the layout follows the identifier.
     public var desktopSiteDefault: String?
     public var userScriptsEnabled: Bool
     public var homepageUrl: String

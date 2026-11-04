@@ -4,12 +4,11 @@
 //
 //  A site's own answer to 桌面版 / 手机版.
 //
-//  The global default lives on the 桌面网站 screen, not in 网页标识: the
-//  identifier and the page layout are two independent choices, and binding
-//  them made a desktop user-agent silently change how every page was laid
-//  out. The per-site store lives beside the settings document rather than
-//  inside it, so the site list can grow without re-encoding every preference
-//  on each change.
+//  There is no global layout default: the identifier chosen in 网页标识 decides
+//  both the string and the layout. This store holds the per-site answers the
+//  menu's 桌面网站 tile and the 「按站点」 list write. It lives beside the
+//  settings document rather than inside it, so the site list can grow without
+//  re-encoding every preference on each change.
 //
 
 import Foundation
@@ -30,36 +29,6 @@ public enum BrowserSiteDisplayMode: String, Codable, Sendable, CaseIterable, Ide
         switch self {
         case .desktop: return "桌面版"
         case .mobile: return "手机版"
-        }
-    }
-}
-
-/// The global 桌面网站 default.
-///
-/// `automatic` leaves the device rule in charge — an iPhone is a phone, an
-/// iPad or Mac is a desktop. The other two force every site that has no own
-/// answer, and they are the only place the global layout is chosen.
-public enum BrowserSiteDisplayDefault: String, Codable, Sendable, CaseIterable, Identifiable, Hashable {
-    case automatic
-    case desktop
-    case mobile
-
-    public var id: String { rawValue }
-
-    public var title: String {
-        switch self {
-        case .automatic: return "自动"
-        case .desktop: return "桌面版"
-        case .mobile: return "手机版"
-        }
-    }
-
-    /// The layout this default asks for, or nil when the device decides.
-    public var mode: BrowserSiteDisplayMode? {
-        switch self {
-        case .automatic: return nil
-        case .desktop: return .desktop
-        case .mobile: return .mobile
         }
     }
 }

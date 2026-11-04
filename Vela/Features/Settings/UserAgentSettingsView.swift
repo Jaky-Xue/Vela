@@ -2,10 +2,13 @@
 //  UserAgentSettingsView.swift
 //  Vela
 //
-//  The 网页标识 screen: the string pages read.
+//  The 网页标识 screen: the string pages read, and the layout it brings.
 //
-//  The page layout — desktop or mobile — is a different choice and lives on
-//  桌面网站. Choosing a preset here must not flip it.
+//  The identifier is the whole answer. A desktop string lays the document out
+//  as a desktop one, a mobile string as a mobile one, and the automatic preset
+//  follows the device — there is no separate layout switch to fall out of step
+//  with the string. Per-site answers are listed on this screen too, because
+//  they are per-site identifiers, not a second display setting.
 //
 
 import SwiftUI
@@ -38,8 +41,7 @@ struct UserAgentSettingsView: View {
     private var effectiveOutgoingIdentity: BrowserWebIdentity {
         BrowserUserAgent.identity(
             custom: env.settings.preferences.customUserAgent,
-            prefersDesktop: false,
-            globalMode: env.settings.siteDisplayDefault.mode
+            prefersDesktop: false
         )
     }
 
@@ -48,8 +50,8 @@ struct UserAgentSettingsView: View {
             return custom
         }
         // WebKit builds its own identifier when there is no override. Show the
-        // one for the layout the identity chose rather than always the device's
-        // desktop form: 桌面网站 can ask an iPad for the mobile page.
+        // one for the layout the identity chose rather than always the
+        // device's form: a mobile preset on an iPad asks for the phone page.
         if effectiveOutgoingIdentity.isDesktop {
             return BrowserUserAgent.desktopIdentifier
         }
@@ -67,7 +69,7 @@ struct UserAgentSettingsView: View {
             } header: {
                 Text("自动")
             } footer: {
-                Text("网页标识只决定网站看到的浏览器字符串；页面按桌面还是手机排版在「桌面网站」里单独设置。")
+                Text("标识决定网站看到的浏览器字符串，也决定页面按桌面版还是手机版排版。自动模式跟随设备：iPhone 为手机版，iPad 与 Mac 为桌面版；选了桌面端标识就按桌面版排版。")
             }
 
             Section("移动端网页") {
@@ -98,14 +100,67 @@ struct UserAgentSettingsView: View {
                 .lineLimit(3...6)
 
                 Button("恢复默认") {
-                    // Only the identifier is reset here. 桌面网站's default
-                    // and the per-site choices are a different setting and
-                    // are left where the user put them.
+                    // The per-site choices live in their own section and are
+                    // left where the user put them.
                     env.settings.update { $0.customUserAgent = "" }
                     apply(reload: true)
                 }
             } header: {
                 Text("自定义标识")
+            }
+
+            Section {
+                Toggle("桌面版按桌面宽度排版", isOn: Binding(
+                    get: { env.settings.preferences.desktopViewportEnabled ?? true },
+                    set: { value in
+                        env.settings.update { $0.desktopViewportEnabled = value }
+                        apply(reload: true)
+                    }
+                ))
+                .tint(palette.accent)
+            } header: {
+                Text("桌面排版")
+            } footer: {
+                Text("桌面版下把 width=device-width 的页面按 1200 的桌面宽度排版并等比缩放，让 768–1024 宽的 iPad 也进入桌面断点。个别网站排版异常时可关闭。")
+            }
+
+            Section {
+                if env.settings.siteDisplay.modes.isEmpty {
+                    Text("没有单独的网站设置。")
+                        .font(.footnote)
+                        .foregroundStyle(palette.secondaryText)
+                } else {
+                    ForEach(env.settings.siteDisplay.sortedHosts) { entry in
+                        HStack {
+                            Text(entry.host)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 8)
+                            Text(entry.mode.title)
+                                .foregroundStyle(palette.secondaryText)
+                        }
+                        .font(.footnote)
+                    }
+                    .onDelete { offsets in
+                        let current = env.settings.siteDisplay.sortedHosts
+                        let removing = offsets.compactMap { index in
+                            current.indices.contains(index) ? current[index].host : nil
+                        }
+                        for host in removing {
+                            env.settings.setSiteDisplayMode(nil, forPageHost: host)
+                        }
+                        apply(reload: true)
+                    }
+
+                    Button("清除所有站点设置", role: .destructive) {
+                        env.settings.clearSiteDisplayModes()
+                        apply(reload: true)
+                    }
+                }
+            } header: {
+                Text("按站点")
+            } footer: {
+                Text("在菜单的「桌面网站」里切换当前网站；长按该图标可恢复自动。")
             }
 
             Section {
@@ -147,9 +202,8 @@ struct UserAgentSettingsView: View {
     private func presetRow(_ preset: BrowserUserAgentPreset) -> some View {
         let isSelected = selectedPreset?.id == preset.id
         return Button {
-            // The identifier preset is only an identifier. Whether the page is
-            // laid out as desktop or mobile belongs to 桌面网站 and must not
-            // flip when this row is chosen.
+            // The preset carries its own layout: choosing a desktop string
+            // lays the page out as a desktop document.
             env.settings.update { $0.customUserAgent = preset.userAgent ?? "" }
             apply(reload: true)
         } label: {

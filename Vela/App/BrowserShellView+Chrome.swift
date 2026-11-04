@@ -92,17 +92,21 @@ extension BrowserShellView {
         // and keeps a tap from reading as a drag; the bar is also non-hit-testable
         // while the omnibox session is open, so the gesture cannot fire then.
         .simultaneousGesture(
-            DragGesture(minimumDistance: 16)
+            DragGesture(minimumDistance: 10)
                 .onChanged { value in
                     guard canDragChromeAway, !chromeHidden else { return }
-                    if value.translation.height > 0 {
-                        chromeDragOffset = value.translation.height
+                    let vertical = value.translation.height
+                    // A drag that is mostly sideways belongs to the page (the
+                    // edge-back gesture), not to the bar.
+                    guard abs(vertical) > abs(value.translation.width) else { return }
+                    if vertical > 0 {
+                        chromeDragOffset = vertical
                         chromeLiftOffset = 0
                         chromeHomeArmed = false
                     } else {
-                        chromeLiftOffset = max(-36, value.translation.height * 0.35)
+                        chromeLiftOffset = max(-36, vertical * 0.35)
                         chromeDragOffset = 0
-                        let armed = value.translation.height < -64
+                        let armed = vertical < -64
                         if armed != chromeHomeArmed {
                             chromeHomeArmed = armed
                             if armed {
@@ -113,9 +117,26 @@ extension BrowserShellView {
                 }
                 .onEnded { value in
                     if canDragChromeAway, !chromeHidden {
-                        if value.translation.height > 56 {
+                        let vertical = value.translation.height
+                        guard abs(vertical) > abs(value.translation.width) else {
+                            chromeHomeArmed = false
+                            withAnimation(Self.chromeAnimation) {
+                                chromeDragOffset = 0
+                                chromeLiftOffset = 0
+                            }
+                            return
+                        }
+                        // The throw counts as well as the distance: a short,
+                        // fast flick is the gesture people actually make, and
+                        // requiring the finger itself to travel the threshold
+                        // is what made the bar feel like it sometimes ignored
+                        // the swipe.
+                        let projected = value.predictedEndTranslation.height
+                        let downward = max(vertical, projected)
+                        let upward = min(vertical, projected)
+                        if downward > 48 {
                             setChromeHidden(true)
-                        } else if value.translation.height < -64 {
+                        } else if upward < -64 {
                             openHomeTab()
                         }
                     }
@@ -357,7 +378,6 @@ extension BrowserShellView {
     }
 
     func performToolbarControl(_ control: ToolbarControl) {
-        env.noteInteraction("工具栏:\(control.rawValue)")
         switch control {
         case .back:
             goBack()

@@ -610,7 +610,6 @@ struct BrowserShellView: View {
             // The iPad top bar yields to the search page, and an open tab
             // drawer must not sit over that page.
             if editing {
-                env.noteInteraction("地址栏")
                 withAnimation(Self.sidebarAnimation) {
                     showPadSidebar = false
                 }
@@ -979,7 +978,12 @@ struct BrowserShellView: View {
         showFindBar = false
         findQuery = ""
         chromeHidden = false
+        chromeDragOffset = 0
+        chromeLiftOffset = 0
+        chromeHomeArmed = false
+        scrollTracker.lastOffset = 0
         scrollTracker.accumulation = 0
+        scrollTracker.upwardTravel = 0
         env.webCoordinator.clearFindInPage()
         omnibox.endEditing()
         env.webCoordinator.refreshNavigationAvailability()
@@ -988,7 +992,12 @@ struct BrowserShellView: View {
 
     private func handleActiveTabUrlChanged() {
         chromeHidden = false
+        chromeDragOffset = 0
+        chromeLiftOffset = 0
+        chromeHomeArmed = false
+        scrollTracker.lastOffset = 0
         scrollTracker.accumulation = 0
+        scrollTracker.upwardTravel = 0
         syncAddressText()
         updateChromeForeground()
     }
@@ -1021,18 +1030,22 @@ struct BrowserShellView: View {
     /// conversely, waits for a deliberate distance of downward travel, so a
     /// page that jiggles under a refresh does not bounce the bar.
     func handleScroll(offset: Double) {
+        let previous = scrollTracker.lastOffset
+        // The offset is tracked even while the chrome is pinned: the search
+        // page can move the page under it, and a stale reading here would make
+        // the first scroll after closing it jump by that distance.
+        scrollTracker.lastOffset = offset
+        let delta = offset - previous
+
         // An open omnibox or an active find pins the chrome: the user is
         // working in it, and sliding it away mid-sentence would be hostile.
         guard !omnibox.isEditing, !showFindBar else { return }
-
-        let previous = scrollTracker.lastOffset
-        scrollTracker.lastOffset = offset
-        let delta = offset - previous
 
         // At the top of the document the bar is always back; there is nothing
         // above the page start to hide it for.
         if offset <= 2 {
             scrollTracker.accumulation = 0
+            scrollTracker.upwardTravel = 0
             setChromeHidden(false)
             return
         }
@@ -1040,15 +1053,25 @@ struct BrowserShellView: View {
         guard abs(delta) > 0.25 else { return }
 
         if delta > 0 {
+            // Downward travel accumulates toward a hide. A flick reports
+            // smaller steps than a slow drag, so the threshold is measured in
+            // distance travelled rather than in any single step.
+            scrollTracker.upwardTravel = 0
             scrollTracker.accumulation = max(0, scrollTracker.accumulation + delta)
-            if scrollTracker.accumulation > 48 {
+            if scrollTracker.accumulation > 44 {
                 scrollTracker.accumulation = 0
                 setChromeHidden(true)
             }
         } else {
-            scrollTracker.accumulation = min(0, scrollTracker.accumulation + delta)
-            if scrollTracker.accumulation < -8 {
+            // An upward flick is a request for the controls and shows them at
+            // once. Small negative steps inside a downward fling are bounce,
+            // not a reversal: they must not erase the distance already
+            // travelled, which is what made the bar fail to hide on some
+            // pages.
+            scrollTracker.upwardTravel -= delta
+            if scrollTracker.upwardTravel > 6 {
                 scrollTracker.accumulation = 0
+                scrollTracker.upwardTravel = 0
                 setChromeHidden(false)
             }
         }
@@ -1056,6 +1079,18 @@ struct BrowserShellView: View {
 
     func setChromeHidden(_ hidden: Bool) {
         guard chromeHidden != hidden else { return }
+        if !hidden {
+            // A drag that was interrupted (an edge swipe, a tab switch, a
+            // call banner) never reaches `onEnded`. Leaving its offset behind
+            // parks the bar displaced or fully transparent, which reads as the
+            // bar having gone missing rather than as having come back.
+            chromeDragOffset = 0
+            chromeLiftOffset = 0
+            chromeHomeArmed = false
+            padChromeDragTranslation = 0
+            padChromeHomeArmed = false
+            padChromeHideArmed = false
+        }
         withAnimation(Self.chromeAnimation) {
             chromeHidden = hidden
         }
@@ -1118,8 +1153,12 @@ struct BrowserShellView: View {
         env.webCoordinator.clearFindInPage()
         tabManager.showHome(tab)
         chromeHidden = false
+        chromeDragOffset = 0
+        chromeLiftOffset = 0
+        chromeHomeArmed = false
         scrollTracker.lastOffset = 0
         scrollTracker.accumulation = 0
+        scrollTracker.upwardTravel = 0
         syncAddressText()
     }
 
@@ -1196,12 +1235,6 @@ struct BrowserShellView: View {
         return tabManager.webView(for: tab.id) != nil
     }
 
-    /// Commands the active page's scripts registered, for the menu panel.
-    var activeUserScriptCommands: [UserScriptMenuCommand] {
-        guard let tab = activeTab else { return [] }
-        return env.overlays.userScriptMenuCommands.filter { $0.tabId == tab.id }
-    }
-
     /// What the menu panel's header names as its subject.
     var menuPanelTitle: String {
         guard let tab = activeTab, !tab.isHome else { return "菜单" }
@@ -1216,7 +1249,6 @@ struct BrowserShellView: View {
     /// both dismiss one sheet and present another without racing UIKit's
     /// presentation machinery.
     func handleMenuAction(_ action: VelaMenuAction) {
-        env.noteInteraction("菜单:\(action.rawValue)")
         showMenu = false
         guard let tab = activeTab else {
             switch action {
@@ -1363,7 +1395,6 @@ struct BrowserShellView: View {
 
     /// Runs one hardware-keyboard command from the app's menu bar.
     func handleBrowserCommand(_ command: BrowserCommand) {
-        env.noteInteraction("快捷键:\(command.rawValue)")
         switch command {
         case .newTab:
             tabManager.createTab(openSource: .user)
@@ -1679,7 +1710,11 @@ struct BrowserShellView: View {
         // that decides whether to create the tab's web view yet. It also clears
         // the home flag and writes the URL onto the tab.
         chromeHidden = false
+        chromeDragOffset = 0
+        chromeLiftOffset = 0
+        chromeHomeArmed = false
         scrollTracker.accumulation = 0
+        scrollTracker.upwardTravel = 0
         tabManager.load(url: url, in: tab)
         // The transition is recorded by the navigation delegate, which is the
         // only place that sees the navigation type.
@@ -1741,7 +1776,11 @@ struct BrowserShellView: View {
 /// writes do not invalidate the view tree.
 final class ShellScrollTracker {
     var lastOffset: Double = 0
+    /// Downward distance accumulated toward the next hide.
     var accumulation: CGFloat = 0
+    /// Upward distance since the last downward step. Kept separate so a
+    /// bounce's small negative steps do not zero the hide in progress.
+    var upwardTravel: CGFloat = 0
 }
 
 // MARK: - Novel session

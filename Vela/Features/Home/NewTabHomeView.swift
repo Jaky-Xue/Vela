@@ -314,13 +314,21 @@ struct NewTabHomeView: View {
     ///
     /// A fixed five columns was fine on a phone and left each tile a huge
     /// square with a 40-point icon floating in it on an iPad. The row is
-    /// measured instead, with a floor of three tiles and a ceiling of ten, so
-    /// the grid stays a favourites shelf at every size.
+    /// measured instead, so the grid stays a favourites shelf at every size.
+    /// The cell width is fixed (`HomeTileStyle.cellWidth`), which is what
+    /// makes 间距 behave like a spacing control rather than like a column
+    /// count in disguise.
     private var tileColumnCount: Int {
-        let width = contentWidth > 1 ? contentWidth : 360
-        let minimum = max(78, tileIconSize + 38)
-        let count = Int((width + tileSpacing) / (minimum + tileSpacing))
-        return max(3, min(10, count))
+        HomeTileStyle.columnCount(
+            width: contentWidth > 1 ? contentWidth : 360,
+            iconSize: tileIconSize,
+            spacing: tileSpacing
+        )
+    }
+
+    /// The width the grid gives one tile.
+    private var tileCellWidth: CGFloat {
+        HomeTileStyle.cellWidth(iconSize: tileIconSize)
     }
 
     /// The shelf is on the regular home even when empty if there is anything
@@ -348,9 +356,10 @@ struct NewTabHomeView: View {
             // old width — the stranded-rows failure the tab overview fixes by
             // re-keying — and the odd misplaced tile after a turn is exactly
             // that. A favourites collection is short, so laziness buys nothing
-            // here and determinism is worth more. The tail is padded with
-            // spacers, so every tile keeps the width a full row gives it
-            // however many tiles the last row holds.
+            // here and determinism is worth more. Each cell is the same fixed
+            // width and the row is centred, so the spacing between icons is
+            // the number the setting names and a short last row still lines up
+            // with the rows above it.
             VStack(alignment: .leading, spacing: tileSpacing) {
                 if favorites.isEmpty {
                     Text("还没有收藏。点右上角的 + 添加。")
@@ -363,11 +372,8 @@ struct NewTabHomeView: View {
                             ForEach(row.favorites) { favorite in
                                 favoriteCell(favorite)
                             }
-                            ForEach(0..<(tileColumnCount - row.favorites.count), id: \.self) { _ in
-                                Color.clear
-                                    .frame(maxWidth: .infinity)
-                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
             }
@@ -423,6 +429,7 @@ struct NewTabHomeView: View {
             )
             .contentShape(Rectangle())
         }
+        .frame(width: tileCellWidth)
         .buttonStyle(HomeTileButtonStyle())
         .contextMenu {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {

@@ -43,9 +43,6 @@ public final class AppServices {
     /// The keyboard commands' dispatch point, shared by every window because
     /// the app's `Commands` menu is a property of the app.
     public let commands: BrowserCommandCenter
-    /// Crashes and hangs reported by MetricKit, plus the last uncaught
-    /// exception reason. This is process-wide, like the rest of the services.
-    public let crashDiagnostics: CrashDiagnosticsService
     /// 广告拦截: the built-in filter list and the sites it leaves alone.
     public let contentBlocker: ContentBlocker
 
@@ -64,7 +61,6 @@ public final class AppServices {
         self.settings = settings
         self.homeFavorites = HomeFavoritesService()
         self.commands = BrowserCommandCenter()
-        self.crashDiagnostics = CrashDiagnosticsService()
         self.contentBlocker = ContentBlocker(settings: settings)
         self.permissionAudit = PermissionAuditService()
 

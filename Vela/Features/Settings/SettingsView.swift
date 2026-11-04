@@ -7,7 +7,7 @@
 //  The root is grouped by *what the setting acts on*, not by where the feature
 //  was implemented: 浏览器 is the browser itself (startup, tabs, its own chrome
 //  and look), 网页与内容 is what happens inside a page, 隐私与安全 is what the
-//  app keeps or shows about its owner, and 诊断与关于 stays out of the way at
+//  app keeps or shows about its owner, and 关于 stays out of the way at
 //  the end. The rows are deliberately wordless beyond their names and current
 //  values — the section already says the context, and the screen behind the
 //  row is where the detail belongs.
@@ -108,16 +108,6 @@ struct SettingsView: View {
                         icon: "safari",
                         title: "网页标识",
                         detail: userAgentDetail
-                    )
-                }
-
-                NavigationLink {
-                    SiteDisplaySettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "desktopcomputer",
-                        title: "桌面网站",
-                        detail: siteDisplayDetail
                     )
                 }
 
@@ -236,18 +226,6 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
-                    NavigationDiagnosticsView()
-                } label: {
-                    settingsRow(
-                        icon: "waveform.path.ecg",
-                        title: "加载诊断",
-                        detail: env.navigationLog.entries.count > 0
-                            ? "\(env.navigationLog.entries.count) 条"
-                            : ""
-                    )
-                }
-
-                NavigationLink {
                     AboutView()
                 } label: {
                     settingsRow(
@@ -256,7 +234,7 @@ struct SettingsView: View {
                     )
                 }
             } header: {
-                Text("诊断与关于")
+                Text("关于")
             }
         }
         .listStyle(.insetGrouped)
@@ -297,22 +275,14 @@ struct SettingsView: View {
     }
 
     /// What the 网页标识 row says is in force: a chosen preset by its name, a
-    /// hand-typed string as 自定义, or 自动. It deliberately says nothing about
-    /// the page layout — that is the 桌面网站 row.
+    /// hand-typed string as 自定义, or 自动. The page layout follows the
+    /// identifier, so this one row answers both questions.
     private var userAgentDetail: String {
         let stored = env.settings.preferences.customUserAgent
         if !stored.isEmpty {
             return BrowserUserAgentPreset.all.first { $0.userAgent == stored }?.title ?? "自定义"
         }
         return "自动"
-    }
-
-    /// What the 桌面网站 row says is in force: the global default, plus how
-    /// many sites have their own answer.
-    private var siteDisplayDetail: String {
-        let count = env.settings.siteDisplay.modes.count
-        let base = env.settings.siteDisplayDefault.title
-        return count > 0 ? "\(base) · \(count) 个网站" : base
     }
 
     /// One settings row: a themed icon tile, the name, and the value in force.
@@ -366,7 +336,6 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
     case appearance
     case searchEngine
     case userAgent
-    case siteDisplay
     case userScripts
     case contentBlocker
     case dataTransfer
@@ -377,7 +346,6 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
     case webrtc
     case clearData
     case downloads
-    case diagnostics
     case about
 
     var id: String { rawValue }
@@ -390,7 +358,6 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
         case .appearance: AppearanceSettingsView()
         case .searchEngine: SearchEngineSettingsView()
         case .userAgent: UserAgentSettingsView()
-        case .siteDisplay: SiteDisplaySettingsView()
         case .userScripts: UserScriptsView()
         case .contentBlocker: ContentBlockerSettingsView()
         case .dataTransfer: DataTransferSettingsView()
@@ -401,7 +368,6 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
         case .webrtc: WebRTCProtectionSettingsView()
         case .clearData: ClearDataView()
         case .downloads: DownloadSettingsView()
-        case .diagnostics: NavigationDiagnosticsView()
         case .about: AboutView()
         }
     }

@@ -68,7 +68,7 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
     /// parentheses, the engine half from the browser token at the tail.
     var claimedSummary: String {
         guard let ua = userAgent, !ua.isEmpty else {
-            return "按当前设备与「桌面网站」的默认选择自动决定"
+            return "按当前设备自动决定：iPhone 手机版，iPad 与 Mac 桌面版"
         }
 
         var device = ""
@@ -213,17 +213,15 @@ public enum BrowserUserAgent {
     /// How a tab should identify itself, given the user's settings — and the
     /// host it is about to open, which one family of sites branches on.
     ///
-    /// Identity and layout are two separate choices now:
+    /// The identifier is the one choice: 网页标识 decides both the string the
+    /// site reads and how the document is laid out. A desktop string is a
+    /// desktop page, a mobile string is a mobile page, and the automatic
+    /// preset follows the device. There is no second layout switch to get out
+    /// of step with the string.
     ///
-    /// * 网页标识 (`custom`) decides the string the site reads.
-    /// * 桌面网站 (`globalMode`, and the per-site `siteMode`) decides how the
-    ///   document is laid out — and, when no custom string was typed, which
-    ///   generated identifier matches that layout.
-    ///
-    /// A per-site choice still returns both halves, because it is a whole-page
-    /// request: a site that only works in one layout needs the identifier and
-    /// the content mode to agree. The global default is different: it is a
-    /// layout default, so a hand-typed identifier is never replaced by it.
+    /// A per-site choice (`siteMode`) is a whole-page request and outranks
+    /// everything else: a site that only works in one layout needs the
+    /// identifier and the content mode to agree.
     ///
     /// `device` is explicit so a test can ask what a particular device would
     /// present.
@@ -232,8 +230,7 @@ public enum BrowserUserAgent {
         prefersDesktop: Bool,
         host: String? = nil,
         device: BrowserDeviceClass = .current,
-        siteMode: BrowserSiteDisplayMode? = nil,
-        globalMode: BrowserSiteDisplayMode? = nil
+        siteMode: BrowserSiteDisplayMode? = nil
     ) -> BrowserWebIdentity {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -257,14 +254,17 @@ public enum BrowserUserAgent {
             }
         }
 
-        // 桌面网站's global default, when it has one, decides the layout.
-        // Without one, the automatic rule — the device's own preference — is
-        // still in charge.
+        // The layout is a consequence of the identifier. A stored string is
+        // either one of the presets, which knows whether it claims a desktop,
+        // or a hand-typed one, which is read from its platform token. With no
+        // stored string, the automatic identity follows the device.
         let layoutDesktop: Bool
-        if let globalMode {
-            layoutDesktop = globalMode == .desktop
-        } else {
+        if trimmed.isEmpty {
             layoutDesktop = prefersDesktop || device.prefersDesktopIdentity
+        } else if let preset = BrowserUserAgentPreset.all.first(where: { $0.userAgent == trimmed }) {
+            layoutDesktop = preset.isDesktop
+        } else {
+            layoutDesktop = isDesktopIdentifier(trimmed, device: device)
         }
 
         // Video sites get the mobile identifier on a phone unless the page was
@@ -281,8 +281,8 @@ public enum BrowserUserAgent {
             )
         }
 
-        // Someone who typed a string asked for that exact value. The layout
-        // still answers to 桌面网站, so the two settings stay independent.
+        // Someone who typed a string asked for that exact value, and the
+        // layout follows the platform that string claims.
         if !trimmed.isEmpty {
             return BrowserWebIdentity(
                 applicationNameForUserAgent: safariTail,
@@ -302,6 +302,28 @@ public enum BrowserUserAgent {
         // No override: WebKit appends the tail to its own prefix and the
         // result is what Safari would have sent on this device.
         return BrowserWebIdentity(applicationNameForUserAgent: safariTail)
+    }
+
+    /// Whether a hand-typed identifier describes a desktop browser.
+    ///
+    /// The layout follows the string now, so a typed value has to answer the
+    /// question itself. The platform token is the signal; a string carrying
+    /// none falls back to the device's automatic answer rather than guessing.
+    public static func isDesktopIdentifier(
+        _ identifier: String,
+        device: BrowserDeviceClass = .current
+    ) -> Bool {
+        let lowered = identifier.lowercased()
+        if lowered.contains("iphone") || lowered.contains("ipad")
+            || lowered.contains("android") || lowered.contains("mobile") {
+            return false
+        }
+        if lowered.contains("macintosh") || lowered.contains("windows nt")
+            || lowered.contains("x11") || lowered.contains("cros")
+            || lowered.contains("linux") {
+            return true
+        }
+        return device.prefersDesktopIdentity
     }
 
     /// The video-site hosts that receive the mobile identifier.
@@ -335,7 +357,8 @@ public enum BrowserUserAgent {
         + "\(operatingSystemVersion.replacingOccurrences(of: ".", with: "_")) like Mac OS X) "
         + "AppleWebKit/605.1.15 (KHTML, like Gecko) \(safariTail)"
 
-    /// A complete desktop identifier, for the "请求桌面网站" toggle.
+    /// A complete desktop identifier, for the desktop presets and the
+    /// automatic identity on an iPad or Mac.
     ///
     /// The whole string is written out here, unlike the mobile case, because a web
     /// view cannot be told to claim a different platform — the platform token is

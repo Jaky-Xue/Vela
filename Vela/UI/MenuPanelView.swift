@@ -9,18 +9,29 @@
 //  as rows either scrolls or truncates. The grid shows the user's arrangement
 //  at once, with the actions that need a page greyed out on the surfaces that
 //  have none — which is how the user learns what is available without tapping
-//  it. The tile set, its order, and the custom URL shortcuts all come from
-//  `MenuLayout`, edited in 设置 ▸ 菜单面板.
+//  it.
+//
+//  The panel edits itself. The 编辑 button in the header turns the grid into
+//  the same reorderable list 设置 ▸ 菜单面板 used to be the only way to reach:
+//  rows drag, the red minus hides a built-in (a shortcut is deleted), hidden
+//  tiles are one tap from returning, and a new URL shortcut is created here.
+//  Opening 设置 to rearrange the menu was a detour for a control the user was
+//  already looking at.
+//
+//  Page scripts can register menu commands (`GM_registerMenuCommand`), but
+//  they are not drawn here: a handful of script-specific entries between the
+//  tiles and the bottom edge made the panel read as a settings list with a
+//  grid stuck on top.
 //
 
 import SwiftUI
 
-/// The menu panel: a header row and the grid of tiles.
+/// The menu panel: a header row, the grid of tiles, and the editor behind the
+/// pencil.
 struct MenuPanelView: View {
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
 
-    /// The tiles to draw, already filtered and ordered by `MenuLayout`.
-    var tiles: [MenuTile]
     /// Whether the panel's target is a loaded page — `false` greys out every
     /// action that needs one.
     var canActOnPage: Bool
@@ -29,9 +40,9 @@ struct MenuPanelView: View {
     var isPrivateMode: Bool
     /// Whether 无痕模式 is on — the tile is a switch, and this is its state.
     var isPrivateBrowsingOn: Bool
-    /// Whether the page in front of the panel is the desktop version. The
-    /// 桌面网站 tile is a switch too, and a switch with no state is a switch
-    /// the user cannot tell they already are on.
+    /// Whether the current site has been given an explicit 桌面版 answer. The
+    /// automatic identity does not light this tile: a desktop identity the
+    /// device chose for itself is not a switch the user turned on.
     var isDesktopSiteOn: Bool = false
     /// Clears the current site's 桌面/手机 choice. The panel does not know the
     /// host; the shell holds the tab and supplies the action.
@@ -41,12 +52,23 @@ struct MenuPanelView: View {
     var pageTitle: String
     var onPerform: (VelaMenuAction) -> Void
     var onOpenShortcut: (MenuShortcut) -> Void
-    /// Commands the active page's user scripts registered with
-    /// `GM_registerMenuCommand`.
-    var scriptCommands: [UserScriptMenuCommand] = []
-    var onRunScriptCommand: (UserScriptMenuCommand) -> Void = { _ in }
+
+    /// Whether the panel is showing its editor instead of its grid.
+    @State private var isEditing = false
+    @State private var showingShortcutEditor = false
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 5)
+
+    /// The live arrangement. Reading the settings service rather than a value
+    /// passed in is what makes an edit repaint the grid behind it.
+    private var layout: MenuLayout { env.settings.menuLayout }
+    private var tiles: [MenuTile] { layout.visibleTiles }
+
+    /// The editor is a list with drag handles and its own sections; the compact
+    /// detent is too short to drag in without hunting for the row.
+    private var panelDetents: Set<PresentationDetent> {
+        isEditing ? [.medium, .large] : [.height(330), .large]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrowserSpacing.regular) {
@@ -56,77 +78,48 @@ struct MenuPanelView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 8)
 
-            headerRow
-
-            // The grid scrolls inside the panel: at the compact detent the
-            // first rows are on screen and the rest are one drag away, and
-            // pulling the panel taller reveals them — the content adapts to
-            // the detent instead of leaving a lake under a short grid.
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    if tiles.isEmpty {
-                        Text("菜单项已全部隐藏，可在 设置 ▸ 菜单面板 中恢复。")
-                            .font(.footnote)
-                            .foregroundStyle(palette.secondaryText)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, BrowserSpacing.loose)
-                    } else {
-                        LazyVGrid(columns: columns, spacing: BrowserSpacing.regular + 2) {
-                            ForEach(tiles) { tile in
-                                menuItem(tile)
-                            }
-                        }
-                        .padding(.bottom, BrowserSpacing.compact)
-                    }
-
-                    if !scriptCommands.isEmpty {
-                        scriptCommandList
-                            .padding(.bottom, BrowserSpacing.compact)
-                    }
-                }
+            if isEditing {
+                editingHeader
+                editingList
+            } else {
+                headerRow
+                tileGrid
             }
-            .padding(.horizontal, BrowserSpacing.regular)
         }
         .frame(maxWidth: .infinity)
         .browserSurfaceBackground(opacity: 0.72)
-        .presentationDetents([.height(330), .large])
+        .presentationDetents(panelDetents)
         .presentationDragIndicator(.hidden)
+        .sheet(isPresented: $showingShortcutEditor) {
+            MenuShortcutEditorView { shortcut in
+                showingShortcutEditor = false
+                guard let shortcut else { return }
+                env.settings.menuLayout = layout.adding(shortcut)
+            }
+            .environment(env)
+            .browserAmbientSheet()
+        }
     }
 
-    private var scriptCommandList: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("用户脚本")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(palette.secondaryText)
+    // MARK: - Grid
 
-            ForEach(scriptCommands) { command in
-                Button {
-                    onRunScriptCommand(command)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "curlybraces")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(palette.accent)
-                        Text(command.name)
-                            .font(.footnote)
-                            .foregroundStyle(palette.primaryText)
-                            .lineLimit(1)
-                        Spacer(minLength: 6)
-                        if !command.scriptName.isEmpty {
-                            Text(command.scriptName)
-                                .font(.caption2)
-                                .foregroundStyle(palette.secondaryText)
-                                .lineLimit(1)
-                        }
+    private var tileGrid: some View {
+        ScrollView {
+            if tiles.isEmpty {
+                Text("菜单项已全部隐藏，点右上角的编辑按钮恢复。")
+                    .font(.footnote)
+                    .foregroundStyle(palette.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, BrowserSpacing.loose)
+                    .padding(.horizontal, BrowserSpacing.regular)
+            } else {
+                LazyVGrid(columns: columns, spacing: BrowserSpacing.regular + 2) {
+                    ForEach(tiles) { tile in
+                        menuItem(tile)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .background(
-                        palette.controlFill.opacity(0.65),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, BrowserSpacing.regular)
+                .padding(.bottom, BrowserSpacing.compact)
             }
         }
     }
@@ -139,13 +132,26 @@ struct MenuPanelView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
+                withAnimation(.snappy(duration: 0.22)) { isEditing = true }
+            } label: {
+                Text("编辑")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(palette.primaryText)
+                    .padding(.horizontal, 14)
+                    .frame(height: 34)
+                    .background(palette.controlFill, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("编辑菜单")
+
+            Button {
                 onPerform(.settings)
             } label: {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(palette.primaryText)
                     .frame(width: 36, height: 36)
-                    .background(palette.controlFill.opacity(0.75), in: Circle())
+                    .background(palette.controlFill, in: Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("设置")
@@ -155,9 +161,8 @@ struct MenuPanelView: View {
 
     private func menuItem(_ tile: MenuTile) -> some View {
         let enabled = canActOnPage || !tile.requiresPage
-        // 无痕模式 draws its state on the tile: the accent wash and the
-        // corner badge read as "on" the way a checkmarked row would in a list
-        // menu.
+        // The two switches draw their state on the tile: a filled accent
+        // square and its inverted glyph, with no badge to read around.
         let isModeOn = (tile.action == .privateTab && isPrivateBrowsingOn)
             || (tile.action == .desktopSite && isDesktopSiteOn)
         let symbol = tile.symbolName
@@ -170,32 +175,23 @@ struct MenuPanelView: View {
                 onOpenShortcut(shortcut)
             }
         } label: {
-            VStack(spacing: BrowserSpacing.tight) {
+            VStack(spacing: 7) {
                 Image(systemName: symbol)
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(isModeOn ? palette.accent : palette.primaryText)
-                    .frame(width: 52, height: 52)
+                    .font(.system(size: 21, weight: .semibold))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(isModeOn ? palette.onAccent : palette.primaryText)
+                    // Capped rather than fixed: a five-column grid on a
+                    // 320-point phone gives a cell a little under 54 points,
+                    // and a hard 54 would push neighbouring tiles apart.
+                    .frame(maxWidth: 54, minHeight: 54, maxHeight: 54)
                     .background(
-                        isModeOn ? palette.accent.opacity(0.18) : palette.controlFill.opacity(0.75),
-                        in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        isModeOn ? palette.accent : palette.controlFill,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                     )
-                    .overlay(alignment: .topTrailing) {
-                        if isModeOn {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(palette.onAccent)
-                                .background(palette.accent, in: Circle())
-                                .offset(x: 5, y: -5)
-                        }
-                    }
                     .overlay {
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .strokeBorder(
-                                LinearGradient(
-                                    colors: [.white.opacity(0.10), .white.opacity(0.02)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
+                                isModeOn ? Color.clear : palette.cardStroke,
                                 lineWidth: 0.5
                             )
                             .allowsHitTesting(false)
@@ -205,11 +201,11 @@ struct MenuPanelView: View {
                     .font(.system(size: 11, weight: .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                    .foregroundStyle(isModeOn ? palette.accent : palette.primaryText)
             }
-            .foregroundStyle(palette.primaryText)
-            .opacity(enabled ? 1 : 0.3)
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
+            .opacity(enabled ? 1 : 0.32)
         }
         .buttonStyle(MenuTileButtonStyle(enabled: enabled))
         .disabled(!enabled)
@@ -227,6 +223,156 @@ struct MenuPanelView: View {
         }
         .accessibilityLabel(tile.title)
         .accessibilityHint(enabled ? "" : "当前不可用")
+        .accessibilityValue(
+            (tile.action == .privateTab || tile.action == .desktopSite)
+                ? (isModeOn ? "已开启" : "已关闭")
+                : ""
+        )
+    }
+
+    // MARK: - Editor
+
+    private var editingHeader: some View {
+        HStack(spacing: BrowserSpacing.compact) {
+            Text("编辑菜单")
+                .font(.system(size: 15, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                withAnimation(.snappy(duration: 0.22)) { isEditing = false }
+            } label: {
+                Text("完成")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(palette.onAccent)
+                    .padding(.horizontal, 16)
+                    .frame(height: 34)
+                    .background(palette.accent, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, BrowserSpacing.regular)
+    }
+
+    private var editingList: some View {
+        List {
+            Section {
+                ForEach(layout.visibleTiles) { tile in
+                    HStack(spacing: 12) {
+                        Image(systemName: tile.symbolName)
+                            .font(.system(size: 14, weight: .semibold))
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(palette.accent)
+                            .frame(width: 26)
+                        Text(tile.title)
+                            .foregroundStyle(palette.primaryText)
+                        Spacer(minLength: 8)
+                        if tile.shortcut != nil {
+                            Image(systemName: "link")
+                                .font(.caption2)
+                                .foregroundStyle(palette.secondaryText)
+                        } else if tile.requiresPage {
+                            Text("需要网页")
+                                .font(.caption2)
+                                .foregroundStyle(palette.secondaryText)
+                        }
+                    }
+                }
+                .onMove { source, destination in
+                    env.settings.menuLayout = layout.movingVisible(from: source, to: destination)
+                }
+                .onDelete { offsets in
+                    env.settings.menuLayout = removing(at: offsets)
+                }
+            } header: {
+                Text("显示的菜单项")
+            }
+
+            if !layout.hiddenTiles.isEmpty {
+                Section("已隐藏") {
+                    ForEach(layout.hiddenTiles) { tile in
+                        Button {
+                            env.settings.menuLayout = layout.settingVisible(true, id: tile.id)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: tile.symbolName)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .symbolRenderingMode(.monochrome)
+                                    .foregroundStyle(palette.secondaryText)
+                                    .frame(width: 26)
+                                Text(tile.title)
+                                    .foregroundStyle(palette.primaryText)
+                                Spacer()
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundStyle(palette.accent)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            Section("自定义快捷方式") {
+                ForEach(layout.shortcuts) { shortcut in
+                    HStack(spacing: 12) {
+                        Image(systemName: shortcut.symbolName)
+                            .font(.system(size: 14, weight: .medium))
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(palette.accent)
+                            .frame(width: 26)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(shortcut.title)
+                                .foregroundStyle(palette.primaryText)
+                            Text(shortcut.url)
+                                .font(.caption2)
+                                .foregroundStyle(palette.secondaryText)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        Button(role: .destructive) {
+                            env.settings.menuLayout = layout.removingShortcut(id: shortcut.id)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.red)
+                        .accessibilityLabel("删除快捷方式")
+                    }
+                }
+
+                Button {
+                    showingShortcutEditor = true
+                } label: {
+                    Label("新建网址快捷方式", systemImage: "link.badge.plus")
+                        .foregroundStyle(palette.accent)
+                }
+            }
+
+            Section {
+                Button("恢复默认菜单", systemImage: "arrow.counterclockwise") {
+                    env.settings.menuLayout = layout.reset()
+                }
+                .foregroundStyle(palette.accent)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        // The rows are already an editing surface; making the user find an
+        // 编辑 button before the drag handles appear was the second step this
+        // panel exists to remove.
+        .environment(\.editMode, .constant(.active))
+    }
+
+    /// Removing a built-in hides it; removing a shortcut deletes it outright,
+    /// because a shortcut has no "restore" row to bring it back from.
+    private func removing(at offsets: IndexSet) -> MenuLayout {
+        let visible = layout.visibleTiles
+        var updated = layout.hidingVisible(at: offsets)
+        for index in offsets where visible.indices.contains(index) {
+            if let shortcut = visible[index].shortcut {
+                updated = updated.removingShortcut(id: shortcut.id)
+            }
+        }
+        return updated
     }
 }
 

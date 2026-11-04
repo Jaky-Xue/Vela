@@ -118,10 +118,6 @@ private struct BrowserWindowRoot: View {
             .onChange(of: environment.settings.preferences.privateBrowsingMode) { _, _ in
                 environment.refreshPrivateBrowsingRouting()
             }
-            .onChange(of: environment.settings.navigationDiagnostics) { _, _ in
-                // Each window's log holds its own copy of the switches.
-                environment.applyNavigationDiagnosticsSettings()
-            }
             .onChange(of: environment.settings.appearanceMode) { _, _ in
                 applyAppearance()
             }

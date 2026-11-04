@@ -636,8 +636,8 @@ final class WebNavigationIntegrationTests: XCTestCase {
         XCTAssertTrue(identifier.hasPrefix(webKitPrefix), identifier)
     }
 
-    func testDesktopModePresentsADesktopIdentifierToThePage() async {
-        harness.settings.update { $0.desktopSiteByDefault = true }
+    func testDesktopIdentifierPresentsADesktopPage() async {
+        harness.settings.update { $0.customUserAgent = BrowserUserAgent.desktopIdentifier }
 
         let tab = harness.open(url("/one"))
         await waitForSettled(tab, expectingTitle: "Page One")
@@ -661,14 +661,15 @@ final class WebNavigationIntegrationTests: XCTestCase {
         XCTAssertFalse(identifier.contains("Mobile/"), identifier)
     }
 
-    /// The desktop toggle round-trips: on, off, and back to a phone identifier.
+    /// The desktop identifier round-trips: desktop, cleared, and back to the
+    /// device's automatic identifier.
     ///
-    /// The "off" direction is the one worth testing, because it works by
-    /// assigning nil — and a cleared override that does not actually restore the
-    /// default would leave the user stuck claiming to be a Mac with no way back
-    /// except deleting the app's settings.
-    func testTurningDesktopModeOffRestoresThePhoneIdentifier() async {
-        harness.settings.update { $0.desktopSiteByDefault = true }
+    /// The "clear" direction is the one worth testing, because it works by
+    /// emptying the stored string — and a cleared override that does not
+    /// actually restore the default would leave the user stuck claiming to be a
+    /// Mac with no way back except deleting the app's settings.
+    func testClearingTheDesktopIdentifierRestoresThePhoneIdentifier() async {
+        harness.settings.update { $0.customUserAgent = BrowserUserAgent.desktopIdentifier }
         let tab = harness.open(url("/one"))
         await waitForSettled(tab, expectingTitle: "Page One")
 
@@ -678,8 +679,8 @@ final class WebNavigationIntegrationTests: XCTestCase {
         var value = try? await webView.evaluateJavaScript("navigator.userAgent")
         XCTAssertTrue((value as? String ?? "").contains("Macintosh"), value as? String ?? "")
 
-        // What the settings screen's toggle does.
-        harness.settings.update { $0.desktopSiteByDefault = false }
+        // What the 网页标识 screen's 恢复默认 button does.
+        harness.settings.update { $0.customUserAgent = "" }
         harness.tabManager.applyUserAgentToAllWebViews()
         _ = harness.tabManager.reload(tab: tab)
         await waitForSettled(tab, expectingTitle: "Page One")

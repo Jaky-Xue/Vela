@@ -70,4 +70,29 @@ enum HomeTileStyle {
         default: return nil
         }
     }
+
+    /// The width one favourite occupies in its row.
+    ///
+    /// A cell is the icon plus a little room for the name, not an equal share
+    /// of the row. Equal shares are what made the spacing slider lie: the gap
+    /// between two icons was mostly the empty width left over inside their
+    /// cells, so moving the slider from 8 to 28 changed the visible gap by a
+    /// fraction of that and the grid reflowed a column at arbitrary points.
+    /// A fixed cell makes the gap exactly the setting.
+    static func cellWidth(iconSize: CGFloat) -> CGFloat {
+        max(iconSize + 16, 68)
+    }
+
+    /// How many fixed-width cells fit across a row at the chosen spacing.
+    ///
+    /// The count answers the same question the row does — how many cells plus
+    /// the gaps between them fit — and a small window is allowed to show a
+    /// single column rather than overflow the shelf.
+    static func columnCount(width: CGFloat, iconSize: CGFloat, spacing: CGFloat) -> Int {
+        guard width > 1 else { return 3 }
+        let cell = cellWidth(iconSize: iconSize)
+        let gap = max(0, spacing)
+        let count = Int((width + gap) / (cell + gap))
+        return max(1, min(10, count))
+    }
 }

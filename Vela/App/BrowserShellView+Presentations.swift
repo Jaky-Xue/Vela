@@ -92,12 +92,16 @@ extension BrowserShellView {
         // UIKit to dismiss and present in the same update.
         .sheet(isPresented: $showMenu, onDismiss: { performPendingMenuPresentation() }) {
             MenuPanelView(
-                tiles: env.settings.menuLayout.visibleTiles,
                 canActOnPage: canActOnPage,
                 isPrivateMode: activeTab?.privacyMode == .private,
                 isPrivateBrowsingOn: env.settings.preferences.privateBrowsingMode ?? false,
-                isDesktopSiteOn: activeTab.map {
-                    env.webCoordinator.webIdentity(for: $0).isDesktop
+                // Only an explicit per-site choice lights the tile. The
+                // automatic identity on an iPad is desktop without the user
+                // asking, and drawing that as an active switch is what made
+                // the tile look like a default that had been turned on.
+                isDesktopSiteOn: activeTab.flatMap { tab -> Bool? in
+                    guard let host = URL(string: tab.url)?.host else { return nil }
+                    return env.settings.siteDisplayMode(forPageHost: host) == .desktop
                 } ?? false,
                 onResetSiteDisplay: {
                     guard let tab = activeTab else { return }
@@ -106,12 +110,7 @@ extension BrowserShellView {
                 },
                 pageTitle: menuPanelTitle,
                 onPerform: handleMenuAction,
-                onOpenShortcut: handleMenuShortcut,
-                scriptCommands: activeUserScriptCommands,
-                onRunScriptCommand: { command in
-                    showMenu = false
-                    env.webCoordinator.runUserScriptMenuCommand(command)
-                }
+                onOpenShortcut: handleMenuShortcut
             )
             .environment(env)
             .browserAmbientSheet()

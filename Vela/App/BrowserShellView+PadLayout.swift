@@ -143,9 +143,12 @@ extension BrowserShellView {
                     padChromeHideArmed = false
                     guard !omnibox.isEditing, !chromeHidden else { return }
                     guard abs(vertical) > abs(value.translation.width) else { return }
-                    if vertical < -48 {
+                    // The throw counts as well as the distance, so a short
+                    // flick lands the same way a long drag does.
+                    let projected = value.predictedEndTranslation.height
+                    if min(vertical, projected) < -48 {
                         setChromeHidden(true)
-                    } else if vertical > 48 {
+                    } else if max(vertical, projected) > 48 {
                         openHomeTab()
                     }
                 }

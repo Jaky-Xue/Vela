@@ -26,7 +26,6 @@ public final class SettingsService {
         static let userScripts = "org.vela.browser.userscripts"
         static let manualElementHide = "org.vela.browser.manual-element-hide"
         static let appearanceMode = "org.vela.browser.appearance-mode"
-        static let navigationDiagnostics = "org.vela.browser.navigation-diagnostics"
         static let siteDisplay = "org.vela.browser.site-display"
         static let contentBlocker = "org.vela.browser.content-blocker"
     }
@@ -53,15 +52,6 @@ public final class SettingsService {
 
     public private(set) var manualElementHide: ManualElementHideSettings {
         didSet { persist(manualElementHide, key: Key.manualElementHide) }
-    }
-
-    /// Whether the navigation log records anything.
-    ///
-    /// A document of its own rather than a field inside `BrowserPreferences`, for
-    /// the reason given above: the preferences document decodes as a whole, so a
-    /// new key in it would reset every existing install's settings.
-    public private(set) var navigationDiagnostics: NavigationDiagnosticsSettings {
-        didSet { persist(navigationDiagnostics, key: Key.navigationDiagnostics) }
     }
 
     /// Per-site 桌面/手机 choices. A document of its own for the same decode
@@ -94,11 +84,6 @@ public final class SettingsService {
             ?? .default
         self.manualElementHide = Self.load(ManualElementHideSettings.self, key: Key.manualElementHide, from: defaults)
             ?? .default
-        self.navigationDiagnostics = Self.load(
-            NavigationDiagnosticsSettings.self,
-            key: Key.navigationDiagnostics,
-            from: defaults
-        ) ?? .default
         self.siteDisplay = Self.load(
             SiteDisplaySettings.self,
             key: Key.siteDisplay,
@@ -192,29 +177,6 @@ public final class SettingsService {
 
     // MARK: - Per-site display
 
-    /// 桌面网站's global default.
-    ///
-    /// An explicit value in `desktopSiteDefault` wins. A document written
-    /// before 网页标识 and 桌面网站 were split has only the old boolean; it is
-    /// folded in here so an existing install keeps the layout it chose instead
-    /// of being silently moved to automatic.
-    public var siteDisplayDefault: BrowserSiteDisplayDefault {
-        get {
-            if let raw = preferences.desktopSiteDefault,
-               let value = BrowserSiteDisplayDefault(rawValue: raw) {
-                return value
-            }
-            return preferences.desktopSiteByDefault ? .desktop : .automatic
-        }
-        set {
-            update { preferences in
-                preferences.desktopSiteDefault = newValue.rawValue
-                // One source of truth from here on.
-                preferences.desktopSiteByDefault = false
-            }
-        }
-    }
-
     /// The site's own 桌面/手机 choice, if it has one.
     public func siteDisplayMode(forPageHost host: String) -> BrowserSiteDisplayMode? {
         siteDisplay.mode(forPageHost: host)
@@ -243,12 +205,6 @@ public final class SettingsService {
         var copy = contentBlocker
         mutate(&copy)
         contentBlocker = copy
-    }
-
-    public func updateNavigationDiagnostics(_ mutate: (inout NavigationDiagnosticsSettings) -> Void) {
-        var copy = navigationDiagnostics
-        mutate(&copy)
-        navigationDiagnostics = copy
     }
 
     public func updateUserScriptSettings(_ mutate: (inout UserScriptSettings) -> Void) {
