@@ -166,7 +166,7 @@ public enum UserScriptInjector {
           // `pushState`/`replaceState` for every userscript page is a change
           // to the page's environment nobody requested. Scripts that did not
           // ask leave the page's history untouched.
-          var WATCH_URL_CHANGE = \(script.grants.contains(.windowOnUrlchange) ? "true" : "false");
+          var WATCH_URL_CHANGE = \(script.grants.contains(.windowOnUrlChange) ? "true" : "false");
 
           var valueStore = \(valuesJSON);
           var valueListeners = {};

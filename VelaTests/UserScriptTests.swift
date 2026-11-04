@@ -247,7 +247,7 @@ final class UserScriptTests: XCTestCase {
         // not cause it.
         XCTAssertTrue(try bootstrap(grants: [.none]).contains("var WATCH_URL_CHANGE = false;"))
         XCTAssertTrue(
-            try bootstrap(grants: [.windowOnUrlchange]).contains("var WATCH_URL_CHANGE = true;")
+            try bootstrap(grants: [.windowOnUrlChange]).contains("var WATCH_URL_CHANGE = true;")
         )
     }
 
@@ -257,7 +257,7 @@ final class UserScriptTests: XCTestCase {
             version: "1.0",
             source: "window.__velaBodyRan = true;",
             matches: ["*://*/*"],
-            grants: [.windowOnUrlchange],
+            grants: [.windowOnUrlChange],
             runAt: .documentStart
         )
         let built = UserScriptInjector.makeUserScripts(
