@@ -927,14 +927,17 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         let host = url?.host
         return BrowserUserAgent.identity(
             custom: settings.preferences.customUserAgent,
-            prefersDesktop: settings.preferences.desktopSiteByDefault,
+            // The old toggle is folded into `siteDisplayDefault`; it is no
+            // longer a separate input. 桌面网站 owns the layout default.
+            prefersDesktop: false,
             // The host the tab is on or heading to — `load` writes the URL
             // before the web view exists, and `didCommit` keeps it current, so
             // a site that branches on the identifier is read from here.
             host: host,
             // The site's own 桌面/手机 choice, when it has one. Read on every
             // request, so clearing it takes effect on the next navigation.
-            siteMode: host.flatMap { settings.siteDisplayMode(forPageHost: $0) }
+            siteMode: host.flatMap { settings.siteDisplayMode(forPageHost: $0) },
+            globalMode: settings.siteDisplayDefault.mode
         )
     }
 

@@ -192,6 +192,29 @@ public final class SettingsService {
 
     // MARK: - Per-site display
 
+    /// 桌面网站's global default.
+    ///
+    /// An explicit value in `desktopSiteDefault` wins. A document written
+    /// before 网页标识 and 桌面网站 were split has only the old boolean; it is
+    /// folded in here so an existing install keeps the layout it chose instead
+    /// of being silently moved to automatic.
+    public var siteDisplayDefault: BrowserSiteDisplayDefault {
+        get {
+            if let raw = preferences.desktopSiteDefault,
+               let value = BrowserSiteDisplayDefault(rawValue: raw) {
+                return value
+            }
+            return preferences.desktopSiteByDefault ? .desktop : .automatic
+        }
+        set {
+            update { preferences in
+                preferences.desktopSiteDefault = newValue.rawValue
+                // One source of truth from here on.
+                preferences.desktopSiteByDefault = false
+            }
+        }
+    }
+
     /// The site's own 桌面/手机 choice, if it has one.
     public func siteDisplayMode(forPageHost host: String) -> BrowserSiteDisplayMode? {
         siteDisplay.mode(forPageHost: host)

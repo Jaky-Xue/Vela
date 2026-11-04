@@ -112,6 +112,16 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
+                    SiteDisplaySettingsView()
+                } label: {
+                    settingsRow(
+                        icon: "desktopcomputer",
+                        title: "桌面网站",
+                        detail: siteDisplayDetail
+                    )
+                }
+
+                NavigationLink {
                     UserScriptsView()
                 } label: {
                     settingsRow(
@@ -286,23 +296,23 @@ struct SettingsView: View {
         return blocker.isCompiling ? "编译中" : "未就绪"
     }
 
-    /// What the 网页标识 row says is in force — the same answer the identifier
-    /// screen gives, so the two cannot disagree: a chosen preset by its name,
-    /// a hand-typed string as 自定义, and the desktop-site toggle only when no
-    /// string overrides it.
+    /// What the 网页标识 row says is in force: a chosen preset by its name, a
+    /// hand-typed string as 自定义, or 自动. It deliberately says nothing about
+    /// the page layout — that is the 桌面网站 row.
     private var userAgentDetail: String {
         let stored = env.settings.preferences.customUserAgent
         if !stored.isEmpty {
             return BrowserUserAgentPreset.all.first { $0.userAgent == stored }?.title ?? "自定义"
         }
-        if env.settings.preferences.desktopSiteByDefault {
-            return "桌面版"
-        }
-        switch BrowserDeviceClass.current {
-        case .pad: return "自动 · iPad 桌面版"
-        case .mac: return "自动 · Mac 桌面版"
-        case .phone: return "自动 · iPhone"
-        }
+        return "自动"
+    }
+
+    /// What the 桌面网站 row says is in force: the global default, plus how
+    /// many sites have their own answer.
+    private var siteDisplayDetail: String {
+        let count = env.settings.siteDisplay.modes.count
+        let base = env.settings.siteDisplayDefault.title
+        return count > 0 ? "\(base) · \(count) 个网站" : base
     }
 
     /// One settings row: a themed icon tile, the name, and the value in force.
@@ -356,6 +366,7 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
     case appearance
     case searchEngine
     case userAgent
+    case siteDisplay
     case userScripts
     case contentBlocker
     case dataTransfer
@@ -379,6 +390,7 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
         case .appearance: AppearanceSettingsView()
         case .searchEngine: SearchEngineSettingsView()
         case .userAgent: UserAgentSettingsView()
+        case .siteDisplay: SiteDisplaySettingsView()
         case .userScripts: UserScriptsView()
         case .contentBlocker: ContentBlockerSettingsView()
         case .dataTransfer: DataTransferSettingsView()

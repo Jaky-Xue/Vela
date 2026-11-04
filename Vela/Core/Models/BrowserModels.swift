@@ -456,7 +456,12 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var lockPrivateTabs: Bool
     public var blurPrivateTabPreviews: Bool
     public var customUserAgent: String
+    /// The pre-split desktop toggle. It is kept for decoding old documents and
+    /// as the fallback for `desktopSiteDefault`; new code writes the latter.
     public var desktopSiteByDefault: Bool
+    /// 桌面网站's global default: "automatic", "desktop" or "mobile". Optional
+    /// for the decode reason every new preference here carries.
+    public var desktopSiteDefault: String?
     public var userScriptsEnabled: Bool
     public var homepageUrl: String
     public var themePaletteId: String
@@ -554,6 +559,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         blurPrivateTabPreviews: Bool = true,
         customUserAgent: String = "",
         desktopSiteByDefault: Bool = false,
+        desktopSiteDefault: String? = nil,
         userScriptsEnabled: Bool = true,
         homepageUrl: String = "about:home",
         themePaletteId: String = "default",
@@ -599,6 +605,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.blurPrivateTabPreviews = blurPrivateTabPreviews
         self.customUserAgent = customUserAgent
         self.desktopSiteByDefault = desktopSiteByDefault
+        self.desktopSiteDefault = desktopSiteDefault
         self.userScriptsEnabled = userScriptsEnabled
         self.homepageUrl = homepageUrl
         self.themePaletteId = themePaletteId

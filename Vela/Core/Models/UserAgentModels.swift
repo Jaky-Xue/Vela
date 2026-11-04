@@ -68,7 +68,7 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
     /// parentheses, the engine half from the browser token at the tail.
     var claimedSummary: String {
         guard let ua = userAgent, !ua.isEmpty else {
-            return "按当前设备自动选择：iPhone 手机版，iPad 与 Mac 桌面版"
+            return "按当前设备与「桌面网站」的默认选择自动决定"
         }
 
         var device = ""
@@ -213,24 +213,33 @@ public enum BrowserUserAgent {
     /// How a tab should identify itself, given the user's settings — and the
     /// host it is about to open, which one family of sites branches on.
     ///
+    /// Identity and layout are two separate choices now:
+    ///
+    /// * 网页标识 (`custom`) decides the string the site reads.
+    /// * 桌面网站 (`globalMode`, and the per-site `siteMode`) decides how the
+    ///   document is laid out — and, when no custom string was typed, which
+    ///   generated identifier matches that layout.
+    ///
+    /// A per-site choice still returns both halves, because it is a whole-page
+    /// request: a site that only works in one layout needs the identifier and
+    /// the content mode to agree. The global default is different: it is a
+    /// layout default, so a hand-typed identifier is never replaced by it.
+    ///
     /// `device` is explicit so a test can ask what a particular device would
-    /// present. The identifier and the *rendering mode* are decided together:
-    /// a desktop identifier beside a mobile content mode is a page that is
-    /// told it is a computer and laid out as a phone, which is the mismatch
-    /// that made the identifier look broken on an iPad.
+    /// present.
     public static func identity(
         custom: String,
         prefersDesktop: Bool,
         host: String? = nil,
         device: BrowserDeviceClass = .current,
-        siteMode: BrowserSiteDisplayMode? = nil
+        siteMode: BrowserSiteDisplayMode? = nil,
+        globalMode: BrowserSiteDisplayMode? = nil
     ) -> BrowserWebIdentity {
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // A site's own choice is the most specific answer there is, and it
-        // outranks the global preset, the desktop toggle and the video-site
-        // exception. It is how a site that only works in one layout gets that
-        // layout without dragging every other site with it.
+        // outranks the global default, the device and the video-site
+        // exception.
         if let siteMode {
             switch siteMode {
             case .desktop:
@@ -248,25 +257,21 @@ public enum BrowserUserAgent {
             }
         }
 
-        // Video sites get an answer of their own on a phone, ahead of the
-        // automatic identity; only a hand-typed identifier outranks it.
-        // YouTube is the case that matters. Its player is built for the
-        // browser it believes it is talking to, and the phone identifier is
-        // the one shape whose mobile player, playback and captions work on
-        // this engine.
-        //
-        // The exception stops at the phone. It used to outrank the desktop
-        // toggle and every preset, so on an iPad — whose automatic identity is
-        // the desktop one — YouTube stayed mobile no matter what the user
-        // chose, and the menu's 桌面网站 item visibly did nothing there. A
-        // device that has asked for the desktop page gets the desktop page,
-        // video sites included; the desk is the user's call.
-        //
-        // A preset is a choice of identity rather than a hand-written string,
-        // so it yields here. A string the user typed is kept: that is the exact
-        // value they asked for.
+        // 桌面网站's global default, when it has one, decides the layout.
+        // Without one, the automatic rule — the device's own preference — is
+        // still in charge.
+        let layoutDesktop: Bool
+        if let globalMode {
+            layoutDesktop = globalMode == .desktop
+        } else {
+            layoutDesktop = prefersDesktop || device.prefersDesktopIdentity
+        }
+
+        // Video sites get the mobile identifier on a phone unless the page was
+        // asked to be a desktop one. Only a hand-typed string outranks the
+        // exception; a preset is a choice of identity, not a typed one.
         if let host, isVideoSiteHost(host),
-           !prefersDesktop,
+           !layoutDesktop,
            !device.prefersDesktopIdentity,
            trimmed.isEmpty || BrowserUserAgentPreset.isPreset(trimmed) {
             return BrowserWebIdentity(
@@ -276,28 +281,26 @@ public enum BrowserUserAgent {
             )
         }
 
-        // Someone who typed a string asked for that exact value. Letting the
-        // desktop toggle override it is what made the field look broken.
+        // Someone who typed a string asked for that exact value. The layout
+        // still answers to 桌面网站, so the two settings stay independent.
         if !trimmed.isEmpty {
             return BrowserWebIdentity(
                 applicationNameForUserAgent: safariTail,
                 customUserAgent: trimmed,
-                isDesktop: looksDesktop(trimmed)
+                isDesktop: layoutDesktop
             )
         }
-        // The automatic identity, or the desktop toggle. An iPad is in the
-        // desktop branch by default: its tablet layout is the branch sites
-        // test least, and the desktop page is the one that works in landscape.
-        if prefersDesktop || device.prefersDesktopIdentity {
+
+        // No typed string: the generated identifier follows the layout.
+        if layoutDesktop {
             return BrowserWebIdentity(
                 applicationNameForUserAgent: safariTail,
                 customUserAgent: desktopIdentifier,
                 isDesktop: true
             )
         }
-        // A phone with no override: no custom identifier at all, so WebKit
-        // appends the tail to its own prefix and the result is what Safari
-        // would have sent on this device.
+        // No override: WebKit appends the tail to its own prefix and the
+        // result is what Safari would have sent on this device.
         return BrowserWebIdentity(applicationNameForUserAgent: safariTail)
     }
 

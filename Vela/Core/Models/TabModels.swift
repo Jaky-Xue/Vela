@@ -527,16 +527,24 @@ public final class BrowserTabState: Identifiable {
     }
 
     /// The label the tab strip and tab overview show.
+    ///
+    /// A home tab keeps the page behind it in `url`/`title` so going back can
+    /// restore it, but it is not showing that page. The label follows what is
+    /// on screen: 主页 wins outright, and the walk back to the page must not
+    /// leak a stale title or host into the switcher.
     public var displayTitle: String {
+        if isHome { return "主页" }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
-        if isHome { return "主页" }
         if !url.isEmpty, let host = URL(string: url)?.host { return host }
         return "主页"
     }
 
+    /// The host under a tab's label. A home tab has no site on screen, even
+    /// when it is holding a page in the background.
     public var displayHost: String {
-        guard !url.isEmpty, let parsed = URL(string: url), let host = parsed.host else { return "" }
+        guard !isHome, !url.isEmpty,
+              let parsed = URL(string: url), let host = parsed.host else { return "" }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 

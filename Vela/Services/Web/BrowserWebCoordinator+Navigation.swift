@@ -632,16 +632,15 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             }
             if let title = webView.title, !title.isEmpty {
                 self.apply(title: title, to: tab, in: webView)
-            } else {
-                // `WKWebView.title` can still be empty when `didFinish` arrives.
-                // The property is updated by an observer that runs alongside the
-                // parser, and a small document over a fast link finishes inside
-                // that window — which leaves the tab strip, the history list and
-                // the address bar showing only the host of a page that has a
-                // perfectly good title. Asking the document is authoritative, so
-                // it is asked rather than the title being accepted as absent.
-                self.readTitleFromDocument(of: webView, tab: tab, navigation: navigation)
             }
+            // `WKWebView.title` can still be empty — or still be the *previous*
+            // document's title — when `didFinish` arrives: the property is
+            // updated by an observer that runs alongside the parser, and a
+            // fast small document finishes inside that window. The second case
+            // is the one that makes a tab read with the old page's text while
+            // its content is the new page, so the document is asked even when
+            // the property looked usable, and its answer wins when it differs.
+            self.readTitleFromDocument(of: webView, tab: tab, navigation: navigation)
             tab.canGoBack = webView.canGoBack
             tab.canGoForward = webView.canGoForward
             // A tab whose web view the pool let go comes back at the top of a
@@ -697,8 +696,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         )
     }
 
-    /// Asks the document for its title, for the case where `WKWebView.title` had
-    /// not caught up by `didFinish`.
+    /// Asks the document for its title after `didFinish`.
     ///
     /// The answer arrives after the fact, so it is applied only if the tab is
     /// still showing the navigation that asked: a page whose title was empty
@@ -720,9 +718,6 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         Task { @MainActor in
             for attempt in 1...4 {
                 guard !self.isStale(navigation, in: webView),
-                      // Nothing is overwritten: if a title arrived by another
-                      // route in the meantime, that one wins.
-                      tab.title.isEmpty,
                       self.tab(for: webView) === tab,
                       tab.loadState == .finished else { return }
 
@@ -731,8 +726,11 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                           let title = value as? String,
                           !title.isEmpty,
                           self.tab(for: webView) === tab,
-                          tab.title.isEmpty,
-                          tab.loadState == .finished else { return }
+                          tab.loadState == .finished,
+                          // The document is authoritative for the document
+                          // that is on screen; a title that already agrees
+                          // needs no rewrite.
+                          tab.title != title else { return }
                     self.apply(title: title, to: tab, in: webView)
                 }
 

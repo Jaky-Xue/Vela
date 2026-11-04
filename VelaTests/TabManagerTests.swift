@@ -484,6 +484,18 @@ final class BrowserTabStateTests: XCTestCase {
         XCTAssertEqual(tab.displayHost, "example.com")
     }
 
+    /// A home tab can hold the page it came from so back can restore it, but
+    /// the switcher must label what is on screen: 主页, with no leftover host.
+    func testAHomeTabLabelsItselfAsHomeWithAPageBehindIt() {
+        let tab = BrowserTabState(
+            title: "An article",
+            url: "https://www.example.com/article",
+            isHome: true
+        )
+        XCTAssertEqual(tab.displayTitle, "主页")
+        XCTAssertEqual(tab.displayHost, "")
+    }
+
     func testRestoringARecordResetsTheRuntimeState() {
         let tab = BrowserTabState(url: "https://example.com", isHome: false)
         tab.lastFailure = .make(from: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut), url: "https://example.com")

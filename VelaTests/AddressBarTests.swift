@@ -375,8 +375,10 @@ final class BrowserUserAgentTests: XCTestCase {
         )
     }
 
-    /// A typed identifier decides the layout from its own platform tokens.
-    func testACustomIdentifierDecidesTheLayoutItClaims() {
+    /// A typed identifier is the string the site reads; the layout still comes
+    /// from the device or 桌面网站. A Windows string on a phone does not turn
+    /// the phone into a desktop page.
+    func testACustomIdentifierDoesNotDecideTheLayoutByItself() {
         XCTAssertTrue(
             BrowserUserAgent.identity(
                 custom: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -387,6 +389,13 @@ final class BrowserUserAgentTests: XCTestCase {
         XCTAssertFalse(
             BrowserUserAgent.identity(
                 custom: "Mozilla/5.0 (Linux; Android 16; Pixel 10)",
+                prefersDesktop: false,
+                device: .phone
+            ).isDesktop
+        )
+        XCTAssertFalse(
+            BrowserUserAgent.identity(
+                custom: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 prefersDesktop: false,
                 device: .phone
             ).isDesktop
@@ -453,19 +462,57 @@ final class BrowserUserAgentTests: XCTestCase {
         XCTAssertFalse(padMobile.isDesktop)
     }
 
-    /// The explicit iPad preset is the way back to a site's tablet page, and it
-    /// asks for the mobile layout while claiming a tablet.
+    /// The explicit iPad preset is the way back to a site's tablet page. The
+    /// identifier and the layout are separate now: the preset alone keeps
+    /// whatever 桌面网站 says, and asking for 手机版 is what brings the tablet
+    /// layout with it.
     func testTheIPadPresetKeepsTheTabletIdentity() {
         guard let preset = BrowserUserAgentPreset.all.first(where: { $0.id == "safari-ipad" }) else {
             return XCTFail("no iPad preset")
         }
         let identity = BrowserUserAgent.identity(
             custom: preset.userAgent ?? "",
-            prefersDesktop: preset.isDesktop,
-            device: .pad
+            prefersDesktop: false,
+            device: .pad,
+            globalMode: .mobile
         )
         XCTAssertTrue(identity.customUserAgent?.contains("(iPad;") == true)
         XCTAssertFalse(identity.isDesktop)
+    }
+
+    /// 桌面网站's global default forces the layout without rewriting the
+    /// identifier 网页标识 chose.
+    func testTheGlobalDesktopDefaultSetsTheLayoutWithoutRewritingTheIdentifier() {
+        let identity = BrowserUserAgent.identity(
+            custom: "MyAgent/9",
+            prefersDesktop: false,
+            device: .phone,
+            globalMode: .desktop
+        )
+        XCTAssertEqual(identity.customUserAgent, "MyAgent/9")
+        XCTAssertTrue(identity.isDesktop)
+    }
+
+    func testTheGlobalMobileDefaultForcesTheMobileLayoutOnAnIPad() {
+        let identity = BrowserUserAgent.identity(
+            custom: "",
+            prefersDesktop: false,
+            device: .pad,
+            globalMode: .mobile
+        )
+        XCTAssertNil(identity.customUserAgent)
+        XCTAssertFalse(identity.isDesktop)
+    }
+
+    func testTheGlobalDesktopDefaultGeneratesTheDesktopIdentifierOnAPhone() {
+        let identity = BrowserUserAgent.identity(
+            custom: "",
+            prefersDesktop: false,
+            device: .phone,
+            globalMode: .desktop
+        )
+        XCTAssertEqual(identity.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertTrue(identity.isDesktop)
     }
 
     func testACustomIdentifierBecomesTheOverride() {
