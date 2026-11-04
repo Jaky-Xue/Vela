@@ -713,7 +713,7 @@ public final class OmniboxViewModel {
         // address bar. Deferring the read to the next main-loop turn keeps
         // that tap from waiting on the pasteboard; the hint arrives a frame
         // later, which is invisible.
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self, self.isEditing else { return }
             let pasteboard = UIPasteboard.general
             guard pasteboard.hasStrings else {

@@ -383,7 +383,7 @@ struct OmniboxTextField: UIViewRepresentable {
             // landscape address-bar stall. One runloop later the field is
             // still there to give the keyboard back.
             if field.isFirstResponder {
-                DispatchQueue.main.async { [weak field] in
+                Task { @MainActor [weak field] in
                     guard let field, field.isFirstResponder else { return }
                     field.resignFirstResponder()
                 }
