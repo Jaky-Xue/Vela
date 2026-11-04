@@ -163,6 +163,20 @@ public final class HomeFavoritesService {
     public static func normalizedUrl(_ raw: String) -> String? {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
+
+        // A scheme without `//` would otherwise be mistaken for a bare host
+        // and prefixed with https — turning `javascript:…` into a host named
+        // javascript. Refuse the schemes a browser will not load before that.
+        let refusedPrefixes: Set<String> = [
+            "about", "blob", "chrome", "data", "file", "ftp", "javascript",
+            "mailto", "sms", "tel", "vbscript", "ws", "wss"
+        ]
+        if let colon = text.firstIndex(of: ":"),
+           !text[..<colon].contains("/"),
+           refusedPrefixes.contains(String(text[..<colon]).lowercased()) {
+            return nil
+        }
+
         if !text.contains("://") {
             text = "https://" + text
         }
