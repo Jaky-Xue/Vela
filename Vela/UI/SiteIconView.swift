@@ -34,6 +34,12 @@ struct SiteIconView: View {
     /// The decoded icon, once one of the candidate sources has answered.
     @State private var image: UIImage?
 
+    /// Whether the icon brings a canvas of its own — a filled square, circle
+    /// or rounded tile that the site drew — rather than a mark on
+    /// transparency. Only a canvas has corners to round, so only a canvas is
+    /// masked to the tile's shape.
+    @State private var hasOpaqueCanvas = false
+
     /// Decoded icons for this process, keyed by URL. `URLSession`'s own cache
     /// answers the bytes; this one answers the decode, so a tile that scrolls
     /// back into view shows instantly.
@@ -48,7 +54,19 @@ struct SiteIconView: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .padding(size * 0.14)
+                    // An icon that brings its own canvas takes the tile's
+                    // shape at the same proportion, the way iOS masks an app
+                    // icon: a full-bleed white square lands as a rounded
+                    // square inside a rounded tile instead of as a sharp
+                    // square cutting across it. A mark on transparency has
+                    // no corners to round and keeps its own silhouette.
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: hasOpaqueCanvas ? artworkCornerRadius : 0,
+                            style: .continuous
+                        )
+                    )
+                    .padding(size * Self.iconInset)
             } else {
                 Text(initial)
                     .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
@@ -78,6 +96,17 @@ struct SiteIconView: View {
         cornerRadius ?? size * 0.22
     }
 
+    /// How far the icon sits inside its tile, as a fraction of the tile.
+    private static let iconInset: CGFloat = 0.14
+
+    /// The radius the icon's own canvas is masked with. The canvas is inset
+    /// inside the tile, so carrying the tile's radius inward by the same
+    /// proportion lines the two shapes up instead of leaving the canvas's
+    /// corners cutting across the tile's.
+    private var artworkCornerRadius: CGFloat {
+        resolvedCornerRadius * (1 - 2 * Self.iconInset)
+    }
+
     /// The tile every icon rides: one quiet neutral, so a grid of them reads
     /// as a shelf of equals — the uniformity the reference home has — instead
     /// of every favicon arriving on whatever backdrop its own alpha implies.
@@ -101,12 +130,13 @@ struct SiteIconView: View {
     /// URL from the page outranks everything.
     private func loadIcon() async {
         image = nil
+        hasOpaqueCanvas = false
         var fallback: UIImage?
         for candidate in Self.candidates(host: host, faviconUrl: faviconUrl, allowsThirdParty: allowsThirdPartyLookup) {
             guard let url = candidate else { continue }
             if let cached = Self.iconCache.object(forKey: url.absoluteString as NSString) {
                 if max(cached.size.width, cached.size.height) >= Self.sharpIconEdge {
-                    image = cached
+                    present(cached)
                     return
                 }
                 if fallback == nil { fallback = cached }
@@ -114,16 +144,71 @@ struct SiteIconView: View {
             }
             guard let prepared = await SiteIconLoader.shared.image(
                 for: url,
-                prepare: Self.trimmedToOpaqueBounds
+                prepare: Self.preparedArtwork
             ) else { continue }
             Self.iconCache.setObject(prepared, forKey: url.absoluteString as NSString)
             if max(prepared.size.width, prepared.size.height) >= Self.sharpIconEdge {
-                image = prepared
+                present(prepared)
                 return
             }
             if fallback == nil { fallback = prepared }
         }
-        image = fallback
+        if let fallback { present(fallback) }
+    }
+
+    /// Puts an icon on the tile together with the property the tile draws it
+    /// by, so the two can never disagree about the same picture.
+    private func present(_ image: UIImage) {
+        self.image = image
+        hasOpaqueCanvas = Self.isOpaqueCanvas(image)
+    }
+
+    /// Whether a decoded icon is a filled canvas rather than a mark.
+    ///
+    /// A canvas is an icon whose pixels are opaque nearly everywhere; a mark
+    /// leaves the space between its strokes transparent. The check samples a
+    /// 24-point thumbnail, so it costs the same whatever the source's
+    /// resolution, and an icon with no alpha channel at all answers without
+    /// painting anything.
+    nonisolated static func isOpaqueCanvas(_ image: UIImage) -> Bool {
+        guard let cgImage = image.cgImage else { return false }
+        switch cgImage.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast:
+            return true
+        default:
+            break
+        }
+
+        let side = 24
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        let painted = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: side,
+                height: side,
+                bitsPerComponent: 8,
+                bytesPerRow: side * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.interpolationQuality = .low
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: side, height: side))
+            return true
+        }
+        guard painted else { return false }
+
+        var opaque = 0
+        for index in 0..<(side * side) where pixels[index * 4 + 3] > 240 {
+            opaque += 1
+        }
+        return opaque * 10 >= side * side * 9
+    }
+
+    /// Everything the loader runs once per icon: the transparent margins
+    /// trimmed, then a padded canvas removed from around the block it
+    /// surrounds.
+    nonisolated fileprivate static func preparedArtwork(_ image: UIImage) -> UIImage {
+        canvasRemoved(trimmedToOpaqueBounds(image))
     }
 
     /// The icon cropped to the pixels that actually paint.
@@ -183,6 +268,160 @@ struct SiteIconView: View {
         )
         guard let cropped = cgImage.cropping(to: bounds) else { return image }
         return UIImage(cgImage: cropped, scale: image.scale, orientation: .up)
+    }
+
+    /// Removes a padded canvas from around a mark that brings its own block.
+    ///
+    /// A site that exports its mark floating on a flat canvas arrives in the
+    /// tile smaller than its neighbours, with the canvas standing in for the
+    /// site's own colour. When the canvas is one uniform colour and what it
+    /// surrounds is a solid block or disc — the mark's own background, not a
+    /// glyph drawn on the canvas — the canvas is erased and the block is what
+    /// is left, so the mark answers the tile at the size its neighbours do.
+    /// A glyph on a canvas keeps its canvas: the white behind ChatGPT's knot
+    /// is the mark, not padding.
+    nonisolated static func canvasRemoved(_ image: UIImage) -> UIImage {
+        guard let cgImage = image.cgImage else { return image }
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 8, height > 8,
+              let context = CGContext(
+                  data: nil,
+                  width: width,
+                  height: height,
+                  bitsPerComponent: 8,
+                  bytesPerRow: width * 4,
+                  space: CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else { return image }
+
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let data = context.data else { return image }
+        let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
+
+        // Only a canvas is opaque everywhere. A mark's gaps are transparent,
+        // and `trimmedToOpaqueBounds` has already taken its margins.
+        for index in 0..<(width * height) where pixels[index * 4 + 3] < 250 {
+            return image
+        }
+
+        // The canvas colour is the ring's colour, provided the ring really is
+        // one colour and not artwork that reaches the edge.
+        var ringCount = 0
+        var ringRed = 0
+        var ringGreen = 0
+        var ringBlue = 0
+        for x in 0..<width {
+            for y in [0, height - 1] {
+                let index = (y * width + x) * 4
+                ringRed += Int(pixels[index])
+                ringGreen += Int(pixels[index + 1])
+                ringBlue += Int(pixels[index + 2])
+                ringCount += 1
+            }
+        }
+        for y in 1..<(height - 1) {
+            for x in [0, width - 1] {
+                let index = (y * width + x) * 4
+                ringRed += Int(pixels[index])
+                ringGreen += Int(pixels[index + 1])
+                ringBlue += Int(pixels[index + 2])
+                ringCount += 1
+            }
+        }
+        guard ringCount > 0 else { return image }
+        let canvasRed = ringRed / ringCount
+        let canvasGreen = ringGreen / ringCount
+        let canvasBlue = ringBlue / ringCount
+
+        func isCanvas(_ index: Int, tolerance: Int) -> Bool {
+            abs(Int(pixels[index]) - canvasRed) <= tolerance
+                && abs(Int(pixels[index + 1]) - canvasGreen) <= tolerance
+                && abs(Int(pixels[index + 2]) - canvasBlue) <= tolerance
+        }
+
+        var ringMatches = 0
+        for x in 0..<width {
+            for y in [0, height - 1] where isCanvas((y * width + x) * 4, tolerance: 18) {
+                ringMatches += 1
+            }
+        }
+        for y in 1..<(height - 1) {
+            for x in [0, width - 1] where isCanvas((y * width + x) * 4, tolerance: 18) {
+                ringMatches += 1
+            }
+        }
+        guard ringMatches * 100 >= ringCount * 95 else { return image }
+
+        // The mark's bounds are everything that is not the canvas colour; the
+        // wider tolerance leaves the antialiased seam out of them.
+        var minX = width
+        var minY = height
+        var maxX = -1
+        var maxY = -1
+        for y in 0..<height {
+            for x in 0..<width {
+                guard !isCanvas((y * width + x) * 4, tolerance: 32) else { continue }
+                if x < minX { minX = x }
+                if x > maxX { maxX = x }
+                if y < minY { minY = y }
+                if y > maxY { maxY = y }
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return image }
+
+        let contentWidth = maxX - minX + 1
+        let contentHeight = maxY - minY + 1
+        // Only when the canvas is actually padding: a mark that already
+        // reaches both edges has nothing to remove.
+        guard contentWidth < width * 96 / 100 || contentHeight < height * 96 / 100 else {
+            return image
+        }
+
+        // A glyph leaves the canvas showing between its strokes; a block or a
+        // disc fills its own bounds. Only the latter is the mark, so only the
+        // latter is worth taking out of its canvas.
+        var painted = 0
+        for y in minY...maxY {
+            for x in minX...maxX where !isCanvas((y * width + x) * 4, tolerance: 32) {
+                painted += 1
+            }
+        }
+        guard painted * 100 >= contentWidth * contentHeight * 70 else { return image }
+
+        // Erase the canvas, but only the part that touches the border: the
+        // same colour further in — a white glyph, a ring within the block —
+        // is the mark and stays.
+        var visited = [Bool](repeating: false, count: width * height)
+        var pending: [Int] = []
+        for x in [0, width - 1] {
+            pending.append(x)
+            pending.append((height - 1) * width + x)
+        }
+        for y in 1..<(height - 1) {
+            pending.append(y * width)
+            pending.append(y * width + width - 1)
+        }
+        while let index = pending.popLast() {
+            if visited[index] { continue }
+            visited[index] = true
+            guard isCanvas(index * 4, tolerance: 32) else { continue }
+            pixels[index * 4] = 0
+            pixels[index * 4 + 1] = 0
+            pixels[index * 4 + 2] = 0
+            pixels[index * 4 + 3] = 0
+            let x = index % width
+            let y = index / width
+            if x > 0 { pending.append(index - 1) }
+            if x < width - 1 { pending.append(index + 1) }
+            if y > 0 { pending.append(index - width) }
+            if y < height - 1 { pending.append(index + width) }
+        }
+
+        guard let erased = context.makeImage() else { return image }
+        return trimmedToOpaqueBounds(
+            UIImage(cgImage: erased, scale: image.scale, orientation: .up)
+        )
     }
 
     /// The URLs to try, strongest first.

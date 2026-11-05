@@ -357,9 +357,11 @@ struct NewTabHomeView: View {
             // re-keying — and the odd misplaced tile after a turn is exactly
             // that. A favourites collection is short, so laziness buys nothing
             // here and determinism is worth more. Each cell is the same fixed
-            // width and the row is centred, so the spacing between icons is
-            // the number the setting names and a short last row still lines up
-            // with the rows above it.
+            // width and the row starts at the section's leading edge, so the
+            // spacing between icons is the number the setting names and a
+            // short last row still lines up with the rows above it. Centring
+            // the row left a wide screen with a shelf floating in the middle
+            // of it, away from the 收藏 heading it belongs to.
             VStack(alignment: .leading, spacing: tileSpacing) {
                 if favorites.isEmpty {
                     Text("还没有收藏。点右上角的 + 添加。")
@@ -373,7 +375,7 @@ struct NewTabHomeView: View {
                                 favoriteCell(favorite)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }

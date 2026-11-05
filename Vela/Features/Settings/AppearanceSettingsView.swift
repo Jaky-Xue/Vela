@@ -507,8 +507,8 @@ private struct HomeIconDesignPreview: View {
                 .foregroundStyle(palette.secondaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            // Fixed-width cells with the row centred, the same geometry the
-            // home uses. Four equal-share columns were drawn before, which
+            // Fixed-width cells starting at the leading edge, the same
+            // geometry the home uses. Four equal-share columns were drawn before, which
             // made the picture's spacing disagree with the shelf's and let a
             // large icon plus a wide spacing overflow the row.
             //
@@ -537,7 +537,7 @@ private struct HomeIconDesignPreview: View {
                         .frame(width: cellWidth)
                     }
                 }
-                .frame(width: geo.size.width, alignment: .center)
+                .frame(width: geo.size.width, alignment: .leading)
             }
             .frame(height: rowHeight)
         }
