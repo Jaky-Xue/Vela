@@ -381,9 +381,13 @@ struct SiteIconView: View {
         // A glyph leaves the canvas showing between its strokes; a block or a
         // disc fills its own bounds. Only the latter is the mark, so only the
         // latter is worth taking out of its canvas.
+        // The share of the block that is clearly not canvas. Counted at a
+        // wide separation so a pale block on a pale canvas is not mistaken
+        // for one: erasing around a block that is itself nearly the canvas
+        // colour would erase the mark.
         var painted = 0
         for y in minY...maxY {
-            for x in minX...maxX where !isCanvas((y * width + x) * 4, tolerance: 32) {
+            for x in minX...maxX where !isCanvas((y * width + x) * 4, tolerance: 120) {
                 painted += 1
             }
         }
@@ -405,7 +409,13 @@ struct SiteIconView: View {
         while let index = pending.popLast() {
             if visited[index] { continue }
             visited[index] = true
-            guard isCanvas(index * 4, tolerance: 32) else { continue }
+            // A wider tolerance than the bounds test above, because the seam
+            // between canvas and block is a ramp of greys: stopping at the
+            // mid-point of that ramp leaves a pale fringe along the block's
+            // rounded edge, which reads as a white outline at the corners.
+            // Only pixels connected to the border are touched, so a white
+            // glyph inside the block is never reached.
+            guard isCanvas(index * 4, tolerance: 90) else { continue }
             pixels[index * 4] = 0
             pixels[index * 4 + 1] = 0
             pixels[index * 4 + 2] = 0

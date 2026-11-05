@@ -499,7 +499,10 @@ private struct HomeIconDesignPreview: View {
             iconSize: iconSize
         )
         let showsTitleByDefault = preferences.homeTileShowsTitle ?? true
-        let favorites = Array(env.homeFavorites.favorites.prefix(4))
+        // Every favourite, not the first four: the row is the home's own first
+        // row, and a fifth tile that the home draws has to be in it. How many
+        // are shown is the measured column count below, exactly as on the home.
+        let favorites = env.homeFavorites.favorites
 
         if favorites.isEmpty {
             Text("主页还没有收藏。添加收藏后，这里会按当前设置显示图标的实际效果。")
@@ -524,7 +527,7 @@ private struct HomeIconDesignPreview: View {
                     iconSize: iconSize,
                     spacing: spacing
                 )
-                let visible = Array(favorites.prefix(max(1, min(4, fitting))))
+                let visible = Array(favorites.prefix(max(1, fitting)))
                 HStack(alignment: .top, spacing: spacing) {
                     ForEach(visible) { favorite in
                         HomeFavoriteTile(
