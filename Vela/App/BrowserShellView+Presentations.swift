@@ -266,20 +266,6 @@ extension BrowserShellView {
                 env.webCoordinator.resolveFileUpload(nil)
             }
         }
-        // A window a page opened with `window.open`, drawn as a window at the
-        // size the page asked for. A tab cannot stand in for it: the page
-        // holds a live handle to this window and talks to it through
-        // `window.opener`, which only survives when the view WebKit asked for
-        // is the one that is shown. The window goes away when the page closes
-        // it with `window.close()`, and can be closed here too.
-        .overlay {
-            if let popup = env.overlays.popupWindow {
-                PagePopupWindowView(popup: popup) {
-                    popup.webView.stopLoading()
-                    env.overlays.popupWindow = nil
-                }
-            }
-        }
     }
 
 }

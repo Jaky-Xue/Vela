@@ -51,11 +51,6 @@ public final class WebPageOverlays {
     /// then calls the stored handler.
     public var fileUpload: FileUploadRequest?
 
-    /// A window a page opened with `window.open`, held until the shell shows
-    /// it and cleared when the page closes it with `window.close()` — or when
-    /// the user does.
-    public var popupWindow: PagePopupWindow?
-
     /// Find-in-page state, read by the find bar.
     public var findResult = FindResult(count: 0, index: -1)
 

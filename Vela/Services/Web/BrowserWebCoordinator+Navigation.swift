@@ -773,13 +773,14 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
     /// The page closed the window it opened with `window.close()`.
     ///
     /// A sign-in window ends its life this way once it has posted the result
-    /// back to the page, so honouring it is what makes the page's own flow
-    /// continue without the user dismissing anything.
+    /// back to the page, so closing its tab is what makes the page's own flow
+    /// continue without the user dismissing anything. Only a tab opened by a
+    /// page — not one the user opened — is closed this way.
     public nonisolated func webViewDidClose(_ webView: WKWebView) {
         Task { @MainActor in
-            guard let popup = self.overlays.popupWindow,
-                  popup.webView === webView else { return }
-            self.overlays.popupWindow = nil
+            guard let tab = self.tab(for: webView),
+                  tab.openSource == .webWindowOpen else { return }
+            self.tabManager?.closeTab(id: tab.id)
         }
     }
 

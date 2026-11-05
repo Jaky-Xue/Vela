@@ -17,15 +17,16 @@ extension BrowserWebCoordinator: WKUIDelegate {
     /// WebKit's contract here is narrow: hand back a web view built from the
     /// configuration it passed, or refuse the window. Only the first answer
     /// keeps `window.opener` alive between the page and the window it opened
-    /// — so answering nil is the browser telling the page its popup was
-    /// blocked, whatever the app does next. Vela used to answer nil and open a
-    /// tab instead: a sign-in window then had no handle to come back through
-    /// and its page sat on a spinner, while a message window fell back to the
-    /// page's own in-page copy, half painted over the content it was meant to
-    /// float above. Both shapes are the same bug seen from two sides.
+    /// — answering nil is the browser telling the page its popup was blocked,
+    /// whatever the app does next. Vela used to answer nil and open a tab of
+    /// its own instead: a sign-in window then had no handle to come back
+    /// through, and its page sat on a spinner or fell back to drawing a
+    /// half-painted dialog inside itself.
     ///
-    /// The window is shown as a sheet over the page and goes away when the
-    /// page calls `window.close()`.
+    /// So the window WebKit asks for is what the page gets, and it is shown
+    /// the way a browser shows one — as a tab. There is no separate window
+    /// chrome: the page's popup is a page, and it belongs in the strip with
+    /// everything else.
     public nonisolated func webView(
         _ webView: WKWebView,
         createWebViewWith configuration: WKWebViewConfiguration,
@@ -41,58 +42,49 @@ extension BrowserWebCoordinator: WKUIDelegate {
         guard Thread.isMainThread else { return nil }
         var window: WKWebView?
         MainActor.assumeIsolated {
-            window = self.makePopupWindow(
+            window = self.adoptPopupWindow(
                 for: webView,
                 configuration: configuration,
-                windowFeatures: windowFeatures
+                navigationAction: navigationAction
             )
         }
         return window
     }
 
-    /// Builds the window a page asked for and hands it to the shell.
+    /// Puts the window WebKit built into a tab and hands it back.
     ///
-    /// One window is shown at a time, so a second `window.open` replaces the
-    /// first: the earlier page's `window.close()` has already been honoured
-    /// by then in every flow that matters, and a window nobody can see would
-    /// otherwise keep loading behind the sheet.
+    /// The view is created from the configuration WebKit passed — the store,
+    /// the scripts and the identifier are already the opener page's, and the
+    /// opener link only exists inside it — so nothing here rebuilds it. The
+    /// tab is what makes it visible.
     @MainActor
-    private func makePopupWindow(
+    private func adoptPopupWindow(
         for opener: WKWebView,
         configuration: WKWebViewConfiguration,
-        windowFeatures: WKWindowFeatures
+        navigationAction: WKNavigationAction
     ) -> WKWebView {
-        overlays.popupWindow?.webView.stopLoading()
-
         let popup = WKWebView(frame: .zero, configuration: configuration)
         popup.navigationDelegate = self
         popup.uiDelegate = self
-        popup.allowsBackForwardNavigationGestures = true
-        // A window paints its own surface. Leaving the view opaque paints the
-        // white it was born with wherever a composited layer of the page is
-        // transparent — the pale frame a rounded card leaves behind.
-        popup.isOpaque = false
-        popup.backgroundColor = .clear
-        // The window belongs to the page's own identity: it was built from the
-        // configuration WebKit cloned off the opener, so the store, the
-        // scripts and the identifier are already the page's.
-        overlays.popupWindow = PagePopupWindow(
-            openerTabId: tab(for: opener)?.id ?? "",
-            webView: popup,
-            requestedSize: Self.popupSize(from: windowFeatures)
+
+        let openerTab = tab(for: opener)
+        // A private page's popups stay private, and a regular page's follow
+        // 无痕模式's routing like every other new page.
+        let privacyMode: BrowserSessionPrivacyMode
+        if openerTab?.privacyMode == .private {
+            privacyMode = .private
+        } else {
+            privacyMode = tabManager?.newPagePrivacyMode ?? openerTab?.privacyMode ?? .regular
+        }
+
+        tabManager?.openTab(
+            adopting: popup,
+            url: navigationAction.request.url,
+            privacyMode: privacyMode,
+            openerTabId: openerTab?.id ?? "",
+            activate: !settings.preferences.openNewTabsInBackground
         )
         return popup
-    }
-
-    /// The size a `window.open` feature string asks for, when it asks for one.
-    ///
-    /// `WKWindowFeatures` reports each dimension only when the page named it,
-    /// so a missing one means "the browser's default", not zero.
-    nonisolated static func popupSize(from features: WKWindowFeatures) -> CGSize? {
-        guard let width = features.width?.doubleValue,
-              let height = features.height?.doubleValue,
-              width > 0, height > 0 else { return nil }
-        return CGSize(width: width, height: height)
     }
 
     public nonisolated func webView(

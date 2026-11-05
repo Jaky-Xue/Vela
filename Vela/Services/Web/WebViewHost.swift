@@ -132,11 +132,15 @@ struct WebViewHost: UIViewRepresentable {
         // The view's own background is the second place white comes from: a
         // page's composited layer that is transparent in the wrong spot — a
         // rounded card, an embedded frame, a dialog's backdrop — shows this
-        // colour, and it is white until someone says otherwise. It is also
-        // what the page's colour is for, so a dark page cannot grow a pale
-        // rectangle around an element that never asked for one.
-        if webView.backgroundColor != pageColour {
-            webView.backgroundColor = pageColour
+        // colour, and it is white until someone says otherwise. It is the
+        // app's canvas, not the page's: a page's own sample can name a white
+        // surface it paints in a corner, and painting that behind the whole
+        // document is exactly how a dark page grows a pale rectangle. The
+        // web view's forced appearance resolves this colour, so the canvas is
+        // black in dark mode and white in light.
+        let canvasColour = UIColor.systemBackground
+        if webView.backgroundColor != canvasColour {
+            webView.backgroundColor = canvasColour
         }
 
         let scrollView = webView.scrollView

@@ -372,6 +372,64 @@ public final class TabManager {
         return tab
     }
 
+    /// Makes a tab out of the web view WebKit built for a page's `window.open`.
+    ///
+    /// A popup is not a tab Vela can build. The opener link between the page
+    /// and its window lives in the web view WebKit created from the cloned
+    /// configuration, so the view is adopted rather than replaced: from here
+    /// on it is an ordinary tab — the strip lists it, the shell hosts it, the
+    /// address bar reads it — which is the shape a popup takes in a browser.
+    /// Answering `window.open` with nil instead (what Vela used to do) leaves
+    /// the page holding no handle, and its sign-in flow waits on a window that
+    /// can never answer.
+    ///
+    /// `activate` is the caller's choice: a window that steals focus from the
+    /// page the user is reading is the rudest thing a page can do, and
+    /// 后台打开新标签页 is the user's answer to it.
+    @discardableResult
+    public func openTab(
+        adopting webView: WKWebView,
+        url: URL?,
+        privacyMode: BrowserSessionPrivacyMode?,
+        openerTabId: String,
+        activate: Bool
+    ) -> BrowserTabState {
+        let tab = appendHomeTab(
+            privacyMode: privacyMode ?? newPagePrivacyMode,
+            openerTabId: openerTabId,
+            openSource: .webWindowOpen
+        )
+        tab.isHome = false
+        let address = url?.absoluteString ?? ""
+        tab.url = address
+        tab.pendingUrl = address
+        // The request is already WebKit's to make: it loads the view as soon
+        // as the delegate returns. Marking the load in flight is what keeps
+        // activation from issuing a second request for the same address —
+        // and a second request is a popup that posts its form twice.
+        tab.loadState = .requested
+        tab.isLoading = !address.isEmpty
+        tab.estimatedProgress = 0
+
+        webView.navigationDelegate = configurationProvider.navigationDelegate
+        webView.uiDelegate = configurationProvider.uiDelegate
+        // The edge gesture is Vela's own, as on every other tab.
+        webView.allowsBackForwardNavigationGestures = false
+        webView.allowsLinkPreview = true
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.overrideUserInterfaceStyle = appearanceStyle
+
+        webViews[tab.id] = webView
+        tab.runtimeState = tab.id == activeTabId ? .active : .background
+        touchActivationOrder(tab.id)
+        enforceLiveWebViewCap(keepingTabId: tab.id)
+        if activate {
+            activateTab(id: tab.id)
+        }
+        persistSession()
+        return tab
+    }
+
     /// Restores a saved session.
     ///
     /// Private tabs are
