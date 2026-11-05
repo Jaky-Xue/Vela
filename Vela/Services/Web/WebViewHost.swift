@@ -142,6 +142,13 @@ struct WebViewHost: UIViewRepresentable {
         if webView.backgroundColor != canvasColour {
             webView.backgroundColor = canvasColour
         }
+        // The scroll view sits between the page and that background, and it
+        // carries a surface of its own. Left as it was, a page layer that is
+        // transparent in the wrong spot shows the scroll view instead of the
+        // canvas — the third place a pale rectangle can come from.
+        if webView.scrollView.backgroundColor != .clear {
+            webView.scrollView.backgroundColor = .clear
+        }
 
         let scrollView = webView.scrollView
         // WebKit's own inset adjustment is off: the container owns the top,
