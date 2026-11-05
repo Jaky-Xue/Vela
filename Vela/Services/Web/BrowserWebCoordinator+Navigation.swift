@@ -178,14 +178,13 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             return .cancel
         }
 
-        // 2. A `target="_blank"` link or a `window.open` becomes a tab of Vela's
-        //    own, created here rather than by WebKit, so the tab registry stays
-        //    the only thing that knows which web views exist. Answering `.cancel`
-        //    is what stops WebKit from building a second web view; it also means
-        //    WebKit reports this navigation as interrupted by a policy change,
-        //    which the failure path has to recognise as deliberate rather than
-        //    as the current page failing — see
-        //    `TabNavigationFailure.isCancellation`.
+        // 2. A `target="_blank"` link becomes a tab of Vela's own, created here
+        //    rather than by WebKit, so the tab registry stays the only thing
+        //    that knows which web views exist. Answering `.cancel` is what stops
+        //    WebKit from building a second web view; it also means WebKit
+        //    reports this navigation as interrupted by a policy change, which
+        //    the failure path has to recognise as deliberate rather than as the
+        //    current page failing — see `TabNavigationFailure.isCancellation`.
         //
         //    The tab itself is opened *after* the callback returns. Building a
         //    web view synchronously inside WebKit's own policy callback is
@@ -193,7 +192,17 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         //    one is being created beside — and on a tap of a `target="_blank"`
         //    link, which is most links on the web, that reentrancy is the
         //    difference between a new tab and a dead process.
+        //
+        //    A window a script opened (`window.open`) is not a tab. It is only
+        //    reachable through `createWebViewWith`, which hands the page back a
+        //    live handle to the window it asked for; cancelling here would let
+        //    WebKit answer the page's `window.open` with null, and the page
+        //    would wait on a window that can never arrive. The action is allowed
+        //    through so WebKit asks the UI delegate for that window instead.
         if navigationAction.targetFrame == nil {
+            if navigationAction.navigationType == .other {
+                return .allow
+            }
             let url = url
             let sourceTabId = tab.id
             let privacyMode = tab.privacyMode
@@ -758,6 +767,19 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
     ) {
         Task { @MainActor in
             self.handleLoadFailure(webView: webView, navigation: navigation, error: error)
+        }
+    }
+
+    /// The page closed the window it opened with `window.close()`.
+    ///
+    /// A sign-in window ends its life this way once it has posted the result
+    /// back to the page, so honouring it is what makes the page's own flow
+    /// continue without the user dismissing anything.
+    public nonisolated func webViewDidClose(_ webView: WKWebView) {
+        Task { @MainActor in
+            guard let popup = self.overlays.popupWindow,
+                  popup.webView === webView else { return }
+            self.overlays.popupWindow = nil
         }
     }
 

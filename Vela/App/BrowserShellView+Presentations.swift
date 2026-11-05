@@ -266,6 +266,25 @@ extension BrowserShellView {
                 env.webCoordinator.resolveFileUpload(nil)
             }
         }
+        // A window a page opened with `window.open`. A tab cannot stand in
+        // for it: the page holds a live handle to this window and talks to it
+        // through `window.opener`, which only survives when the view WebKit
+        // asked for is the one that is shown. The sheet goes away when the
+        // page closes the window itself.
+        .sheet(item: Binding(
+            get: { env.overlays.popupWindow },
+            set: { value in
+                if value == nil, let popup = env.overlays.popupWindow {
+                    popup.webView.stopLoading()
+                    env.overlays.popupWindow = nil
+                }
+            }
+        )) { popup in
+            PagePopupWindowView(popup: popup) {
+                env.overlays.popupWindow = nil
+            }
+            .browserAmbientSheet()
+        }
     }
 
 }
