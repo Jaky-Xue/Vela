@@ -270,16 +270,25 @@ struct SiteIconView: View {
         return UIImage(cgImage: cropped, scale: image.scale, orientation: .up)
     }
 
-    /// Removes a padded canvas from around a mark that brings its own block.
+    /// Removes a canvas from around a mark that brings its own block.
     ///
-    /// A site that exports its mark floating on a flat canvas arrives in the
-    /// tile smaller than its neighbours, with the canvas standing in for the
-    /// site's own colour. When the canvas is one uniform colour and what it
-    /// surrounds is a solid block or disc — the mark's own background, not a
-    /// glyph drawn on the canvas — the canvas is erased and the block is what
-    /// is left, so the mark answers the tile at the size its neighbours do.
-    /// A glyph on a canvas keeps its canvas: the white behind ChatGPT's knot
-    /// is the mark, not padding.
+    /// Two shapes carry a canvas, and both leave the mark smaller than its
+    /// neighbours or fringed with the canvas colour:
+    ///
+    /// * A mark floating on a flat canvas — a logo exported with padding. The
+    ///   canvas is the ring around the image, and the mark is what remains
+    ///   once that ring is erased.
+    /// * A block that reaches every edge — an exported app icon whose rounded
+    ///   corners alone show the canvas behind it. The corner colour is the
+    ///   canvas, and the mark is what remains once the corner regions are
+    ///   erased.
+    ///
+    /// A glyph drawn on a canvas keeps its canvas: the white behind ChatGPT's
+    /// knot is the mark, not padding. Erasing is therefore gated on what the
+    /// canvas surrounds — a solid block or disc for the padded shape, a
+    /// different colour at the centre for the corner shape — and only pixels
+    /// connected to the edge are ever touched, so a white glyph inside the
+    /// block is never reached.
     nonisolated static func canvasRemoved(_ image: UIImage) -> UIImage {
         guard let cgImage = image.cgImage else { return image }
         let width = cgImage.width
@@ -305,12 +314,24 @@ struct SiteIconView: View {
             return image
         }
 
-        // The canvas colour is the ring's colour, provided the ring really is
-        // one colour and not artwork that reaches the edge.
+        func matches(
+            _ red: Int, _ green: Int, _ blue: Int,
+            _ targetRed: Int, _ targetGreen: Int, _ targetBlue: Int,
+            tolerance: Int
+        ) -> Bool {
+            abs(red - targetRed) <= tolerance
+                && abs(green - targetGreen) <= tolerance
+                && abs(blue - targetBlue) <= tolerance
+        }
+
+        // The ring around the image: its average colour is the canvas of the
+        // padded shape, and how uniform it is decides whether there is a ring
+        // to read at all.
         var ringCount = 0
         var ringRed = 0
         var ringGreen = 0
         var ringBlue = 0
+        var ringMatches = 0
         for x in 0..<width {
             for y in [0, height - 1] {
                 let index = (y * width + x) * 4
@@ -330,96 +351,181 @@ struct SiteIconView: View {
             }
         }
         guard ringCount > 0 else { return image }
-        let canvasRed = ringRed / ringCount
-        let canvasGreen = ringGreen / ringCount
-        let canvasBlue = ringBlue / ringCount
-
-        func isCanvas(_ index: Int, tolerance: Int) -> Bool {
-            abs(Int(pixels[index]) - canvasRed) <= tolerance
-                && abs(Int(pixels[index + 1]) - canvasGreen) <= tolerance
-                && abs(Int(pixels[index + 2]) - canvasBlue) <= tolerance
-        }
-
-        var ringMatches = 0
+        let ringAverageRed = ringRed / ringCount
+        let ringAverageGreen = ringGreen / ringCount
+        let ringAverageBlue = ringBlue / ringCount
         for x in 0..<width {
-            for y in [0, height - 1] where isCanvas((y * width + x) * 4, tolerance: 18) {
-                ringMatches += 1
+            for y in [0, height - 1] {
+                let index = (y * width + x) * 4
+                if matches(
+                    Int(pixels[index]), Int(pixels[index + 1]), Int(pixels[index + 2]),
+                    ringAverageRed, ringAverageGreen, ringAverageBlue,
+                    tolerance: 18
+                ) {
+                    ringMatches += 1
+                }
             }
         }
         for y in 1..<(height - 1) {
-            for x in [0, width - 1] where isCanvas((y * width + x) * 4, tolerance: 18) {
-                ringMatches += 1
+            for x in [0, width - 1] {
+                let index = (y * width + x) * 4
+                if matches(
+                    Int(pixels[index]), Int(pixels[index + 1]), Int(pixels[index + 2]),
+                    ringAverageRed, ringAverageGreen, ringAverageBlue,
+                    tolerance: 18
+                ) {
+                    ringMatches += 1
+                }
             }
         }
-        guard ringMatches * 100 >= ringCount * 95 else { return image }
+        let ringIsUniform = ringMatches * 100 >= ringCount * 95
 
-        // The mark's bounds are everything that is not the canvas colour; the
-        // wider tolerance leaves the antialiased seam out of them.
-        var minX = width
-        var minY = height
-        var maxX = -1
-        var maxY = -1
-        for y in 0..<height {
-            for x in 0..<width {
-                guard !isCanvas((y * width + x) * 4, tolerance: 32) else { continue }
-                if x < minX { minX = x }
-                if x > maxX { maxX = x }
-                if y < minY { minY = y }
-                if y > maxY { maxY = y }
+        // The four corners and the centre, for the second shape.
+        let sampleSide = max(1, min(width, height) / 40)
+        func sample(_ originX: Int, _ originY: Int) -> (red: Int, green: Int, blue: Int) {
+            var red = 0
+            var green = 0
+            var blue = 0
+            var count = 0
+            for y in max(0, originY)..<min(height, originY + sampleSide) {
+                for x in max(0, originX)..<min(width, originX + sampleSide) {
+                    let index = (y * width + x) * 4
+                    red += Int(pixels[index])
+                    green += Int(pixels[index + 1])
+                    blue += Int(pixels[index + 2])
+                    count += 1
+                }
             }
+            guard count > 0 else { return (0, 0, 0) }
+            return (red / count, green / count, blue / count)
         }
-        guard maxX >= minX, maxY >= minY else { return image }
+        let topLeft = sample(0, 0)
+        let topRight = sample(width - sampleSide, 0)
+        let bottomLeft = sample(0, height - sampleSide)
+        let bottomRight = sample(width - sampleSide, height - sampleSide)
+        let centre = sample(width / 2 - sampleSide / 2, height / 2 - sampleSide / 2)
+        let cornersAgree = matches(
+            topRight.red, topRight.green, topRight.blue,
+            topLeft.red, topLeft.green, topLeft.blue,
+            tolerance: 18
+        ) && matches(
+            bottomLeft.red, bottomLeft.green, bottomLeft.blue,
+            topLeft.red, topLeft.green, topLeft.blue,
+            tolerance: 18
+        ) && matches(
+            bottomRight.red, bottomRight.green, bottomRight.blue,
+            topLeft.red, topLeft.green, topLeft.blue,
+            tolerance: 18
+        )
+        let centreDiffers = !matches(
+            centre.red, centre.green, centre.blue,
+            topLeft.red, topLeft.green, topLeft.blue,
+            tolerance: 60
+        )
 
-        let contentWidth = maxX - minX + 1
-        let contentHeight = maxY - minY + 1
-        // Only when the canvas is actually padding: a mark that already
-        // reaches both edges has nothing to remove.
-        guard contentWidth < width * 96 / 100 || contentHeight < height * 96 / 100 else {
+        // Which shape this is, and the colour the canvas is.
+        let canvasRed: Int
+        let canvasGreen: Int
+        let canvasBlue: Int
+        let erasesPadding: Bool
+        if ringIsUniform {
+            canvasRed = ringAverageRed
+            canvasGreen = ringAverageGreen
+            canvasBlue = ringAverageBlue
+            erasesPadding = true
+        } else if cornersAgree && centreDiffers {
+            canvasRed = topLeft.red
+            canvasGreen = topLeft.green
+            canvasBlue = topLeft.blue
+            erasesPadding = false
+        } else {
             return image
         }
 
-        // A glyph leaves the canvas showing between its strokes; a block or a
-        // disc fills its own bounds. Only the latter is the mark, so only the
-        // latter is worth taking out of its canvas.
-        // The share of the block that is clearly not canvas. Counted at a
-        // wide separation so a pale block on a pale canvas is not mistaken
-        // for one: erasing around a block that is itself nearly the canvas
-        // colour would erase the mark.
-        var painted = 0
-        for y in minY...maxY {
-            for x in minX...maxX where !isCanvas((y * width + x) * 4, tolerance: 120) {
-                painted += 1
+        func isCanvas(_ index: Int, tolerance: Int) -> Bool {
+            matches(
+                Int(pixels[index]), Int(pixels[index + 1]), Int(pixels[index + 2]),
+                canvasRed, canvasGreen, canvasBlue,
+                tolerance: tolerance
+            )
+        }
+
+        var seeds: [Int] = []
+        if erasesPadding {
+            // The mark's bounds are everything that is not the canvas colour;
+            // the wider tolerance leaves the antialiased seam out of them.
+            var minX = width
+            var minY = height
+            var maxX = -1
+            var maxY = -1
+            for y in 0..<height {
+                for x in 0..<width {
+                    guard !isCanvas((y * width + x) * 4, tolerance: 32) else { continue }
+                    if x < minX { minX = x }
+                    if x > maxX { maxX = x }
+                    if y < minY { minY = y }
+                    if y > maxY { maxY = y }
+                }
+            }
+            guard maxX >= minX, maxY >= minY else { return image }
+
+            let contentWidth = maxX - minX + 1
+            let contentHeight = maxY - minY + 1
+            // Only when the canvas is actually padding: a mark that already
+            // reaches both edges has nothing to remove.
+            guard contentWidth < width * 96 / 100 || contentHeight < height * 96 / 100 else {
+                return image
+            }
+
+            // The share of the block that is clearly not canvas. Counted at a
+            // wide separation so a pale block on a pale canvas is not mistaken
+            // for one: erasing around a block that is itself nearly the canvas
+            // colour would erase the mark.
+            var painted = 0
+            for y in minY...maxY {
+                for x in minX...maxX where !isCanvas((y * width + x) * 4, tolerance: 120) {
+                    painted += 1
+                }
+            }
+            guard painted * 100 >= contentWidth * contentHeight * 70 else { return image }
+
+            for x in [0, width - 1] {
+                seeds.append(x)
+                seeds.append((height - 1) * width + x)
+            }
+            for y in 1..<(height - 1) {
+                seeds.append(y * width)
+                seeds.append(y * width + width - 1)
+            }
+        } else {
+            // The block reaches the edges; only its corners show the canvas.
+            for y in 0..<3 {
+                for x in 0..<3 {
+                    seeds.append(y * width + x)
+                    seeds.append(y * width + width - 1 - x)
+                    seeds.append((height - 1 - y) * width + x)
+                    seeds.append((height - 1 - y) * width + width - 1 - x)
+                }
             }
         }
-        guard painted * 100 >= contentWidth * contentHeight * 70 else { return image }
 
-        // Erase the canvas, but only the part that touches the border: the
-        // same colour further in — a white glyph, a ring within the block —
-        // is the mark and stays.
+        // Erase the canvas, but only the part that touches the edge or a
+        // corner: the same colour further in — a white glyph, a ring within
+        // the block — is the mark and stays. The tolerance is wide enough to
+        // take the antialiased seam with it, which is what leaves a pale
+        // fringe along a block's rounded edge otherwise.
         var visited = [Bool](repeating: false, count: width * height)
-        var pending: [Int] = []
-        for x in [0, width - 1] {
-            pending.append(x)
-            pending.append((height - 1) * width + x)
-        }
-        for y in 1..<(height - 1) {
-            pending.append(y * width)
-            pending.append(y * width + width - 1)
-        }
+        var pending = seeds
+        var erased = 0
         while let index = pending.popLast() {
             if visited[index] { continue }
             visited[index] = true
-            // A wider tolerance than the bounds test above, because the seam
-            // between canvas and block is a ramp of greys: stopping at the
-            // mid-point of that ramp leaves a pale fringe along the block's
-            // rounded edge, which reads as a white outline at the corners.
-            // Only pixels connected to the border are touched, so a white
-            // glyph inside the block is never reached.
             guard isCanvas(index * 4, tolerance: 90) else { continue }
             pixels[index * 4] = 0
             pixels[index * 4 + 1] = 0
             pixels[index * 4 + 2] = 0
             pixels[index * 4 + 3] = 0
+            erased += 1
             let x = index % width
             let y = index / width
             if x > 0 { pending.append(index - 1) }
@@ -428,9 +534,16 @@ struct SiteIconView: View {
             if y < height - 1 { pending.append(index + width) }
         }
 
-        guard let erased = context.makeImage() else { return image }
+        // A corner shape can only lose its corners; an erase that reached far
+        // past them means the four corners agreed by accident — a photograph
+        // with a flat sky, say — and the picture is left as it was.
+        if !erasesPadding, erased * 100 > width * height * 35 {
+            return image
+        }
+
+        guard let erasedImage = context.makeImage() else { return image }
         return trimmedToOpaqueBounds(
-            UIImage(cgImage: erased, scale: image.scale, orientation: .up)
+            UIImage(cgImage: erasedImage, scale: image.scale, orientation: .up)
         )
     }
 
