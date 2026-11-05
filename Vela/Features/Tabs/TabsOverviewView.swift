@@ -62,27 +62,15 @@ struct TabsOverviewView: View {
     /// has text. The pinned rail and the grid are two views of this one list,
     /// so a search reaches into both.
     ///
-    /// The home tab is the strip's filler rather than a page card: while real
-    /// tabs exist it stays out of the grid unless the user is looking at it.
-    /// The active home card is the surface being left behind; when no real
-    /// tabs remain it is the one card a closing action leaves behind.
+    /// The home tab is not one of the cards: it is what the browser shows once
+    /// every page is gone. While any page tab exists it stays out of the grid
+    /// — including when the user is looking at it — so 主页 appears in the
+    /// strip only after the last page has been closed, which is also the
+    /// moment it is the one card left behind.
     private var visibleTabs: [BrowserTabState] {
         let tabs = showPrivateTabs ? tabManager.privateTabs : tabManager.regularTabs
         let realTabs = tabs.filter { !$0.isHome }
-        // The home tab is the strip's filler rather than a page card, so it
-        // stays out of the grid while other pages exist — except when the user
-        // is looking at it. The active home tab is the surface being left
-        // behind, and its card is what makes the overview read as a pull-back
-        // from the start page instead of a jump to a page-only list.
-        let activeHome = tabs.first { $0.isHome && $0.id == tabManager.activeTabId }
-        let listed: [BrowserTabState]
-        if realTabs.isEmpty {
-            listed = tabs
-        } else if let activeHome {
-            listed = [activeHome] + realTabs
-        } else {
-            listed = realTabs
-        }
+        let listed: [BrowserTabState] = realTabs.isEmpty ? tabs : realTabs
         guard !searchQuery.isEmpty else { return listed }
         return listed.filter {
             $0.displayTitle.localizedCaseInsensitiveContains(searchQuery)
@@ -92,17 +80,13 @@ struct TabsOverviewView: View {
 
     /// The count shown beside a mode's name.
     ///
-    /// It matches the cards this screen draws, which includes the active home
-    /// tab's designed card when other pages exist. The toolbar badge keeps
-    /// counting pages only; that badge is about the strip, not this screen.
+    /// It matches the cards this screen draws: the pages, or the single 主页
+    /// card when no page is left. The toolbar badge keeps counting pages only;
+    /// that badge is about the strip, not this screen.
     private func overviewTabCount(_ mode: BrowserSessionPrivacyMode) -> Int {
         let tabs = mode == .private ? tabManager.privateTabs : tabManager.regularTabs
         let realTabs = tabs.filter { !$0.isHome }
-        guard !realTabs.isEmpty else { return tabs.isEmpty ? 0 : 1 }
-        let includesActiveHome = tabs.contains {
-            $0.isHome && $0.id == tabManager.activeTabId
-        }
-        return realTabs.count + (includesActiveHome ? 1 : 0)
+        return realTabs.isEmpty ? (tabs.isEmpty ? 0 : 1) : realTabs.count
     }
 
     private var pinnedTabs: [BrowserTabState] { visibleTabs.filter(\.pinned) }
