@@ -129,6 +129,15 @@ struct WebViewHost: UIViewRepresentable {
         if webView.underPageBackgroundColor != pageColour {
             webView.underPageBackgroundColor = pageColour
         }
+        // The view's own background is the second place white comes from: a
+        // page's composited layer that is transparent in the wrong spot — a
+        // rounded card, an embedded frame, a dialog's backdrop — shows this
+        // colour, and it is white until someone says otherwise. It is also
+        // what the page's colour is for, so a dark page cannot grow a pale
+        // rectangle around an element that never asked for one.
+        if webView.backgroundColor != pageColour {
+            webView.backgroundColor = pageColour
+        }
 
         let scrollView = webView.scrollView
         // WebKit's own inset adjustment is off: the container owns the top,

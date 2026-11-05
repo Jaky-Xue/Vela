@@ -32,9 +32,17 @@ public struct PagePopupWindow: Identifiable {
     /// The web view WebKit asked for. It is created from the configuration
     /// handed to `createWebViewWith`, which is what carries the opener link.
     public let webView: WKWebView
+    /// The size the page asked for in its `window.open` feature string, left
+    /// exactly as asked. The window is drawn at this size — a sign-in window
+    /// is built for 400 by 600, and stretching it across the screen is what
+    /// turned the provider's whole page into one small card in a field of
+    /// empty background. `nil` means the page asked for no particular size,
+    /// which gets the browser's own default window.
+    public let requestedSize: CGSize?
 
-    public init(openerTabId: String, webView: WKWebView) {
+    public init(openerTabId: String, webView: WKWebView, requestedSize: CGSize?) {
         self.openerTabId = openerTabId
         self.webView = webView
+        self.requestedSize = requestedSize
     }
 }

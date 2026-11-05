@@ -41,7 +41,11 @@ extension BrowserWebCoordinator: WKUIDelegate {
         guard Thread.isMainThread else { return nil }
         var window: WKWebView?
         MainActor.assumeIsolated {
-            window = self.makePopupWindow(for: webView, configuration: configuration)
+            window = self.makePopupWindow(
+                for: webView,
+                configuration: configuration,
+                windowFeatures: windowFeatures
+            )
         }
         return window
     }
@@ -55,7 +59,8 @@ extension BrowserWebCoordinator: WKUIDelegate {
     @MainActor
     private func makePopupWindow(
         for opener: WKWebView,
-        configuration: WKWebViewConfiguration
+        configuration: WKWebViewConfiguration,
+        windowFeatures: WKWindowFeatures
     ) -> WKWebView {
         overlays.popupWindow?.webView.stopLoading()
 
@@ -63,14 +68,31 @@ extension BrowserWebCoordinator: WKUIDelegate {
         popup.navigationDelegate = self
         popup.uiDelegate = self
         popup.allowsBackForwardNavigationGestures = true
+        // A window paints its own surface. Leaving the view opaque paints the
+        // white it was born with wherever a composited layer of the page is
+        // transparent — the pale frame a rounded card leaves behind.
+        popup.isOpaque = false
+        popup.backgroundColor = .clear
         // The window belongs to the page's own identity: it was built from the
         // configuration WebKit cloned off the opener, so the store, the
         // scripts and the identifier are already the page's.
         overlays.popupWindow = PagePopupWindow(
             openerTabId: tab(for: opener)?.id ?? "",
-            webView: popup
+            webView: popup,
+            requestedSize: Self.popupSize(from: windowFeatures)
         )
         return popup
+    }
+
+    /// The size a `window.open` feature string asks for, when it asks for one.
+    ///
+    /// `WKWindowFeatures` reports each dimension only when the page named it,
+    /// so a missing one means "the browser's default", not zero.
+    nonisolated static func popupSize(from features: WKWindowFeatures) -> CGSize? {
+        guard let width = features.width?.doubleValue,
+              let height = features.height?.doubleValue,
+              width > 0, height > 0 else { return nil }
+        return CGSize(width: width, height: height)
     }
 
     public nonisolated func webView(
