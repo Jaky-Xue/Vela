@@ -1,0 +1,61 @@
+{
+  "commit": "7a521462750239dcbdd8f2c7a657b21d29c80ef2",
+  "run": "43701260716",
+  "kind": "tests-iPad",
+  "workflow": "https://github.com/Jaky-Xue/Vela/actions/runs/43701260716",
+  "tests": 381,
+  "testExecutions": 381,
+  "retriedTests": [],
+  "failedAttempts": 0,
+  "finalFailures": [],
+  "testGate": "success",
+  "observedConsoleTests": 381,
+  "xcresultSummary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "9F9B4A17-4195-40F0-8B46-728F6A6AA8EB",
+          "deviceName": "iPad Pro 13-inch (M5)",
+          "modelName": "iPad Pro 13-inch (M5)",
+          "osBuildNumber": "23F77",
+          "osVersion": "26.5",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 381,
+        "skippedTests": 0,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "Vela · Built with macOS 26.7.2",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1794736805.247,
+    "passedTests": 381,
+    "result": "Passed",
+    "skippedTests": 0,
+    "startTime": 1794736334.234,
+    "statistics": [
+      {
+        "subtitle": "381 test runs",
+        "title": "1 configuration ran with test repetitions"
+      }
+    ],
+    "testFailures": [],
+    "title": "Test - Vela",
+    "topInsights": [
+      {
+        "category": "Longest Test Runs",
+        "impact": "44% of duration",
+        "text": "7 longest test runs with outlier durations exceeding 4.05s (three standard deviations)"
+      }
+    ],
+    "totalTestCount": 381
+  },
+  "skippedTests": []
+}
