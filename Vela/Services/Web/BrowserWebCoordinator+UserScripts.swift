@@ -23,11 +23,18 @@ extension BrowserWebCoordinator {
               let script = try? userScripts.script(id: scriptId),
               script.updatedAt == userScriptVersions[contextKey],
               let frameURL = message.frameInfo.request.url,
-              UserScriptMatcher.matches(script, url: frameURL),
-              UserScriptNativePolicy.allows(type: type, payload: payload, script: script, origin: frameURL)
+              UserScriptMatcher.matches(script, url: frameURL)
         else { return }
         if let requestId = payload["requestId"] as? String,
            !requestId.hasPrefix(world + "|") { return }
+        guard UserScriptNativePolicy.allows(type: type, payload: payload, script: script, origin: frameURL) else {
+            if let requestId = payload["requestId"] as? String {
+                resolveUserScript(scriptId: scriptId, requestId: requestId,
+                                  payload: ["error": "脚本未获准执行该操作或访问目标域名"],
+                                  in: webView, frame: message.frameInfo)
+            }
+            return
+        }
         // The bootstrap runs in every frame, and each frame keeps its own
         // resolver table. An answer has to go back to the frame that asked:
         // evaluating it in the handful of places below always targeted the

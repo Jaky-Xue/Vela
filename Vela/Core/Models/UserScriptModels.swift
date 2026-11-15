@@ -94,7 +94,12 @@ public enum UserScriptGrant: String, Codable, Sendable, CaseIterable {
     /// failing the install: a script written for a newer manager should still
     /// install, with the unhonoured grant reported.
     public init(token: String) {
-        self = UserScriptGrant(rawValue: token) ?? .unknown
+        if let exact = UserScriptGrant(rawValue: token) { self = exact; return }
+        // Promise API metadata uses GM.getValue / GM.xmlHttpRequest spelling.
+        let normalized = token.lowercased()
+        self = Self.allCases.first {
+            $0.rawValue.replacingOccurrences(of: "GM_", with: "GM.").lowercased() == normalized
+        } ?? .unknown
     }
 
     /// Whether Vela can honour this grant in a `WKWebView`.

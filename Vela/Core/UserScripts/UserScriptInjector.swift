@@ -965,11 +965,17 @@ public enum UserScriptInjector {
 
           // Isolated scripts share the DOM, but never the page global object.
           // Page globals are intentionally unavailable in the isolated runtime.
+          var exposedApi = { GM: {} };
           Object.keys(api).forEach(function (name) {
-            if (name.indexOf('GM_') === 0 && name !== 'GM_info' && GRANTS.indexOf(name) < 0) {
-              delete api[name];
+            if (name === 'GM_info' || GRANTS.indexOf(name) >= 0) { exposedApi[name] = api[name]; }
+          });
+          Object.keys(api.GM).forEach(function (name) {
+            var normalized = ('GM_' + name).toLowerCase();
+            if (name === 'info' || GRANTS.some(function (grant) { return grant.toLowerCase() === normalized; })) {
+              exposedApi.GM[name] = api.GM[name];
             }
           });
+          bridge.api = exposedApi;
 
           // The GM globals are scoped with `with (api)` below instead of
           // being written to `window`. Each script's API closures carry its
@@ -1013,7 +1019,7 @@ public enum UserScriptInjector {
             } catch (_error) {}
           })();
 
-          with (api) {
+          with (exposedApi) {
             // @require dependencies, in declaration order, before the script,
             // then the script itself. All of it waits for the run-at the
             // metadata asked for.
