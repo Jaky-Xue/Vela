@@ -216,16 +216,13 @@ public enum AdBlockRuleCompiler {
                         // does. Flattening it into a global selector — which
                         // is what this used to do — hid lookalike elements on
                         // every unrelated site.
-                        result.rules.append(
-                            ContentBlockerRule(
-                                trigger: ContentBlockerRule.Trigger(
-                                    urlFilter: includeDomains.isEmpty || excludeDomains.isEmpty ? ".*" : domainURLFilter(includeDomains),
-                                    ifDomain: includeDomains.isEmpty || !excludeDomains.isEmpty ? nil : includeDomains,
-                                    unlessDomain: excludeDomains.isEmpty ? nil : excludeDomains
-                                ),
-                                action: .hide(selector: selector)
-                            )
-                        )
+                        let scopes = !includeDomains.isEmpty && !excludeDomains.isEmpty ? includeDomains.map { [$0] } : [includeDomains]
+                        for scope in scopes {
+                            result.rules.append(ContentBlockerRule(trigger: .init(
+                                urlFilter: scope.isEmpty || excludeDomains.isEmpty ? ".*" : domainURLFilter(scope.first),
+                                ifDomain: scope.isEmpty || !excludeDomains.isEmpty ? nil : scope,
+                                unlessDomain: excludeDomains.isEmpty ? nil : excludeDomains), action: .hide(selector: selector)))
+                        }
                     }
                 case .unsupported:
                     result.unsupportedRuleCount += 1
@@ -271,10 +268,10 @@ public enum AdBlockRuleCompiler {
         return result
     }
 
-    private static func domainURLFilter(_ domains: [String]) -> String {
-        guard !domains.isEmpty else { return ".*" }
-        let alternatives = domains.map { NSRegularExpression.escapedPattern(for: String($0.drop(while: { $0 == "*" }))) }.joined(separator: "|")
-        return "^https?://([^/]+\\.)?(" + alternatives + ")[:/]"
+    private static func domainURLFilter(_ domain: String?) -> String {
+        guard let domain else { return ".*" }
+        let escaped = NSRegularExpression.escapedPattern(for: String(domain.drop(while: { $0 == "*" })))
+        return "^https?://([^/]+\\.)?" + escaped + "[:/]"
     }
 
     /// Split a selector into non-overlapping host regions. Exceptions affect only this selector.
@@ -304,7 +301,7 @@ public enum AdBlockRuleCompiler {
             guard scopes.contains(where: { !$0.exception && applies($0, host) }),
                   !scopes.contains(where: { $0.exception && applies($0, host) }) else { return nil }
             let children = domains.filter { $0 != host && parent($0) == host }.map { "*" + $0 }.sorted()
-            return ContentBlockerRule(trigger: .init(urlFilter: domainURLFilter(host.isEmpty ? [] : [host]), unlessDomain: children.isEmpty ? nil : children), action: .hide(selector: selector))
+            return ContentBlockerRule(trigger: .init(urlFilter: domainURLFilter(host.isEmpty ? nil : host), unlessDomain: children.isEmpty ? nil : children), action: .hide(selector: selector))
         }
     }
 
@@ -314,13 +311,13 @@ public enum AdBlockRuleCompiler {
     }
     /// WebKit permits exactly ONE scope condition. Generate a positive URL language
     /// for include-minus-exclude instead of combining mutually exclusive fields.
-    static func domainScopeURLFilter(including included: [String], excluding excluded: [String]) -> String? {
+    static func domainScopeURLFilters(including included: [String], excluding excluded: [String]) -> [String]? {
         func normalized(_ host: String) -> String { String(host.drop(while: { $0 == "*" })).lowercased() }
         let includes = Set(included.map(normalized)), excludes = Set(excluded.map(normalized))
         func within(_ host: String, _ root: String) -> Bool { host == root || host.hasSuffix("." + root) }
         let alphabet = Array("abcdefghijklmnopqrstuvwxyz0123456789_-").map(String.init)
         // A label language excluding a finite set, expressed without lookaround.
-        func otherLabels(_ forbidden: [String]) -> String {
+        func otherLabels(_ forbidden: [String]) -> [String] {
             let trie = DomainTrie()
             for word in forbidden {
                 var node = trie
@@ -338,7 +335,7 @@ public enum AdBlockRuleCompiler {
                 for key in node.children.keys.sorted() { alternatives += visit(node.children[key]!, prefix: prefix + key) }
                 return alternatives
             }
-            return "(" + visit(trie, prefix: "").joined(separator: "|") + ")"
+            return visit(trie, prefix: "")
         }
         var alternatives: [String] = []
         for root in includes.sorted() {
@@ -358,15 +355,16 @@ public enum AdBlockRuleCompiler {
                 guard !node.terminal else { return [] }
                 let escaped = NSRegularExpression.escapedPattern(for: host)
                 if node.children.isEmpty { return ["([a-z0-9_-]+\\.)*" + escaped] }
-                var patterns = [escaped, "([a-z0-9_-]+\\.)*" + otherLabels(Array(node.children.keys)) + "\\." + escaped]
+                var patterns = [escaped]
+                patterns += otherLabels(Array(node.children.keys)).map { "([a-z0-9_-]+\\.)*" + $0 + "\\." + escaped }
                 for key in node.children.keys.sorted() { patterns += visit(node.children[key]!, host: key + "." + host) }
                 return patterns
             }
             alternatives += visit(trie, host: root)
         }
-        guard !alternatives.isEmpty else { return "^$" }
-        let result = "^https?://([^/@]+@)?(" + alternatives.joined(separator: "|") + ")[:/]"
-        guard result.utf8.count <= 32_768, isAcceptable(result) else { return nil }
+        guard !alternatives.isEmpty else { return ["^$"] }
+        let result = alternatives.map { "^https?://([^/@]+@)?" + $0 + "[:/]" }
+        guard result.reduce(0, { $0 + $1.utf8.count }) <= 32_768, result.allSatisfy(isAcceptable) else { return nil }
         return result
     }
 
@@ -510,7 +508,7 @@ public enum AdBlockRuleCompiler {
         }
 
         let mixedScope = !parsedOptions.includeDomains.isEmpty && !parsedOptions.excludeDomains.isEmpty
-        let scopeFilter = mixedScope ? domainScopeURLFilter(including: parsedOptions.includeDomains, excluding: parsedOptions.excludeDomains) : nil
+        let scopeFilter = mixedScope ? domainScopeURLFilters(including: parsedOptions.includeDomains, excluding: parsedOptions.excludeDomains) : nil
         if mixedScope && scopeFilter == nil { return .unsupported }
         let action: ContentBlockerRule.Action = isException
             ? .ignorePreviousRules
@@ -519,7 +517,7 @@ public enum AdBlockRuleCompiler {
         let trigger = ContentBlockerRule.Trigger(
             urlFilter: urlFilter,
             ifDomain: parsedOptions.includeDomains.isEmpty || !parsedOptions.excludeDomains.isEmpty ? nil : parsedOptions.includeDomains,
-            ifTopURL: scopeFilter.map { [$0] },
+            ifTopURL: scopeFilter,
             unlessDomain: mixedScope || parsedOptions.excludeDomains.isEmpty ? nil : parsedOptions.excludeDomains,
             resourceType: parsedOptions.resourceTypes.isEmpty ? nil : parsedOptions.resourceTypes,
             loadType: parsedOptions.loadType,
@@ -752,7 +750,15 @@ public enum AdBlockRuleCompiler {
     ///   that. Since a refusal takes the whole list with it, an unrepresentable
     ///   rule is dropped here and counted as invalid instead.
     static func isAcceptable(_ combined: String) -> Bool {
-        guard (try? NSRegularExpression(pattern: combined)) != nil else { return false }
+        guard combined.allSatisfy(\.isASCII), (try? NSRegularExpression(pattern: combined)) != nil else { return false }
+        var escaped = false, inClass = false
+        for character in combined {
+            if escaped { escaped = false; continue }
+            if character == "\\" { escaped = true; continue }
+            if character == "[" { inClass = true }
+            if character == "]" { inClass = false }
+            if !inClass && (character == "|" || character == "{") { return false }
+        }
         return !containsUnescapedDollar(String(combined.dropLast()))
     }
 

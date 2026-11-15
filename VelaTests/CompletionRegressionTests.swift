@@ -121,9 +121,9 @@ final class CompletionRegressionTests: XCTestCase {
     }
 
     func testMixedDomainLanguageIncludesOnlyAllowedHosts() throws {
-        let source = try XCTUnwrap(AdBlockRuleCompiler.domainScopeURLFilter(including:["*example.com"],excluding:["*shop.example.com","*ads.news.example.com"]))
-        let regex = try NSRegularExpression(pattern:source)
-        func matches(_ url: String) -> Bool { regex.firstMatch(in:url,range:NSRange(url.startIndex..<url.endIndex,in:url)) != nil }
+        let sources = try XCTUnwrap(AdBlockRuleCompiler.domainScopeURLFilters(including:["*example.com"],excluding:["*shop.example.com","*ads.news.example.com"]))
+        let expressions = try sources.map { try NSRegularExpression(pattern: $0) }
+        func matches(_ url: String) -> Bool { expressions.contains { $0.firstMatch(in:url,range:NSRange(url.startIndex..<url.endIndex,in:url)) != nil } }
         for host in ["example.com","a.example.com","shopper.example.com","news.example.com","safe.news.example.com"] { XCTAssertTrue(matches("https://"+host+"/path"),host) }
         for host in ["shop.example.com","x.shop.example.com","ads.news.example.com","x.ads.news.example.com","otherexample.com"] { XCTAssertFalse(matches("https://"+host+"/path"),host) }
     }
