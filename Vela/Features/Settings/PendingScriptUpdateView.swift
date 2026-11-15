@@ -26,6 +26,17 @@ struct PendingScriptUpdateView: View {
         }
     }
 
+    private struct PermissionGroup: Identifiable {
+        var title: String
+        var tokens: [String]
+        var id: String { title }
+    }
+    private func permissionGroups(_ candidate: UserScriptPackageCandidate) -> [PermissionGroup] {
+        let tokens = Array(Set(candidate.grants.map(\.rawValue))).sorted()
+        return Dictionary(grouping: tokens, by: { permissionTitle(UserScriptGrant(token: $0)) })
+            .map { PermissionGroup(title: $0.key, tokens: $0.value) }.sorted { $0.title < $1.title }
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -38,8 +49,10 @@ struct PendingScriptUpdateView: View {
                 }
                 if let candidate {
                     Section("授权能力") {
-                        ForEach(Array(Set(candidate.grants.map(\.rawValue))).sorted(), id: \.self) { token in
-                            DisclosureGroup(permissionTitle(UserScriptGrant(token: token))) { Text(token).font(.footnote.monospaced()) }
+                        ForEach(permissionGroups(candidate)) { group in
+                            DisclosureGroup(group.title) {
+                                ForEach(group.tokens, id: \.self) { Text($0).font(.footnote.monospaced()) }
+                            }
                         }
                         if candidate.grants.contains(where: { !$0.isSupportedByVela }) { Label("含未支持能力", systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
                     }

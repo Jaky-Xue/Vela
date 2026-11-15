@@ -76,12 +76,13 @@ struct FilterSourcesSettingsView: View {
                 Section {
                     SettingsInputRow(title: "订阅名称", prompt: "例如：常用过滤", text: $sourceName)
                     SettingsInputRow(title: "订阅地址", prompt: "https://example.com/filter.txt", text: $sourceURL, keyboard: .URL)
-                }
+                }.disabled(blocker.isCompiling)
+                if blocker.isCompiling { ProgressView("添加中…") }
                 if let message { Section { Text(message).font(.footnote).foregroundStyle(.orange) } }
             }
             .settingsList().navigationTitle("添加订阅").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { showAddSource = false } }
+                ToolbarItem(placement: .cancellationAction) { Button(blocker.isCompiling ? "关闭" : "取消") { showAddSource = false } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("添加") { Task {
                         if await blocker.addSubscription(name: sourceName, url: sourceURL) { showAddSource = false }
@@ -100,15 +101,15 @@ struct FilterSourcesSettingsView: View {
                         TextEditor(text: $customText).scrollContentBackground(.hidden)
                             .font(.system(.body, design: .monospaced)).frame(minHeight: 260)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .accessibilityLabel("自定义过滤规则")
+                            .accessibilityLabel("自定义过滤规则").disabled(blocker.isCompiling)
                     }
                 }
                 if let message { Section { Text(message).font(.footnote).foregroundStyle(.orange) } }
             }
             .settingsList().navigationTitle("自定义规则").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { showRules = false } }
-                ToolbarItem(placement: .confirmationAction) { Button("保存") { Task {
+                ToolbarItem(placement: .cancellationAction) { Button(blocker.isCompiling ? "关闭" : "取消") { showRules = false } }
+                ToolbarItem(placement: .confirmationAction) { Button(blocker.isCompiling ? "保存中" : "保存") { Task {
                     if await blocker.saveCustomRules(customText) { showRules = false } else { message = blocker.lastError }
                 }}.disabled(blocker.isCompiling) }
             }
