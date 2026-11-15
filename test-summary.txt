@@ -1,0 +1,78 @@
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.006 (0.007) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 1.685 (1.801) seconds
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.594 (0.618) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (0.005) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.333 (0.363) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 1.062 (1.064) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.051 (0.052) seconds
+	 Executed 30 tests, with 0 failures (0 unexpected) in 0.240 (0.440) seconds
+	 Executed 19 tests, with 0 failures (0 unexpected) in 0.031 (0.076) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.004 (0.008) seconds
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:148: error: -[VelaTests.CompletionRegressionTests testDiagnosticLineNumbersRetainBlankLines] : XCTAssertEqual failed: ("Optional(2)") is not equal to ("Optional(3)")
+Test Case '-[VelaTests.CompletionRegressionTests testDiagnosticLineNumbersRetainBlankLines]' failed (6.263 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:148: error: -[VelaTests.CompletionRegressionTests testDiagnosticLineNumbersRetainBlankLines] : XCTAssertEqual failed: ("Optional(2)") is not equal to ("Optional(3)")
+Test Case '-[VelaTests.CompletionRegressionTests testDiagnosticLineNumbersRetainBlankLines]' failed (0.018 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:148: error: -[VelaTests.CompletionRegressionTests testDiagnosticLineNumbersRetainBlankLines] : XCTAssertEqual failed: ("Optional(2)") is not equal to ("Optional(3)")
+Test Case '-[VelaTests.CompletionRegressionTests testDiagnosticLineNumbersRetainBlankLines]' failed (0.062 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:180: error: -[VelaTests.CompletionRegressionTests testNetworkChunksArriveBeforeCompletionAndCrossOriginRedirectIsDeclined] : XCTAssertGreaterThan failed: ("0.12228894233703613") is not greater than ("0.15")
+Test Case '-[VelaTests.CompletionRegressionTests testNetworkChunksArriveBeforeCompletionAndCrossOriginRedirectIsDeclined]' failed (3.709 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:143: error: -[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules] : failed: caught error: "Error Domain=WKErrorDomain Code=6 "(null)" UserInfo={NSHelpAnchor=Rule list compilation failed: A trigger cannot have more than one condition (if-domain, unless-domain, if-top-url, or unless-top-url)}"
+Test Case '-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]' failed (0.021 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:143: error: -[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules] : failed: caught error: "Error Domain=WKErrorDomain Code=6 "(null)" UserInfo={NSHelpAnchor=Rule list compilation failed: A trigger cannot have more than one condition (if-domain, unless-domain, if-top-url, or unless-top-url)}"
+Test Case '-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]' failed (0.006 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:143: error: -[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules] : failed: caught error: "Error Domain=WKErrorDomain Code=6 "(null)" UserInfo={NSHelpAnchor=Rule list compilation failed: A trigger cannot have more than one condition (if-domain, unless-domain, if-top-url, or unless-top-url)}"
+Test Case '-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]' failed (0.527 seconds).
+	 Executed 17 tests, with 7 failures (3 unexpected) in 32.429 (32.515) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.009 (0.245) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.004 (0.008) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.723 (0.724) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.253 (0.258) seconds
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.073 (0.153) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.068) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.004 (0.014) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.154 (0.156) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.008 (0.017) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (0.006) seconds
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.323 (0.334) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.032) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.044 (0.047) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.047 (0.051) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.025) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.015 (0.015) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.029 (0.030) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 19.319 (19.322) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 1.158 (1.160) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.149 (1.149) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.079 (0.081) seconds
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.035 (0.126) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.004 (0.055) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.048 (0.377) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.006) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.061 (0.062) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.052) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.014 (0.015) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.034 (0.034) seconds
+	 Executed 29 tests, with 0 failures (0 unexpected) in 1.249 (1.283) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.021 (0.025) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.010 (0.012) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.004 (0.005) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.005 (0.008) seconds
+	 Executed 10 tests, with 0 failures (0 unexpected) in 28.401 (28.406) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.030 (0.070) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.073) seconds
+/Users/runner/work/Vela/Vela/VelaTests/NavigationTestSupport.swift:434: error: -[VelaTests.WebNavigationIntegrationTests testAnUnresolvableHostFailsWithADnsReason] : failed - timed out after 20.0s waiting for: tab to settle (state=requested, loading=true)
+/Users/runner/work/Vela/Vela/VelaTests/WebNavigationIntegrationTests.swift:196: error: -[VelaTests.WebNavigationIntegrationTests testAnUnresolvableHostFailsWithADnsReason] : XCTAssertEqual failed: ("provisional") is not equal to ("failed") - events: 07:56:25.439  #1  start  provisional  https://nonexistent-host.vela-invalid.test/
+/Users/runner/work/Vela/Vela/VelaTests/WebNavigationIntegrationTests.swift:197: error: -[VelaTests.WebNavigationIntegrationTests testAnUnresolvableHostFailsWithADnsReason] : XCTAssertFalse failed
+/Users/runner/work/Vela/Vela/VelaTests/WebNavigationIntegrationTests.swift:198: error: -[VelaTests.WebNavigationIntegrationTests testAnUnresolvableHostFailsWithADnsReason] : XCTAssertEqual failed: ("nil") is not equal to ("Optional(Vela.TabNavigationFailure.Kind.dns)") - error was -/0
+/Users/runner/work/Vela/Vela/VelaTests/WebNavigationIntegrationTests.swift:203: error: -[VelaTests.WebNavigationIntegrationTests testAnUnresolvableHostFailsWithADnsReason] : XCTAssertEqual failed: ("nil") is not equal to ("Optional("找不到该网站")")
+/Users/runner/work/Vela/Vela/VelaTests/WebNavigationIntegrationTests.swift:204: error: -[VelaTests.WebNavigationIntegrationTests testAnUnresolvableHostFailsWithADnsReason] : XCTAssertTrue failed
+Test Case '-[VelaTests.WebNavigationIntegrationTests testAnUnresolvableHostFailsWithADnsReason]' failed (20.146 seconds).
+	 Executed 36 tests, with 6 failures (0 unexpected) in 61.671 (61.690) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.005 (0.007) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.036 (0.037) seconds
+	 Executed 385 tests, with 13 failures (3 unexpected) in 151.486 (153.226) seconds
+	 Executed 385 tests, with 13 failures (3 unexpected) in 151.486 (153.230) seconds
+** TEST FAILED **

@@ -1,0 +1,20 @@
+{
+  "commit": "1d233bf8c280dedb9f9784c7406d5dfe3985ca5e",
+  "run": "43691545079",
+  "kind": "tests-iPad",
+  "workflow": "https://github.com/Jaky-Xue/Vela/actions/runs/43691545079",
+  "tests": 379,
+  "testExecutions": 385,
+  "retriedTests": [
+    "-[VelaTests.CompletionRegressionTests testDiagnosticLineNumbersRetainBlankLines]",
+    "-[VelaTests.CompletionRegressionTests testNetworkChunksArriveBeforeCompletionAndCrossOriginRedirectIsDeclined]",
+    "-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]",
+    "-[VelaTests.WebNavigationIntegrationTests testAnUnresolvableHostFailsWithADnsReason]"
+  ],
+  "failedAttempts": 8,
+  "finalFailures": [
+    "-[VelaTests.CompletionRegressionTests testDiagnosticLineNumbersRetainBlankLines]",
+    "-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]"
+  ],
+  "testGate": "failure"
+}
