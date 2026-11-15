@@ -96,6 +96,8 @@ jobs:
             exit 1
           fi
 
+          python3 Scripts/validate_release_version.py "$APP_PATH/Info.plist"
+
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           # Zip the Payload directory. The .ipa format is exactly this.
