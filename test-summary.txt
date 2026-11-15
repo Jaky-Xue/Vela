@@ -1,0 +1,3 @@
+/Users/runner/work/Vela/Vela/Vela/Core/AdBlock/AdBlockRuleCompiler.swift:167:81: error: ambiguous use of 'init'
+/Users/runner/work/Vela/Vela/Vela/Core/AdBlock/AdBlockRuleCompiler.swift:175:56: error: cannot infer contextual base in reference to member 'whitespaces'
+** TEST FAILED **
