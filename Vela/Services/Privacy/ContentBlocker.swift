@@ -90,7 +90,7 @@ public final class ContentBlocker {
             guard let self else { return }
             do {
                 if self.compiledList == nil,
-                   let cached = try? await self.store.lookUpContentRuleList(forIdentifier: Self.identifier) {
+                   let cached = await self.cachedRuleList() {
                     self.compiledList = cached
                     self.isReady = true
                     self.onChange?()
@@ -113,6 +113,14 @@ public final class ContentBlocker {
             }
             self.isCompiling = false
             self.onChange?()
+        }
+    }
+
+    private func cachedRuleList() async -> WKContentRuleList? {
+        await withCheckedContinuation { continuation in
+            store.lookUpContentRuleList(forIdentifier: Self.identifier) { list, _ in
+                continuation.resume(returning: list)
+            }
         }
     }
 

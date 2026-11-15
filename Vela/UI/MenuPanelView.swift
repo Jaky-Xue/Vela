@@ -18,10 +18,7 @@
 //  Opening 设置 to rearrange the menu was a detour for a control the user was
 //  already looking at.
 //
-//  Page scripts can register menu commands (`GM_registerMenuCommand`), but
-//  they are not drawn here: a handful of script-specific entries between the
-//  tiles and the bottom edge made the panel read as a settings list with a
-//  grid stuck on top.
+//  Current-page script commands are shown beneath the built-in actions.
 //
 
 import SwiftUI

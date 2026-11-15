@@ -74,9 +74,8 @@ public enum UserScriptInjector {
                 WKUserScript(
                     source: wrapper,
                     injectionTime: injectionTime,
-                    // `forMainFrameOnly: false` puts the script in subframes too,
-                    // which is what a userscript manager does by default; the
-                    // `@noframes` guard above is what opts a script out.
+                    // Subframe execution is paused until per-frame matching and
+                    // document identity can be enforced before injection.
                     forMainFrameOnly: true,
                     in: WKContentWorld.world(name: worldsByScriptId[script.id] ?? "org.vela.script.\(script.id)")
                 )
@@ -146,7 +145,7 @@ public enum UserScriptInjector {
             try {
             \(source)
             } catch (requireError) {
-              api.GM_log('@require \(index + 1) 执行出错：' + requireError);
+              console.error('@require \(index + 1) 执行出错：' + requireError);
             }
             """
         }.joined(separator: "\n")
@@ -964,9 +963,7 @@ public enum UserScriptInjector {
           bridge.api = api;
           bridge.values = valueStore;
 
-          // `unsafeWindow` is the page's own window object. In a WKUserScript
-          // the injected world shares the page's globals, so this is an alias
-          // rather than the isolation-bypass it is in Firefox.
+          // Isolated scripts share the DOM, but never the page global object.
           // Page globals are intentionally unavailable in the isolated runtime.
           Object.keys(api).forEach(function (name) {
             if (name.indexOf('GM_') === 0 && name !== 'GM_info' && GRANTS.indexOf(name) < 0) {
@@ -1035,7 +1032,7 @@ public enum UserScriptInjector {
         \(script.source)
                 }).call(window);
               } catch (error) {
-                api.GM_log('脚本执行出错：' + (error && error.message ? error.message : String(error)));
+                console.error('脚本执行出错：' + (error && error.message ? error.message : String(error)));
                 post({
                   type: 'executionError',
                   scriptId: SCRIPT_ID,

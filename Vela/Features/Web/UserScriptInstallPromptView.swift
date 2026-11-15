@@ -4,14 +4,7 @@
 //
 //  The sheet a `*.user.js` link opens.
 //
-//  It confirms the link and installs from that link directly. The earlier
-//  version downloaded the file first to draw a metadata preview, which meant a
-//  large script — or a link that redirected to something bigger than the
-//  preview's own ceiling — could not be installed at all. The link is the
-//  source of truth here: the service downloads it, follows a metadata-only
-//  `@updateURL`/`@downloadURL` file to the script it names, and installs that.
-//  The preview was never the point; installing the script was.
-//
+//  Download and parse first, then install the exact previewed text after confirmation.
 
 import Foundation
 import SwiftUI

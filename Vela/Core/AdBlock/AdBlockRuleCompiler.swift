@@ -359,7 +359,7 @@ public enum AdBlockRuleCompiler {
         }
 
         let parsedOptions = parseOptions(options)
-        if parsedOptions.hasUnsupportedOption {
+        if parsedOptions.hasUnsupportedOption || (!parsedOptions.includeDomains.isEmpty && !parsedOptions.excludeDomains.isEmpty) {
             return .unsupported
         }
 
@@ -480,8 +480,8 @@ public enum AdBlockRuleCompiler {
         }
 
         parsed.resourceTypes = Array(Set(types)).sorted()
-        parsed.includeDomains = Array(Set(include)).sorted()
-        parsed.excludeDomains = Array(Set(exclude)).sorted()
+        parsed.includeDomains = Array(Set(include.map { "*" + $0 })).sorted()
+        parsed.excludeDomains = Array(Set(exclude.map { "*" + $0 })).sorted()
         return parsed
     }
 

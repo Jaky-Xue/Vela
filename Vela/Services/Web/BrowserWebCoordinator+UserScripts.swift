@@ -13,7 +13,7 @@ import WebKit
 
 extension BrowserWebCoordinator {
     func handleUserScriptMessage(_ message: WKScriptMessage, tab: BrowserTabState, webView: WKWebView) {
-        guard let payload = message.body as? [String: Any],
+        guard var payload = message.body as? [String: Any],
               let type = payload["type"] as? String,
               let scriptId = payload["scriptId"] as? String else { return }
         let contextKey = tab.id + "|" + scriptId
@@ -33,6 +33,7 @@ extension BrowserWebCoordinator {
         // evaluating it in the handful of places below always targeted the
         // main frame, so a request a script made inside an iframe was answered
         // into a table that never held it, and the caller waited forever.
+        payload["_world"] = world
         let frame = message.frameInfo
 
         switch type {
@@ -233,8 +234,8 @@ extension BrowserWebCoordinator {
                 try Task.checkCancellation()
             }
             let now = Date()
-            if buffer.count - lastReportedCount >= 512
-                || now.timeIntervalSince(lastReportedAt) >= 0.12 {
+            if reportsProgress && buffer.count - lastReportedCount >= 16_384
+                && now.timeIntervalSince(lastReportedAt) >= 0.12 {
                 lastReportedCount = buffer.count
                 lastReportedAt = now
                 onProgress?(buffer, http)
@@ -356,6 +357,10 @@ extension BrowserWebCoordinator {
                     request.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
                 }
 
+                guard !Task.isCancelled,
+                      self.userScriptWorlds[tab.id + "|" + scriptId] == payload["_world"] as? String,
+                      self.settings.preferences.userScriptsEnabled,
+                      (try? self.userScripts.script(id: scriptId))?.enabled == true else { return }
                 var progress: ((Data, HTTPURLResponse?) -> Void)?
                 if reportsProgress {
                     progress = { [weak self] buffer, response in
@@ -493,6 +498,9 @@ extension BrowserWebCoordinator {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
+            guard self.userScriptWorlds[tab.id + "|" + scriptId] == payload["_world"] as? String,
+                  self.settings.preferences.userScriptsEnabled,
+                  (try? self.userScripts.script(id: scriptId))?.enabled == true else { return }
             switch action {
             case "list":
                 let all = await self.cookies(from: webView.configuration.websiteDataStore, for: origin)
@@ -582,6 +590,7 @@ extension BrowserWebCoordinator {
                     )
                     return
                 }
+                guard self.userScriptWorlds[tab.id + "|" + scriptId] == payload["_world"] as? String else { return }
                 await self.setCookie(cookie, in: store)
                 self.resolveUserScript(
                     scriptId: scriptId,
@@ -613,6 +622,7 @@ extension BrowserWebCoordinator {
                             : host == domain
                         if !hostMatches { continue }
                     }
+                    guard self.userScriptWorlds[tab.id + "|" + scriptId] == payload["_world"] as? String else { return }
                     await self.deleteCookie(cookie, from: store)
                 }
                 self.resolveUserScript(
