@@ -89,10 +89,7 @@ extension BrowserShellView {
     }
 
     var padInk: Color {
-        if let topChromeForegroundIsLight {
-            return topChromeForegroundIsLight ? .black : .white
-        }
-        return colorScheme == .dark ? .white : .black
+        palette.primaryText
     }
 
     /// The unified Safari-style top bar: sidebar, back, address, share, tabs,

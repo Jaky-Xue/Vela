@@ -167,6 +167,7 @@ struct BrowserFloatingChrome: ViewModifier {
         #if compiler(>=6.2)
         if #available(iOS 26.0, *), !reduceTransparency {
             content
+                .background(shape.fill(palette.card.opacity(0.94)))
                 .glassEffect(
                     interactive ? Glass.regular.interactive() : Glass.regular,
                     in: shape
@@ -193,6 +194,7 @@ struct BrowserFloatingChrome: ViewModifier {
                 if reduceTransparency {
                     shape.fill(palette.chromeBackground)
                 } else {
+                    shape.fill(palette.card.opacity(0.94))
                     shape.fill(palette.controlFill.opacity(tintStrength))
                     shape.fill(material)
                 }

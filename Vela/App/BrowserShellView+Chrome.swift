@@ -29,7 +29,7 @@ extension BrowserShellView {
     /// backdrop behind the glass can decide whether its ink is legible, so the
     /// foreground follows the backdrop and not the palette.
     var barForeground: Color {
-        chromeForegroundIsLight ? .black : .white
+        palette.primaryText
     }
 
     /// How far the bar travels when it hides: its own height, the gap under
@@ -478,68 +478,9 @@ extension BrowserShellView {
     /// strip, taken a beat after the load state settles so the sample reads
     /// this document and not the one before it.
     func updateChromeForeground() {
-        guard let tab = activeTab else { return }
+        // Controls own an opaque palette surface, so their ink no longer depends on
+        // a delayed page snapshot. Cancel any sampling left from an older view.
         chromeSampleTask?.cancel()
-        topChromeForegroundIsLight = nil
-
-        if tab.isHome {
-            if let stamp = env.settings.preferences.backgroundImageStamp {
-                let scheme = colorScheme
-                let surface = palette.surface
-                chromeSampleTask = Task {
-                    let image = await Task.detached(priority: .utility) {
-                        BackgroundImageStore.load(stamp: stamp)
-                    }.value
-                    guard !Task.isCancelled else { return }
-                    if let image {
-                        if let backdropIsLight = ChromeBackdrop.bottomStripIsLight(image) {
-                            chromeForegroundIsLight = backdropIsLight
-                        } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
-                            chromeForegroundIsLight = backdropIsLight
-                        }
-
-                        // The top bar sits on the picture's sky, not its tail.
-                        if let topIsLight = ChromeBackdrop.topStripIsLight(image) {
-                            topChromeForegroundIsLight = topIsLight
-                        } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
-                            topChromeForegroundIsLight = backdropIsLight
-                        }
-                    } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
-                        chromeForegroundIsLight = backdropIsLight
-                        topChromeForegroundIsLight = backdropIsLight
-                    }
-                }
-            } else if let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
-                chromeForegroundIsLight = backdropIsLight
-            }
-            return
-        }
-
-        if tab.loadState.isFailure,
-           let backdropIsLight = ChromeBackdrop.surfaceIsLight(palette.surface, scheme: colorScheme) {
-            // The error surface is the shell's own, drawn on the palette
-            // surface — there is no page to sample.
-            chromeForegroundIsLight = backdropIsLight
-            return
-        }
-
-        guard let webView = tabManager.webView(for: tab.id) else { return }
-        let tabId = tab.id
-        let scheme = colorScheme
-        let surface = palette.surface
-        chromeSampleTask = Task {
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            guard !Task.isCancelled, tabManager.activeTabId == tabId else { return }
-
-            if let image = await takeBottomStripSnapshot(webView: webView),
-               let backdropIsLight = ChromeBackdrop.bottomStripIsLight(image) {
-                chromeForegroundIsLight = backdropIsLight
-                return
-            }
-            if let backdropIsLight = ChromeBackdrop.surfaceIsLight(surface, scheme: scheme) {
-                chromeForegroundIsLight = backdropIsLight
-            }
-        }
     }
 
     /// A small print of the web view's bottom strip — the region the command
