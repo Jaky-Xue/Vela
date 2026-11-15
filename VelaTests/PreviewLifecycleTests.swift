@@ -80,4 +80,17 @@ final class PreviewLifecycleTests: XCTestCase {
         await task.value
         XCTAssertNil(harness.tabManager.preview(for: tab.id))
     }
+
+    func testLiveOrdinarySnapshotRespectsDisabledSessionRetention() async throws {
+        let harness = try BrowserHarness()
+        harness.tabManager.persistsSession = false
+        let tab = harness.open(URL(string: "about:blank")!)
+        let print = image()
+        let task = try XCTUnwrap(harness.tabManager.capturePreview(for: tab.id) { _ in print })
+        await task.value
+        XCTAssertNotNil(harness.tabManager.preview(for: tab.id), "live previews remain usable in memory")
+        let base = try XCTUnwrap(FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first)
+        let file = base.appendingPathComponent("Vela/TabPreviews/\(tab.id).jpg")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    }
 }

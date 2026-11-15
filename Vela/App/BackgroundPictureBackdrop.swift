@@ -8,7 +8,7 @@ import WebKit
 ///
 /// The picture is the shell's backdrop rather than a layer inside any one
 /// surface: the home, the top bar and the surfaces around a page all sit on
-/// it, so the chrome samples the picture the user chose.
+/// it. Chrome keeps a separate palette surface for stable text contrast.
 ///
 /// Its frame is set explicitly from the container's size, and the overflow is
 /// clipped. A `scaledToFill` image on its own answers a layout query with the

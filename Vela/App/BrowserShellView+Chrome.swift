@@ -2,8 +2,8 @@
 //  BrowserShellView+Chrome.swift
 //  Vela
 //
-//  The command bar, the floating tools, the tab controls and the chrome ink
-//  sampling. The shell’s state stays in `BrowserShellView`; these are the views
+//  The command bar, floating tools, tab controls and stable palette foreground.
+//  The shell’s state stays in `BrowserShellView`; these are the views
 //  that read it.
 //
 import SwiftUI
@@ -24,10 +24,7 @@ extension BrowserShellView {
     /// where a thumb reaches it and where the system's own toolbars live.
     // MARK: - Chrome ink
 
-    /// The ink the bottom chrome draws in: white over a dark backdrop, black
-    /// over a light one. The palette decides the chrome's fill, but only the
-    /// backdrop behind the glass can decide whether its ink is legible, so the
-    /// foreground follows the backdrop and not the palette.
+    /// Foreground paired with the stable palette surface under the glass.
     var barForeground: Color {
         palette.primaryText
     }

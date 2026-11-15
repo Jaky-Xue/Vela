@@ -180,8 +180,8 @@ extension BrowserShellView {
                         bottomChromeHeight: usesPadLayout
                             ? 0
                             : BrowserChrome.barHeight + BrowserChrome.barGap,
-                        // Behind the page while it bounces; the page itself
-                        // covers the screen, so the bar samples the document.
+                        // Behind the page while it bounces. Chrome keeps its
+                        // own palette surface rather than sampling this color.
                         pageColor: Color(cssColor: tab.pageBackground) ?? palette.surface,
                         // Applied when the view is actually attached: an
                         // off-screen web view has no zoomable geometry.
