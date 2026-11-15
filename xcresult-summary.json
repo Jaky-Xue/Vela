@@ -1,0 +1,47 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "deviceId": "9F9B4A17-4195-40F0-8B46-728F6A6AA8EB",
+        "deviceName": "iPad Pro 13-inch (M5)",
+        "modelName": "iPad Pro 13-inch (M5)",
+        "osBuildNumber": "23F77",
+        "osVersion": "26.5",
+        "platform": "iOS Simulator"
+      },
+      "expectedFailures": 0,
+      "failedTests": 0,
+      "passedTests": 382,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "Vela · Built with macOS 26.7.2",
+  "expectedFailures": 0,
+  "failedTests": 0,
+  "finishTime": 1794738026.254,
+  "passedTests": 382,
+  "result": "Passed",
+  "skippedTests": 0,
+  "startTime": 1794737597.495,
+  "statistics": [
+    {
+      "subtitle": "382 test runs",
+      "title": "1 configuration ran with test repetitions"
+    }
+  ],
+  "testFailures": [],
+  "title": "Test - Vela",
+  "topInsights": [
+    {
+      "category": "Longest Test Runs",
+      "impact": "55% of duration",
+      "text": "9 longest test runs with outlier durations exceeding 6.48s (three standard deviations)"
+    }
+  ],
+  "totalTestCount": 382
+}
