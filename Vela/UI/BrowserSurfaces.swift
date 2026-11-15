@@ -123,7 +123,9 @@ struct SettingsListStyle: ViewModifier {
             .listStyle(.insetGrouped)
             .browserListSurface()
             .tint(palette.accent)
-            .listSectionSpacing(14)
+            .listSectionSpacing(16)
+            .environment(\.defaultMinListRowHeight, 48)
+            .textFieldStyle(.roundedBorder)
     }
 }
 

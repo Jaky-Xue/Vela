@@ -443,6 +443,8 @@ public struct UserScriptSettings: Codable, Equatable, Sendable {
     public var autoUpdateEnabled: Bool
     public var localRules: [String: UserScriptLocalRules]?
     public var drafts: [String: String]?
+    public var pendingUpdates: [String: PendingScriptUpdate]?
+    public var previousVersions: [String: PreviousScriptVersion]?
     public var updatedAt: Date
 
     public init(
@@ -494,6 +496,7 @@ public struct UserScriptMenuCommand: Identifiable, Equatable, Sendable {
 public enum UserScriptUpdateResult: Equatable, Sendable {
     case updated(from: String, to: String)
     case upToDate
+    case pendingConfirmation(String)
     case noUpdateUrl
     case failed(String)
 
@@ -503,6 +506,7 @@ public enum UserScriptUpdateResult: Equatable, Sendable {
             let old = from.isEmpty ? "无版本号" : "v\(from)"
             let new = to.isEmpty ? "无版本号" : "v\(to)"
             return "已从 \(old) 更新到 \(new)；重新载入网页后生效"
+        case let .pendingConfirmation(version): return "待确认更新：" + version
         case .upToDate:
             return "已是最新版本"
         case .noUpdateUrl:

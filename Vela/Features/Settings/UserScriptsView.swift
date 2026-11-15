@@ -297,7 +297,7 @@ struct UserScriptsView: View {
 
                 case .url:
                     Section {
-                        TextField("https://example.com/script.user.js", text: $urlText)
+                        SettingsInputRow(title: "脚本地址", prompt: "https://example.com/script.user.js", text: $urlText, keyboard: .URL)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .keyboardType(.URL)
@@ -510,6 +510,9 @@ struct UserScriptDetailView: View {
     var script: InstalledUserScriptState
 
     @State private var showDeleteConfirm = false
+    @State private var showPendingReview = false
+    @State private var showRollbackConfirm = false
+    @State private var rollbackVersion: PreviousScriptVersion?
     @State private var showEditor = false
     @State private var editedSource = ""
     @State private var isSaving = false
@@ -661,10 +664,15 @@ struct UserScriptDetailView: View {
                 if let updated = current.lastCheckedAt {
                     LabeledContent("最近检查", value: updated.formatted(date: .abbreviated, time: .shortened))
                 }
+                if env.userScripts.pendingUpdate(for: current.id) != nil {
+                    Button("审阅更新", systemImage: "checkmark.shield") { showPendingReview = true }
+                }
+                if let previous = env.userScripts.previousVersion(for: current.id) {
+                    Button("回滚版本", systemImage: "arrow.uturn.backward") { rollbackVersion = previous; showRollbackConfirm = true }
+                    LabeledContent("可用版本", value: previous.version.isEmpty ? "未标注" : previous.version)
+                }
                 if let status = env.userScripts.updateStatus[current.id] {
-                    Text(status)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    DisclosureGroup("更新状态") { Text(status).font(.footnote) }
                 }
                 Button {
                     Task { await checkForUpdate() }
@@ -711,6 +719,13 @@ struct UserScriptDetailView: View {
         }
         .navigationTitle("脚本详情")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showPendingReview) { PendingScriptUpdateView(scriptID: current.id).environment(env) }
+        .alert("回滚版本？", isPresented: $showRollbackConfirm) {
+            Button("取消", role: .cancel) {}
+            Button("确认回滚") { Task {
+                notice = await env.userScripts.restorePreviousVersion(for: current.id, expectedHash: rollbackVersion?.snapshotHash ?? "") ? "已回滚，刷新生效" : (env.userScripts.lastError ?? "回滚失败")
+            } }
+        } message: { Text("恢复到 " + (rollbackVersion?.version ?? "上一版本") + "；保留数据与本地规则。") }
         .sheet(isPresented: $showEditor) {
             editorSheet
         }
@@ -738,7 +753,7 @@ struct UserScriptDetailView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("https://example.com/script.meta.js", text: $updateURLText)
+                    SettingsInputRow(title: "更新地址", prompt: "https://example.com/script.meta.js", text: $updateURLText, keyboard: .URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)

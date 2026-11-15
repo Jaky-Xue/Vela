@@ -43,10 +43,12 @@ public final class UserScriptService {
 
     public let repository: UserScriptRepository
     private let settings: SettingsService
+    private let versionStore: UserScriptVersionStore
 
-    public init(repository: UserScriptRepository, settings: SettingsService) {
+    public init(repository: UserScriptRepository, settings: SettingsService, versionDirectory: URL? = nil) {
         self.repository = repository
         self.settings = settings
+        self.versionStore = UserScriptVersionStore(directory: versionDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Vela/UserScriptVersions", isDirectory: true))
         reload()
     }
 
@@ -126,7 +128,10 @@ public final class UserScriptService {
         settings.updateUserScriptSettings {
             $0.localRules?.removeValue(forKey: id)
             $0.drafts?.removeValue(forKey: id)
+            $0.pendingUpdates?.removeValue(forKey: id)
+            $0.previousVersions?.removeValue(forKey: id)
         }
+        Task { await pruneVersions() }
         updateStatus.removeValue(forKey: id)
         reload()
     }
@@ -161,6 +166,7 @@ public final class UserScriptService {
         sourceUrl: String,
         replacingId: String? = nil
     ) async -> Result<UserScriptInstallOutcome, Error> {
+        guard !isInstalling else { return .failure(UserScriptServiceError.writeFailed("正在安装其他脚本")) }
         isInstalling = true
         defer { isInstalling = false }
         lastError = nil
@@ -226,9 +232,24 @@ public final class UserScriptService {
         }
         script.updatedAt = Date()
 
+        var backup: String?
         do {
+            if let existing {
+                guard let latest = try repository.script(id: existing.id), latest.updatedAt == existing.updatedAt else {
+                    throw UserScriptServiceError.writeFailed("脚本已改变，请重新确认")
+                }
+                backup = try await versionStore.save(latest)
+                guard let current = try repository.script(id: existing.id), current.updatedAt == existing.updatedAt else {
+                    throw UserScriptServiceError.writeFailed("脚本已改变，请重新确认")
+                }
+            }
             try repository.upsert(script)
+            if let backup, let existing { recordPrevious(id: script.id, hash: backup, version: existing.version) }
+            if let backup { await versionStore.release(backup) }
+            await pruneVersions()
         } catch {
+            if let backup { await versionStore.release(backup) }
+            await pruneVersions()
             let failure = UserScriptServiceError.writeFailed(error.localizedDescription)
             lastError = failure.localizedDescription
             return .failure(failure)
@@ -700,9 +721,12 @@ public final class UserScriptService {
                 || (!candidate.updateUrl.isEmpty && candidate.updateUrl != script.updateUrl)
                 || (!candidate.downloadUrl.isEmpty && candidate.downloadUrl != script.downloadUrl)
             if expands {
-                let result = UserScriptUpdateResult.failed("更新改变权限、运行范围、依赖或来源，请通过安装链接预览后确认重新安装；当前版本已保留")
-                updateStatus[script.id] = result.displayName
-                return result
+                do { return try await stageUpdate(candidate, for: script) }
+                catch {
+                    let result = UserScriptUpdateResult.failed(error.localizedDescription)
+                    updateStatus[script.id] = result.displayName
+                    return result
+                }
             }
             var updatedCandidate = candidate
             if updatedCandidate.updateUrl.isEmpty { updatedCandidate.updateUrl = script.updateUrl }
@@ -726,9 +750,21 @@ public final class UserScriptService {
             updated.resources = dependencies.resources
             updated.updatedAt = Date()
 
+            var backup: String?
             do {
+                guard let current = try repository.script(id: script.id), current.updatedAt == script.updatedAt else {
+                    throw UserScriptServiceError.writeFailed("脚本已改变，更新未应用")
+                }
+                backup = try await versionStore.save(current)
+                guard let latest = try repository.script(id: script.id), latest.updatedAt == script.updatedAt else {
+                    throw UserScriptServiceError.writeFailed("脚本已改变，更新未应用")
+                }
                 try repository.upsert(updated)
+                if let backup { recordPrevious(id: script.id, hash: backup, version: current.version); await versionStore.release(backup) }
+                await pruneVersions()
             } catch {
+                if let backup { await versionStore.release(backup) }
+                await pruneVersions()
                 markChecked(script)
                 let result = UserScriptUpdateResult.failed("保存更新失败：\(error.localizedDescription)")
                 updateStatus[script.id] = result.displayName
@@ -753,6 +789,100 @@ public final class UserScriptService {
         let result = UserScriptUpdateResult.upToDate
         updateStatus[script.id] = result.displayName
         return result
+    }
+
+    public func pendingUpdate(for id: String) -> PendingScriptUpdate? { settings.userScriptSettings.pendingUpdates?[id] }
+    public func previousVersion(for id: String) -> PreviousScriptVersion? { settings.userScriptSettings.previousVersions?[id] }
+
+    func stageUpdate(_ candidate: UserScriptPackageCandidate, for script: InstalledUserScriptState) async throws -> UserScriptUpdateResult {
+        guard let current = try repository.script(id: script.id), current.updatedAt == script.updatedAt else {
+            throw UserScriptServiceError.writeFailed("脚本已改变，请重新检查")
+        }
+        let hash = try await versionStore.save(candidate)
+        guard let latest = try repository.script(id: script.id), latest.updatedAt == script.updatedAt else {
+            await versionStore.release(hash); await pruneVersions()
+            throw UserScriptServiceError.writeFailed("脚本已改变，请重新检查")
+        }
+        var changes: [String] = []
+        if Set(candidate.grants.map(\.rawValue)) != Set(script.grants.map(\.rawValue)) { changes.append("授权能力") }
+        if candidate.connectRules != script.connectRules { changes.append("联网范围") }
+        if candidate.matches != script.matches || candidate.includes != script.includes || candidate.excludes != script.excludes || candidate.excludeMatches != script.excludeMatches { changes.append("运行网站") }
+        if candidate.requireUrls != script.requireUrls || candidate.resourceDeclarations != script.resourceDeclarations { changes.append("依赖资源") }
+        if candidate.updateUrl != script.updateUrl || candidate.downloadUrl != script.downloadUrl { changes.append("更新来源") }
+        if candidate.runAt != script.runAt || candidate.noframes != script.noframes { changes.append("执行方式") }
+        let record = PendingScriptUpdate(candidateHash: hash, baseUpdatedAt: latest.updatedAt, fromVersion: latest.version, toVersion: candidate.version, changes: changes)
+        settings.updateUserScriptSettings { var pending = $0.pendingUpdates ?? [:]; pending[script.id] = record; $0.pendingUpdates = pending }
+        await versionStore.release(hash); await pruneVersions()
+        let result = UserScriptUpdateResult.pendingConfirmation(candidate.version)
+        updateStatus[script.id] = result.displayName
+        return result
+    }
+
+    public func pendingCandidate(for id: String, expectedHash: String? = nil) async throws -> UserScriptPackageCandidate {
+        guard let pending = pendingUpdate(for: id) else { throw UserScriptServiceError.parseFailed("没有待确认更新") }
+        guard expectedHash == nil || expectedHash == pending.candidateHash else { throw UserScriptServiceError.parseFailed("更新内容已改变，请重新审阅") }
+        return try await versionStore.load(UserScriptPackageCandidate.self, hash: pending.candidateHash)
+    }
+
+    @discardableResult public func applyPendingUpdate(for id: String, expectedHash: String) async -> Bool {
+        do {
+            guard let pending = pendingUpdate(for: id), pending.candidateHash == expectedHash, let current = try repository.script(id: id), current.updatedAt == pending.baseUpdatedAt else {
+                throw UserScriptServiceError.writeFailed("脚本已改变，请重新检查更新")
+            }
+            let candidate = try await pendingCandidate(for: id, expectedHash: expectedHash)
+            guard pendingUpdate(for: id)?.candidateHash == expectedHash,
+                  let latest = try repository.script(id: id), latest.updatedAt == pending.baseUpdatedAt else { throw UserScriptServiceError.writeFailed("更新内容已改变，请重新审阅") }
+            let document = candidate.metadataBlock + "\n\n" + candidate.source
+            let result = await install(text: document, source: .url, sourceUrl: candidate.sourceUrl, replacingId: id)
+            guard case .success = result else { return false }
+            settings.updateUserScriptSettings { $0.pendingUpdates?.removeValue(forKey: id) }
+            updateStatus[id] = "更新完成"
+            await pruneVersions()
+            return true
+        } catch { lastError = error.localizedDescription; return false }
+    }
+
+    public func dismissPendingUpdate(for id: String) async {
+        settings.updateUserScriptSettings { $0.pendingUpdates?.removeValue(forKey: id) }
+        updateStatus.removeValue(forKey: id)
+        await pruneVersions()
+    }
+
+    @discardableResult public func restorePreviousVersion(for id: String, expectedHash: String) async -> Bool {
+        var backup: String?
+        do {
+            guard !isInstalling, let record = previousVersion(for: id), record.snapshotHash == expectedHash, let current = try repository.script(id: id) else { return false }
+            isInstalling = true
+            defer { isInstalling = false }
+            var restored = try await versionStore.load(InstalledUserScriptState.self, hash: record.snapshotHash)
+            guard restored.id == id else { throw UserScriptServiceError.parseFailed("版本不匹配") }
+            backup = try await versionStore.save(current)
+            guard let latest = try repository.script(id: id), latest.updatedAt == current.updatedAt else { throw UserScriptServiceError.writeFailed("脚本已改变，请重试") }
+            restored.enabled = current.enabled; restored.updatedAt = Date()
+            if let local = settings.userScriptSettings.localRules?[id] { restored = local.applying(to: restored) }
+            try repository.upsert(restored)
+            if let backup { recordPrevious(id: id, hash: backup, version: current.version); await versionStore.release(backup) }
+            settings.updateUserScriptSettings { $0.pendingUpdates?.removeValue(forKey: id) }
+            reload(); updateStatus[id] = "已回滚"
+            await pruneVersions()
+            return true
+        } catch {
+            if let backup { await versionStore.release(backup) }
+            lastError = error.localizedDescription; await pruneVersions(); return false
+        }
+    }
+
+    private func recordPrevious(id: String, hash: String, version: String) {
+        settings.updateUserScriptSettings {
+            var versions = $0.previousVersions ?? [:]
+            versions[id] = PreviousScriptVersion(snapshotHash: hash, version: version)
+            $0.previousVersions = versions
+        }
+    }
+    private func pruneVersions() async {
+        let hashes = Set((settings.userScriptSettings.pendingUpdates ?? [:]).values.map(\.candidateHash)
+            + (settings.userScriptSettings.previousVersions ?? [:]).values.map(\.snapshotHash))
+        await versionStore.prune(keeping: hashes)
     }
 
     /// The update addresses, in the order worth trying.

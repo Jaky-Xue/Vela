@@ -92,21 +92,23 @@ struct MenuPanelView: View {
                 headerRow
                 HStack(spacing: 5) {
                     Image(systemName: "hand.draw")
-                    Text("长按图标拖动排序")
+                    Text("长按拖动")
                 }.font(.caption).foregroundStyle(palette.secondaryText).padding(.horizontal)
                 if !runtimeErrors.isEmpty {
+                    DisclosureGroup("运行异常") {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(runtimeErrors, id: \.self) { error in
                             Label(error, systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption).foregroundStyle(palette.primaryText)
                         }
-                    }.padding(.horizontal)
+                    }
+                    }.font(.caption).padding(.horizontal)
                 }
                 tileGrid
                 if !scriptCommands.isEmpty {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("当前页面脚本命令").font(.headline)
+                            Text("脚本命令").font(.headline)
                             ForEach(scriptCommands) { command in
                                 Button { onRunScriptCommand?(command) } label: {
                                     VStack(alignment: .leading) {
@@ -162,7 +164,7 @@ struct MenuPanelView: View {
 
     private var headerRow: some View {
         HStack(spacing: BrowserSpacing.compact) {
-            Text(pageTitle.isEmpty ? "菜单" : pageTitle)
+            Text("菜单")
                 .font(.system(size: 15, weight: .semibold))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -215,29 +217,29 @@ struct MenuPanelView: View {
                 Image(systemName: symbol)
                     .font(.system(size: 21, weight: .semibold))
                     .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(palette.primaryText)
                     // Capped rather than fixed: a five-column grid on a
                     // 320-point phone gives a cell a little under 54 points,
                     // and a hard 54 would push neighbouring tiles apart.
                     .frame(maxWidth: 54, minHeight: 54, maxHeight: 54)
                     .background(
-                        IconColorStyle.gradient(for: tile.id),
+                        Color.primary.opacity(isModeOn ? 0.14 : 0.055),
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                     )
                     .overlay {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .strokeBorder(
-                                isModeOn ? Color.white : Color.white.opacity(0.22),
+                                palette.primaryText.opacity(isModeOn ? 0.65 : 0.12),
                                 lineWidth: isModeOn ? 2.5 : 0.5
                             )
                             .allowsHitTesting(false)
                     }
 
-                Text(tile.title)
+                Text(tile.menuTitle)
                     .font(.caption.weight(.medium))
-                    .lineLimit(2)
+                    .lineLimit(1)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(isModeOn ? palette.accent : palette.primaryText)
+                    .foregroundStyle(palette.primaryText)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -306,7 +308,7 @@ struct MenuPanelView: View {
                         Image(systemName: tile.symbolName)
                             .font(.system(size: 14, weight: .semibold))
                             .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(palette.accent)
+                            .foregroundStyle(palette.primaryText)
                             .frame(width: 26)
                         Text(tile.title)
                             .foregroundStyle(palette.primaryText)
@@ -348,7 +350,7 @@ struct MenuPanelView: View {
                                     .foregroundStyle(palette.primaryText)
                                 Spacer()
                                 Image(systemName: "plus.circle.fill")
-                                    .foregroundStyle(palette.accent)
+                                    .foregroundStyle(palette.primaryText)
                             }
                         }
                         .buttonStyle(.plain)
@@ -362,7 +364,7 @@ struct MenuPanelView: View {
                         Image(systemName: shortcut.symbolName)
                             .font(.system(size: 14, weight: .medium))
                             .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(palette.accent)
+                            .foregroundStyle(palette.primaryText)
                             .frame(width: 26)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(shortcut.title)
@@ -388,7 +390,7 @@ struct MenuPanelView: View {
                     showingShortcutEditor = true
                 } label: {
                     Label("新建网址快捷方式", systemImage: "link.badge.plus")
-                        .foregroundStyle(palette.accent)
+                        .foregroundStyle(palette.primaryText)
                 }
             }
 
@@ -396,7 +398,7 @@ struct MenuPanelView: View {
                 Button("恢复默认菜单", systemImage: "arrow.counterclockwise") {
                     env.settings.menuLayout = layout.reset()
                 }
-                .foregroundStyle(palette.accent)
+                .foregroundStyle(palette.primaryText)
             }
         }
         .listStyle(.plain)

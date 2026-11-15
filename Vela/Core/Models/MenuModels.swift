@@ -48,20 +48,20 @@ enum VelaMenuAction: String, CaseIterable, Identifiable, Sendable, Equatable {
         case .findInPage: return "查找网页"
         case .novel: return "小说模式"
         case .bookshelf: return "书架"
-        case .passwords: return "密码与保险箱"
+        case .passwords: return "密码管理"
         case .hideElements: return "隐藏元素"
         case .desktopSite: return "桌面网站"
         case .home: return "主页"
         case .bookmarks: return "书签"
         case .history: return "历史记录"
         case .downloads: return "下载管理"
-        case .saveOfflinePage: return "保存离线页面"
+        case .saveOfflinePage: return "保存离线"
         case .offlinePages: return "离线页面"
         case .scanQRCode: return "扫一扫"
         case .privateTab: return "无痕模式"
         case .reload: return "重新载入"
         case .settings: return "设置"
-        case .leavePrivate: return "离开无痕模式"
+        case .leavePrivate: return "退出无痕"
         }
     }
 
@@ -173,6 +173,8 @@ enum MenuTile: Identifiable, Equatable {
         case let .shortcut(shortcut): return shortcut.symbolName
         }
     }
+
+    var menuTitle: String { String(title.prefix(4)) }
 
     var requiresPage: Bool {
         switch self {

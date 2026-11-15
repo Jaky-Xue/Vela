@@ -19,6 +19,7 @@ struct ContentBlockerSettingsView: View {
     /// page — opening 设置 from the home leaves no host to add — so the list
     /// needs a way in that does not depend on what is behind the sheet.
     @State private var newHost = ""
+    @State private var showAddHost = false
 
     /// The site in front of the settings sheet, as a whitelist candidate.
     private var activeHost: String? {
@@ -42,7 +43,7 @@ struct ContentBlockerSettingsView: View {
             } header: {
                 Text("拦截")
             } footer: {
-                Text("使用内置规则拦截常见广告、统计与跟踪请求，并隐藏页面里的广告位。启动优先恢复有效规则，首次网页请求会等待保护就绪。订阅支持离线缓存；重新编译只影响之后的请求。")
+                Text("过滤广告与跟踪请求。规则变更后刷新网页。")
             }
 
             Section {
@@ -53,7 +54,7 @@ struct ContentBlockerSettingsView: View {
                 LabeledContent("元素隐藏规则", value: "\(blocker.hiddenRuleCount)")
                 LabeledContent("跳过规则", value: "\(blocker.skippedRuleCount)")
                 if blocker.lastError != nil && blocker.isReady {
-                    Text("正在使用上次成功加载的规则").font(.footnote)
+                    Text("使用缓存").font(.footnote)
                 }
                 if let loadedAt = blocker.loadedAt {
                     LabeledContent("上次编译") {
@@ -62,25 +63,23 @@ struct ContentBlockerSettingsView: View {
                     }
                 }
                 if let error = blocker.lastError, !error.isEmpty {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                    DisclosureGroup("错误详情") { Text(error).font(.footnote) }
                 }
                 NavigationLink {
                     FilterSourcesSettingsView()
                 } label: {
-                    Label("过滤来源与自定义规则", systemImage: "line.3.horizontal.decrease.circle")
+                    Label("过滤规则", systemImage: "line.3.horizontal.decrease.circle")
                 }
                 Button {
                     blocker.prepare()
                 } label: {
-                    Label("重新编译规则", systemImage: "arrow.clockwise")
+                    Label("更新规则", systemImage: "arrow.clockwise")
                 }
                 .disabled(blocker.isCompiling)
             } header: {
                 Text("规则")
             } footer: {
-                Text("WebKit 不报告具体拦下了哪些请求，所以这里只显示实际编译进来的规则条数，不编造拦截次数。")
+                Text("显示已加载规则数。")
             }
 
             Section {
@@ -105,41 +104,35 @@ struct ContentBlockerSettingsView: View {
                     }
                 }
 
-                HStack(spacing: BrowserSpacing.compact) {
-                    TextField("输入网站，如 example.com", text: $newHost)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .onSubmit { addEnteredSite() }
-
-                    Button("添加") {
-                        addEnteredSite()
-                    }
-                    .disabled(!canAddEnteredSite)
-                }
-
-                if !newHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   normalizedNewHost == nil {
-                    Text("请输入网站域名，如 example.com。")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
+                Button("添加网站", systemImage: "plus") { newHost = ""; showAddHost = true }
 
                 Button {
                     addActiveSite()
                 } label: {
-                    Label("将当前网站加入白名单", systemImage: "plus.circle")
+                    Label("添加当前网站", systemImage: "plus.circle")
                 }
                 .disabled(activeHost == nil || isWhitelisted(activeHost))
             } header: {
                 Text("不拦截的网站")
             } footer: {
-                Text("白名单暂停此网站的广告与跟踪过滤，包含其子域名。用户手动隐藏的元素独立管理，仍会生效。")
+                Text("包含子域名；手动隐藏单独管理。")
             }
         }
         .navigationTitle("广告拦截")
         .navigationBarTitleDisplayMode(.inline)
         .settingsList()
+        .sheet(isPresented: $showAddHost) {
+            NavigationStack {
+                List {
+                    SettingsInputRow(title: "网站域名", prompt: "example.com", text: $newHost, keyboard: .URL)
+                    if !newHost.isEmpty && normalizedNewHost == nil { Text("域名无效").foregroundStyle(.orange) }
+                }.settingsList().navigationTitle("添加网站").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("取消") { showAddHost = false } }
+                    ToolbarItem(placement: .confirmationAction) { Button("添加") { addEnteredSite(); showAddHost = false }.disabled(!canAddEnteredSite) }
+                }
+            }
+        }
     }
 
     /// The count, or the state that explains why there is no count yet. An

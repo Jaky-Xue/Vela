@@ -201,8 +201,8 @@ struct MenuShortcutEditorView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("名称（如 工作台）", text: $title)
-                    TextField("网址（如 example.com/panel）", text: $url)
+                    SettingsInputRow(title: "名称", prompt: "工作台", text: $title)
+                    SettingsInputRow(title: "网址", prompt: "https://example.com", text: $url, keyboard: .URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
