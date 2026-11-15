@@ -16,6 +16,18 @@ extension BrowserWebCoordinator {
         guard let payload = message.body as? [String: Any],
               let type = payload["type"] as? String,
               let scriptId = payload["scriptId"] as? String else { return }
+        let contextKey = tab.id + "|" + scriptId
+        guard settings.preferences.userScriptsEnabled, tab.privacyMode != .private,
+              message.frameInfo.isMainFrame,
+              let world = userScriptWorlds[contextKey], message.world.name == world,
+              let script = try? userScripts.script(id: scriptId),
+              script.updatedAt == userScriptVersions[contextKey],
+              let frameURL = message.frameInfo.request.url,
+              UserScriptMatcher.matches(script, url: frameURL),
+              UserScriptNativePolicy.allows(type: type, payload: payload, script: script, origin: frameURL)
+        else { return }
+        if let requestId = payload["requestId"] as? String,
+           !requestId.hasPrefix(world + "|") { return }
         // The bootstrap runs in every frame, and each frame keeps its own
         // resolver table. An answer has to go back to the frame that asked:
         // evaluating it in the handful of places below always targeted the
@@ -72,6 +84,7 @@ extension BrowserWebCoordinator {
                 $0.tabId == tab.id && $0.scriptId == scriptId && $0.commandId == commandId
             }
             overlays.userScriptMenuCommands.append(command)
+            userScriptCommandFrames[tab.id + "|" + scriptId + "|" + commandId] = frame
 
         case "unregisterMenuCommand":
             guard let commandId = payload["commandId"] as? String else { return }
@@ -160,14 +173,11 @@ extension BrowserWebCoordinator {
         window.__velaUserScriptBridge && window.__velaUserScriptBridge.resolve &&
         window.__velaUserScriptBridge.resolve(\(jsonLiteral(scriptId)), \(jsonLiteral(requestId)), \(json));
         """
-        guard let frame else {
-            webView.evaluateJavaScript(script, completionHandler: nil)
-            return
-        }
-        webView.evaluateJavaScript(script, in: frame, in: .page) { [weak webView] result in
-            guard case .failure = result, let webView else { return }
-            webView.evaluateJavaScript(script, completionHandler: nil)
-        }
+        guard let frame, let tab = tab(for: webView),
+              settings.preferences.userScriptsEnabled, tab.privacyMode != .private,
+              let world = userScriptWorlds[tab.id + "|" + scriptId],
+              requestId.hasPrefix(world + "|") else { return }
+        webView.evaluateJavaScript(script, in: frame, in: .world(name: world)) { _ in }
     }
 
     /// Reports a streaming request's body so far to the waiting script.
@@ -184,14 +194,11 @@ extension BrowserWebCoordinator {
         window.__velaUserScriptBridge && window.__velaUserScriptBridge.reportProgress &&
         window.__velaUserScriptBridge.reportProgress(\(jsonLiteral(scriptId)), \(jsonLiteral(requestId)), \(json));
         """
-        guard let frame else {
-            webView.evaluateJavaScript(script, completionHandler: nil)
-            return
-        }
-        webView.evaluateJavaScript(script, in: frame, in: .page) { [weak webView] result in
-            guard case .failure = result, let webView else { return }
-            webView.evaluateJavaScript(script, completionHandler: nil)
-        }
+        guard let frame, let tab = tab(for: webView),
+              settings.preferences.userScriptsEnabled, tab.privacyMode != .private,
+              let world = userScriptWorlds[tab.id + "|" + scriptId],
+              requestId.hasPrefix(world + "|") else { return }
+        webView.evaluateJavaScript(script, in: frame, in: .world(name: world)) { _ in }
     }
 
     /// Sends one userscript request. With progress requested the body is
@@ -200,12 +207,19 @@ extension BrowserWebCoordinator {
     private func streamUserScriptRequest(
         _ request: URLRequest,
         reportsProgress: Bool,
-        onProgress: ((Data, HTTPURLResponse?) -> Void)?
+        onProgress: ((Data, HTTPURLResponse?) -> Void)?,
+        script: InstalledUserScriptState, origin: URL
     ) async throws -> (Data, URLResponse) {
-        guard reportsProgress, let onProgress else {
-            return try await URLSession.shared.data(for: request)
-        }
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCredentialStorage = nil
+        configuration.urlCache = nil
+        let session = URLSession(configuration: configuration,
+                                 delegate: UserScriptRedirectPolicy(script: script, origin: origin),
+                                 delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        let (bytes, response) = try await session.bytes(for: request)
         let http = response as? HTTPURLResponse
         var buffer = Data()
         var lastReportedCount = 0
@@ -223,11 +237,11 @@ extension BrowserWebCoordinator {
                 || now.timeIntervalSince(lastReportedAt) >= 0.12 {
                 lastReportedCount = buffer.count
                 lastReportedAt = now
-                onProgress(buffer, http)
+                onProgress?(buffer, http)
                 try Task.checkCancellation()
             }
         }
-        onProgress(buffer, http)
+        onProgress?(buffer, http)
         return (buffer, response)
     }
 
@@ -283,6 +297,8 @@ extension BrowserWebCoordinator {
               let rawURL = payload["url"] as? String,
               let url = URL(string: rawURL) else { return }
 
+        guard let installedScript = try? userScripts.script(id: scriptId),
+              let origin = frame?.request.url else { return }
         let method = (payload["method"] as? String ?? "GET").uppercased()
         let responseType = payload["responseType"] as? String ?? ""
         let anonymous = payload["anonymous"] as? Bool ?? false
@@ -372,7 +388,8 @@ extension BrowserWebCoordinator {
                 let (data, response) = try await streamUserScriptRequest(
                     request,
                     reportsProgress: reportsProgress,
-                    onProgress: progress
+                    onProgress: progress,
+                    script: installedScript, origin: origin
                 )
                 try Task.checkCancellation()
                 if data.count > 24_000_000 {
@@ -451,7 +468,8 @@ extension BrowserWebCoordinator {
                         ? host == domain || host.hasSuffix("." + domain)
                         : host == domain
                     return hostMatches
-                        && path.hasPrefix(cookie.path.isEmpty ? "/" : cookie.path)
+                        && UserScriptNativePolicy.cookiePath(cookie.path, matches: path)
+                        && (cookie.expiresDate.map { $0 > Date() } ?? true)
                         && (!cookie.isSecure || secure)
                 }
                 continuation.resume(returning: matching)
@@ -468,14 +486,16 @@ extension BrowserWebCoordinator {
         guard let scriptId = payload["scriptId"] as? String,
               let requestId = payload["requestId"] as? String,
               let action = payload["action"] as? String else { return }
-        let details = payload["details"] as? [String: Any] ?? [:]
+        var details = payload["details"] as? [String: Any] ?? [:]
+        guard let origin = frame?.request.url else { return }
+        details["url"] = origin.absoluteString
         let store = webView.configuration.websiteDataStore.httpCookieStore
 
         Task { @MainActor [weak self] in
             guard let self else { return }
             switch action {
             case "list":
-                let all = await self.allCookies(from: store)
+                let all = await self.cookies(from: webView.configuration.websiteDataStore, for: origin)
                 let wantedDomain = (details["domain"] as? String)?.lowercased()
                 let wantedURL = (details["url"] as? String).flatMap { URL(string: $0) }
                 let wantedName = details["name"] as? String
@@ -572,7 +592,7 @@ extension BrowserWebCoordinator {
                 )
 
             case "delete":
-                let all = await self.allCookies(from: store)
+                let all = await self.cookies(from: webView.configuration.websiteDataStore, for: origin)
                 let wantedName = details["name"] as? String
                 let wantedDomain = (details["domain"] as? String)?.lowercased()
                 let wantedURL = (details["url"] as? String).flatMap { URL(string: $0) }
@@ -658,7 +678,15 @@ extension BrowserWebCoordinator {
         window.__velaUserScriptBridge.menuCommands[\(jsonLiteral(command.commandId))] &&
         window.__velaUserScriptBridge.menuCommands[\(jsonLiteral(command.commandId))]();
         """
-        target.evaluateJavaScript(script, completionHandler: nil)
+        let key = command.tabId + "|" + command.scriptId
+        guard settings.preferences.userScriptsEnabled,
+              let tab = tab(for: target), tab.privacyMode != .private,
+              let installed = try? userScripts.script(id: command.scriptId), installed.enabled,
+              installed.updatedAt == userScriptVersions[key],
+              let world = userScriptWorlds[key],
+              let frame = userScriptCommandFrames[key + "|" + command.commandId],
+              let url = target.url, UserScriptMatcher.matches(installed, url: url) else { return }
+        target.evaluateJavaScript(script, in: frame, in: .world(name: world)) { _ in }
     }
 
 }

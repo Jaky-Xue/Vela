@@ -40,10 +40,13 @@ struct UserScriptInstallPromptView: View {
     }
 
     @State private var phase: Phase = .ready
+    @State private var previewText: String?
+    @State private var candidate: UserScriptPackageCandidate?
 
     var body: some View {
         NavigationStack {
             content
+                .task { await loadPreview() }
                 .navigationTitle("安装用户脚本")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -84,7 +87,7 @@ struct UserScriptInstallPromptView: View {
                 Text("从链接安装用户脚本")
                     .font(.headline)
                     .foregroundStyle(palette.primaryText)
-                Text("Vela 会下载这个链接并安装其中的脚本，安装后可随时在 设置 ▸ 用户脚本 中查看、编辑或停用。")
+                Text("确认脚本的运行网站和权限后安装。脚本目前在独立运行域中仅运行于主页面；不支持访问网页全局变量、iframe 和 GM_download。")
                     .font(.footnote)
                     .foregroundStyle(palette.secondaryText)
                     .multilineTextAlignment(.center)
@@ -105,14 +108,31 @@ struct UserScriptInstallPromptView: View {
             }
             .padding(.horizontal, 20)
 
+            if let candidate {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(candidate.name + " " + candidate.version).font(.headline)
+                        Text(candidate.description).font(.body)
+                        Text("运行网站：" + (candidate.matches + candidate.includes).joined(separator: "、"))
+                        Text("权限：" + candidate.grants.map(\.rawValue).joined(separator: "、"))
+                        Text("网络目标：" + candidate.connectRules.joined(separator: "、"))
+                        Text("依赖：\(candidate.requireUrls.count)；资源：\(candidate.resourceDeclarations.count)")
+                        let unsupported = candidate.grants.filter { !$0.isSupportedByVela }.map(\.rawValue)
+                        if !unsupported.isEmpty { Text("不支持：" + unsupported.joined(separator: "、")).foregroundStyle(.orange) }
+                    }.font(.footnote).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
+                }
+            } else {
+                ProgressView("正在下载并解析预览…")
+            }
             Button {
                 Task { await install() }
             } label: {
-                Label("安装", systemImage: "arrow.down.circle.fill")
+                Label("确认安装", systemImage: "arrow.down.circle.fill")
                     .font(.system(size: 15, weight: .semibold))
                     .frame(maxWidth: 260, minHeight: 46)
             }
             .buttonStyle(.borderedProminent)
+            .disabled(candidate == nil)
 
             Spacer()
         }
@@ -166,7 +186,7 @@ struct UserScriptInstallPromptView: View {
                 .padding(.horizontal, 28)
             HStack(spacing: BrowserSpacing.regular) {
                 Button("重试") {
-                    Task { await install() }
+                    Task { await loadPreview() }
                 }
                 .buttonStyle(.bordered)
                 Button("关闭") { finish() }
@@ -178,10 +198,21 @@ struct UserScriptInstallPromptView: View {
 
     // MARK: - Install
 
+    private func loadPreview() async {
+        guard previewText == nil else { return }
+        phase = .ready
+        do {
+            let preview = try await env.userScripts.previewFromURL(request.url)
+            previewText = preview.text
+            candidate = preview.candidate
+        } catch { phase = .failed(error.localizedDescription) }
+    }
+
     private func install() async {
         guard !phase.isInstalling else { return }
         phase = .installing
-        let result = await env.userScripts.installFromURL(request.url)
+        guard let previewText else { phase = .failed("请先加载脚本预览"); return }
+        let result = await env.userScripts.install(text: previewText, source: .url, sourceUrl: request.url.absoluteString)
         switch result {
         case let .success(outcome):
             phase = .installed(outcome.script.displayName)

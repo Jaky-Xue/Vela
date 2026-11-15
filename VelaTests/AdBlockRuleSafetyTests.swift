@@ -334,7 +334,7 @@ final class AdBlockRuleSafetyTests: XCTestCase {
         XCTAssertEqual(result.cosmeticSelectors, [".global-ad"])
 
         let hides = result.rules.filter { $0.action.type == "css-display-none" }
-        XCTAssertEqual(hides.count, 2)
+        XCTAssertEqual(hides.count, 3)
 
         let included = hides.first { $0.trigger.ifDomain != nil }
         XCTAssertEqual(included?.trigger.ifDomain, ["*example.com"])

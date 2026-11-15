@@ -50,6 +50,11 @@ struct ContentBlockerSettingsView: View {
                     Text(ruleCountText)
                         .foregroundStyle(palette.secondaryText)
                 }
+                LabeledContent("元素隐藏规则", value: "\(blocker.hiddenRuleCount)")
+                LabeledContent("跳过规则", value: "\(blocker.skippedRuleCount)")
+                if blocker.lastError != nil && blocker.isReady {
+                    Text("正在使用上次成功加载的规则").font(.footnote)
+                }
                 if let loadedAt = blocker.loadedAt {
                     LabeledContent("上次编译") {
                         Text(loadedAt.formatted(date: .omitted, time: .shortened))
@@ -124,7 +129,7 @@ struct ContentBlockerSettingsView: View {
             } header: {
                 Text("不拦截的网站")
             } footer: {
-                Text("白名单里的网站按原样加载，不做任何拦截；匹配包含其子域名。")
+                Text("白名单暂停此网站的广告与跟踪过滤，包含其子域名。用户手动隐藏的元素独立管理，仍会生效。")
             }
         }
         .navigationTitle("广告拦截")

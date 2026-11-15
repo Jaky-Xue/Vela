@@ -42,19 +42,22 @@ public enum UserScriptInjector {
         for scripts: [InstalledUserScriptState],
         url: URL,
         valuesByScriptId: [String: [String: String]],
-        tabId: String = ""
+        tabId: String = "",
+        worldsByScriptId: [String: String] = [:]
     ) -> (scripts: [WKUserScript], summary: UserScriptInjectionSummary) {
         var built: [WKUserScript] = []
         let failed: [String] = []
 
         for script in scripts {
-            guard script.runAt.injectsOnLoad else { continue }
+            guard script.runAt.injectsOnLoad, script.requireSources.count == script.requireUrls.count,
+                  !script.requireSources.contains("") else { continue }
 
             let values = valuesByScriptId[script.id] ?? [:]
             let source = bootstrapSource(
                 for: script,
                 valuesJSON: encodeValues(values),
-                tabId: tabId
+                tabId: tabId,
+                worldName: worldsByScriptId[script.id] ?? "org.vela.script.\(script.id)"
             )
 
             let injectionTime: WKUserScriptInjectionTime =
@@ -74,7 +77,8 @@ public enum UserScriptInjector {
                     // `forMainFrameOnly: false` puts the script in subframes too,
                     // which is what a userscript manager does by default; the
                     // `@noframes` guard above is what opts a script out.
-                    forMainFrameOnly: false
+                    forMainFrameOnly: true,
+                    in: WKContentWorld.world(name: worldsByScriptId[script.id] ?? "org.vela.script.\(script.id)")
                 )
             )
         }
@@ -112,7 +116,8 @@ public enum UserScriptInjector {
     private static func bootstrapSource(
         for script: InstalledUserScriptState,
         valuesJSON: String,
-        tabId: String
+        tabId: String,
+        worldName: String
     ) -> String {
         let supportedGrants = script.grants
             .filter { $0.isSupportedByVela && $0 != .none }
@@ -149,6 +154,7 @@ public enum UserScriptInjector {
         return """
         (function () {
           var SCRIPT_ID = \(jsonString(script.id));
+          var WORLD_NAME = \(jsonString(worldName));
           var TAB_ID = \(jsonString(tabId));
           var SCRIPT_NAME = \(jsonString(script.displayName));
           var SCRIPT_VERSION = \(jsonString(script.version));
@@ -211,7 +217,7 @@ public enum UserScriptInjector {
           }
 
           function newRequestId(prefix) {
-            return prefix + '-' + Date.now().toString(36) + '-' +
+            return WORLD_NAME + '|' + prefix + '-' + Date.now().toString(36) + '-' +
               Math.random().toString(36).slice(2);
           }
 
@@ -961,7 +967,12 @@ public enum UserScriptInjector {
           // `unsafeWindow` is the page's own window object. In a WKUserScript
           // the injected world shares the page's globals, so this is an alias
           // rather than the isolation-bypass it is in Firefox.
-          api.unsafeWindow = window;
+          // Page globals are intentionally unavailable in the isolated runtime.
+          Object.keys(api).forEach(function (name) {
+            if (name.indexOf('GM_') === 0 && name !== 'GM_info' && GRANTS.indexOf(name) < 0) {
+              delete api[name];
+            }
+          });
 
           // The GM globals are scoped with `with (api)` below instead of
           // being written to `window`. Each script's API closures carry its

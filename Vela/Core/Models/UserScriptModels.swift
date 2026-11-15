@@ -115,12 +115,12 @@ public enum UserScriptGrant: String, Codable, Sendable, CaseIterable {
              .gmLog, .gmInfo, .gmNotification, .gmSetClipboard,
              .gmRegisterMenuCommand, .gmUnregisterMenuCommand,
              .gmAddValueChangeListener, .gmRemoveValueChangeListener,
-             .gmXmlhttpRequest, .gmFetch, .gmDownload, .gmOpenInTab,
+             .gmXmlhttpRequest, .gmFetch, .gmOpenInTab,
              .gmGetTab, .gmSaveTab, .gmGetTabs,
              .gmCookie, .gmCookieSet, .gmCookieDelete,
-             .windowOnUrlChange, .unsafeWindow, .unknown:
+             .windowOnUrlChange:
             return true
-        case .gmExGetSearchEngines, .gmExGetAppSearchEngineUrl,
+        case .gmDownload, .unsafeWindow, .unknown, .gmExGetSearchEngines, .gmExGetAppSearchEngineUrl,
              .gmExTTS, .gmExShareTextToApp, .gmExSniffMedia,
              .windowClose, .windowFocus:
             return false

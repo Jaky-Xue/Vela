@@ -56,6 +56,10 @@ public final class BrowserWebCoordinator: NSObject {
     var userScriptXHRTasks: [String: Task<Void, Never>] = [:]
     /// The per-tab object store behind `GM_getTab` / `GM_saveTab` / `GM_getTabs`.
     var userScriptTabStates: [String: String] = [:]
+    /// Fresh isolated world per script and navigation; old documents lose authority.
+    var userScriptWorlds: [String: String] = [:]
+    var userScriptVersions: [String: Date] = [:]
+    var userScriptCommandFrames: [String: WKFrameInfo] = [:]
 
     /// What is known about the navigation each live web view is running.
     ///
@@ -705,6 +709,16 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
+        for (key, world) in userScriptWorlds where key.hasPrefix(tab.id + "|") {
+            controller.removeScriptMessageHandler(forName: UserScriptInjector.messageHandlerName,
+                                                   contentWorld: .world(name: world))
+            userScriptWorlds.removeValue(forKey: key)
+            userScriptVersions.removeValue(forKey: key)
+        }
+        for (key, task) in userScriptXHRTasks where key.hasPrefix(tab.id + "|") {
+            task.cancel()
+            userScriptXHRTasks.removeValue(forKey: key)
+        }
         // User scripts belong to this page, so the match is recomputed here,
         // for this URL, on every navigation.
         if settings.preferences.userScriptsEnabled,
@@ -717,11 +731,22 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                 for script in matching {
                     values[script.id] = (try? userScripts.allValues(scriptId: script.id)) ?? [:]
                 }
+                var worlds: [String: String] = [:]
+                for script in matching {
+                    let key = tab.id + "|" + script.id
+                    let name = "org.vela.script." + UUID().uuidString
+                    worlds[script.id] = name
+                    userScriptWorlds[key] = name
+                    userScriptVersions[key] = script.updatedAt
+                    controller.add(MessageBridge(coordinator: self), contentWorld: .world(name: name),
+                                   name: UserScriptInjector.messageHandlerName)
+                }
                 let built = UserScriptInjector.makeUserScripts(
                     for: matching,
                     url: pageURL,
                     valuesByScriptId: values,
-                    tabId: tab.id
+                    tabId: tab.id,
+                    worldsByScriptId: worlds
                 )
                 for script in built.scripts {
                     controller.addUserScript(script)
@@ -856,6 +881,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // Message handlers. The coordinator is the handler for all of them; the
         // name on the message decides the branch.
         for handler in WebPageScripts.Handler.allCases {
+            guard handler.rawValue != UserScriptInjector.messageHandlerName else { continue }
             controller.add(MessageBridge(coordinator: self), name: handler.rawValue)
         }
 

@@ -129,9 +129,8 @@ public enum UserScriptMatcher {
             if urlHost.isEmpty { return false }
         } else if patternHost.hasPrefix("*.") {
             let suffix = String(patternHost.dropFirst(2))
-            // `*.example.com` matches subdomains but not the bare domain —
-            // that is the Chrome rule and scripts depend on it.
-            guard urlHost.hasSuffix("." + suffix) else { return false }
+            // Chrome wildcard hosts include both the bare domain and subdomains.
+            guard urlHost == suffix || urlHost.hasSuffix("." + suffix) else { return false }
         } else if urlHost != patternHost {
             return false
         }
@@ -177,8 +176,8 @@ public enum UserScriptMatcher {
     /// regex, because a user-supplied pattern must not be able to become a
     /// catastrophic-backtracking regular expression on every navigation.
     static func globMatch(pattern: String, value: String, caseSensitiveHost: Bool = false) -> Bool {
-        let patternChars = Array(pattern.lowercased())
-        let valueChars = Array(value.lowercased())
+        let patternChars = Array(pattern)
+        let valueChars = Array(value)
 
         var patternIndex = 0
         var valueIndex = 0

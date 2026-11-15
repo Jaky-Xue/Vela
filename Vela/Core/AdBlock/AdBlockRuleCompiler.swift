@@ -211,6 +211,23 @@ public enum AdBlockRuleCompiler {
             }
         }
 
+        let cosmeticExceptions = lines.compactMap { raw -> String? in
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard let range = line.range(of: "#@#") else { return nil }
+            return String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        }
+        // Until scoped hide exceptions can be represented exactly, preserve
+        // visibility for that selector on all sites. Never silently over-hide.
+        result.rules.removeAll { rule in
+            rule.action.type == "css-display-none" && cosmeticExceptions.contains(rule.action.selector ?? "")
+        }
+        result.cosmeticSelectors.removeAll { cosmeticExceptions.contains($0) }
+        let globalHides = result.cosmeticSelectors.map {
+            ContentBlockerRule(trigger: .init(urlFilter: ".*"), action: .hide(selector: $0))
+        }
+        let allows = result.rules.filter { $0.action.type == "ignore-previous-rules" }
+        result.rules.removeAll { $0.action.type == "ignore-previous-rules" }
+        result.rules = globalHides + result.rules + allows
         // The user's per-site exceptions go last so they override the list.
         result.rules.append(contentsOf: exceptionRules(for: exceptedHosts))
         return result

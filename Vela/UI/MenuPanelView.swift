@@ -52,12 +52,17 @@ struct MenuPanelView: View {
     var pageTitle: String
     var onPerform: (VelaMenuAction) -> Void
     var onOpenShortcut: (MenuShortcut) -> Void
+    var scriptCommands: [UserScriptMenuCommand] = []
+    var onRunScriptCommand: ((UserScriptMenuCommand) -> Void)? = nil
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// Whether the panel is showing its editor instead of its grid.
     @State private var isEditing = false
     @State private var showingShortcutEditor = false
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 5)
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 120 : 58), spacing: 10)]
+    }
 
     /// The live arrangement. Reading the settings service rather than a value
     /// passed in is what makes an edit repaint the grid behind it.
@@ -67,7 +72,7 @@ struct MenuPanelView: View {
     /// The editor is a list with drag handles and its own sections; the compact
     /// detent is too short to drag in without hunting for the row.
     private var panelDetents: Set<PresentationDetent> {
-        isEditing ? [.medium, .large] : [.height(330), .large]
+        isEditing || !scriptCommands.isEmpty || dynamicTypeSize.isAccessibilitySize ? [.medium, .large] : [.height(330), .large]
     }
 
     var body: some View {
@@ -84,6 +89,21 @@ struct MenuPanelView: View {
             } else {
                 headerRow
                 tileGrid
+                if !scriptCommands.isEmpty {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("当前页面脚本命令").font(.headline)
+                            ForEach(scriptCommands) { command in
+                                Button { onRunScriptCommand?(command) } label: {
+                                    VStack(alignment: .leading) {
+                                        Text(command.name).font(.body)
+                                        Text(command.scriptName).font(.caption).foregroundStyle(palette.secondaryText)
+                                    }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                }
+                            }
+                        }.padding(.horizontal)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity)

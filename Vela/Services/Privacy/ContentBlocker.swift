@@ -32,6 +32,8 @@ public final class ContentBlocker {
     public private(set) var lastError: String?
     public private(set) var loadedAt: Date?
 
+    public private(set) var hiddenRuleCount = 0
+    public private(set) var skippedRuleCount = 0
     private let settings: SettingsService
     private let store: WKContentRuleListStore
     private var compiledList: WKContentRuleList?
@@ -67,7 +69,7 @@ public final class ContentBlocker {
             .map(\.value)
             .joined(separator: "\n")
         let result = AdBlockRuleCompiler.compile(filterList: text)
-        ruleCount = result.rules.count
+        let candidateCount = result.rules.count
 
         guard result.rules.count <= AdBlockCompileResult.webKitRuleLimit else {
             lastError = "规则数量超过 WebKit 上限"
@@ -87,17 +89,26 @@ public final class ContentBlocker {
         Task { [weak self] in
             guard let self else { return }
             do {
+                if self.compiledList == nil,
+                   let cached = try? await self.store.lookUpContentRuleList(forIdentifier: Self.identifier) {
+                    self.compiledList = cached
+                    self.isReady = true
+                    self.onChange?()
+                }
                 let list = try await self.store.compileContentRuleList(
                     forIdentifier: Self.identifier,
                     encodedContentRuleList: encoded
                 )
+                guard let list else { throw NSError(domain: "Vela.ContentBlocker", code: 1) }
                 self.compiledList = list
-                self.isReady = list != nil
-                self.lastError = list == nil ? "WebKit 未返回规则列表" : nil
+                self.isReady = true
+                self.ruleCount = candidateCount
+                self.hiddenRuleCount = result.rules.filter { $0.action.type == "css-display-none" }.count
+                self.skippedRuleCount = result.unsupportedRuleCount + result.invalidRuleCount
+                self.lastError = nil
                 self.loadedAt = Date()
             } catch {
-                self.isReady = false
-                self.compiledList = nil
+                self.isReady = self.compiledList != nil
                 self.lastError = error.localizedDescription
             }
             self.isCompiling = false

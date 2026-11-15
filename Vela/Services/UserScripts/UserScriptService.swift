@@ -200,6 +200,10 @@ public final class UserScriptService {
             if script.updateUrl.isEmpty { script.updateUrl = existing.updateUrl }
             if script.downloadUrl.isEmpty { script.downloadUrl = existing.downloadUrl }
         }
+        if script.requireSources.count != script.requireUrls.count || script.requireSources.contains("") {
+            script.enabled = false
+            warnings.append("依赖不完整，脚本已停用；修复依赖后再启用。")
+        }
         script.updatedAt = Date()
 
         do {
@@ -221,6 +225,19 @@ public final class UserScriptService {
     /// here only guards against a link that serves a video or an archive
     /// rather than a script. A userscript with a large bundled payload is
     /// still a script and is not rejected for its size.
+    public func previewFromURL(_ url: URL) async throws -> (text: String, candidate: UserScriptPackageCandidate) {
+        guard let fetched = await fetch(url.absoluteString, base: nil, limit: 64_000_000),
+              let downloaded = Self.decodeText(fetched.data) else {
+            throw UserScriptServiceError.parseFailed("无法下载脚本预览")
+        }
+        let text = await fullScriptText(downloaded, baseURL: url.absoluteString)
+        let parsed = UserScriptParser.parse(text, installSource: .url, sourceUrl: url.absoluteString)
+        guard parsed.valid, let candidate = parsed.candidate else {
+            throw UserScriptServiceError.parseFailed(parsed.errorMessage)
+        }
+        return (text, candidate)
+    }
+
     public func installFromURL(_ url: URL) async -> Result<UserScriptInstallOutcome, Error> {
         guard let fetched = await fetch(url.absoluteString, base: nil, limit: 64_000_000),
               let text = Self.decodeText(fetched.data) else {
@@ -430,6 +447,7 @@ public final class UserScriptService {
                 sources.append(previous)
                 warnings.append("无法重新下载 @require，沿用上次保存的副本：\(rawURL)")
             } else {
+                sources.append("")
                 warnings.append("无法下载 @require：\(rawURL)")
             }
         }
@@ -612,6 +630,18 @@ public final class UserScriptService {
             || (candidate.version.isEmpty && script.version.isEmpty && candidate.source != script.source)
 
         if newer {
+            let expands = !Set(candidate.grants.map(\.rawValue)).isSubset(of: Set(script.grants.map(\.rawValue)))
+                || !Set(candidate.connectRules).isSubset(of: Set(script.connectRules))
+                || candidate.matches != script.matches || candidate.includes != script.includes
+                || candidate.excludes != script.excludes || candidate.excludeMatches != script.excludeMatches
+                || candidate.requireUrls != script.requireUrls || candidate.resourceDeclarations != script.resourceDeclarations
+                || (!candidate.updateUrl.isEmpty && candidate.updateUrl != script.updateUrl)
+                || (!candidate.downloadUrl.isEmpty && candidate.downloadUrl != script.downloadUrl)
+            if expands {
+                let result = UserScriptUpdateResult.failed("更新改变权限、运行范围、依赖或来源，请通过安装链接预览后确认重新安装；当前版本已保留")
+                updateStatus[script.id] = result.displayName
+                return result
+            }
             var updatedCandidate = candidate
             if updatedCandidate.updateUrl.isEmpty { updatedCandidate.updateUrl = script.updateUrl }
             if updatedCandidate.downloadUrl.isEmpty { updatedCandidate.downloadUrl = script.downloadUrl }

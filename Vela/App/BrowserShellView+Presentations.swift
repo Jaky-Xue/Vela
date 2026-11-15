@@ -110,7 +110,12 @@ extension BrowserShellView {
                 },
                 pageTitle: menuPanelTitle,
                 onPerform: handleMenuAction,
-                onOpenShortcut: handleMenuShortcut
+                onOpenShortcut: handleMenuShortcut,
+                scriptCommands: env.overlays.userScriptMenuCommands.filter { $0.tabId == activeTab?.id },
+                onRunScriptCommand: { command in
+                    env.webCoordinator.runUserScriptMenuCommand(command)
+                    showMenu = false
+                }
             )
             .environment(env)
             .browserAmbientSheet()
