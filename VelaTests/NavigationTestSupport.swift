@@ -293,6 +293,7 @@ enum TestPages {
 @MainActor
 final class BrowserHarness {
     let settings: SettingsService
+    let database: SQLiteDatabase
     let coordinator: BrowserWebCoordinator
     let tabManager: TabManager
     let navigationLog: NavigationLog
@@ -307,6 +308,7 @@ final class BrowserHarness {
         self.settings = settings
 
         let database = try SQLiteDatabase(path: ":memory:")
+        self.database = database
         let history = HistoryService(repository: HistoryRepository(database: database), settings: settings)
         self.history = history
         let downloads = DownloadService(repository: DownloadRepository(database: database), settings: settings)

@@ -60,6 +60,7 @@ public final class BrowserWebCoordinator: NSObject {
     var userScriptWorlds: [String: String] = [:]
     var userScriptVersions: [String: Date] = [:]
     var userScriptCommandFrames: [String: WKFrameInfo] = [:]
+    @ObservationIgnored private let userScriptValueObserver = UserScriptValueObserver()
 
     /// What is known about the navigation each live web view is running.
     ///
@@ -140,6 +141,23 @@ public final class BrowserWebCoordinator: NSObject {
         self.permissionAudit = permissionAudit
         self.navigationLog = navigationLog
         super.init()
+        userScriptValueObserver.token = NotificationCenter.default.addObserver(
+            forName: .velaScriptValueChanged, object: nil, queue: nil
+        ) { [weak self] notification in
+            let repository = notification.object as? UserScriptRepository
+            let scriptId = notification.userInfo?["scriptId"] as? String ?? ""
+            let key = notification.userInfo?["key"] as? String ?? ""
+            let value = notification.userInfo?["value"] as? String ?? ""
+            let origin = notification.userInfo?["origin"] as? String ?? ""
+            let removed = notification.userInfo?["removed"] as? Bool ?? false
+            let reset = notification.userInfo?["reset"] as? Bool ?? false
+            let revision = notification.userInfo?["revision"] as? Int ?? 0
+            Task { @MainActor [weak self] in
+                guard let self, repository === self.userScripts else { return }
+                self.broadcastUserScriptValue(scriptId: scriptId, key: key, value: value,
+                                              origin: origin, removed: removed, reset: reset, revision: revision)
+            }
+        }
     }
 
     public func attach(tabManager: TabManager) {
@@ -719,6 +737,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             task.cancel()
             userScriptXHRTasks.removeValue(forKey: key)
         }
+        overlays.userScriptRuntimeErrors = overlays.userScriptRuntimeErrors.filter { !$0.key.hasPrefix(tab.id + "|") }
         userScriptCommandFrames = userScriptCommandFrames.filter { !$0.key.hasPrefix(tab.id + "|") }
         // User scripts belong to this page, so the match is recomputed here,
         // for this URL, on every navigation.
@@ -729,8 +748,11 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             let matching = UserScriptMatcher.matchingScripts(in: installed, url: pageURL)
             if !matching.isEmpty {
                 var values: [String: [String: String]] = [:]
+                var revisions: [String: Int] = [:]
                 for script in matching {
-                    values[script.id] = (try? userScripts.allValues(scriptId: script.id)) ?? [:]
+                    let snapshot = try? userScripts.storageSnapshot(scriptId: script.id)
+                    values[script.id] = snapshot?.values ?? [:]
+                    revisions[script.id] = snapshot?.revision ?? 0
                 }
                 var worlds: [String: String] = [:]
                 for script in matching {
@@ -747,7 +769,8 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                     url: pageURL,
                     valuesByScriptId: values,
                     tabId: tab.id,
-                    worldsByScriptId: worlds
+                    worldsByScriptId: worlds,
+                    revisionsByScriptId: revisions
                 )
                 for script in built.scripts {
                     controller.addUserScript(script)

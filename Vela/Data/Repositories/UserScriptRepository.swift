@@ -21,6 +21,19 @@ public final class UserScriptRepository: @unchecked Sendable {
     private let cacheLock = NSLock()
     private var enabledCache: [InstalledUserScriptState]?
     private var valuesCache: [String: [String: String]] = [:]
+    private let valueChangeLock = NSRecursiveLock()
+    private var valueRevisions: [String: Int] = [:]
+
+    public func storageSnapshot(scriptId: String) throws -> (values: [String: String], revision: Int) {
+        valueChangeLock.lock(); defer { valueChangeLock.unlock() }
+        return (try allValues(scriptId: scriptId), valueRevisions[scriptId] ?? 0)
+    }
+
+    private func nextValueRevision(_ id: String) -> Int {
+        let next = (valueRevisions[id] ?? 0) + 1
+        valueRevisions[id] = next
+        return next
+    }
 
     public init(database: SQLiteDatabase) {
         self.database = database
@@ -260,7 +273,8 @@ public final class UserScriptRepository: @unchecked Sendable {
     /// Values are
     /// JSON-encoded so a script can round-trip an object, not just a string —
     /// which is what the `GM_setValue(name, object)` overload requires.
-    public func setValue(_ jsonValue: String, key: String, scriptId: String) throws {
+    @discardableResult public func setValue(_ jsonValue: String, key: String, scriptId: String, origin: String? = nil) throws -> Int {
+        valueChangeLock.lock(); defer { valueChangeLock.unlock() }
         try database.execute(
             """
             INSERT OR REPLACE INTO \(BrowserSchema.userScriptValuesTable)
@@ -269,6 +283,10 @@ public final class UserScriptRepository: @unchecked Sendable {
             [.text(scriptId), .text(key), .text(jsonValue), .integer(Date().milliseconds)]
         )
         invalidateValues(scriptId: scriptId)
+        let revision = nextValueRevision(scriptId)
+        NotificationCenter.default.post(name: .velaScriptValueChanged, object: self,
+            userInfo: ["scriptId": scriptId, "key": key, "value": jsonValue, "origin": origin ?? "", "removed": false, "revision": revision])
+        return revision
     }
 
     public func value(key: String, scriptId: String) throws -> String? {
@@ -284,6 +302,7 @@ public final class UserScriptRepository: @unchecked Sendable {
     /// Every stored key for a script, as a JSON object. Backs `GM_listValues`
     /// and the bulk read `GM_getValues` performs.
     public func allValues(scriptId: String) throws -> [String: String] {
+        valueChangeLock.lock(); defer { valueChangeLock.unlock() }
         cacheLock.lock()
         if let cached = valuesCache[scriptId] {
             cacheLock.unlock()
@@ -304,7 +323,8 @@ public final class UserScriptRepository: @unchecked Sendable {
         return values
     }
 
-    public func removeValue(key: String, scriptId: String) throws {
+    @discardableResult public func removeValue(key: String, scriptId: String, origin: String? = nil) throws -> Int {
+        valueChangeLock.lock(); defer { valueChangeLock.unlock() }
         try database.execute(
             """
             DELETE FROM \(BrowserSchema.userScriptValuesTable)
@@ -313,13 +333,20 @@ public final class UserScriptRepository: @unchecked Sendable {
             [.text(scriptId), .text(key)]
         )
         invalidateValues(scriptId: scriptId)
+        let revision = nextValueRevision(scriptId)
+        NotificationCenter.default.post(name: .velaScriptValueChanged, object: self,
+            userInfo: ["scriptId": scriptId, "key": key, "origin": origin ?? "", "removed": true, "revision": revision])
+        return revision
     }
 
     public func removeAllValues(scriptId: String) throws {
+        valueChangeLock.lock(); defer { valueChangeLock.unlock() }
         try database.execute(
             "DELETE FROM \(BrowserSchema.userScriptValuesTable) WHERE script_id = ?",
             [.text(scriptId)]
         )
         invalidateValues(scriptId: scriptId)
+        NotificationCenter.default.post(name: .velaScriptValueChanged, object: self,
+            userInfo: ["scriptId": scriptId, "reset": true, "removed": true, "revision": nextValueRevision(scriptId)])
     }
 }

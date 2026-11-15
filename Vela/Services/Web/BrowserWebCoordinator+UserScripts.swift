@@ -44,14 +44,21 @@ extension BrowserWebCoordinator {
         let frame = message.frameInfo
 
         switch type {
-        case "setValue":
-            guard let key = payload["key"] as? String,
-                  let value = payload["value"] as? String else { return }
-            try? userScripts.setValue(value, key: key, scriptId: scriptId)
-
-        case "deleteValue":
+        case "setValue", "deleteValue":
             guard let key = payload["key"] as? String else { return }
-            try? userScripts.removeValue(key: key, scriptId: scriptId)
+            var response: [String: Any] = ["success": true]
+            do {
+                if type == "setValue" {
+                    guard let value = payload["value"] as? String else { throw FilterError.invalid("GM 值必须能被 JSON 编码") }
+                    response["revision"] = try userScripts.setValue(value, key: key, scriptId: scriptId, origin: world)
+                } else { response["revision"] = try userScripts.removeValue(key: key, scriptId: scriptId, origin: world) }
+            } catch {
+                response = ["error": error.localizedDescription]
+                overlays.userScriptRuntimeErrors[contextKey] = "存储失败：" + error.localizedDescription
+            }
+            if let requestId = payload["requestId"] as? String {
+                resolveUserScript(scriptId: scriptId, requestId: requestId, payload: response, in: webView, frame: frame)
+            }
 
         case "setClipboard":
             guard let text = payload["text"] as? String else { return }
@@ -72,10 +79,8 @@ extension BrowserWebCoordinator {
             }
 
         case "executionError":
-            // Recorded rather than surfaced: a script error is the script
-            // author's problem, and interrupting browsing with it would be
-            // worse than the failure.
-            break
+            let name = script.displayName
+            overlays.userScriptRuntimeErrors[contextKey] = name + "：" + String((payload["message"] as? String ?? "执行失败").prefix(512))
 
         case "registerMenuCommand":
             guard let commandId = payload["commandId"] as? String,
@@ -155,6 +160,23 @@ extension BrowserWebCoordinator {
 
         default:
             break
+        }
+    }
+
+    /// All windows observe writes from the shared repository, then update only
+    /// this script's live, eligible contexts. The sender already updates locally.
+    func broadcastUserScriptValue(scriptId: String, key: String, value: String,
+                                  origin: String, removed: Bool, reset: Bool, revision: Int) {
+        guard settings.preferences.userScriptsEnabled,
+              let installed = try? userScripts.script(id: scriptId), installed.enabled else { return }
+        let suffix = "|" + scriptId
+        for (context, world) in userScriptWorlds where context.hasSuffix(suffix) && world != origin {
+            let tabId = String(context.dropLast(suffix.count))
+            guard let web = webView(for: tabId), let tab = tab(for: web), tab.privacyMode != .private,
+                  installed.updatedAt == userScriptVersions[context],
+                  let url = web.url, UserScriptMatcher.matches(installed, url: url) else { continue }
+            let source = "window.__velaUserScriptBridge && window.__velaUserScriptBridge.applyValue && window.__velaUserScriptBridge.applyValue(\(jsonLiteral(key)), \(jsonLiteral(value)), \(removed ? "true" : "false"), \(reset ? "true" : "false"), \(revision), true);"
+            web.evaluateJavaScript(source, in: nil, in: .world(name: world)) { _ in }
         }
     }
 

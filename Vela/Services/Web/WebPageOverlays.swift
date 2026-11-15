@@ -61,6 +61,7 @@ public final class WebPageOverlays {
     /// `GM_registerMenuCommand`. The menu panel lists them; they are cleared
     /// when the page navigates, because the functions live in that document.
     public var userScriptMenuCommands: [UserScriptMenuCommand] = []
+    public var userScriptRuntimeErrors: [String: String] = [:]
 
     /// `alert` / `confirm` / `prompt` completion handlers.
     ///

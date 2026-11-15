@@ -584,13 +584,7 @@ public final class UserScriptService {
             configuration.urlCredentialStorage = nil
             let session = URLSession(configuration: configuration)
             defer { session.invalidateAndCancel() }
-            let (bytes, response) = try await session.bytes(for: request)
-            guard response.expectedContentLength <= limit else { return nil }
-            var data = Data()
-            for try await byte in bytes {
-                guard data.count < limit else { return nil }
-                data.append(byte)
-            }
+            let (data, response) = try await BoundedHTTPData.load(request, limit: limit, session: session)
             if let http = response as? HTTPURLResponse,
                !(200...299).contains(http.statusCode) {
                 return nil

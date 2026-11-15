@@ -425,6 +425,10 @@ private struct BackgroundStyleSwatch: View {
 
     private var colors: [Color] {
         switch style {
+        case .nightSky: return [Color(velaHex: 0xDDE7FF), Color(velaHex: 0xCBB9EA), Color(velaHex: 0xA8D5DB)]
+        case .pearl: return [Color(velaHex: 0xFFF3DE), Color(velaHex: 0xEBCDDC), Color(velaHex: 0xC9E2DF)]
+        case .forest: return [Color(velaHex: 0xDCEBCD), Color(velaHex: 0x92BFA8), Color(velaHex: 0x4D9278)]
+        case .desert: return [Color(velaHex: 0xF5DFB4), Color(velaHex: 0xDCB49A), Color(velaHex: 0xB9906D)]
         case .solid:
             return [colorScheme == .dark ? .black : .white]
         case .onyx:

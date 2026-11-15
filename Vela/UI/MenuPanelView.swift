@@ -66,11 +66,15 @@ struct MenuPanelView: View {
     /// passed in is what makes an edit repaint the grid behind it.
     private var layout: MenuLayout { env.settings.menuLayout }
     private var tiles: [MenuTile] { layout.visibleTiles }
+    private var runtimeErrors: [String] {
+        guard let id = env.tabManager.activeTab?.id else { return [] }
+        return env.overlays.userScriptRuntimeErrors.filter { $0.key.hasPrefix(id + "|") }.sorted { $0.key < $1.key }.map(\.value)
+    }
 
     /// The editor is a list with drag handles and its own sections; the compact
     /// detent is too short to drag in without hunting for the row.
     private var panelDetents: Set<PresentationDetent> {
-        isEditing || !scriptCommands.isEmpty || dynamicTypeSize.isAccessibilitySize ? [.medium, .large] : [.height(330), .large]
+        isEditing || !scriptCommands.isEmpty || dynamicTypeSize.isAccessibilitySize ? [.medium, .large] : [.height(460), .large]
     }
 
     var body: some View {
@@ -90,6 +94,14 @@ struct MenuPanelView: View {
                     Image(systemName: "hand.draw")
                     Text("长按图标拖动排序")
                 }.font(.caption).foregroundStyle(palette.secondaryText).padding(.horizontal)
+                if !runtimeErrors.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(runtimeErrors, id: \.self) { error in
+                            Label(error, systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption).foregroundStyle(palette.primaryText)
+                        }
+                    }.padding(.horizontal)
+                }
                 tileGrid
                 if !scriptCommands.isEmpty {
                     ScrollView {

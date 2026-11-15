@@ -43,7 +43,8 @@ public enum UserScriptInjector {
         url: URL,
         valuesByScriptId: [String: [String: String]],
         tabId: String = "",
-        worldsByScriptId: [String: String] = [:]
+        worldsByScriptId: [String: String] = [:],
+        revisionsByScriptId: [String: Int] = [:]
     ) -> (scripts: [WKUserScript], summary: UserScriptInjectionSummary) {
         var built: [WKUserScript] = []
         let failed: [String] = []
@@ -57,7 +58,8 @@ public enum UserScriptInjector {
                 for: script,
                 valuesJSON: encodeValues(values),
                 tabId: tabId,
-                worldName: worldsByScriptId[script.id] ?? "org.vela.script.\(script.id)"
+                worldName: worldsByScriptId[script.id] ?? "org.vela.script.\(script.id)",
+                valueRevision: revisionsByScriptId[script.id] ?? 0
             )
 
             let injectionTime: WKUserScriptInjectionTime =
@@ -116,7 +118,8 @@ public enum UserScriptInjector {
         for script: InstalledUserScriptState,
         valuesJSON: String,
         tabId: String,
-        worldName: String
+        worldName: String,
+        valueRevision: Int
     ) -> String {
         let supportedGrants = script.grants
             .filter { $0.isSupportedByVela && $0 != .none }
@@ -174,6 +177,8 @@ public enum UserScriptInjector {
           var WATCH_URL_CHANGE = \(script.grants.contains(.windowOnUrlChange) ? "true" : "false");
 
           var valueStore = \(valuesJSON);
+          var snapshotRevision = \(valueRevision);
+          var keyRevisions = {};
           var valueListeners = {};
 
           // Every script on the page shares this object. Each script has its
@@ -236,11 +241,11 @@ public enum UserScriptInjector {
             return false;
           }
 
-          function notifyListeners(key, oldValue, newValue) {
+          function notifyListeners(key, oldValue, newValue, remote) {
             var listeners = valueListeners[key] || [];
             for (var i = 0; i < listeners.length; i++) {
               try {
-                listeners[i](key, oldValue, newValue, false);
+                listeners[i](key, oldValue, newValue, !!remote);
               } catch (_error) {
               }
             }
@@ -254,6 +259,52 @@ public enum UserScriptInjector {
             } catch (_error) {
               return raw;
             }
+          }
+
+          bridge.applyValue = function (key, raw, removed, reset, revision, remote) {
+            revision = Number(revision || 0);
+            if (reset) {
+              if (revision <= snapshotRevision) { return; }
+              Object.keys(valueStore).forEach(function (name) { bridge.applyValue(name, '', true, false, revision, remote); });
+              snapshotRevision = revision;
+              return;
+            }
+            if (revision <= (keyRevisions[key] || snapshotRevision)) { return; }
+            keyRevisions[key] = revision;
+            var oldValue = parseStoredValue(valueStore[key], undefined);
+            if (removed) { delete valueStore[key]; } else { valueStore[key] = raw; }
+            var newValue = removed ? undefined : parseStoredValue(raw, undefined);
+            if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) { notifyListeners(key, oldValue, newValue, remote); }
+          };
+
+          function asyncWriteValue(type, key, value, optimistic) {
+            return new Promise(function (resolve, reject) {
+              var encoded;
+              try { encoded = JSON.stringify(value); } catch (error) { reject(error); return; }
+              if (type === 'setValue' && typeof encoded !== 'string') { reject(new TypeError('GM value is not JSON serializable')); return; }
+              var requestId = newRequestId('value');
+              key = String(key);
+              var oldRaw = valueStore[key];
+              var oldRevision = keyRevisions[key] || snapshotRevision;
+              var oldValue = parseStoredValue(oldRaw, undefined);
+              if (optimistic) {
+                if (type === 'deleteValue') { delete valueStore[key]; } else { valueStore[key] = encoded; }
+                notifyListeners(key, oldValue, type === 'deleteValue' ? undefined : value, false);
+              }
+              expectResolution(requestId, function (payload) {
+                if (payload.error) {
+                  if (optimistic && (keyRevisions[key] || snapshotRevision) === oldRevision && (type === 'deleteValue' ? typeof valueStore[key] === 'undefined' : valueStore[key] === encoded)) {
+                    if (typeof oldRaw === 'undefined') { delete valueStore[key]; } else { valueStore[key] = oldRaw; }
+                  }
+                  reject(new Error(payload.error)); return;
+                }
+                bridge.applyValue(key, encoded, type === 'deleteValue', false, payload.revision, false);
+                resolve();
+              });
+              if (!post({ type: type, scriptId: SCRIPT_ID, requestId: requestId, key: key, value: encoded })) {
+                delete bridge.resolvers[SCRIPT_ID][requestId]; reject(new Error('GM storage bridge unavailable'));
+              }
+            });
           }
 
           function parseResponseHeaders(raw) {
@@ -358,11 +409,7 @@ public enum UserScriptInjector {
           };
 
           api.GM_setValue = function (key, value) {
-            var oldValue = parseStoredValue(valueStore[key], undefined);
-            var encoded = JSON.stringify(value);
-            valueStore[key] = encoded;
-            post({ type: 'setValue', scriptId: SCRIPT_ID, key: String(key), value: encoded });
-            notifyListeners(String(key), oldValue, value);
+            asyncWriteValue('setValue', key, value, true).catch(function (error) { console.error(error); });
             return value;
           };
 
@@ -375,10 +422,7 @@ public enum UserScriptInjector {
           };
 
           api.GM_deleteValue = function (key) {
-            var oldValue = parseStoredValue(valueStore[key], undefined);
-            delete valueStore[key];
-            post({ type: 'deleteValue', scriptId: SCRIPT_ID, key: String(key) });
-            notifyListeners(String(key), oldValue, undefined);
+            asyncWriteValue('deleteValue', key, undefined, true).catch(function (error) { console.error(error); });
           };
 
           api.GM_deleteValues = function (keys) {
@@ -806,16 +850,16 @@ public enum UserScriptInjector {
               return promiseCall(api.GM_getValues(defaults));
             },
             setValue: function (key, value) {
-              return promiseCall(api.GM_setValue(key, value));
+              return asyncWriteValue('setValue', key, value);
             },
             setValues: function (values) {
-              return promiseCall(api.GM_setValues(values));
+              return Promise.all(Object.keys(values).map(function (key) { return asyncWriteValue('setValue', key, values[key]); }));
             },
             deleteValue: function (key) {
-              return promiseCall(api.GM_deleteValue(key));
+              return asyncWriteValue('deleteValue', key);
             },
             deleteValues: function (keys) {
-              return promiseCall(api.GM_deleteValues(keys));
+              return Promise.all(keys.map(function (key) { return asyncWriteValue('deleteValue', key); }));
             },
             listValues: function () {
               return promiseCall(api.GM_listValues());

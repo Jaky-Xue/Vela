@@ -21,10 +21,10 @@ public final class ContentBlocker {
     private var compiledList: WKContentRuleList?
     private var hasRestoredCache = false
 
-    public init(settings: SettingsService, store: WKContentRuleListStore = WKContentRuleListStore.default(),
+    public init(settings: SettingsService, store: WKContentRuleListStore? = nil,
                 cacheDirectory: URL? = nil, session: URLSession? = nil) {
         self.settings = settings
-        self.store = store
+        self.store = store ?? WKContentRuleListStore.default()
         self.cacheDirectory = cacheDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Vela/Filters", isDirectory: true)
         let configuration = URLSessionConfiguration.ephemeral
@@ -147,7 +147,7 @@ public final class ContentBlocker {
         request.setValue("text/plain", forHTTPHeaderField: "Accept")
         if let etag = original.etag { request.setValue(etag, forHTTPHeaderField: "If-None-Match") }
         if let modified = original.lastModified { request.setValue(modified, forHTTPHeaderField: "If-Modified-Since") }
-        let (bytes, response) = try await session.bytes(for: request)
+        let (data, response) = try await BoundedHTTPData.load(request, limit: FilterValidation.sourceByteLimit, session: session)
         guard let http = response as? HTTPURLResponse, response.url?.scheme == "https" else { throw FilterError.invalid("订阅响应无效") }
         var source = original
         if http.statusCode == 304, let hash = source.cacheHash,
@@ -156,11 +156,6 @@ public final class ContentBlocker {
         }
         guard http.statusCode == 200, response.mimeType?.lowercased() != "text/html",
               response.expectedContentLength <= FilterValidation.sourceByteLimit else { throw FilterError.invalid("订阅状态、类型或大小不符合要求") }
-        var data = Data()
-        for try await byte in bytes {
-            guard data.count < FilterValidation.sourceByteLimit else { throw FilterError.invalid("订阅超过 2 MB 上限") }
-            data.append(byte)
-        }
         guard let text = String(data: data, encoding: .utf8) else { throw FilterError.invalid("订阅须为 UTF-8 文本") }
         try FilterValidation.validate(text)
         let hash = Self.hash(data)
