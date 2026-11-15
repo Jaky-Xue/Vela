@@ -25,6 +25,7 @@ struct SettingsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// A page to open above the root. Any context that names a specific
     /// screen pushes it directly instead of landing the user on a list of
@@ -287,13 +288,8 @@ struct SettingsView: View {
 
     /// One settings row: a themed icon tile, the name, and the value in force.
     ///
-    /// The tile is a solid accent square with the glyph in the palette's
-    /// on-accent ink. A tinted wash behind an accent-coloured glyph — what
-    /// this used to be — is two neighbouring values of the same hue, and at
-    /// 13 points the icon dissolved into its own background. Solid fill and
-    /// inverted ink give the row a clear first mark at a glance, which is
-    /// what a settings index needs, and the soft highlight across the top
-    /// keeps the square from reading as flat.
+    /// Colored glyphs on a quiet tint anchor each group. The palette may
+    /// prefer filled symbols; the menu deliberately remains monochrome.
     ///
     /// The value is the only secondary line. It answers "what is set" — a
     /// palette name, a count, a mode — without the row restating what its
@@ -325,12 +321,17 @@ struct SettingsView: View {
                         .allowsHitTesting(false)
                 }
 
-            Text(title)
-                .foregroundStyle(palette.primaryText)
-
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .foregroundStyle(palette.primaryText)
+                if dynamicTypeSize.isAccessibilitySize && !detail.isEmpty {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(palette.secondaryText)
+                }
+            }
             Spacer(minLength: 8)
-
-            if !detail.isEmpty {
+            if !dynamicTypeSize.isAccessibilitySize && !detail.isEmpty {
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(palette.secondaryText)

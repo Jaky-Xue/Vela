@@ -164,7 +164,7 @@ final class UIAndFilterRegressionTests: XCTestCase {
         let server = try LocalHTTPServer(routes: [
             "/one": .html("<meta name=viewport content=width=device-width><title>阅读 · 测试页面</title><body style='background:#f7faff;color:#20314b;font:24px system-ui;padding:24px'><h1>阅读时刻</h1><p>保持专注，轻松浏览。</p>"),
             "/two": .html("<meta name=viewport content=width=device-width><title>灵感 · 测试页面</title><body style='background:#fff8ef;color:#4e342e;font:24px system-ui;padding:24px'><h1>灵感笔记</h1><p>让好想法留下来。</p>"),
-            "/three": .html("<meta name=viewport content=width=device-width><title>探索 · 测试页面</title><body style='background:#f2fbf5;color:#244235;font:24px system-ui;padding:24px'><h1>发现新意</h1><p>开启下一段旅程。</p>")
+            "/three": .html("<meta name=viewport content=width=device-width><title>探索 · 测试页面</title><body style='background:#f2fbf5;color:#244235;font:24px system-ui;padding:24px'><h1>发现新意</h1><p>开启下一段旅程。</p><div style='position:fixed;left:0;right:0;bottom:0;height:130px;background:linear-gradient(90deg,#efaaa2,#88b5ed,#91d6bd);pointer-events:none'></div>")
         ])
         let base = try await server.start(); defer { server.stop() }
         let env = AppEnvironment(services:AppServices(),windowId:"OverviewQA-"+UUID().uuidString)

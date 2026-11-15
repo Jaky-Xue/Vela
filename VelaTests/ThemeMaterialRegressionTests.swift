@@ -72,6 +72,33 @@ final class ThemeMaterialRegressionTests: XCTestCase {
                 }
             }
         }
+        let jade = try XCTUnwrap(BrowserPalette.all.first { $0.id == "jade" })
+        let largeScreens: [(String, AnyView)] = [
+            ("theme-settings-large", AnyView(NavigationStack { SettingsView() }.environment(env))),
+            ("theme-menu-large", AnyView(MenuPanelView(settings: env.settings, canActOnPage: true,
+                isPrivateMode: false, isPrivateBrowsingOn: false, pageTitle: "菜单",
+                onPerform: { _ in }, onOpenShortcut: { _ in })))
+        ]
+        for (name, view) in largeScreens {
+            let content = view.environment(\.browserPalette, jade)
+                .environment(\.browserBackgroundStyle, BrowserBackgroundStyle.forest)
+                .environment(\.dynamicTypeSize, DynamicTypeSize.accessibility3)
+                .environment(\.accessibilityReduceTransparency, true)
+                .environment(\.accessibilityReduceMotion, true)
+            let controller = UIHostingController(rootView: content)
+            window.overrideUserInterfaceStyle = .light
+            window.rootViewController = controller
+            controller.view.frame = window.bounds
+            controller.view.layoutIfNeeded()
+            try await Task.sleep(nanoseconds: 350_000_000)
+            let format = UIGraphicsImageRendererFormat(); format.scale = 1
+            let image = UIGraphicsImageRenderer(size: window.bounds.size, format: format).image { _ in
+                controller.view.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        }
+
     }
 }
 
