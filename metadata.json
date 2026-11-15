@@ -1,0 +1,30 @@
+{
+  "commit": "0f68a3c9d50da0d0e0cc4ba16e5413951856cdea",
+  "run": "43690304802",
+  "kind": "tests-iPad",
+  "workflow": "https://github.com/Jaky-Xue/Vela/actions/runs/43690304802",
+  "tests": 375,
+  "testExecutions": 391,
+  "retriedTests": [
+    "-[VelaTests.AdBlockContentRuleCompilationTests testAHostScopedCosmeticRuleCompiles]",
+    "-[VelaTests.AdBlockRuleSafetyTests testACosmeticRuleWithBothSidesIsNotFlattened]",
+    "-[VelaTests.AdBlockRuleSafetyTests testADomainScopedCosmeticRuleKeepsItsScope]",
+    "-[VelaTests.AdBlockRuleSafetyTests testTheCompilerRefusesAFilterItCannotRepresent]",
+    "-[VelaTests.BrowserUserAgentTests testAWhitespaceOnlyCustomIdentifierIsNotACustomIdentifier]",
+    "-[VelaTests.CompletionRegressionTests testNetworkChunksArriveBeforeCompletionAndCrossOriginRedirectIsDeclined]",
+    "-[VelaTests.WebNavigationIntegrationTests testClearingTheDesktopIdentifierRestoresThePhoneIdentifier]",
+    "-[VelaTests.WebNavigationIntegrationTests testTheIdentifierIsSafarisOnThisDevice]"
+  ],
+  "failedAttempts": 24,
+  "finalFailures": [
+    "-[VelaTests.AdBlockContentRuleCompilationTests testAHostScopedCosmeticRuleCompiles]",
+    "-[VelaTests.AdBlockRuleSafetyTests testACosmeticRuleWithBothSidesIsNotFlattened]",
+    "-[VelaTests.AdBlockRuleSafetyTests testADomainScopedCosmeticRuleKeepsItsScope]",
+    "-[VelaTests.AdBlockRuleSafetyTests testTheCompilerRefusesAFilterItCannotRepresent]",
+    "-[VelaTests.BrowserUserAgentTests testAWhitespaceOnlyCustomIdentifierIsNotACustomIdentifier]",
+    "-[VelaTests.CompletionRegressionTests testNetworkChunksArriveBeforeCompletionAndCrossOriginRedirectIsDeclined]",
+    "-[VelaTests.WebNavigationIntegrationTests testClearingTheDesktopIdentifierRestoresThePhoneIdentifier]",
+    "-[VelaTests.WebNavigationIntegrationTests testTheIdentifierIsSafarisOnThisDevice]"
+  ],
+  "testGate": "failure"
+}
