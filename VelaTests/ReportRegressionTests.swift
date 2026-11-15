@@ -61,7 +61,11 @@ final class ReportRegressionTests: XCTestCase {
         built.scripts.forEach { config.userContentController.addUserScript($0) }
         let web = WKWebView(frame: .zero, configuration: config)
         await load(web)
-        let isolated = try await web.evaluateJavaScript("window.__ran === true", in: nil, in: .world(name: world))
+        let isolated: Any = try await withCheckedThrowingContinuation { continuation in
+            web.evaluateJavaScript("window.__ran === true", in: nil, in: .world(name: world)) { result in
+                continuation.resume(with: result)
+            }
+        }
         XCTAssertEqual(isolated as? Bool, true)
         let page = try await web.evaluateJavaScript("typeof window.__ran === 'undefined' && typeof window.__velaUserScriptBridge === 'undefined' && !window.webkit?.messageHandlers?.velaUserScript")
         XCTAssertEqual(page as? Bool, true)
