@@ -1,0 +1,70 @@
+import QuartzCore
+import SwiftUI
+import UIKit
+import WebKit
+
+extension BrowserShellView {
+    func resetChromeDrag() {
+        chromeDragOffset = 0
+        chromeLiftOffset = 0
+        chromeHomeArmed = false
+    }
+
+    // MARK: - Scrolling
+
+    /// Collapses the chrome as the page scrolls down and restores it when the
+    /// user turns back.
+    ///
+    /// The decision itself lives in `ShellScrollTracker.consume`, where both
+    /// sides are thresholds on travel: a deliberate downward distance to hide,
+    /// and an upward reversal that holds for a couple of frames to show. The
+    /// asymmetry still favours the return — getting the controls back is the
+    /// user's intent far more often than hiding them again — but "upward" has
+    /// to mean the user, not the page: bounce and scroll anchoring are what
+    /// used to flip the bar back and forth on busy pages.
+    func handleScroll(offset: Double) {
+        // An open omnibox or an active find pins the chrome: the user is
+        // working in it, and sliding it away mid-sentence would be hostile.
+        // The offset is still tracked while pinned — the search page can move
+        // the page under it, and a stale reading here would make the first
+        // scroll after closing it jump by that distance.
+        guard !omnibox.isEditing, !showFindBar else {
+            scrollTracker.lastOffset = offset
+            scrollTracker.resetTravel()
+            return
+        }
+
+        switch scrollTracker.consume(offset: offset, now: CACurrentMediaTime()) {
+        case .hide:
+            setChromeHidden(true)
+        case .show:
+            setChromeHidden(false)
+        case .none:
+            break
+        }
+    }
+
+    func setChromeHidden(_ hidden: Bool) {
+        guard chromeHidden != hidden else { return }
+        // Whatever distance was being counted belonged to the state that just
+        // ended; carrying it into the next one would let a few stray points
+        // flip the bar straight back.
+        scrollTracker.resetTravel()
+        if !hidden {
+            // A drag that was interrupted (an edge swipe, a tab switch, a
+            // call banner) never reaches `onEnded`. Leaving its offset behind
+            // parks the bar displaced or fully transparent, which reads as the
+            // bar having gone missing rather than as having come back.
+            chromeDragOffset = 0
+            chromeLiftOffset = 0
+            chromeHomeArmed = false
+            chromeDragIsVertical = false
+            padChromeDragTranslation = 0
+            padChromeHomeArmed = false
+            padChromeHideArmed = false
+        }
+        withAnimation(Self.chromeAnimation) {
+            chromeHidden = hidden
+        }
+    }
+}

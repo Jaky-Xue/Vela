@@ -54,7 +54,7 @@ final class TabCloseCleanupTests: XCTestCase {
         let privateTabs = (0..<2).map { _ in
             harness.tabManager.openTab(url: URL(string: "about:blank")!, privacyMode: .private)
         }
-        let requests = privateTabs.map { _ in Task<Void, Never> { try? await Task.sleep(nanoseconds: 10_000_000_000) } }
+        let requests = privateTabs.map { _ in Task<Void, Never> { try? await Task.sleep(nanoseconds: 10_000_000_000); return () } }
         for (tab, request) in zip(privateTabs, requests) {
             harness.coordinator.userScriptXHRTasks["\(tab.id)|script|request"] = request
             harness.coordinator.userScriptTabStates[tab.id] = "{}"
