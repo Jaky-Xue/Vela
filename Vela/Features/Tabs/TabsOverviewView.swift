@@ -128,7 +128,7 @@ struct TabsOverviewView: View {
         // overflow: `scaledToFill` answers with the size it would like to be,
         // and a background that told its container how big to be is exactly
         // the bug this layer used to be.
-        LinearGradient(colors: [palette.chromeBackground, palette.surface, palette.accent.opacity(0.07)],
+        LinearGradient(colors: [palette.chromeBackground, palette.card, palette.chromeBackground],
                        startPoint: .topLeading, endPoint: .bottomTrailing)
             .ignoresSafeArea()
     }
@@ -387,7 +387,8 @@ struct TabsOverviewView: View {
                         activate(tab)
                     } label: {
                         HStack(spacing: BrowserSpacing.tight) {
-                            if !tab.isHome {
+                            if tab.privacyMode == .private { Image(systemName: "eyeglasses") }
+                            else if !tab.isHome {
                                 SiteIconView(
                                     host: tab.displayHost,
                                     size: 16,
@@ -395,7 +396,7 @@ struct TabsOverviewView: View {
                                     allowsThirdPartyLookup: tab.privacyMode != .private
                                 )
                             }
-                            Text(tab.displayHost.isEmpty ? tab.displayTitle : tab.displayHost)
+                            Text(tab.privacyMode == .private ? "无痕标签" : (tab.displayHost.isEmpty ? tab.displayTitle : tab.displayHost))
                                 .font(.footnote)
                                 .lineLimit(1)
                             Image(systemName: "pin.fill")
@@ -645,7 +646,11 @@ private struct TabCard: View {
     private var cardFace: some View {
         Color.clear
             .aspectRatio(aspect, contentMode: .fit)
-            .overlay { thumbnail }
+            .overlay {
+                GeometryReader { geo in
+                    thumbnail.frame(width: geo.size.width, height: geo.size.height, alignment: .top).clipped()
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 15, style: .continuous)
@@ -736,10 +741,10 @@ private struct TabCard: View {
                 .foregroundStyle(palette.primaryText)
                 .frame(width: 30, height: 30)
                 .background(palette.card, in: Circle())
-                .frame(width: 44, height: 44)
                 .overlay {
                     Circle().strokeBorder(palette.cardStroke, lineWidth: 0.5)
                 }
+                .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)

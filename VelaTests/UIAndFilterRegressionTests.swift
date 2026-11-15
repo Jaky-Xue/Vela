@@ -179,7 +179,10 @@ final class UIAndFilterRegressionTests: XCTestCase {
             try await Task.sleep(nanoseconds:700_000_000)
             let config=WKSnapshotConfiguration();config.snapshotWidth=375
             let image: UIImage? = await withCheckedContinuation { c in web.takeSnapshot(with:config){image,_ in c.resume(returning:image)} }
-            if let image { env.tabManager.storePreview(image,for:tab.id) }
+            if let image {
+                env.tabManager.storePreview(image,for:tab.id)
+                let original = XCTAttachment(image:image); original.name = "tabs-fixture-" + path; original.lifetime = .keepAlways; add(original)
+            }
             web.removeFromSuperview()
         }
         let screens:[(String,AnyView,Double,ColorScheme)] = [
