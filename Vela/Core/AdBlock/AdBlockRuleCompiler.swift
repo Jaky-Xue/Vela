@@ -56,6 +56,7 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
         public var unlessDomain: [String]?
         public var resourceType: [String]?
         public var loadType: [String]?
+        public var loadContext: [String]?
         public var urlFilterIsCaseSensitive: Bool?
 
         enum CodingKeys: String, CodingKey {
@@ -65,6 +66,7 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
             case unlessDomain = "unless-domain"
             case resourceType = "resource-type"
             case loadType = "load-type"
+            case loadContext = "load-context"
             case urlFilterIsCaseSensitive = "url-filter-is-case-sensitive"
         }
 
@@ -75,6 +77,7 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
             unlessDomain: [String]? = nil,
             resourceType: [String]? = nil,
             loadType: [String]? = nil,
+            loadContext: [String]? = nil,
             urlFilterIsCaseSensitive: Bool? = nil
         ) {
             self.urlFilter = urlFilter
@@ -83,6 +86,7 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
             self.unlessDomain = unlessDomain
             self.resourceType = resourceType
             self.loadType = loadType
+            self.loadContext = loadContext
             self.urlFilterIsCaseSensitive = urlFilterIsCaseSensitive
         }
     }
@@ -182,7 +186,7 @@ public enum AdBlockRuleCompiler {
             let before = result.unsupportedRuleCount + result.invalidRuleCount
             defer {
                 if result.unsupportedRuleCount + result.invalidRuleCount > before {
-                    let reason = result.invalidRuleCount > invalidBefore ? "规则格式无效" : "当前 WebKit 转换器不支持此语法或作用域"
+                    let reason = diagnosticReason(line, invalid: result.invalidRuleCount > invalidBefore)
                     result.diagnostics.append(FilterLineDiagnostic(line: sourceLine, text: line, reason: reason, source: diagnosticSource))
                 }
             }
@@ -237,8 +241,8 @@ public enum AdBlockRuleCompiler {
             }
 
             switch compileNetworkRule(line) {
-            case let .success(rule):
-                result.rules.append(rule)
+            case let .success(rules):
+                result.rules.append(contentsOf: rules)
             case .unsupported:
                 result.unsupportedRuleCount += 1
             case .invalid:
@@ -368,6 +372,19 @@ public enum AdBlockRuleCompiler {
         return result
     }
 
+    private static func diagnosticReason(_ line: String, invalid: Bool) -> String {
+        if invalid { return "规则格式或域名无效" }
+        if line.hasPrefix("!#include") { return "include 需要订阅来源地址" }
+        if line.contains("+js(") { return "脚本过滤未支持" }
+        if line.contains("#?#") || line.contains(":has-text(") || line.contains(":xpath(") { return "扩展 CSS 未支持" }
+        if line.hasPrefix("/") { return "正则超出 WebKit 支持范围" }
+        if let options = splitOptions(line)?.options {
+            let rejected = options.split(separator: ",").filter { parseOptions(String($0)).hasUnsupportedOption }
+            if !rejected.isEmpty { return "不支持选项：" + rejected.joined(separator: ",") }
+        }
+        return "作用域或输出长度超限"
+    }
+
     private enum CosmeticOutcome {
         case hide(selector: String, includeDomains: [String], excludeDomains: [String])
         case unsupported
@@ -375,7 +392,7 @@ public enum AdBlockRuleCompiler {
     }
 
     private enum NetworkOutcome {
-        case success(ContentBlockerRule)
+        case success([ContentBlockerRule])
         case unsupported
         case invalid
     }
@@ -523,7 +540,21 @@ public enum AdBlockRuleCompiler {
             loadType: parsedOptions.loadType,
             urlFilterIsCaseSensitive: parsedOptions.matchCase
         )
-        return .success(ContentBlockerRule(trigger: trigger, action: action))
+        let base = ContentBlockerRule(trigger: trigger, action: action)
+        let types = Set(parsedOptions.resourceTypes)
+        let top = types.contains("vela-top-document"), child = types.contains("vela-child-document")
+        if top != child {
+            var result: [ContentBlockerRule] = []
+            let other = types.filter { !$0.hasPrefix("vela-") }.sorted()
+            if !other.isEmpty { var rule = base; rule.trigger.resourceType = other; result.append(rule) }
+            var document = base; document.trigger.resourceType = ["document"]
+            document.trigger.loadContext = [top ? "top-frame" : "child-frame"]
+            result.append(document)
+            return .success(result)
+        }
+        var rule = base
+        if top && child { rule.trigger.resourceType = Array(types.subtracting(["vela-top-document", "vela-child-document"]).union(["document"])).sorted() }
+        return .success([rule])
     }
 
     /// Splits the filter pattern from its `$`-options.
@@ -616,7 +647,7 @@ public enum AdBlockRuleCompiler {
                 if option == "popup" {
                     types.append("popup")
                 } else if option == "document" {
-                    types.append("document")
+                    types.append("vela-top-document")
                 } else {
                     parsed.hasUnsupportedOption = true
                 }
@@ -634,7 +665,8 @@ public enum AdBlockRuleCompiler {
             }
         }
 
-        let universe: Set<String> = ["document", "image", "style-sheet", "script", "font", "media", "raw", "svg-document", "popup"]
+        var universe: Set<String> = ["vela-top-document", "vela-child-document", "image", "style-sheet", "script", "font", "media", "raw", "svg-document", "popup"]
+        if #available(iOS 26.0, *) { universe.remove("raw"); universe.formUnion(["fetch", "websocket", "ping", "other"]) }
         let effective = (types.isEmpty && !excludedTypes.isEmpty ? universe : Set(types)).subtracting(excludedTypes)
         if !excludedTypes.isEmpty && effective.isEmpty { parsed.hasUnsupportedOption = true }
         parsed.resourceTypes = Array(effective).sorted()
@@ -651,10 +683,13 @@ public enum AdBlockRuleCompiler {
         case "stylesheet": return "style-sheet"
         case "font": return "font"
         case "media": return "media"
-        case "object", "object-subrequest", "xmlhttprequest", "xhr", "other", "websocket", "ping":
-            return "raw"
-        case "subdocument": return "document"
-        case "document": return "document"
+        case "xmlhttprequest", "xhr":
+            if #available(iOS 26.0, *) { return "fetch" }; return nil
+        case "websocket", "ping", "other":
+            if #available(iOS 26.0, *) { return option }; return nil
+        case "object", "object-subrequest": return nil
+        case "subdocument": return "vela-child-document"
+        case "document": return "vela-top-document"
         case "popup": return "popup"
         case "svg": return "svg-document"
         default: return nil

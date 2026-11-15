@@ -579,7 +579,7 @@ private struct TabCard: View {
     var body: some View {
         VStack(spacing: BrowserSpacing.tight) {
             ZStack(alignment: .topTrailing) {
-                cardFace
+                Button(action: onSelect) { cardFace }.buttonStyle(.plain)
 
                 closeButton
             }
@@ -609,10 +609,10 @@ private struct TabCard: View {
                         .foregroundStyle(palette.primaryText)
                 }
                 .frame(maxWidth: .infinity)
+                .onTapGesture(perform: onSelect)
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture(perform: onSelect)
         .contextMenu {
             Button(tab.pinned ? "取消固定" : "固定标签页", systemImage: tab.pinned ? "pin.slash" : "pin", action: onPin)
             Button("关闭标签页", systemImage: "xmark", role: .destructive, action: onClose)
@@ -632,6 +632,8 @@ private struct TabCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tab.displayTitle)
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onSelect() }
+        .accessibilityAction(named: Text("关闭标签页")) { onClose() }
     }
 
     /// The card's picture in a frame that owns its aspect outright.

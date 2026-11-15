@@ -162,9 +162,9 @@ final class UIAndFilterRegressionTests: XCTestCase {
 
     func testRenderBrightTabOverviewAndPrivateHome() async throws {
         let server = try LocalHTTPServer(routes: [
-            "/one": .html("<title>阅读 · 测试页面</title><body style='background:#f7faff;color:#20314b;font:24px system-ui;padding:24px'><h1>阅读时刻</h1><p>保持专注，轻松浏览。</p>"),
-            "/two": .html("<title>灵感 · 测试页面</title><body style='background:#fff8ef;color:#4e342e;font:24px system-ui;padding:24px'><h1>灵感笔记</h1><p>让好想法留下来。</p>"),
-            "/three": .html("<title>探索 · 测试页面</title><body style='background:#f2fbf5;color:#244235;font:24px system-ui;padding:24px'><h1>发现新意</h1><p>开启下一段旅程。</p>")
+            "/one": .html("<meta name=viewport content=width=device-width><title>阅读 · 测试页面</title><body style='background:#f7faff;color:#20314b;font:24px system-ui;padding:24px'><h1>阅读时刻</h1><p>保持专注，轻松浏览。</p>"),
+            "/two": .html("<meta name=viewport content=width=device-width><title>灵感 · 测试页面</title><body style='background:#fff8ef;color:#4e342e;font:24px system-ui;padding:24px'><h1>灵感笔记</h1><p>让好想法留下来。</p>"),
+            "/three": .html("<meta name=viewport content=width=device-width><title>探索 · 测试页面</title><body style='background:#f2fbf5;color:#244235;font:24px system-ui;padding:24px'><h1>发现新意</h1><p>开启下一段旅程。</p>")
         ])
         let base = try await server.start(); defer { server.stop() }
         let env = AppEnvironment(services:AppServices(),windowId:"OverviewQA-"+UUID().uuidString)
@@ -189,7 +189,8 @@ final class UIAndFilterRegressionTests: XCTestCase {
             ("tabs-overview-light",AnyView(TabsOverviewView(onClose:{})),375,.light),
             ("tabs-overview-dark",AnyView(TabsOverviewView(onClose:{})),375,.dark),
             ("tabs-overview-pad",AnyView(TabsOverviewView(onClose:{})),744,.light),
-            ("private-home",AnyView(NewTabHomeView(isPrivate:true,onNavigate:{_ in})),375,.light)
+            ("private-home",AnyView(NewTabHomeView(isPrivate:true,onNavigate:{_ in})),375,.light),
+            ("browser-page",AnyView(BrowserShellView(environment:env)),375,.light)
         ]
         for (name,view,width,scheme) in screens {
             let content=view.environment(env).environment(\.browserPalette,BrowserPalette.default).environment(\.colorScheme,scheme)
