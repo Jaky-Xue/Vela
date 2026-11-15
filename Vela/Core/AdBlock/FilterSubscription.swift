@@ -6,6 +6,7 @@ public struct FilterSubscription: Codable, Equatable, Identifiable, Sendable {
     public var url: String
     public var enabled = true
     public var cacheHash: String?
+    public var previousCacheHash: String?
     public var etag: String?
     public var lastModified: String?
     public var lastSuccess: Date?

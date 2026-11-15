@@ -21,6 +21,7 @@ public struct ContentBlockerSettings: Codable, Equatable, Sendable {
     public var customRules: String?
     public var disabledBuiltIns: [String]?
     public var activeSnapshot: FilterSnapshotInfo?
+    public var previousSnapshot: FilterSnapshotInfo?
 
     public init(enabled: Bool = true, whitelistedHosts: [String] = []) {
         self.enabled = enabled

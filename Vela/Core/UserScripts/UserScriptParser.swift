@@ -100,7 +100,11 @@ public enum UserScriptParser {
             case "excludematch", "exclude_match", "exclude-match":
                 if !value.isEmpty { candidate.excludeMatches.append(value) }
             case "grant":
-                if !value.isEmpty { candidate.grants.append(UserScriptGrant(token: value)) }
+                if !value.isEmpty {
+                    let grant = UserScriptGrant(token: value)
+                    candidate.grants.append(grant)
+                    if grant == .unknown { warnings.append("不支持的权限声明：" + value) }
+                }
             case "require":
                 if !value.isEmpty { candidate.requireUrls.append(value) }
             case "resource":

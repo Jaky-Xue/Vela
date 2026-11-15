@@ -51,7 +51,7 @@ public enum UserScriptInjector {
 
         for script in scripts {
             guard script.runAt.injectsOnLoad, script.requireSources.count == script.requireUrls.count,
-                  !script.requireSources.contains("") else { continue }
+                  !script.requireSources.contains(""), script.resources.count == script.resourceDeclarations.count else { continue }
 
             let values = valuesByScriptId[script.id] ?? [:]
             let source = bootstrapSource(

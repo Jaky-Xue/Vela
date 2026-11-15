@@ -14,6 +14,35 @@
 import Foundation
 
 public enum UserScriptMatcher {
+    private static let regexCache: NSCache<NSString, NSRegularExpression> = {
+        let cache = NSCache<NSString, NSRegularExpression>()
+        cache.countLimit = 128
+        return cache
+    }()
+
+    static func includeRegex(_ body: String) -> NSRegularExpression? {
+        guard body.utf8.count <= 2_048 else { return nil }
+        if let cached = regexCache.object(forKey: body as NSString) { return cached }
+        guard let regex = try? NSRegularExpression(pattern: body, options: [.caseInsensitive]) else { return nil }
+        regexCache.setObject(regex, forKey: body as NSString)
+        return regex
+    }
+
+    static func ruleError(_ pattern: String, isMatch: Bool) -> String? {
+        let text = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.utf8.count <= 8_192 else { return "规则为空或超过长度上限" }
+        if text.hasPrefix("/"), text.hasSuffix("/"), text.count > 2 {
+            return includeRegex(String(text.dropFirst().dropLast())) == nil ? "正则无效或超过 2048 字节上限" : nil
+        }
+        if !isMatch || text == "<all_urls>" { return nil }
+        guard let separator = text.range(of: "://"),
+              ["*", "http", "https"].contains(String(text[..<separator.lowerBound]).lowercased()) else { return "@match 需要 http、https 或 * 协议" }
+        let host = String(text[separator.upperBound...].split(separator: "/", omittingEmptySubsequences: false).first ?? "")
+        guard !host.isEmpty,
+              host.range(of: "^(?:\\*|(?:\\*\\.)?[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*)$", options: .regularExpression) != nil else { return "@match 域名格式无效" }
+        return nil
+    }
+
     /// Decides whether `script` runs on `url`.
     public static func matches(_ script: InstalledUserScriptState, url: URL) -> Bool {
         guard script.enabled else { return false }
@@ -154,12 +183,17 @@ public enum UserScriptMatcher {
 
         if trimmed.hasPrefix("/") && trimmed.hasSuffix("/") && trimmed.count > 2 {
             let body = String(trimmed.dropFirst().dropLast())
-            guard let regex = try? NSRegularExpression(pattern: body, options: [.caseInsensitive]) else {
-                return false
-            }
+            guard let regex = includeRegex(body) else { return false }
             let target = url.absoluteString
+            guard target.utf8.count <= 16_384 else { return false }
             let range = NSRange(target.startIndex..<target.endIndex, in: target)
-            return regex.firstMatch(in: target, options: [], range: range) != nil
+            let deadline = Date().addingTimeInterval(0.02)
+            var matched = false
+            regex.enumerateMatches(in: target, options: [.reportProgress], range: range) { match, _, stop in
+                if Date() > deadline { stop.pointee = true; return }
+                if match != nil { matched = true; stop.pointee = true }
+            }
+            return matched
         }
 
         // A bare `*` means every page.

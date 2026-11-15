@@ -172,7 +172,7 @@ struct MenuPanelView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(palette.primaryText)
                     .padding(.horizontal, 14)
-                    .frame(height: 34)
+                    .frame(height: 44)
                     .background(palette.controlFill, in: Capsule())
             }
             .buttonStyle(.plain)
@@ -288,7 +288,7 @@ struct MenuPanelView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(palette.onAccent)
                     .padding(.horizontal, 16)
-                    .frame(height: 34)
+                    .frame(height: 44)
                     .background(palette.accent, in: Capsule())
             }
             .buttonStyle(.plain)

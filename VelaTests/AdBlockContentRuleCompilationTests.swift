@@ -153,6 +153,9 @@ final class AdBlockContentRuleCompilationTests: XCTestCase {
             "||example.com/a*b",
             "||example.com^$script,third-party",
             "||example.com^$domain=other.example",
+            "||example.com^$~image",
+            "||example.com^$match-case",
+            "||example.com^$xhr",
             "https://example.com/?price=$5"
         ]
 

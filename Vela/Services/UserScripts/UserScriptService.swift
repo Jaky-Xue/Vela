@@ -97,6 +97,14 @@ public final class UserScriptService {
                 .filter { !$0.isEmpty && seen.insert($0).inserted }
         }
 
+        for (patterns, isMatch) in [(cleaned(matches), true), (cleaned(includes), false),
+                                     (cleaned(excludes), false), (cleaned(excludeMatches), true)] {
+            for pattern in patterns {
+                if let error = UserScriptMatcher.ruleError(pattern, isMatch: isMatch) {
+                    throw UserScriptServiceError.parseFailed(error + "：" + pattern)
+                }
+            }
+        }
         var updated = script
         updated.matches = cleaned(matches)
         updated.includes = cleaned(includes)
@@ -211,7 +219,8 @@ public final class UserScriptService {
             if script.downloadUrl.isEmpty { script.downloadUrl = existing.downloadUrl }
         }
         if let local = settings.userScriptSettings.localRules?[script.id] { script = local.applying(to: script) }
-        if script.requireSources.count != script.requireUrls.count || script.requireSources.contains("") {
+        if script.requireSources.count != script.requireUrls.count || script.requireSources.contains("")
+            || script.resources.count != script.resourceDeclarations.count {
             script.enabled = false
             warnings.append("依赖不完整，脚本已停用；修复依赖后再启用。")
         }
@@ -399,6 +408,8 @@ public final class UserScriptService {
         var updated = script
         updated.requireSources = dependencies.requireSources
         updated.resources = dependencies.resources
+        if updated.requireSources.count != updated.requireUrls.count || updated.requireSources.contains("")
+            || updated.resources.count != updated.resourceDeclarations.count { updated.enabled = false }
         updated.updatedAt = Date()
         try? repository.upsert(updated)
         reload()
@@ -416,7 +427,10 @@ public final class UserScriptService {
         if let existing, !declarationsChanged,
            existing.requireSources.count == existing.requireUrls.count,
            !existing.requireSources.contains(""),
-           existing.resources.count == existing.resourceDeclarations.count {
+           existing.resources.count == existing.resourceDeclarations.count,
+           existing.requireSources.allSatisfy({ $0.utf8.count <= 4_000_000 }),
+           existing.resources.allSatisfy({ Self.resourceByteCount($0) <= 4_000_000 }),
+           existing.requireSources.reduce(0, { $0 + $1.utf8.count }) + existing.resources.reduce(0, { $0 + Self.resourceByteCount($1) }) <= 16_000_000 {
             return (existing.requireSources, existing.resources, [])
         }
 
@@ -499,7 +513,9 @@ public final class UserScriptService {
                         )
                     )
                 }
-            } else if let previous = previousResources[key] {
+            } else if let previous = previousResources[key],
+                      Self.resourceByteCount(previous) <= min(perItemLimit, totalLimit - totalBytes) {
+                totalBytes += Self.resourceByteCount(previous)
                 resources.append(previous)
                 warnings.append("无法重新下载 @resource，沿用上次保存的副本：\(declaration.name)")
             } else {
@@ -508,6 +524,11 @@ public final class UserScriptService {
         }
 
         return (sources, resources, warnings)
+    }
+
+    private static func resourceByteCount(_ resource: UserScriptResourceRecord) -> Int {
+        if let base64 = resource.contentBase64 { return Data(base64Encoded: base64)?.count ?? 0 }
+        return resource.text.utf8.count
     }
 
     private struct Fetched {

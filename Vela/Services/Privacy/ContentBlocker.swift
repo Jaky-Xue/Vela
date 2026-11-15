@@ -161,6 +161,7 @@ public final class ContentBlocker {
         let hash = Self.hash(data)
         try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         try data.write(to: cacheURL(hash), options: .atomic)
+        if source.cacheHash != hash { source.previousCacheHash = source.cacheHash }
         source.cacheHash = hash
         source.etag = http.value(forHTTPHeaderField: "ETag")
         source.lastModified = http.value(forHTTPHeaderField: "Last-Modified")
@@ -224,17 +225,41 @@ public final class ContentBlocker {
             // Preserve independent switches edited while compilation was in flight.
             committed.enabled = settings.contentBlocker.enabled
             committed.whitelistedHosts = settings.contentBlocker.whitelistedHosts
+            let old = settings.contentBlocker.activeSnapshot
+            committed.previousSnapshot = old?.identifier == id ? settings.contentBlocker.previousSnapshot : old
             committed.activeSnapshot = snapshot
             settings.updateContentBlocker { $0 = committed }
             compiledList = list; isReady = true
             ruleCount = compiled.rules.count; hiddenRuleCount = hidden
             skippedRuleCount = snapshot.skippedCount; loadedAt = snapshot.createdAt
             lastError = nil; onChange?()
+            pruneCaches()
             return true
         } catch {
             lastError = error.localizedDescription
             isReady = compiledList != nil
             return false
+        }
+    }
+
+    private func pruneCaches() {
+        let config = settings.contentBlocker
+        let hashes = Set((config.subscriptions ?? []).flatMap { [$0.cacheHash, $0.previousCacheHash].compactMap { $0 } })
+        for file in (try? FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil)) ?? [] {
+            let hash = file.deletingPathExtension().lastPathComponent
+            if file.pathExtension == "txt", hash.count == 64,
+               hash.allSatisfy({ $0.isHexDigit }), !hashes.contains(hash) { try? FileManager.default.removeItem(at: file) }
+        }
+        let keep = Set([config.activeSnapshot?.identifier, config.previousSnapshot?.identifier].compactMap { $0 })
+        store.getAvailableContentRuleListIdentifiers { [weak self] identifiers in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let current = self.settings.contentBlocker
+                let live = keep.union([current.activeSnapshot?.identifier, current.previousSnapshot?.identifier].compactMap { $0 })
+                for id in identifiers ?? [] where id.hasPrefix(Self.identifier) && !live.contains(id) {
+                    self.store.removeContentRuleList(forIdentifier: id) { _ in }
+                }
+            }
         }
     }
 

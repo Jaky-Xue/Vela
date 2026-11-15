@@ -35,6 +35,7 @@ struct UserScriptInstallPromptView: View {
     @State private var phase: Phase = .ready
     @State private var previewText: String?
     @State private var candidate: UserScriptPackageCandidate?
+    @State private var previewWarnings: [String] = []
 
     var body: some View {
         NavigationStack {
@@ -109,6 +110,7 @@ struct UserScriptInstallPromptView: View {
                         Text("运行网站：" + (candidate.matches + candidate.includes).joined(separator: "、"))
                         Text("权限：" + candidate.grants.map(\.rawValue).joined(separator: "、"))
                         Text("网络目标：" + candidate.connectRules.joined(separator: "、"))
+                        ForEach(previewWarnings, id: \.self) { warning in Text(warning).foregroundStyle(.orange) }
                         Text("依赖：\(candidate.requireUrls.count)；资源：\(candidate.resourceDeclarations.count)")
                         let unsupported = candidate.grants.filter { !$0.isSupportedByVela }.map(\.rawValue)
                         if !unsupported.isEmpty { Text("不支持：" + unsupported.joined(separator: "、")).foregroundStyle(.orange) }
@@ -198,6 +200,7 @@ struct UserScriptInstallPromptView: View {
             let preview = try await env.userScripts.previewFromURL(request.url)
             previewText = preview.text
             candidate = preview.candidate
+            previewWarnings = UserScriptParser.parse(preview.text).warnings
         } catch { phase = .failed(error.localizedDescription) }
     }
 

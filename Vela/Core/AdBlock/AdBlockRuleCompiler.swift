@@ -55,6 +55,7 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
         public var unlessDomain: [String]?
         public var resourceType: [String]?
         public var loadType: [String]?
+        public var urlFilterIsCaseSensitive: Bool?
 
         enum CodingKeys: String, CodingKey {
             case urlFilter = "url-filter"
@@ -62,6 +63,7 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
             case unlessDomain = "unless-domain"
             case resourceType = "resource-type"
             case loadType = "load-type"
+            case urlFilterIsCaseSensitive = "url-filter-is-case-sensitive"
         }
 
         public init(
@@ -69,13 +71,15 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
             ifDomain: [String]? = nil,
             unlessDomain: [String]? = nil,
             resourceType: [String]? = nil,
-            loadType: [String]? = nil
+            loadType: [String]? = nil,
+            urlFilterIsCaseSensitive: Bool? = nil
         ) {
             self.urlFilter = urlFilter
             self.ifDomain = ifDomain
             self.unlessDomain = unlessDomain
             self.resourceType = resourceType
             self.loadType = loadType
+            self.urlFilterIsCaseSensitive = urlFilterIsCaseSensitive
         }
     }
 
@@ -376,7 +380,8 @@ public enum AdBlockRuleCompiler {
             ifDomain: parsedOptions.includeDomains.isEmpty ? nil : parsedOptions.includeDomains,
             unlessDomain: parsedOptions.excludeDomains.isEmpty ? nil : parsedOptions.excludeDomains,
             resourceType: parsedOptions.resourceTypes.isEmpty ? nil : parsedOptions.resourceTypes,
-            loadType: parsedOptions.loadType
+            loadType: parsedOptions.loadType,
+            urlFilterIsCaseSensitive: parsedOptions.matchCase
         )
         return .success(ContentBlockerRule(trigger: trigger, action: action))
     }
@@ -407,6 +412,7 @@ public enum AdBlockRuleCompiler {
         let looksLikeOptions = tokens.allSatisfy { token in
             let bare = token.hasPrefix("~") ? String(token.dropFirst()) : token
             return known.contains { bare == $0 || bare.hasPrefix($0) }
+                || bare.range(of: "^[a-z][a-z0-9_-]*(=.*)?$", options: .regularExpression) != nil
         }
         guard looksLikeOptions else { return nil }
 
@@ -419,6 +425,7 @@ public enum AdBlockRuleCompiler {
         var excludeDomains: [String] = []
         var loadType: [String]?
         var hasUnsupportedOption = false
+        var matchCase: Bool?
     }
 
     private static func parseOptions(_ raw: String) -> ParsedOptions {
@@ -426,6 +433,7 @@ public enum AdBlockRuleCompiler {
         guard !raw.isEmpty else { return parsed }
 
         var types: [String] = []
+        var excludedTypes = Set<String>()
         var include: [String] = []
         var exclude: [String] = []
 
@@ -448,12 +456,19 @@ public enum AdBlockRuleCompiler {
                 continue
             }
 
+            if option.hasPrefix("~"), let mapped = webKitResourceType(for: String(option.dropFirst())) {
+                // Lossy raw/document mappings cannot safely express negation.
+                if mapped == "raw" || mapped == "document" { parsed.hasUnsupportedOption = true }
+                else { excludedTypes.insert(mapped) }
+                continue
+            }
             switch option {
+            case "match-case": parsed.matchCase = true
             case "third-party":
                 parsed.loadType = ["third-party"]
             case "~third-party", "first-party":
                 parsed.loadType = ["first-party"]
-            case "important", "match-case", "collapse", "popup", "all", "elemhide",
+            case "important", "collapse", "popup", "all", "elemhide",
                  "generichide", "genericblock", "document":
                 // WebKit has no equivalent control for these. Treating them as
                 // unsupported rather than ignoring them keeps the reported
@@ -479,7 +494,10 @@ public enum AdBlockRuleCompiler {
             }
         }
 
-        parsed.resourceTypes = Array(Set(types)).sorted()
+        let universe: Set<String> = ["document", "image", "style-sheet", "script", "font", "media", "raw", "svg-document", "popup"]
+        let effective = (types.isEmpty && !excludedTypes.isEmpty ? universe : Set(types)).subtracting(excludedTypes)
+        if !excludedTypes.isEmpty && effective.isEmpty { parsed.hasUnsupportedOption = true }
+        parsed.resourceTypes = Array(effective).sorted()
         parsed.includeDomains = Array(Set(include.map { "*" + $0 })).sorted()
         parsed.excludeDomains = Array(Set(exclude.map { "*" + $0 })).sorted()
         return parsed
@@ -493,7 +511,7 @@ public enum AdBlockRuleCompiler {
         case "stylesheet": return "style-sheet"
         case "font": return "font"
         case "media": return "media"
-        case "object", "object-subrequest", "xmlhttprequest", "other", "websocket", "ping":
+        case "object", "object-subrequest", "xmlhttprequest", "xhr", "other", "websocket", "ping":
             return "raw"
         case "subdocument": return "document"
         case "document": return "document"
