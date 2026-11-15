@@ -719,6 +719,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             task.cancel()
             userScriptXHRTasks.removeValue(forKey: key)
         }
+        userScriptCommandFrames = userScriptCommandFrames.filter { !$0.key.hasPrefix(tab.id + "|") }
         // User scripts belong to this page, so the match is recomputed here,
         // for this URL, on every navigation.
         if settings.preferences.userScriptsEnabled,

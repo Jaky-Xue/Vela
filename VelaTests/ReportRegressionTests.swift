@@ -19,6 +19,8 @@ final class ReportRegressionTests: XCTestCase {
     }
 
     func testNativePermissionsDenyGrantNoneAndUnlistedConnections() throws {
+        XCTAssertEqual(UserScriptGrant(token: "GM.xmlHttpRequest"), .gmXmlhttpRequest)
+        XCTAssertEqual(UserScriptGrant(token: "GM.getValue"), .gmGetValue)
         var script = fixture()
         let origin = try XCTUnwrap(URL(string: "https://example.com/Admin/"))
         XCTAssertTrue(UserScriptNativePolicy.allows(type: "xhr", payload: ["url": "https://api.example.com/items"], script: script, origin: origin))

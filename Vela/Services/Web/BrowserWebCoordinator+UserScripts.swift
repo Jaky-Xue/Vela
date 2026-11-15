@@ -166,8 +166,7 @@ extension BrowserWebCoordinator {
     /// every frame installs its own resolver table, and a request made from a
     /// subframe has no entry in the main frame's. When the frame is no longer
     /// addressable — a navigation replaced it while the request was in flight —
-    /// the main frame is the best remaining guess, and the call there simply
-    /// finds no resolver.
+    /// the response is discarded. It never falls back to the page world.
     private func resolveUserScript(
         scriptId: String,
         requestId: String,
@@ -184,7 +183,10 @@ extension BrowserWebCoordinator {
         guard let frame, let tab = tab(for: webView),
               settings.preferences.userScriptsEnabled, tab.privacyMode != .private,
               let world = userScriptWorlds[tab.id + "|" + scriptId],
-              requestId.hasPrefix(world + "|") else { return }
+              requestId.hasPrefix(world + "|"),
+              let installed = try? userScripts.script(id: scriptId), installed.enabled,
+              installed.updatedAt == userScriptVersions[tab.id + "|" + scriptId],
+              let currentURL = webView.url, UserScriptMatcher.matches(installed, url: currentURL) else { return }
         webView.evaluateJavaScript(script, in: frame, in: .world(name: world)) { _ in }
     }
 
@@ -205,7 +207,10 @@ extension BrowserWebCoordinator {
         guard let frame, let tab = tab(for: webView),
               settings.preferences.userScriptsEnabled, tab.privacyMode != .private,
               let world = userScriptWorlds[tab.id + "|" + scriptId],
-              requestId.hasPrefix(world + "|") else { return }
+              requestId.hasPrefix(world + "|"),
+              let installed = try? userScripts.script(id: scriptId), installed.enabled,
+              installed.updatedAt == userScriptVersions[tab.id + "|" + scriptId],
+              let currentURL = webView.url, UserScriptMatcher.matches(installed, url: currentURL) else { return }
         webView.evaluateJavaScript(script, in: frame, in: .world(name: world)) { _ in }
     }
 
