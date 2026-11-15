@@ -131,7 +131,7 @@ jobs:
           retention-days: 7
 
       - name: Mirror verified IPA for Git transport
-        if: (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries')
+        if: (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries' || github.ref == 'refs/heads/feature/phase2-theme-materials')
         continue-on-error: true
         run: python3 Scripts/publish_ci_bundle.py build
 
@@ -222,6 +222,6 @@ jobs:
           retention-days: 14
 
       - name: Mirror test evidence for Git transport
-        if: always() && (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries')
+        if: always() && (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries' || github.ref == 'refs/heads/feature/phase2-theme-materials')
         continue-on-error: true
         run: python3 Scripts/publish_ci_bundle.py tests-${{ matrix.device }}
