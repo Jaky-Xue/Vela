@@ -33,6 +33,14 @@ final class ThemeMaterialRegressionTests: XCTestCase {
         }
     }
 
+    func testOpaqueSurfacePreferenceCannotDisableSystemAccessibility() {
+        var environment = EnvironmentValues()
+        environment.browserOpaqueSurfaces = true
+        XCTAssertTrue(environment.browserReduceTransparency)
+        environment.browserOpaqueSurfaces = false
+        XCTAssertEqual(environment.browserReduceTransparency, environment.accessibilityReduceTransparency)
+    }
+
     func testRenderThemeCharacterAndTransparentChrome() async throws {
         let env = AppEnvironment(services: AppServices(), windowId: "ThemeQA-" + UUID().uuidString)
         let model = OmniboxViewModel(settings: env.settings, history: env.history,
@@ -51,8 +59,7 @@ final class ThemeMaterialRegressionTests: XCTestCase {
                         .environment(\.browserPalette, palette)
                         .environment(\.browserBackgroundStyle, palette.visualStyle.recommendedBackground)
                         .environment(\.colorScheme, scheme)
-                        .environment(\.accessibilityReduceTransparency, reduced)
-                        .environment(\.accessibilityReduceMotion, true)
+                        .environment(\.browserOpaqueSurfaces, reduced)
                     let controller = UIHostingController(rootView: content)
                     window.overrideUserInterfaceStyle = scheme == .dark ? .dark : .light
                     window.rootViewController = controller
@@ -83,8 +90,7 @@ final class ThemeMaterialRegressionTests: XCTestCase {
             let content = view.environment(\.browserPalette, jade)
                 .environment(\.browserBackgroundStyle, BrowserBackgroundStyle.forest)
                 .environment(\.dynamicTypeSize, DynamicTypeSize.accessibility3)
-                .environment(\.accessibilityReduceTransparency, true)
-                .environment(\.accessibilityReduceMotion, true)
+                .environment(\.browserOpaqueSurfaces, true)
             let controller = UIHostingController(rootView: content)
             window.overrideUserInterfaceStyle = .light
             window.rootViewController = controller

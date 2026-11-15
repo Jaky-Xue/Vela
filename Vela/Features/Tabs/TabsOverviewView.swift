@@ -856,7 +856,7 @@ private struct PrivateUnlockSheet: View {
 /// from its own rim, and using one helper keeps their radii and edges from
 /// drifting apart.
 private struct OverviewGlass<S: InsettableShape>: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.browserReduceTransparency) private var reduceTransparency
     @Environment(\.browserPalette) private var palette
 
     var shape: S

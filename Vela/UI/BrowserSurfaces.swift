@@ -23,7 +23,7 @@ struct BrowserCardStyle: ViewModifier {
     /// its body and the card turns into a washed-out version of the page behind
     /// it. The card then paints the palette's card fill, which keeps the same
     /// silhouette and the same contrast without the blur.
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.browserReduceTransparency) private var reduceTransparency
 
     var material: Material? = nil
     var radius: CGFloat = BrowserRadius.card
@@ -79,7 +79,7 @@ extension View {
 /// rows keep a card fill so the grouped rhythm survives the change of surface.
 struct BrowserListSurface: ViewModifier {
     @Environment(\.browserPalette) private var palette
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.browserReduceTransparency) private var reduceTransparency
 
     /// Whether the rows get a card fill of their own. Off for a plain list,
     /// where cards-in-a-list would be a third level of nesting.
@@ -152,7 +152,7 @@ extension View {
 struct BrowserFloatingChrome: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.browserPalette) private var palette
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.browserReduceTransparency) private var reduceTransparency
 
     var radius: CGFloat
     var material: Material

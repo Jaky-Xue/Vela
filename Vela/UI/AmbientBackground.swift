@@ -1124,7 +1124,7 @@ private struct AmbientGrain: View {
 /// through. `solid` returns the exact surface the app shipped with.
 struct AmbientSurfaceFill: View {
     @Environment(\.browserPalette) private var palette
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.browserReduceTransparency) private var reduceTransparency
     @Environment(\.browserBackgroundStyle) private var style
 
     var opacity: Double = 0.62
