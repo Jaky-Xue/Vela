@@ -448,8 +448,9 @@ extension BrowserWebCoordinator {
                     "finalUrl": response.url?.absoluteString ?? url.absoluteString,
                     "mimeType": response.mimeType ?? ""
                 ]
-                if responseType == "arraybuffer" || responseType == "blob" {
-                    result["responseBase64"] = data.base64EncodedString()
+                if payload["_download"] as? Bool == true { /* File commit below owns the body. */ }
+                else if responseType == "arraybuffer" || responseType == "blob" {
+                    result["responseBase64"] = await Task.detached(priority: .utility) { data.base64EncodedString() }.value
                     result["responseText"] = ""
                 } else {
                     result["responseText"] = String(data: data, encoding: .utf8)

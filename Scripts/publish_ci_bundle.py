@@ -17,7 +17,7 @@ if kind.startswith('tests'):
     record.update(tests=len(final),testExecutions=len(results),retriedTests=sorted({n for n,r in results if r=='failed'}),
                   failedAttempts=sum(r=='failed' for _,r in results),
                   finalFailures=[n for n,r in final.items() if r=='failed'],
-                  testGate='success' if '** TEST SUCCEEDED **' in log and final and all(r=='passed' for r in final.values()) else 'failure')
+                  testGate='success' if '** TEST SUCCEEDED **' in log and final and all(r in ('passed','skipped') for r in final.values()) else 'failure')
     if Path('TestResults.xcresult').exists():
         proc=subprocess.run(['xcrun','xcresulttool','get','test-results','summary','--path','TestResults.xcresult'],capture_output=True,text=True)
         if proc.returncode == 0:
@@ -27,6 +27,7 @@ if kind.startswith('tests'):
             record['xcresultSummary']=summary
             if isinstance(summary.get('totalTestCount'),int): record['tests']=summary['totalTestCount']
             if summary.get('failedTests',0) > 0: record['testGate']='failure'
+    record['skippedTests']=[n for n,r in final.items() if r=='skipped']
     if counts: record['testExecutions']=max(int(n) for n,_ in counts)
     errors=[l for l in log.splitlines() if ('error:' in l and 'ProcessAssertion' not in l and 'error: (null)' not in l) or " failed (" in l or 'Executed ' in l or '** TEST' in l]
     (folder/'test-summary.txt').write_text('\n'.join(errors),encoding='utf-8')

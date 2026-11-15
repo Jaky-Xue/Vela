@@ -28,6 +28,13 @@ import WebKit
 /// One request per connection and `Connection: close` in the reply, which is all
 /// a `WKWebView` needs and all these tests ask for. Routes are fixed at
 /// construction, so the connection handler never mutates shared state.
+final class TestResponseGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var released = false
+    var isOpen: Bool { lock.lock(); defer { lock.unlock() }; return released }
+    func release() { lock.lock(); released = true; lock.unlock() }
+}
+
 final class LocalHTTPServer {
     struct Response {
         var status: Int = 200
@@ -40,6 +47,7 @@ final class LocalHTTPServer {
         var delay: TimeInterval = 0
         var chunks: [String]? = nil
         var chunkDelay: TimeInterval = 0.2
+        var releaseLastChunkWhen: (() -> Bool)? = nil
 
         static func html(_ body: String, status: Int = 200) -> Response {
             Response(status: status, body: body)
@@ -192,11 +200,18 @@ final class LocalHTTPServer {
             if let chunks = response.chunks {
                 connection.send(content: Data(text.utf8), completion: .contentProcessed { _ in })
                 for (index, chunk) in chunks.enumerated() {
-                    self.queue.asyncAfter(deadline: .now() + Double(index) * response.chunkDelay) {
+                    let deadline = Date().addingTimeInterval(15)
+                    func sendChunk() {
+                        if index == chunks.count - 1, let isReleased = response.releaseLastChunkWhen, !isReleased() {
+                            if Date() >= deadline { connection.cancel(); return }
+                            self.queue.asyncAfter(deadline: .now() + 0.01, execute: sendChunk)
+                            return
+                        }
                         var wire = String(chunk.utf8.count, radix:16) + "\r\n" + chunk + "\r\n"
                         if index == chunks.count - 1 { wire += "0\r\n\r\n" }
                         connection.send(content: Data(wire.utf8), completion: .contentProcessed { _ in if index == chunks.count - 1 { connection.cancel() } })
                     }
+                    self.queue.asyncAfter(deadline: .now() + Double(index) * response.chunkDelay, execute: sendChunk)
                 }
                 return
             }

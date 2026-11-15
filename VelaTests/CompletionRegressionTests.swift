@@ -88,9 +88,10 @@ final class CompletionRegressionTests: XCTestCase {
     }
 
     func testGMFetchStreamsAndBinaryUploadsAndDownloadAcknowledgesSavedFile() async throws {
+        let gate = TestResponseGate()
         let server=try LocalHTTPServer(routes:[
             "/page":.html("<title>Native networking</title>"),
-            "/stream":.init(body:"",contentType:"text/event-stream",chunks:["data: first\n\n","data: last\n\n"],chunkDelay:1.5),
+            "/stream":.init(body:"",contentType:"text/event-stream",chunks:["data: first\n\n","data: last\n\n"],chunkDelay:0,releaseLastChunkWhen:{gate.isOpen}),
             "/upload":.init(body:"OK",contentType:"text/plain"),
             "/file":.init(body:"download fixture",contentType:"application/octet-stream")
         ])
@@ -109,6 +110,7 @@ final class CompletionRegressionTests: XCTestCase {
         try await wait("!!document.documentElement.dataset.first",web:web)
         let completedEarly = try await web.evaluateJavaScript("document.documentElement.dataset.streamDone || null")
         XCTAssertTrue(completedEarly is NSNull)
+        gate.release()
         try await wait("!!document.documentElement.dataset.download && document.documentElement.dataset.uploaded==='OK'",web:web)
         let rawID = try await web.evaluateJavaScript("document.documentElement.dataset.download")
         let id=try XCTUnwrap(rawID as? String)
@@ -134,6 +136,11 @@ final class CompletionRegressionTests: XCTestCase {
             XCTAssertEqual(url.absoluteString,"https://lists.test/child.txt"); return "##.child-ad"
         }
         XCTAssertTrue(expanded); XCTAssertTrue(text.contains("##.child-ad")); XCTAssertTrue(text.contains("||root.test^"))
+        _ = try await FilterIncludeResolver.expandResolved("!#include child.txt", base: base) { url in
+            if url.path == "/child.txt" { return ("!#include leaf.txt", URL(string:"https://cdn.test/folder/child.txt")!) }
+            XCTAssertEqual(url.absoluteString,"https://cdn.test/folder/leaf.txt")
+            return ("||leaf.test^", url)
+        }
         do { _ = try await FilterIncludeResolver.expand("!#include main.txt",base:base) { _ in "||ad.test^" }; XCTFail("cycle accepted") } catch { }
         do { _ = try await FilterIncludeResolver.expand("!#include http://other.test/list",base:base) { _ in "||ad.test^" }; XCTFail("HTTP include accepted") } catch { }
     }
@@ -175,20 +182,21 @@ final class CompletionRegressionTests: XCTestCase {
     func testNetworkChunksArriveBeforeCompletionAndCrossOriginRedirectIsDeclined() async throws {
         let other = try LocalHTTPServer(routes: ["/secret": .html("secret")])
         let otherBase = try await other.start(); defer { other.stop() }
+        let gate = TestResponseGate()
         let server = try LocalHTTPServer(routes: [
-            "/stream": .init(body:"",contentType:"text/event-stream",chunks:["first\\n","second\\n"],chunkDelay:0.5),
+            "/stream": .init(body:"",contentType:"text/event-stream",chunks:["first\\n","second\\n"],chunkDelay:0,releaseLastChunkWhen:{gate.isOpen}),
             "/redirect": .redirect(to:otherBase.appendingPathComponent("secret").absoluteString)
         ])
         let base = try await server.start(); defer { server.stop() }
         var script = InstalledUserScriptState(name:"Stream",source:"",matches:["*://*/*"],grants:[.gmFetch],runAt:.documentEnd)
         script.connectRules=["127.0.0.1"]
-        var firstAt: Date?, collected = Data()
+        var receivedBeforeRelease = false, collected = Data()
         let (body, _) = try await UserScriptHTTP.load(URLRequest(url:base.appendingPathComponent("stream")),script:script,origin:base,buffered:false) { data,_,_ in
-            if !data.isEmpty { firstAt = firstAt ?? Date(); collected.append(data) }
+            if !data.isEmpty { receivedBeforeRelease = receivedBeforeRelease || !gate.isOpen; collected.append(data); gate.release() }
         }
         XCTAssertTrue(body.isEmpty)
         XCTAssertEqual(String(data:collected,encoding:.utf8),"first\\nsecond\\n")
-        XCTAssertGreaterThan(Date().timeIntervalSince(try XCTUnwrap(firstAt)),0.15)
+        XCTAssertTrue(receivedBeforeRelease)
         let (_, response) = try await UserScriptHTTP.load(URLRequest(url:base.appendingPathComponent("redirect")),script:script,origin:base,buffered:true,progress:nil)
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode,302)
         XCTAssertEqual(other.requestCount(for:"/secret"),0)

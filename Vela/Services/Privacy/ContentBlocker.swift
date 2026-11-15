@@ -173,12 +173,12 @@ public final class ContentBlocker {
         guard http.statusCode == 200, response.mimeType?.lowercased() != "text/html",
               response.expectedContentLength <= FilterValidation.sourceByteLimit else { throw FilterError.invalid("订阅状态、类型或大小不符合要求") }
         guard let text = String(data: data, encoding: .utf8) else { throw FilterError.invalid("订阅须为 UTF-8 文本") }
-        let (expanded, hasIncludes) = try await FilterIncludeResolver.expand(text, base: url) { [session] child in
+        let (expanded, hasIncludes) = try await FilterIncludeResolver.expandResolved(text, base: response.url ?? url) { [session] child in
             var request = URLRequest(url: child); request.timeoutInterval = 30
             let (data, response) = try await BoundedHTTPData.load(request, limit: FilterValidation.sourceByteLimit, session: session)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200, response.url?.scheme == "https",
                   response.mimeType?.lowercased() != "text/html", let text = String(data: data, encoding: .utf8) else { throw FilterError.invalid("include 下载失败") }
-            return text
+            return (text, response.url ?? child)
         }
         try FilterValidation.validate(expanded, limit: FilterValidation.combinedByteLimit)
         let expandedData = Data(expanded.utf8)
@@ -187,6 +187,7 @@ public final class ContentBlocker {
         try expandedData.write(to: cacheURL(hash), options: .atomic)
         if source.cacheHash != hash { source.previousCacheHash = source.cacheHash }
         source.cacheHash = hash
+        source.resolvedURL = response.url?.absoluteString
         source.etag = hasIncludes ? nil : http.value(forHTTPHeaderField: "ETag")
         source.lastModified = hasIncludes ? nil : http.value(forHTTPHeaderField: "Last-Modified")
         source.lastSuccess = Date(); source.error = nil
@@ -222,7 +223,7 @@ public final class ContentBlocker {
                 .filter { !disabled.contains($0.key) }.map { "! Source: 内置/" + $0.key + "\n" + $0.value }
             for source in proposed.subscriptions ?? [] where source.enabled {
                 guard let hash = source.cacheHash else { throw FilterError.invalid("订阅缺少缓存，请先更新") }
-                parts.append("! Source: " + source.url + "\n" + (try String(contentsOf: cacheURL(hash), encoding: .utf8)))
+                parts.append("! Source: " + (source.resolvedURL ?? source.url) + "\n" + (try String(contentsOf: cacheURL(hash), encoding: .utf8)))
             }
             parts.append("! Source: 自定义\n" + (proposed.customRules ?? ""))
             let text = parts.joined(separator: "\n")

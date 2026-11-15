@@ -3,6 +3,9 @@ import Foundation
 enum FilterIncludeResolver {
     /// Resolve before publication; a failed/cyclic child leaves the active snapshot untouched.
     static func expand(_ text: String, base: URL, fetch: (URL) async throws -> String) async throws -> (String, Bool) {
+        try await expandResolved(text, base: base) { url in (try await fetch(url), url) }
+    }
+    static func expandResolved(_ text: String, base: URL, fetch: (URL) async throws -> (String, URL)) async throws -> (String, Bool) {
         var total = 0, files = 0, expanded = false
         func visit(_ body: String, url: URL, path: Set<String>, depth: Int) async throws -> String {
             guard depth <= 4, files < 24, !path.contains(url.absoluteString), body.utf8.count <= FilterValidation.sourceByteLimit else { throw FilterError.invalid("include 循环、深度或来源大小超限") }
@@ -20,9 +23,10 @@ enum FilterIncludeResolver {
                     guard let child = URL(string: raw, relativeTo: url)?.absoluteURL,
                           child.scheme == "https", child.host != nil, child.user == nil, child.password == nil,
                           child.fragment == nil else { throw FilterError.invalid("include 需要 HTTPS 地址") }
-                    let content = try await fetch(child)
-                    output.append("! Source: " + child.absoluteString)
-                    output.append(try await visit(content, url: child, path: chain, depth: depth + 1))
+                    guard !chain.contains(child.absoluteString) else { throw FilterError.invalid("include 存在循环") }
+                    let (content, resolved) = try await fetch(child)
+                    output.append("! Source: " + resolved.absoluteString)
+                    output.append(try await visit(content, url: resolved, path: chain, depth: depth + 1))
                     output.append("! Source: " + url.absoluteString)
                     output.append("! Line: " + String(lineIndex + 2))
                 } else if trimmed.hasPrefix("!#include") { throw FilterError.invalid("include 指令无效") }
