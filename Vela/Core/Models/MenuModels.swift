@@ -294,6 +294,13 @@ struct MenuLayout: Equatable {
         return copy
     }
 
+    func movingTile(_ sourceID: String, before targetID: String) -> MenuLayout {
+        guard sourceID != targetID,
+              let source = visibleTiles.firstIndex(where: { $0.id == sourceID }),
+              let target = visibleTiles.firstIndex(where: { $0.id == targetID }) else { return self }
+        return movingVisible(from: IndexSet(integer: source), to: source < target ? target + 1 : target)
+    }
+
     func adding(_ shortcut: MenuShortcut) -> MenuLayout {
         var copy = self
         copy.order.append(shortcut.id)

@@ -308,11 +308,11 @@ struct SettingsView: View {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .semibold))
                 .symbolRenderingMode(.monochrome)
-                .foregroundStyle(palette.onAccent)
-                .frame(width: 29, height: 29)
+                .foregroundStyle(Color.white)
+                .frame(width: 32, height: 32)
                 .background(
                     LinearGradient(
-                        colors: [palette.accent, palette.accent.opacity(0.82)],
+                        colors: [IconColorStyle.color(for: icon), IconColorStyle.color(for: icon)],
                         startPoint: .top,
                         endPoint: .bottom
                     ),

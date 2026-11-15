@@ -50,6 +50,7 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
     case violet
     /// Rose, mint, sky and violet at once: the field with no single hue.
     case colorful
+    case nightSky, pearl, forest, desert
 
     public var id: String { rawValue }
 
@@ -63,6 +64,10 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
         case .aurora: return "极光"
         case .glacier: return "冰川"
         case .violet: return "紫雾"
+        case .nightSky: return "星海"
+        case .pearl: return "珍珠"
+        case .forest: return "森语"
+        case .desert: return "沙丘"
         case .colorful: return "缤纷"
         }
     }
@@ -77,6 +82,10 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
         case .aurora: return "薄荷与青绿"
         case .glacier: return "冰蓝与天青"
         case .violet: return "薰衣草与紫罗兰"
+        case .nightSky: return "雾蓝与鸢尾，深浅双色星海"
+        case .pearl: return "象牙白与淡玫瑰，柔和珍珠光"
+        case .forest: return "浅苔与翡翠，静谧森林"
+        case .desert: return "奶油沙色与陶土暖光"
         case .colorful: return "玫红、薄荷、晴空与紫罗兰"
         }
     }
@@ -91,6 +100,10 @@ public enum BrowserBackgroundStyle: String, CaseIterable, Codable, Sendable, Ide
         case .aurora: return "sparkles"
         case .glacier: return "snowflake"
         case .violet: return "moon.stars.fill"
+        case .nightSky: return "sparkle"
+        case .pearl: return "circle.lefthalf.filled"
+        case .forest: return "tree.fill"
+        case .desert: return "sun.haze.fill"
         case .colorful: return "paintpalette.fill"
         }
     }
@@ -157,13 +170,33 @@ struct AmbientBackgroundView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.browserBackgroundStyle) private var style
 
+    private var legacyStyle: BrowserBackgroundStyle {
+        switch style { case .nightSky, .pearl, .forest, .desert: return .solid; default: return style }
+    }
+    private var designerColors: [Color]? {
+        let dark = colorScheme == .dark
+        let values: [UInt32]
+        switch style {
+        case .nightSky: values = dark ? [0x101B35, 0x30254A, 0x112F3D] : [0xE8EEFF, 0xEEE5FA, 0xDDF2F5]
+        case .pearl: values = dark ? [0x22242C, 0x30242C, 0x202D32] : [0xF9F5EE, 0xF6EAF0, 0xEAF3F3]
+        case .forest: values = dark ? [0x101F19, 0x18352B, 0x243025] : [0xEBF4E7, 0xDCEFE7, 0xF2F4E7]
+        case .desert: values = dark ? [0x291D15, 0x382322, 0x282819] : [0xFAF1DD, 0xF5E5D9, 0xEFEADC]
+        default: return nil
+        }
+        return values.map { Color(velaHex: $0) }
+    }
+
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
             ZStack {
                 base
 
-                if style.usesAmbient, size.width > 1, size.height > 1 {
+                if let colors = designerColors {
+                    LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+                    RadialGradient(colors: [colors[1].opacity(0.7), .clear], center: .topTrailing,
+                                   startRadius: 0, endRadius: max(size.width, size.height) * 0.85)
+                } else if style.usesAmbient, size.width > 1, size.height > 1 {
                     if colorScheme == .dark {
                         darkField(in: size)
                     } else {
@@ -328,8 +361,8 @@ struct AmbientBackgroundView: View {
     /// The coloured light the dark field is allowed. Opacities stay low: on a
     /// near-black ground a saturated glow reads as a sticker, not a light.
     private var darkGlowColors: DarkGlowColors {
-        switch style {
-        case .solid:
+        switch legacyStyle {
+        case .solid, .nightSky, .pearl, .forest, .desert:
             return DarkGlowColors(primary: .clear, secondary: .clear, primaryOpacity: 0, secondaryOpacity: 0)
         case .onyx:
             return DarkGlowColors(
@@ -415,8 +448,8 @@ struct AmbientBackgroundView: View {
 
     /// The base gradient stops for the active style and appearance.
     private var baseColors: [Color] {
-        switch style {
-        case .solid:
+        switch legacyStyle {
+        case .solid, .nightSky, .pearl, .forest, .desert:
             let surface = palette.tokens(for: colorScheme).surface
             return [surface, surface, surface]
         case .onyx:
@@ -538,8 +571,8 @@ struct AmbientBackgroundView: View {
     /// and cream/amber, so the three are recognisable at a glance.
     private var meshColors: [Color] {
         let dark = colorScheme == .dark
-        switch style {
-        case .solid:
+        switch legacyStyle {
+        case .solid, .nightSky, .pearl, .forest, .desert:
             let surface = palette.tokens(for: colorScheme).surface
             return Array(repeating: surface, count: 9)
         case .onyx:
@@ -821,8 +854,8 @@ struct AmbientBackgroundView: View {
             )
         }
 
-        switch style {
-        case .solid:
+        switch legacyStyle {
+        case .solid, .nightSky, .pearl, .forest, .desert:
             return []
         case .onyx:
             return [

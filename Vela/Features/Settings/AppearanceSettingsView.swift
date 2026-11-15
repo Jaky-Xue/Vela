@@ -51,9 +51,11 @@ struct AppearanceSettingsView: View {
                         env.settings.update { $0.themePaletteId = candidate.id }
                     } label: {
                         HStack(spacing: 12) {
-                            Circle()
-                                .fill(candidate.accent)
-                                .frame(width: 22, height: 22)
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(LinearGradient(colors: [candidate.light.surface, candidate.dark.surface],
+                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 48, height: 36)
+                                .overlay { Circle().fill(candidate.accent).frame(width: 15, height: 15) }
                                 .overlay {
                                     Circle().strokeBorder(palette.cardStroke, lineWidth: 0.5)
                                 }

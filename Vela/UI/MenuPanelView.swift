@@ -54,6 +54,7 @@ struct MenuPanelView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// Whether the panel is showing its editor instead of its grid.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isEditing = false
     @State private var showingShortcutEditor = false
 
@@ -85,6 +86,10 @@ struct MenuPanelView: View {
                 editingList
             } else {
                 headerRow
+                HStack(spacing: 5) {
+                    Image(systemName: "hand.draw")
+                    Text("长按图标拖动排序")
+                }.font(.caption).foregroundStyle(palette.secondaryText).padding(.horizontal)
                 tileGrid
                 if !scriptCommands.isEmpty {
                     ScrollView {
@@ -196,28 +201,28 @@ struct MenuPanelView: View {
                 Image(systemName: symbol)
                     .font(.system(size: 21, weight: .semibold))
                     .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(isModeOn ? palette.onAccent : palette.primaryText)
+                    .foregroundStyle(Color.white)
                     // Capped rather than fixed: a five-column grid on a
                     // 320-point phone gives a cell a little under 54 points,
                     // and a hard 54 would push neighbouring tiles apart.
                     .frame(maxWidth: 54, minHeight: 54, maxHeight: 54)
                     .background(
-                        isModeOn ? palette.accent : palette.controlFill,
+                        IconColorStyle.gradient(for: tile.id),
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                     )
                     .overlay {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .strokeBorder(
-                                isModeOn ? Color.clear : palette.cardStroke,
-                                lineWidth: 0.5
+                                isModeOn ? Color.white : Color.white.opacity(0.22),
+                                lineWidth: isModeOn ? 2.5 : 0.5
                             )
                             .allowsHitTesting(false)
                     }
 
                 Text(tile.title)
-                    .font(.system(size: 11, weight: .medium))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
                     .foregroundStyle(isModeOn ? palette.accent : palette.primaryText)
             }
             .frame(maxWidth: .infinity)
@@ -225,7 +230,16 @@ struct MenuPanelView: View {
             .opacity(enabled ? 1 : 0.32)
         }
         .buttonStyle(MenuTileButtonStyle(enabled: enabled))
-        .disabled(!enabled)
+        .draggable("vela-menu:" + tile.id)
+        .dropDestination(for: String.self) { items, _ in
+            guard let raw = items.first, raw.hasPrefix("vela-menu:") else { return false }
+            let source = String(raw.dropFirst("vela-menu:".count))
+            guard layout.visibleTiles.contains(where: { $0.id == source }), source != tile.id else { return false }
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                env.settings.menuLayout = layout.movingTile(source, before: tile.id)
+            }
+            return true
+        }
         .contextMenu {
             if tile.action == .privateTab && isPrivateMode {
                 Button("离开无痕模式", systemImage: "eyeglasses.slash", role: .destructive) {
@@ -239,7 +253,7 @@ struct MenuPanelView: View {
             }
         }
         .accessibilityLabel(tile.title)
-        .accessibilityHint(enabled ? "" : "当前不可用")
+        .accessibilityHint(enabled ? "长按可拖动排序" : "当前操作不可用，仍可拖动排序")
         .accessibilityValue(
             (tile.action == .privateTab || tile.action == .desktopSite)
                 ? (isModeOn ? "已开启" : "已关闭")
@@ -396,11 +410,12 @@ struct MenuPanelView: View {
 /// Press feedback for a menu tile: a quiet scale when it can be pressed, and
 /// nothing at all when it cannot.
 private struct MenuTileButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var enabled: Bool
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed && enabled ? 0.92 : 1)
+            .scaleEffect(configuration.isPressed && enabled && !reduceMotion ? 0.92 : 1)
             .opacity(configuration.isPressed && enabled ? 0.7 : 1)
             .animation(.spring(response: 0.24, dampingFraction: 0.72), value: configuration.isPressed)
     }

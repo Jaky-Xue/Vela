@@ -151,6 +151,17 @@ public final class HomeFavoritesService {
         persist()
     }
 
+    /// Swap complete records; IDs, URLs and per-tile preferences stay together.
+    @discardableResult
+    public func swap(_ firstID: String, with secondID: String) -> Bool {
+        guard firstID != secondID,
+              let first = favorites.firstIndex(where: { $0.id == firstID }),
+              let second = favorites.firstIndex(where: { $0.id == secondID }) else { return false }
+        favorites.swapAt(first, second)
+        persist()
+        return true
+    }
+
     public func remove(id: String) {
         guard favorites.contains(where: { $0.id == id }) else { return }
         favorites.removeAll { $0.id == id }

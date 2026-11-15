@@ -104,11 +104,21 @@ public final class UserScriptService {
         updated.excludeMatches = cleaned(excludeMatches)
         updated.updatedAt = Date()
         try repository.upsert(updated)
+        settings.updateUserScriptSettings {
+            var rules = $0.localRules ?? [:]
+            rules[script.id] = UserScriptLocalRules(matches: updated.matches, includes: updated.includes,
+                excludes: updated.excludes, excludeMatches: updated.excludeMatches)
+            $0.localRules = rules
+        }
         reload()
     }
 
     public func delete(id: String) {
         try? repository.remove(id: id)
+        settings.updateUserScriptSettings {
+            $0.localRules?.removeValue(forKey: id)
+            $0.drafts?.removeValue(forKey: id)
+        }
         updateStatus.removeValue(forKey: id)
         reload()
     }
@@ -200,6 +210,7 @@ public final class UserScriptService {
             if script.updateUrl.isEmpty { script.updateUrl = existing.updateUrl }
             if script.downloadUrl.isEmpty { script.downloadUrl = existing.downloadUrl }
         }
+        if let local = settings.userScriptSettings.localRules?[script.id] { script = local.applying(to: script) }
         if script.requireSources.count != script.requireUrls.count || script.requireSources.contains("") {
             script.enabled = false
             warnings.append("依赖不完整，脚本已停用；修复依赖后再启用。")
@@ -274,6 +285,7 @@ public final class UserScriptService {
         )
         switch result {
         case let .success(outcome):
+            settings.updateUserScriptSettings { $0.drafts?.removeValue(forKey: script.id) }
             return .saved(warnings: outcome.warnings)
         case let .failure(error):
             return .invalid(message: error.localizedDescription, warnings: parse.warnings)
@@ -351,11 +363,15 @@ public final class UserScriptService {
     /// Offered when an edit is mid-flight and the metadata block is temporarily
     /// broken: losing the body would be worse than keeping the old metadata.
     public func saveRawSource(_ text: String, for script: InstalledUserScriptState) throws {
-        var updated = script
-        updated.source = text
-        updated.updatedAt = Date()
-        try repository.upsert(updated)
-        reload()
+        settings.updateUserScriptSettings {
+            var drafts = $0.drafts ?? [:]
+            drafts[script.id] = text
+            $0.drafts = drafts
+        }
+    }
+
+    public func draftSource(for script: InstalledUserScriptState) -> String? {
+        settings.userScriptSettings.drafts?[script.id]
     }
 
     // MARK: - Dependencies
@@ -399,6 +415,7 @@ public final class UserScriptService {
             || (existing?.resourceDeclarations ?? []) != candidate.resourceDeclarations
         if let existing, !declarationsChanged,
            existing.requireSources.count == existing.requireUrls.count,
+           !existing.requireSources.contains(""),
            existing.resources.count == existing.resourceDeclarations.count {
             return (existing.requireSources, existing.resources, [])
         }
@@ -439,11 +456,12 @@ public final class UserScriptService {
                 warnings.append("@require 总量超过上限，其余依赖未下载。")
                 break
             }
-            if let fetched = await fetch(rawURL, base: base, limit: perItemLimit),
+            if let fetched = await fetch(rawURL, base: base, limit: min(perItemLimit, totalLimit - totalBytes)),
                let text = Self.decodeText(fetched.data) {
                 sources.append(text)
                 totalBytes += fetched.data.count
-            } else if let previous = previousSources[rawURL] {
+            } else if let previous = previousSources[rawURL], !previous.isEmpty, previous.utf8.count <= totalLimit - totalBytes {
+                totalBytes += previous.utf8.count
                 sources.append(previous)
                 warnings.append("无法重新下载 @require，沿用上次保存的副本：\(rawURL)")
             } else {
@@ -458,7 +476,7 @@ public final class UserScriptService {
                 break
             }
             let key = Self.resourceKey(declaration)
-            if let fetched = await fetch(declaration.url, base: base, limit: perItemLimit) {
+            if let fetched = await fetch(declaration.url, base: base, limit: min(perItemLimit, totalLimit - totalBytes)) {
                 totalBytes += fetched.data.count
                 let mime = fetched.mimeType
                 if Self.isTextMime(mime) || Self.hasTextExtension(declaration.url),
@@ -561,7 +579,18 @@ public final class UserScriptService {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("*/*", forHTTPHeaderField: "Accept")
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.httpCookieStorage = nil
+            configuration.urlCredentialStorage = nil
+            let session = URLSession(configuration: configuration)
+            defer { session.invalidateAndCancel() }
+            let (bytes, response) = try await session.bytes(for: request)
+            guard response.expectedContentLength <= limit else { return nil }
+            var data = Data()
+            for try await byte in bytes {
+                guard data.count < limit else { return nil }
+                data.append(byte)
+            }
             if let http = response as? HTTPURLResponse,
                !(200...299).contains(http.statusCode) {
                 return nil
@@ -630,10 +659,12 @@ public final class UserScriptService {
             || (candidate.version.isEmpty && script.version.isEmpty && candidate.source != script.source)
 
         if newer {
+            let original = UserScriptParser.parse(editableSource(for: script)).candidate
             let expands = !Set(candidate.grants.map(\.rawValue)).isSubset(of: Set(script.grants.map(\.rawValue)))
                 || !Set(candidate.connectRules).isSubset(of: Set(script.connectRules))
-                || candidate.matches != script.matches || candidate.includes != script.includes
-                || candidate.excludes != script.excludes || candidate.excludeMatches != script.excludeMatches
+                || candidate.matches != (original?.matches ?? script.matches) || candidate.includes != (original?.includes ?? script.includes)
+                || candidate.excludes != (original?.excludes ?? script.excludes) || candidate.excludeMatches != (original?.excludeMatches ?? script.excludeMatches)
+                || candidate.noframes != script.noframes || candidate.runAt != script.runAt
                 || candidate.requireUrls != script.requireUrls || candidate.resourceDeclarations != script.resourceDeclarations
                 || (!candidate.updateUrl.isEmpty && candidate.updateUrl != script.updateUrl)
                 || (!candidate.downloadUrl.isEmpty && candidate.downloadUrl != script.downloadUrl)
@@ -657,6 +688,7 @@ public final class UserScriptService {
             // address the script was recorded with; only fill it when the
             // remote file does not name one.
             if updated.sourceUrl.isEmpty { updated.sourceUrl = script.sourceUrl }
+            if let local = settings.userScriptSettings.localRules?[script.id] { updated = local.applying(to: updated) }
             updated.lastCheckedAt = Date()
             updated.resourceDeclarations = updatedCandidate.resourceDeclarations
             updated.requireSources = dependencies.requireSources

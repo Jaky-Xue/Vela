@@ -17,6 +17,10 @@ public struct ContentBlockerSettings: Codable, Equatable, Sendable {
     /// Hosts that bypass the rule list. Parent-domain matching, the same shape
     /// the password vault and the per-site display choices use.
     public var whitelistedHosts: [String]
+    public var subscriptions: [FilterSubscription]?
+    public var customRules: String?
+    public var disabledBuiltIns: [String]?
+    public var activeSnapshot: FilterSnapshotInfo?
 
     public init(enabled: Bool = true, whitelistedHosts: [String] = []) {
         self.enabled = enabled

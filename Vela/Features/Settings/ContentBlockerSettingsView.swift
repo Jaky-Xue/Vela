@@ -42,7 +42,7 @@ struct ContentBlockerSettingsView: View {
             } header: {
                 Text("拦截")
             } footer: {
-                Text("使用内置规则拦截常见广告、统计与跟踪请求，并隐藏页面里的广告位。规则在启动时编译，只作用于启用之后发出的请求。")
+                Text("使用内置规则拦截常见广告、统计与跟踪请求，并隐藏页面里的广告位。启动优先恢复有效规则，首次网页请求会等待保护就绪。订阅支持离线缓存；重新编译只影响之后的请求。")
             }
 
             Section {
@@ -65,6 +65,11 @@ struct ContentBlockerSettingsView: View {
                     Text(error)
                         .font(.footnote)
                         .foregroundStyle(.red)
+                }
+                NavigationLink {
+                    FilterSourcesSettingsView()
+                } label: {
+                    Label("过滤来源与自定义规则", systemImage: "line.3.horizontal.decrease.circle")
                 }
                 Button {
                     blocker.prepare()

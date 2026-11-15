@@ -425,9 +425,24 @@ public struct InstalledUserScriptState: Codable, Equatable, Sendable, Identifiab
     }
 }
 
+public struct UserScriptLocalRules: Codable, Equatable, Sendable {
+    public var matches: [String]
+    public var includes: [String]
+    public var excludes: [String]
+    public var excludeMatches: [String]
+    public func applying(to script: InstalledUserScriptState) -> InstalledUserScriptState {
+        var copy = script
+        copy.matches = matches; copy.includes = includes
+        copy.excludes = excludes; copy.excludeMatches = excludeMatches
+        return copy
+    }
+}
+
 public struct UserScriptSettings: Codable, Equatable, Sendable {
     public var scripts: [InstalledUserScriptState]
     public var autoUpdateEnabled: Bool
+    public var localRules: [String: UserScriptLocalRules]?
+    public var drafts: [String: String]?
     public var updatedAt: Date
 
     public init(

@@ -95,6 +95,10 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             if navigationAction.targetFrame?.isMainFrame == true,
                let scheme = navigationAction.request.url?.scheme?.lowercased(),
                scheme == "http" || scheme == "https" {
+                if self.settings.contentBlocker.enabled,
+                   !self.settings.contentBlocker.isExcepted(host: navigationAction.request.url?.host ?? "") {
+                    await self.contentBlocker.waitUntilPrepared()
+                }
                 self.syncContentBlocker(
                     forHost: navigationAction.request.url?.host,
                     in: webView

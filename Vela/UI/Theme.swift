@@ -335,7 +335,32 @@ struct BrowserPalette: Equatable, Identifiable, Sendable {
                 onAccent: Color(red: 0.102, green: 0.063, blue: 0.059)
             )
         )
+    ] + designerPalettes
+
+    private static let designerPalettes: [BrowserPalette] = [
+        designed("iris", "鸢尾紫", accent: 0x683BB6, bright: 0xC5A6FF, light: 0xF2EDFA, dark: 0x171222),
+        designed("jade", "翡翠绿", accent: 0x087363, bright: 0x68DEBC, light: 0xEAF5F0, dark: 0x0D201C),
+        designed("amber", "琥珀金", accent: 0x965013, bright: 0xF6C66B, light: 0xFBF2E4, dark: 0x241C10),
+        designed("rose", "玫瑰粉", accent: 0xA32E62, bright: 0xFFA3C9, light: 0xFBEFF4, dark: 0x25131D),
+        designed("cobalt", "钴蓝", accent: 0x224FC5, bright: 0x96BAFF, light: 0xEDF2FC, dark: 0x101A30),
+        designed("slate", "石墨灰", accent: 0x46596B, bright: 0xB5CEDF, light: 0xEFF2F4, dark: 0x141B22)
     ]
+
+    private static func designed(_ id: String, _ name: String, accent: UInt32, bright: UInt32,
+                                 light: UInt32, dark: UInt32) -> BrowserPalette {
+        func tokens(_ isDark: Bool) -> BrowserColorTokens {
+            let a = Color(velaHex: isDark ? bright : accent)
+            let surface = Color(velaHex: isDark ? dark : light)
+            let ink = Color(velaHex: isDark ? 0xF4F6FA : 0x18212D)
+            return BrowserColorTokens(accent: a, chrome: surface, surface: surface,
+                card: Color(velaHex: isDark ? 0x26313D : 0xFFFFFF),
+                cardStroke: ink.opacity(isDark ? 0.20 : 0.13), separator: ink.opacity(0.15),
+                primaryText: ink, secondaryText: Color(velaHex: isDark ? 0xB9C4D0 : 0x4F5D6B),
+                controlFill: ink.opacity(isDark ? 0.10 : 0.06), rowHighlight: a.opacity(0.16),
+                matchHighlight: a.opacity(0.20), onAccent: Color(velaHex: isDark ? 0x111A23 : 0xFFFFFF))
+        }
+        return BrowserPalette(id: id, displayName: name, light: tokens(false), dark: tokens(true))
+    }
 
     static let `default` = all[0]
 }

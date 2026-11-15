@@ -688,7 +688,7 @@ struct UserScriptDetailView: View {
                 Button("编辑代码", systemImage: "square.and.pencil") {
                     // The stored source is the body alone; the editor needs the
                     // metadata block too, or every save fails to re-parse.
-                    editedSource = env.userScripts.editableSource(for: current)
+                    editedSource = env.userScripts.draftSource(for: current) ?? env.userScripts.editableSource(for: current)
                     showEditor = true
                 }
                 Button("分享脚本源码", systemImage: "square.and.arrow.up") {
@@ -867,7 +867,7 @@ struct UserScriptDetailView: View {
             )
             showRuleEditor = false
             ruleError = nil
-            notice = "匹配规则已保存。重新载入网页后生效。"
+            notice = "本地运行规则已保存，不会因编辑源码或自动更新而被覆盖。重新载入网页后生效。"
         } catch {
             ruleError = "保存失败：\(error.localizedDescription)"
         }
@@ -882,7 +882,7 @@ struct UserScriptDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Button("仍然保存") {
+                        Button("保存草稿") {
                             saveRawSource()
                         }
                         .font(.caption.weight(.semibold))
@@ -947,7 +947,7 @@ struct UserScriptDetailView: View {
             try env.userScripts.saveRawSource(editedSource, for: current)
             showEditor = false
             editError = nil
-            notice = "代码已保存，元数据块仍保持原样。"
+            notice = "草稿已保存；当前可执行版本保持不变，验证并保存后才会替换。"
         } catch {
             editError = "保存失败：\(error.localizedDescription)"
         }

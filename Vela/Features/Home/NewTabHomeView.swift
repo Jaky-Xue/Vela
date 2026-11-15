@@ -22,6 +22,7 @@ import UIKit
 struct NewTabHomeView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Whether this surface is the private mode's home — the ordinary home
     /// and the private one are the same view, and the badge is what tells
@@ -363,6 +364,9 @@ struct NewTabHomeView: View {
             // the row left a wide screen with a shelf floating in the middle
             // of it, away from the 收藏 heading it belongs to.
             VStack(alignment: .leading, spacing: tileSpacing) {
+                if !isPrivate && favorites.count > 1 {
+                    Text("长按拖动，交换位置").font(.caption).foregroundStyle(homeSecondaryText)
+                }
                 if favorites.isEmpty {
                     Text("还没有收藏。点右上角的 + 添加。")
                         .font(.footnote)
@@ -433,6 +437,17 @@ struct NewTabHomeView: View {
         }
         .frame(width: tileCellWidth)
         .buttonStyle(HomeTileButtonStyle())
+        .draggable(isPrivate ? "" : "vela-favorite:" + favorite.id)
+        .dropDestination(for: String.self) { items, _ in
+            guard !isPrivate, let raw = items.first, raw.hasPrefix("vela-favorite:") else { return false }
+            let id = String(raw.dropFirst("vela-favorite:".count))
+            var swapped = false
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                swapped = env.homeFavorites.swap(id, with: favorite.id)
+            }
+            return swapped
+        }
+        .accessibilityHint(isPrivate ? "" : "长按拖动到另一图标可交换位置")
         .contextMenu {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {
                 guard let url = BrowserUrlResolver.storedUrl(favorite.url) else { return }
