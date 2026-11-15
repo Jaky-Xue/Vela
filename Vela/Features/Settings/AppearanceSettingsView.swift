@@ -51,14 +51,7 @@ struct AppearanceSettingsView: View {
                         env.settings.update { $0.themePaletteId = candidate.id }
                     } label: {
                         HStack(spacing: 12) {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(LinearGradient(colors: [candidate.light.surface, candidate.dark.surface],
-                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 48, height: 36)
-                                .overlay { Circle().fill(candidate.accent).frame(width: 15, height: 15) }
-                                .overlay {
-                                    Circle().strokeBorder(palette.cardStroke, lineWidth: 0.5)
-                                }
+                            PaletteCharacterSwatch(palette: candidate)
                             Text(candidate.displayName)
                                 .foregroundStyle(palette.primaryText)
                             Spacer()
@@ -563,5 +556,36 @@ private struct HomeIconDesignPreview: View {
             }
             .frame(height: rowHeight)
         }
+    }
+}
+
+
+/// A static miniature of the theme's surface geometry and depth, not only its hue.
+private struct PaletteCharacterSwatch: View {
+    var palette: BrowserPalette
+
+    var body: some View {
+        let style = palette.visualStyle
+        let depth = style.resolvedElevation(.card)
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(LinearGradient(colors: [palette.light.surface, palette.light.accent.opacity(0.25)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+            RoundedRectangle(cornerRadius: style.cardRadius * 0.35, style: .continuous)
+                .fill(palette.light.card.opacity(style.cardOpacity(reduceTransparency: false)))
+                .overlay {
+                    Image(systemName: style.icons == .filled ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(palette.light.accent)
+                }
+                .frame(width: 28, height: 25)
+                .shadow(color: .black.opacity(depth.opacity), radius: depth.radius * 0.3, y: depth.y * 0.3)
+        }
+        .frame(width: 48, height: 36)
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(palette.light.cardStroke, lineWidth: 0.5)
+        }
+        .accessibilityHidden(true)
     }
 }
