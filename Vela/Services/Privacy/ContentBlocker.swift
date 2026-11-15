@@ -244,6 +244,7 @@ public final class ContentBlocker {
         } catch {
             lastError = error.localizedDescription
             isReady = compiledList != nil
+            pruneCaches()
             return false
         }
     }

@@ -53,6 +53,12 @@ final class FilterSubscriptionTests: XCTestCase {
         XCTAssertNotNil(settings.contentBlocker.subscriptions?.first?.error)
         XCTAssertEqual(blocker.ruleCount, count)
         XCTAssertTrue(blocker.isReady)
+        FilterFixtureProtocol.body = "##["
+        await blocker.refreshSubscriptions()
+        XCTAssertEqual(settings.contentBlocker.subscriptions?.first?.cacheHash, hash)
+        XCTAssertTrue(blocker.lastError?.contains("CSS") ?? false)
+        let cachedFiles = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        XCTAssertEqual(cachedFiles.map(\.lastPathComponent).sorted(), [hash + ".txt"])
         await blocker.setSubscription(source.id, enabled: false)
         XCTAssertEqual(settings.contentBlocker.subscriptions?.first?.enabled, false)
         XCTAssertEqual(blocker.ruleCount, count - 1)
