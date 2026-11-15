@@ -1,0 +1,11 @@
+{
+  "commit": "8d90efd7bea62e518863f898f63e7fb139632b0c",
+  "run": "43712076915",
+  "kind": "build",
+  "workflow": "https://github.com/Jaky-Xue/Vela/actions/runs/43712076915",
+  "version": "3.9.56",
+  "build": "59",
+  "sha256": "8c13b3931f2bf4442ef777d16c21cae39a838f3753f2a64deab50df714cb6e05",
+  "bytes": 7350660,
+  "signing": "unsigned"
+}
