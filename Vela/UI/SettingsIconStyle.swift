@@ -6,10 +6,11 @@
 //
 //  The root list is a map of destinations, and colour is what makes one of
 //  them findable at a glance. The rows used to wear a monochrome tint of the
-//  palette's accent, which made every screen look alike; a saturated tile with
-//  a white glyph is the same language the system's own settings screens use.
-//  Every gradient stop here keeps a white glyph at 4.5:1 in both appearances,
-//  so the tiles read the same under every palette.
+//  palette's accent, which made every screen look alike; a vivid tile with a
+//  white glyph is the same language the system's own settings screens use.
+//  The hues are deliberately bright rather than darkened for contrast: the
+//  row's name carries the meaning and the tile is the landmark, so the tile
+//  may sit at the 2–4:1 Apple's own Settings icons do.
 //
 
 import SwiftUI
@@ -22,22 +23,22 @@ struct SettingsRowIcon: View {
     /// Follow the palette's icon character: filled for the solid palettes,
     /// outlined for the ones that ask for line symbols.
     var filled: Bool = true
-    var size: CGFloat = 34
+    var size: CGFloat = 36
 
-    private var cornerRadius: CGFloat { (size * 0.27).rounded() }
+    private var cornerRadius: CGFloat { (size * 0.25).rounded() }
 
     var body: some View {
         Image(systemName: symbolName)
             .symbolVariant(filled ? .fill : .none)
-            .font(.system(size: size * 0.44, weight: .semibold))
+            .font(.system(size: size * 0.46, weight: .medium))
             .symbolRenderingMode(.monochrome)
             .foregroundStyle(.white)
             .frame(width: size, height: size)
             .background(
                 LinearGradient(
                     colors: [Color(velaHex: topHex), Color(velaHex: bottomHex)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                    startPoint: .top,
+                    endPoint: .bottom
                 ),
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
@@ -102,47 +103,47 @@ extension SettingsDestination {
     /// The lighter and darker ends of the icon's gradient.
     var iconTopHex: UInt32 {
         switch self {
-        case .general: return 0x6E737A
-        case .appearance: return 0x8B4CDB
-        case .toolbar: return 0x0E7A82
-        case .menuPanel: return 0x4C57C9
-        case .downloads: return 0x2C6FE0
-        case .searchEngine: return 0x1E6FAE
-        case .userAgent: return 0xA85812
-        case .userScripts: return 0x2E7D4F
-        case .contentBlocker: return 0x1B7C4E
-        case .elementHide: return 0x3C7288
-        case .passwords: return 0x94660A
-        case .privateBrowsing: return 0x6A5BD9
-        case .sitePermissions: return 0x2B62C4
-        case .externalNavigation: return 0xC2453A
-        case .webrtc: return 0x177A6B
-        case .clearData: return 0xC0392B
-        case .dataTransfer: return 0x327A36
-        case .about: return 0x4A6A9C
+        case .general: return 0x8E8E93
+        case .appearance: return 0xC936F0
+        case .toolbar: return 0x21C7E8
+        case .menuPanel: return 0x6C5CE7
+        case .downloads: return 0x0A7BF5
+        case .searchEngine: return 0x18A0F8
+        case .userAgent: return 0xF5A000
+        case .userScripts: return 0x2BC35B
+        case .contentBlocker: return 0x12B98A
+        case .elementHide: return 0xF0509A
+        case .passwords: return 0xF5B301
+        case .privateBrowsing: return 0x9B5DE5
+        case .sitePermissions: return 0x2F7BF6
+        case .externalNavigation: return 0xF5413A
+        case .webrtc: return 0x0FA3B1
+        case .clearData: return 0xE5342C
+        case .dataTransfer: return 0x2BB673
+        case .about: return 0x5A7FD0
         }
     }
 
     var iconBottomHex: UInt32 {
         switch self {
-        case .general: return 0x585C63
-        case .appearance: return 0x7137B8
-        case .toolbar: return 0x0B5F66
-        case .menuPanel: return 0x3B45A4
-        case .downloads: return 0x2257B4
-        case .searchEngine: return 0x175887
-        case .userAgent: return 0x88440B
-        case .userScripts: return 0x24633E
-        case .contentBlocker: return 0x156240
-        case .elementHide: return 0x2F5A6B
-        case .passwords: return 0x754F07
-        case .privateBrowsing: return 0x5447AE
-        case .sitePermissions: return 0x224E9C
-        case .externalNavigation: return 0x9C372E
-        case .webrtc: return 0x125F54
-        case .clearData: return 0x992D22
-        case .dataTransfer: return 0x28612C
-        case .about: return 0x3B557D
+        case .general: return 0x6C6C72
+        case .appearance: return 0xA21CD6
+        case .toolbar: return 0x0FA8CC
+        case .menuPanel: return 0x4F41C8
+        case .downloads: return 0x0060D2
+        case .searchEngine: return 0x0B7FD1
+        case .userAgent: return 0xD07E00
+        case .userScripts: return 0x1AA046
+        case .contentBlocker: return 0x0A946C
+        case .elementHide: return 0xD12C78
+        case .passwords: return 0xD29400
+        case .privateBrowsing: return 0x7D3FC8
+        case .sitePermissions: return 0x1B5FD0
+        case .externalNavigation: return 0xD32720
+        case .webrtc: return 0x0A8290
+        case .clearData: return 0xC4241D
+        case .dataTransfer: return 0x1A935A
+        case .about: return 0x3F62AC
         }
     }
 

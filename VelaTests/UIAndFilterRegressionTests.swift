@@ -32,17 +32,19 @@ final class UIAndFilterRegressionTests: XCTestCase {
         XCTAssertEqual(moved.movingTile("foreign", before: shortcut.id), moved)
     }
 
-    func testSettingsRowIconsCarryAWhiteGlyph() {
+    /// The tiles are landmarks, not text: the row's name carries the meaning,
+    /// so the hues stay the vivid ones the system's own Settings use rather
+    /// than being darkened to reach 4.5:1. What must hold is that no two
+    /// destinations wear the same tile and that every tile actually has a
+    /// gradient to draw.
+    func testSettingsRowIconsAreDistinctGradients() {
+        let tops = SettingsDestination.allCases.map(\.iconTopHex)
+        XCTAssertEqual(Set(tops).count, tops.count)
         for destination in SettingsDestination.allCases {
-            XCTAssertGreaterThanOrEqual(
-                contrast(.white, Color(velaHex: destination.iconTopHex)),
-                4.5,
-                destination.rawValue + " top"
-            )
-            XCTAssertGreaterThanOrEqual(
-                contrast(.white, Color(velaHex: destination.iconBottomHex)),
-                4.5,
-                destination.rawValue + " bottom"
+            XCTAssertNotEqual(
+                destination.iconTopHex,
+                destination.iconBottomHex,
+                destination.rawValue
             )
         }
     }
