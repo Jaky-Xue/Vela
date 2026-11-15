@@ -36,6 +36,7 @@ public struct ManualElementHideSiteRules: Codable, Equatable, Sendable, Identifi
 
 public struct ManualElementHideSettings: Codable, Equatable, Sendable {
     public var sites: [ManualElementHideSiteRules]
+    public var pausedHosts: [String]?
 
     public init(sites: [ManualElementHideSiteRules] = []) {
         self.sites = sites
@@ -51,6 +52,7 @@ public struct ManualElementHideSettings: Codable, Equatable, Sendable {
     /// of it — a rule added on `news.example.com` also applies to a subdomain.
     public func effectiveSelectors(for host: String) -> [String] {
         let normalized = host.lowercased()
+        guard !(pausedHosts ?? []).contains(normalized) else { return [] }
         return sites
             .filter { normalized == $0.host || normalized.hasSuffix("." + $0.host) }
             .flatMap { $0.rules.map(\.selector) }

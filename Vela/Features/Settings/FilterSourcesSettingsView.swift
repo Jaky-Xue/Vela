@@ -37,6 +37,9 @@ struct FilterSourcesSettingsView: View {
                     }
                     .contextMenu {
                         Text(source.url)
+                        if source.previousCacheHash != nil {
+                            Button("回滚来源", systemImage: "arrow.uturn.backward") { Task { await blocker.rollbackSubscription(source.id) } }
+                        }
                         Button("移除订阅", role: .destructive) { Task { await blocker.removeSubscription(source.id) } }
                     }
                 }

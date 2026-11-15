@@ -32,7 +32,7 @@ struct PendingScriptUpdateView: View {
         var id: String { title }
     }
     private func permissionGroups(_ candidate: UserScriptPackageCandidate) -> [PermissionGroup] {
-        let tokens = Array(Set(candidate.grants.map(\.rawValue))).sorted()
+        let tokens = Array(Set(candidate.declaredGrantTokens)).sorted()
         return Dictionary(grouping: tokens, by: { permissionTitle(UserScriptGrant(token: $0)) })
             .map { PermissionGroup(title: $0.key, tokens: $0.value) }.sorted { $0.title < $1.title }
     }

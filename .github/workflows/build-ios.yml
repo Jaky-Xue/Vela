@@ -17,6 +17,9 @@ name: Build unsigned IPA
 # cost the package.
 
 on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
   workflow_dispatch:
     inputs:
       configuration:
@@ -42,6 +45,8 @@ jobs:
   build:
     name: Build Vela
     needs: test
+    permissions:
+      contents: write
     # Xcode 16 is the floor: the project uses the file-system-synchronized group
     # format (objectVersion 77) that Xcode 16 introduced.
     #
@@ -125,8 +130,19 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Mirror verified IPA for Git transport
+        if: github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56'
+        continue-on-error: true
+        run: python3 Scripts/publish_ci_bundle.py build
+
   test:
-    name: Run the unit tests
+    name: Run the unit tests (${{ matrix.device }})
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
     # The same image as the build, for the same SDK reason — and because a test
     # that passes against one SDK says nothing about the other.
     runs-on: ${{ inputs.runner || 'macos-26' }}
@@ -156,7 +172,7 @@ jobs:
               if "iOS" not in runtime:
                   continue
               for device in devices[runtime]:
-                  if device["name"].startswith("iPhone"):
+                  if device["name"].startswith("${{ matrix.device }}"):
                       print(device["name"])
                       raise SystemExit
           raise SystemExit("no available iPhone simulator")
@@ -168,7 +184,7 @@ jobs:
             -scheme Vela \
             -destination "platform=iOS Simulator,name=$DEVICE" \
             -retry-tests-on-failure \
-            -resultBundlePath TestResults.xcresult
+            -resultBundlePath TestResults.xcresult 2>&1 | tee test-output.log
         # `-retry-tests-on-failure` re-runs just the tests that failed, once,
         # and records both attempts in the result bundle. The simulator's
         # content-process churn intermittently drops a title round-trip the
@@ -187,7 +203,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ matrix.device }}
           path: TestResults.xcresult
           if-no-files-found: ignore
           retention-days: 14
@@ -200,7 +216,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ui-previews
+          name: ui-previews-${{ matrix.device }}
           path: ui-previews
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Mirror test evidence for Git transport
+        if: always() && github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56'
+        continue-on-error: true
+        run: python3 Scripts/publish_ci_bundle.py tests-${{ matrix.device }}

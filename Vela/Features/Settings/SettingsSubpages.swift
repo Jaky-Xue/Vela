@@ -155,6 +155,7 @@ struct ElementHideSettingsView: View {
                                         ruleId: rule.id,
                                         host: site.host
                                     )
+                                    if let tab = env.tabManager.activeTab { env.webCoordinator.applyManualElementHides(to: env.tabManager.webView(for: tab.id), host: site.host) }
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundStyle(.secondary)

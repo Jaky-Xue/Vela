@@ -39,6 +39,7 @@ struct NewTabHomeView: View {
     /// The tile being edited, and whether the sheet is creating a new one.
     @State private var editingFavorite: HomeFavorite?
     @State private var showingNewFavorite = false
+    @State private var favoriteDropTarget: String?
     /// The width of the content column, measured once per layout. The
     /// favourites grid uses it to choose a column count that suits the window
     /// instead of always drawing five over-stretched cells.
@@ -370,29 +371,12 @@ struct NewTabHomeView: View {
                         .foregroundStyle(homeSecondaryText)
                         .padding(.vertical, 4)
                 } else {
-                    ForEach(favoriteRows) { row in
-                        HStack(alignment: .top, spacing: tileSpacing) {
-                            ForEach(row.favorites) { favorite in
-                                favoriteCell(favorite)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(tileCellWidth), spacing: tileSpacing), count: tileColumnCount), alignment: .leading, spacing: tileSpacing) {
+                        ForEach(favorites) { favorite in favoriteCell(favorite) }
                     }
+                    .animation(BrowserMotion.layout(reduceMotion), value: favorites.map(\.id))
                 }
             }
-        }
-    }
-
-    /// The favourites chunked into rows of `tileColumnCount`.
-    private struct FavoriteRow: Identifiable {
-        let favorites: [HomeFavorite]
-        var id: String { favorites.map(\.id).joined(separator: "-") }
-    }
-
-    private var favoriteRows: [FavoriteRow] {
-        stride(from: 0, to: favorites.count, by: tileColumnCount).map { start in
-            let end = min(start + tileColumnCount, favorites.count)
-            return FavoriteRow(favorites: Array(favorites[start..<end]))
         }
     }
 
@@ -434,15 +418,19 @@ struct NewTabHomeView: View {
         }
         .frame(width: tileCellWidth)
         .buttonStyle(HomeTileButtonStyle())
+        .scaleEffect(favoriteDropTarget == favorite.id && !reduceMotion ? 1.04 : 1)
+        .animation(BrowserMotion.layout(reduceMotion), value: favoriteDropTarget)
         .draggable(isPrivate ? "" : "vela-favorite:" + favorite.id)
         .dropDestination(for: String.self) { items, _ in
             guard !isPrivate, let raw = items.first, raw.hasPrefix("vela-favorite:") else { return false }
             let id = String(raw.dropFirst("vela-favorite:".count))
             var swapped = false
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            withAnimation(reduceMotion ? nil : BrowserMotion.layout(reduceMotion)) {
                 swapped = env.homeFavorites.swap(id, with: favorite.id)
             }
             return swapped
+        } isTargeted: { targeted in
+            if targeted { favoriteDropTarget = favorite.id } else if favoriteDropTarget == favorite.id { favoriteDropTarget = nil }
         }
         .contextMenu {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {

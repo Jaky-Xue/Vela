@@ -29,7 +29,12 @@ extension BrowserWebCoordinator {
         let frame = message.frameInfo
         let frameKey = contextKey + "|" + token
         if type == "authorize" {
+            guard userScriptFrames.keys.filter({ $0.hasPrefix(tab.id + "|") }).count < 256 else { return }
             userScriptFrames[frameKey] = frame
+            if userScripts.usesPageWorld(script) {
+                webView.evaluateJavaScript(UserScriptInjector.pageWorldSource(for: script), in: frame, in: .page) { _ in }
+                return
+            }
             let start = "if(window.__velaDocument === \(jsonLiteral(token))) { window.__velaStart(\(jsonLiteral(token))); }"
             webView.evaluateJavaScript(start, in: frame, in: .world(name: world)) { _ in }
             return
@@ -134,7 +139,7 @@ extension BrowserWebCoordinator {
             }
 
         case "executionError":
-            let name = script.displayName
+            let name = script.displayName + " · " + (payload["phase"] as? String ?? "脚本") + " · " + frameURL.absoluteString
             overlays.userScriptRuntimeErrors[contextKey] = name + "：" + String((payload["message"] as? String ?? "执行失败").prefix(512))
 
         case "registerMenuCommand":
@@ -330,7 +335,7 @@ extension BrowserWebCoordinator {
         let reportsProgress = payload["progress"] as? Bool ?? false
         let headers = payload["headers"] as? [String: Any] ?? [:]
         let body = payload["data"] as? String ?? ""
-        let binaryBody = (payload["dataBase64"] as? String).flatMap { Data(base64Encoded: $0) }
+        let binaryBody = (payload["dataBase64"] as? String).flatMap { $0.isEmpty ? nil : Data(base64Encoded: $0) }
         guard (binaryBody?.count ?? body.utf8.count) <= 24_000_000 else {
             resolveUserScript(scriptId: scriptId, requestId: requestId, payload: ["error": "请求正文超过 24 MB"], in: webView, frame: frame); return
         }
@@ -693,6 +698,10 @@ extension BrowserWebCoordinator {
             value["expirationDate"] = expires.timeIntervalSince1970
         }
         return value
+    }
+
+    public func hasScriptFrame(id: String, tabId: String) -> Bool {
+        userScriptFrames.keys.contains { $0.hasPrefix(tabId + "|" + id + "|") }
     }
 
     public func runMenuScript(id: String, tabId: String) {

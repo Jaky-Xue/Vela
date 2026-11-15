@@ -52,6 +52,7 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
     public struct Trigger: Codable, Equatable, Sendable {
         public var urlFilter: String
         public var ifDomain: [String]?
+        public var ifTopURL: [String]?
         public var unlessDomain: [String]?
         public var resourceType: [String]?
         public var loadType: [String]?
@@ -60,6 +61,7 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
         enum CodingKeys: String, CodingKey {
             case urlFilter = "url-filter"
             case ifDomain = "if-domain"
+            case ifTopURL = "if-top-url"
             case unlessDomain = "unless-domain"
             case resourceType = "resource-type"
             case loadType = "load-type"
@@ -69,6 +71,7 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
         public init(
             urlFilter: String,
             ifDomain: [String]? = nil,
+            ifTopURL: [String]? = nil,
             unlessDomain: [String]? = nil,
             resourceType: [String]? = nil,
             loadType: [String]? = nil,
@@ -76,6 +79,7 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
         ) {
             self.urlFilter = urlFilter
             self.ifDomain = ifDomain
+            self.ifTopURL = ifTopURL
             self.unlessDomain = unlessDomain
             self.resourceType = resourceType
             self.loadType = loadType
@@ -171,10 +175,11 @@ public enum AdBlockRuleCompiler {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty else { continue }
             if line.hasPrefix("! Source: ") { diagnosticSource = String(line.dropFirst(10)) }
+            let invalidBefore = result.invalidRuleCount
             let before = result.unsupportedRuleCount + result.invalidRuleCount
             defer {
                 if result.unsupportedRuleCount + result.invalidRuleCount > before {
-                    let reason = result.invalidRuleCount > 0 && result.invalidRuleCount + result.unsupportedRuleCount > before && result.unsupportedRuleCount == before ? "规则格式无效" : "当前 WebKit 转换器不支持此语法或作用域"
+                    let reason = result.invalidRuleCount > invalidBefore ? "规则格式无效" : "当前 WebKit 转换器不支持此语法或作用域"
                     result.diagnostics.append(FilterLineDiagnostic(line: lineIndex + 1, text: line, reason: reason, source: diagnosticSource))
                 }
             }
@@ -187,7 +192,14 @@ public enum AdBlockRuleCompiler {
                 continue
             }
 
-            if includeCosmetic, line.contains("#@#") { continue }
+            if includeCosmetic, line.contains("#@#") {
+                switch compileCosmetic(line.replacingOccurrences(of: "#@#", with: "##")) {
+                case .unsupported: result.unsupportedRuleCount += 1
+                case .invalid: result.invalidRuleCount += 1
+                default: break
+                }
+                continue
+            }
             if includeCosmetic, let cosmetic = compileCosmetic(line) {
                 switch cosmetic {
                 case let .hide(selector, includeDomains, excludeDomains):
@@ -410,19 +422,25 @@ public enum AdBlockRuleCompiler {
         }
 
         // A regex rule is not representable.
-        if pattern.hasPrefix("/") && pattern.hasSuffix("/") && pattern.count > 2 {
-            return .unsupported
+        let isRegex = pattern.hasPrefix("/") && pattern.hasSuffix("/") && pattern.count > 2
+        var rawRegex = isRegex ? String(pattern.dropFirst().dropLast()) : ""
+        if isRegex {
+            guard rawRegex.utf8.count <= 2048, rawRegex.allSatisfy(\.isASCII),
+                  !rawRegex.contains("(?"), !rawRegex.contains("{"), !rawRegex.contains("\\b"),
+                  rawRegex.range(of: #"\\[1-9]"#, options: .regularExpression) == nil else { return .unsupported }
+            for (token, value) in [("\\d", "[0-9]"), ("\\w", "[a-zA-Z0-9_]"), ("\\s", "[ \t]")] { rawRegex = rawRegex.replacingOccurrences(of: token, with: value) }
+            guard isAcceptable(rawRegex) else { return .unsupported }
         }
         if pattern.isEmpty {
             return .invalid
         }
 
         let parsedOptions = parseOptions(options)
-        if parsedOptions.hasUnsupportedOption || (!parsedOptions.includeDomains.isEmpty && !parsedOptions.excludeDomains.isEmpty) {
+        if parsedOptions.hasUnsupportedOption {
             return .unsupported
         }
 
-        guard let urlFilter = regexFilter(for: pattern) else {
+        guard let urlFilter = isRegex ? rawRegex : regexFilter(for: pattern) else {
             return .invalid
         }
 
@@ -432,7 +450,8 @@ public enum AdBlockRuleCompiler {
 
         let trigger = ContentBlockerRule.Trigger(
             urlFilter: urlFilter,
-            ifDomain: parsedOptions.includeDomains.isEmpty ? nil : parsedOptions.includeDomains,
+            ifDomain: parsedOptions.includeDomains.isEmpty || !parsedOptions.excludeDomains.isEmpty ? nil : parsedOptions.includeDomains,
+            ifTopURL: !parsedOptions.includeDomains.isEmpty && !parsedOptions.excludeDomains.isEmpty ? [domainURLFilter(parsedOptions.includeDomains)] : nil,
             unlessDomain: parsedOptions.excludeDomains.isEmpty ? nil : parsedOptions.excludeDomains,
             resourceType: parsedOptions.resourceTypes.isEmpty ? nil : parsedOptions.resourceTypes,
             loadType: parsedOptions.loadType,

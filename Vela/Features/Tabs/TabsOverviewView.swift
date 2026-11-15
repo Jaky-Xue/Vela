@@ -93,21 +93,6 @@ struct TabsOverviewView: View {
     private var pinnedTabs: [BrowserTabState] { visibleTabs.filter(\.pinned) }
     private var unpinnedTabs: [BrowserTabState] { visibleTabs.filter { !$0.pinned } }
 
-    /// One chunk of the card list: the cards that share a row. The column
-    /// count is part of the identity so a rotation that changes it re-creates
-    /// the rows outright rather than asking SwiftUI to re-diff a changed row.
-    private struct TabRow: Identifiable {
-        let count: Int
-        let tabs: [BrowserTabState]
-        var id: String { "\(count)-\(tabs.map(\.id).joined(separator: "-"))" }
-    }
-
-    private func gridRows(count: Int) -> [TabRow] {
-        stride(from: 0, to: unpinnedTabs.count, by: count).map { start in
-            TabRow(count: count, tabs: Array(unpinnedTabs[start..<min(start + count, unpinnedTabs.count)]))
-        }
-    }
-
     var body: some View {
         // The backdrop is a background, never a ZStack sibling. A
         // `scaledToFill` picture reports its own oversized layout size back

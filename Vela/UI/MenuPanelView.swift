@@ -88,7 +88,7 @@ struct MenuPanelView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .browserSurfaceBackground(opacity: 0.72)
+        .background(palette.surface)
         .presentationDetents(panelDetents)
         .presentationDragIndicator(.hidden)
         .sheet(isPresented: $showingShortcutEditor) {
@@ -188,7 +188,7 @@ struct MenuPanelView: View {
                     // and a hard 54 would push neighbouring tiles apart.
                     .frame(maxWidth: 54, minHeight: 54, maxHeight: 54)
                     .background(
-                        Color.primary.opacity(isModeOn ? 0.14 : 0.055),
+                        palette.primaryText.opacity(isModeOn ? 0.10 : 0.025),
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                     )
                     .overlay {
@@ -216,7 +216,7 @@ struct MenuPanelView: View {
             guard let raw = items.first, raw.hasPrefix("vela-menu:") else { return false }
             let source = String(raw.dropFirst("vela-menu:".count))
             guard layout.visibleTiles.contains(where: { $0.id == source }), source != tile.id else { return false }
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            withAnimation(reduceMotion ? nil : BrowserMotion.layout(reduceMotion)) {
                 env.settings.menuLayout = layout.movingTile(source, before: tile.id)
             }
             return true
@@ -234,7 +234,6 @@ struct MenuPanelView: View {
             }
         }
         .accessibilityLabel(tile.title)
-        .accessibilityHint(enabled ? "长按可拖动排序" : "当前操作不可用，仍可拖动排序")
         .accessibilityValue(
             (tile.action == .privateTab || tile.action == .desktopSite)
                 ? (isModeOn ? "已开启" : "已关闭")

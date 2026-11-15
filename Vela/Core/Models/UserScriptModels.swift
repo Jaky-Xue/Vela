@@ -445,6 +445,7 @@ public struct UserScriptSettings: Codable, Equatable, Sendable {
     public var drafts: [String: String]?
     public var pendingUpdates: [String: PendingScriptUpdate]?
     public var previousVersions: [String: PreviousScriptVersion]?
+    public var pageWorldApprovals: [String: Date]?
     public var updatedAt: Date
 
     public init(
@@ -569,4 +570,21 @@ public struct UserScriptInjectionSummary: Sendable {
         self.url = url
         self.skipReason = skipReason
     }
+}
+
+enum UserScriptMetadataGrants {
+    static func tokens(_ metadata: String, fallback: [UserScriptGrant]) -> [String] {
+        let tokens = metadata.components(separatedBy: .newlines).compactMap { line -> String? in
+            let pieces = line.trimmingCharacters(in: .whitespaces).split(whereSeparator: \.isWhitespace)
+            guard let index = pieces.firstIndex(of: "@grant"), pieces.indices.contains(index + 1) else { return nil }
+            return String(pieces[index + 1])
+        }
+        return tokens.isEmpty ? fallback.map(\.rawValue) : tokens
+    }
+}
+public extension InstalledUserScriptState {
+    var declaredGrantTokens: [String] { UserScriptMetadataGrants.tokens(metadataBlock, fallback: grants) }
+}
+public extension UserScriptPackageCandidate {
+    var declaredGrantTokens: [String] { UserScriptMetadataGrants.tokens(metadataBlock, fallback: grants) }
 }

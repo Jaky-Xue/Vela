@@ -611,6 +611,9 @@ struct UserScriptDetailView: View {
 
             Section {
                 LabeledContent("运行时机", value: current.runAt.displayName)
+                if UserScriptService.permitsPageWorld(current) {
+                    NavigationLink("执行环境") { ScriptWorldSettingsView(scriptID: current.id) }
+                }
                 if current.noframes {
                     LabeledContent("作用范围", value: "仅顶层框架")
                 }
@@ -621,9 +624,10 @@ struct UserScriptDetailView: View {
                     Text("没有申请特殊权限")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(current.grants, id: \.self) { grant in
+                    ForEach(Array(Set(current.declaredGrantTokens)).sorted(), id: \.self) { token in
+                        let grant = UserScriptGrant(token: token)
                         HStack {
-                            Text(grant.rawValue)
+                            Text(token)
                                 .font(.system(size: 12, design: .monospaced))
                             Spacer()
                             if grant.isSupportedByVela {

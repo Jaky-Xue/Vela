@@ -59,6 +59,7 @@ public final class BrowserWebCoordinator: NSObject {
     /// Fresh isolated world per script and navigation; old documents lose authority.
     var userScriptWorlds: [String: String] = [:]
     var userScriptFrames: [String: WKFrameInfo] = [:]
+    var manualHideFrames: [String: WKFrameInfo] = [:]
     var userScriptVersions: [String: Date] = [:]
     var userScriptCommandFrames: [String: WKFrameInfo] = [:]
     @ObservationIgnored private let userScriptValueObserver = UserScriptValueObserver()
@@ -180,6 +181,7 @@ public final class BrowserWebCoordinator: NSObject {
         userScriptVersions = userScriptVersions.filter { !$0.key.hasPrefix(prefix) }
         userScriptCommandFrames = userScriptCommandFrames.filter { !$0.key.hasPrefix(prefix) }
         userScriptFrames = userScriptFrames.filter { !$0.key.hasPrefix(prefix) }
+        manualHideFrames = manualHideFrames.filter { !$0.key.hasPrefix(prefix) }
         overlays.userScriptRuntimeErrors = overlays.userScriptRuntimeErrors.filter { !$0.key.hasPrefix(prefix) }
         userScriptTabStates.removeValue(forKey: tab.id)
         history.clearTabChain(tabId: tab.id)
@@ -219,7 +221,7 @@ public final class BrowserWebCoordinator: NSObject {
         let selectors = settings.manualElementHide.effectiveSelectors(for: host)
             .filter { !$0.contains("{") && !$0.contains("}") }
         guard !selectors.isEmpty else { return nil }
-        return selectors.joined(separator: ",\n") + "\n{ display: none !important; }"
+        return selectors.map { $0 + " { display: none !important; }" }.joined(separator: "\n")
     }
 
     /// Applies a host's manual hides to the document already on screen.
@@ -229,20 +231,13 @@ public final class BrowserWebCoordinator: NSObject {
     /// user's scroll position and any state the page held to achieve something
     /// a style element can do on the spot.
     public func applyManualElementHides(to webView: WKWebView?, host: String) {
-        guard let webView else { return }
-        let css = manualHideCSS(for: host) ?? ""
-        let script = """
-        (function () {
-          var style = document.getElementById('\(Self.manualHideStyleIdentifier)');
-          if (!style) {
-            style = document.createElement('style');
-            style.id = '\(Self.manualHideStyleIdentifier)';
-            (document.head || document.documentElement).appendChild(style);
-          }
-          style.textContent = \(jsonLiteral(css));
-        })();
-        """
-        webView.evaluateJavaScript(script)
+        guard let webView, let tab = tab(for: webView) else { return }
+        for (key, frame) in manualHideFrames where key.hasPrefix(tab.id + "|") {
+            guard let currentHost = frame.request.url?.host else { continue }
+            let token = String(key.split(separator: "|").last ?? "")
+            let css = manualHideCSS(for: currentHost) ?? ""
+            webView.evaluateJavaScript("if(window.__velaManualDocument === \(jsonLiteral(token))) window.__velaApplyManualCSS(\(jsonLiteral(css)));", in: frame, in: .defaultClient) { _ in }
+        }
     }
 
     // MARK: - Script message dispatch
@@ -254,6 +249,16 @@ public final class BrowserWebCoordinator: NSObject {
             return
         }
 
+        if message.name == "velaManualStyle", message.world == .defaultClient,
+           let payload = message.body as? [String: Any], let token = payload["token"] as? String,
+           UUID(uuidString: token) != nil, let url = message.frameInfo.request.url,
+           ["http", "https"].contains(url.scheme ?? ""), let host = url.host {
+            guard manualHideFrames.keys.filter({ $0.hasPrefix(tab.id + "|") }).count < 256 else { return }
+            manualHideFrames[tab.id + "|" + token] = message.frameInfo
+            let css = manualHideCSS(for: host) ?? ""
+            webView.evaluateJavaScript("if(window.__velaManualDocument === \(jsonLiteral(token))) window.__velaApplyManualCSS(\(jsonLiteral(css)));", in: message.frameInfo, in: .defaultClient) { _ in }
+            return
+        }
         switch WebPageScripts.Handler(rawValue: message.name) {
         case .historyApi:
             handleHistoryApiMessage(message, tab: tab)
@@ -706,22 +711,29 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                 forMainFrameOnly: true
             )
         )
-        // Manual element hides. The selector belongs to the host, so the
-        // stylesheet is composed per navigation and injected at document
-        // start, before the page's own markup can paint the element once.
-        if let host = url?.host, let css = manualHideCSS(for: host) {
-            let combined = """
-            (function () {
-              var style = document.createElement('style');
-              style.id = '\(Self.manualHideStyleIdentifier)';
-              style.textContent = \(jsonLiteral(css));
-              (document.head || document.documentElement).appendChild(style);
-            })();
-            """
-            controller.addUserScript(
-                WKUserScript(source: combined, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-            )
+        // Resolve manual rules natively for each HTTP(S) frame; never inject a top-site stylesheet into third-party frames.
+        if !manualHideFrames.keys.contains(where: { $0.hasPrefix(tab.id + "|") }) {
+            // Handler belongs to the controller, and is recreated with its scripts on navigation.
         }
+        controller.removeScriptMessageHandler(forName: "velaManualStyle", contentWorld: .defaultClient)
+        controller.add(MessageBridge(coordinator: self), contentWorld: .defaultClient, name: "velaManualStyle")
+        manualHideFrames = manualHideFrames.filter { !$0.key.hasPrefix(tab.id + "|") }
+        let manualBootstrap = """
+        (function(){
+          window.__velaManualDocument = '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,function(c){return (Number(c)^crypto.getRandomValues(new Uint8Array(1))[0]&15>>Number(c)/4).toString(16);});
+          window.__velaApplyManualCSS = function(css) {
+            var apply=function(){
+              if(!document.documentElement) return false;
+              var style=document.getElementById('\(Self.manualHideStyleIdentifier)');
+              if(!style){style=document.createElement('style');style.id='\(Self.manualHideStyleIdentifier)';document.documentElement.appendChild(style);}
+              style.textContent=css;return true;
+            };
+            if(!apply()){var observer=new MutationObserver(function(){if(apply())observer.disconnect();});observer.observe(document,{childList:true,subtree:true});}
+          };
+          window.webkit.messageHandlers.velaManualStyle.postMessage({token:window.__velaManualDocument});
+        })();
+        """
+        controller.addUserScript(WKUserScript(source: manualBootstrap, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .defaultClient))
 
         if overlays.isElementPickerArmed {
             controller.addUserScript(

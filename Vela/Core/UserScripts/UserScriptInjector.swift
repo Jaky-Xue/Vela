@@ -162,6 +162,7 @@ public enum UserScriptInjector {
             \(source)
             } catch (requireError) {
               console.error('@require \(index + 1) 执行出错：' + requireError);
+              post({type:'executionError',scriptId:SCRIPT_ID,phase:'依赖 \(index + 1)',message:String(requireError),stack:String(requireError.stack||'')});
             }
             """
         }.joined(separator: "\n")
@@ -640,6 +641,7 @@ public enum UserScriptInjector {
             details = details || {};
             var requestId = newRequestId('download');
             expectResolution(requestId, function (payload) {
+              if (payload.aborted) { if(details.onabort) details.onabort(payload); return; }
               if (payload.error) {
                 try {
                   if (details.onerror) { details.onerror(payload.error); }
@@ -738,7 +740,7 @@ public enum UserScriptInjector {
             var requestId = newRequestId('xhr');
             var headers = details.headers || {};
             var data = details.data;
-            if (data && typeof data === 'object' && !(data instanceof ArrayBuffer) && !ArrayBuffer.isView(data) && !(data instanceof Blob) && !(data instanceof FormData) && !(data instanceof URLSearchParams)) {
+            if (data && typeof data === 'object' && !(data instanceof ArrayBuffer) && !ArrayBuffer.isView(data) && !(data instanceof Blob) && !(data instanceof FormData) && !(data instanceof URLSearchParams) && !(data instanceof ReadableStream)) {
               var pairs = [];
               for (var key in data) {
                 if (!Object.prototype.hasOwnProperty.call(data, key)) { continue; }
@@ -853,7 +855,7 @@ public enum UserScriptInjector {
               handle = api.GM_xmlhttpRequest({
                 url: typeof input === 'string' || input instanceof URL ? String(input) : input.url,
                 method:init.method || (input && input.method) || 'GET', headers:headers,
-                data:init.body, anonymous:init.credentials === 'omit', responseType:'stream',
+                data:typeof init.body !== 'undefined' ? init.body : (input instanceof Request ? input.clone().body : undefined), anonymous:init.credentials === 'omit', responseType:'stream',
                 onprogress:function(response) {
                   if(!answered) {
                     answered=true;
@@ -1126,6 +1128,7 @@ public enum UserScriptInjector {
                 console.error('脚本执行出错：' + (error && error.message ? error.message : String(error)));
                 post({
                   type: 'executionError',
+                  phase: '脚本', stack: String(error && error.stack || ''),
                   scriptId: SCRIPT_ID,
                   message: String(error && error.message ? error.message : error)
                 });
@@ -1149,6 +1152,24 @@ public enum UserScriptInjector {
               runScript();
             }
           }
+        })();
+        """
+    }
+
+    /// Deliberately contains no native handler, GM store, Cookie, network or download API.
+    static func pageWorldSource(for script: InstalledUserScriptState) -> String {
+        let info = jsonObject(["script": ["name": script.displayName, "version": script.version]])
+        let body = script.requireSources.joined(separator: "\n") + "\n" + script.source
+        return """
+        (function () {
+          var unsafeWindow = window, GM_info = \(info);
+          var GM_log = console.log.bind(console);
+          var GM_addStyle = function(css) { var s=document.createElement('style');s.textContent=css;(document.head||document.documentElement).appendChild(s);return s; };
+          var GM_addElement = function(parent,tag,attrs) { if(typeof parent==='string'){attrs=tag;tag=parent;parent=document.body||document.documentElement;}var el=document.createElement(tag);Object.keys(attrs||{}).forEach(function(k){if(k==='textContent')el.textContent=attrs[k];else el.setAttribute(k,attrs[k]);});parent.appendChild(el);return el; };
+          var GM = {info:GM_info,log:GM_log,addStyle:GM_addStyle,addElement:GM_addElement};
+          var run = function() { try { \(body) } catch(error) { console.error(error); } };
+          if (\(jsonString(script.runAt.rawValue)) === 'document-idle' && document.readyState !== 'complete') window.addEventListener('load',run,{once:true});
+          else run();
         })();
         """
     }

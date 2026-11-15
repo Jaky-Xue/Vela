@@ -63,8 +63,23 @@ public final class UserScriptService {
     }
 
     public func setEnabled(_ enabled: Bool, id: String) {
-        try? repository.setEnabled(enabled, id: id)
-        reload()
+        do { try repository.setEnabled(enabled, id: id); reload() }
+        catch { lastError = error.localizedDescription }
+    }
+
+    public static func permitsPageWorld(_ script: InstalledUserScriptState) -> Bool {
+        script.runAt.injectsOnLoad && script.grants.allSatisfy { [.none, .unsafeWindow, .gmInfo, .gmLog, .gmAddStyle, .gmAddElement].contains($0) }
+    }
+    public func usesPageWorld(_ script: InstalledUserScriptState) -> Bool {
+        Self.permitsPageWorld(script) && settings.userScriptSettings.pageWorldApprovals?[script.id] == script.updatedAt
+    }
+    public func setPageWorld(_ enabled: Bool, for script: InstalledUserScriptState) {
+        guard !enabled || Self.permitsPageWorld(script) else { lastError = "页面模式不支持原生特权"; return }
+        settings.updateUserScriptSettings {
+            var approvals = $0.pageWorldApprovals ?? [:]
+            if enabled { approvals[script.id] = script.updatedAt } else { approvals.removeValue(forKey: script.id) }
+            $0.pageWorldApprovals = approvals
+        }
     }
 
     /// Enables or disables every installed script in one pass.
@@ -74,7 +89,7 @@ public final class UserScriptService {
     /// requested state are skipped, so the write touches only what changed.
     public func setAllEnabled(_ enabled: Bool) {
         for script in scripts where script.enabled != enabled {
-            try? repository.setEnabled(enabled, id: script.id)
+            do { try repository.setEnabled(enabled, id: script.id) } catch { lastError = error.localizedDescription }
         }
         reload()
     }
@@ -124,12 +139,13 @@ public final class UserScriptService {
     }
 
     public func delete(id: String) {
-        try? repository.remove(id: id)
+        do { try repository.remove(id: id) } catch { lastError = error.localizedDescription; return }
         settings.updateUserScriptSettings {
             $0.localRules?.removeValue(forKey: id)
             $0.drafts?.removeValue(forKey: id)
             $0.pendingUpdates?.removeValue(forKey: id)
             $0.previousVersions?.removeValue(forKey: id)
+            $0.pageWorldApprovals?.removeValue(forKey: id)
         }
         Task { await pruneVersions() }
         updateStatus.removeValue(forKey: id)
@@ -713,7 +729,7 @@ public final class UserScriptService {
 
         if newer {
             let original = UserScriptParser.parse(editableSource(for: script)).candidate
-            let expands = !Set(candidate.grants.map(\.rawValue)).isSubset(of: Set(script.grants.map(\.rawValue)))
+            let expands = !Set(candidate.declaredGrantTokens).isSubset(of: Set(script.declaredGrantTokens))
                 || !Set(candidate.connectRules).isSubset(of: Set(script.connectRules))
                 || candidate.matches != (original?.matches ?? script.matches) || candidate.includes != (original?.includes ?? script.includes)
                 || candidate.excludes != (original?.excludes ?? script.excludes) || candidate.excludeMatches != (original?.excludeMatches ?? script.excludeMatches)
@@ -806,7 +822,7 @@ public final class UserScriptService {
             throw UserScriptServiceError.writeFailed("脚本已改变，请重新检查")
         }
         var changes: [String] = []
-        if Set(candidate.grants.map(\.rawValue)) != Set(script.grants.map(\.rawValue)) { changes.append("授权能力") }
+        if Set(candidate.declaredGrantTokens) != Set(script.declaredGrantTokens) { changes.append("授权能力") }
         if candidate.connectRules != script.connectRules { changes.append("联网范围") }
         if candidate.matches != script.matches || candidate.includes != script.includes || candidate.excludes != script.excludes || candidate.excludeMatches != script.excludeMatches { changes.append("运行网站") }
         if candidate.requireUrls != script.requireUrls || candidate.resourceDeclarations != script.resourceDeclarations { changes.append("依赖资源") }

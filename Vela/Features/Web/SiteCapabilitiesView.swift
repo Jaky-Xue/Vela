@@ -9,7 +9,7 @@ struct SiteCapabilitiesView: View {
     private var host: String { url?.host ?? "" }
     private var scripts: [InstalledUserScriptState] {
         guard tab.privacyMode != .private, let url else { return [] }
-        return env.userScripts.scripts.filter { UserScriptMatcher.matches($0, url: url) }
+        return env.userScripts.scripts.filter { $0.enabled && (UserScriptMatcher.matches($0, url: url) || env.webCoordinator.hasScriptFrame(id: $0.id, tabId: tab.id)) }
     }
     var body: some View {
         List {
@@ -20,7 +20,22 @@ struct SiteCapabilitiesView: View {
             Section("页面保护") {
                 LabeledContent("过滤状态", value: !env.settings.contentBlocker.enabled ? "已关闭" : env.settings.contentBlocker.isExcepted(host: host) ? "站点放行" : env.services.contentBlocker.isReady ? "已就绪" : "准备中")
                 NavigationLink("过滤管理") { ContentBlockerSettingsView() }
-                LabeledContent("隐藏元素", value: String(env.settings.manualElementHide.effectiveSelectors(for: host).count))
+                Toggle("暂停隐藏", isOn: Binding(get: { (env.settings.manualElementHide.pausedHosts ?? []).contains(host) }, set: { paused in
+                    env.settings.updateManualElementHide {
+                        var hosts = Set($0.pausedHosts ?? [])
+                        if paused { hosts.insert(host) } else { hosts.remove(host) }
+                        $0.pausedHosts = Array(hosts).sorted()
+                    }
+                    env.webCoordinator.applyManualElementHides(to: env.tabManager.webView(for: tab.id), host: host)
+                }))
+                NavigationLink("隐藏元素") { ElementHideSettingsView() }
+                Toggle("站点放行", isOn: Binding(get: { env.settings.contentBlocker.whitelistedHosts.contains(host) }, set: { value in
+                    env.settings.updateContentBlocker {
+                        $0.whitelistedHosts.removeAll { $0 == host }
+                        if value { $0.whitelistedHosts.append(host) }
+                    }
+                    env.applyContentBlockerSettings()
+                }))
             }
             Section("页面脚本") {
                 if tab.privacyMode == .private { Text("无痕停用脚本") }

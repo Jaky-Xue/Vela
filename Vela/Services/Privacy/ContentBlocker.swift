@@ -120,6 +120,18 @@ public final class ContentBlocker {
         await change(candidate)
     }
 
+    public func rollbackSubscription(_ id: String) async {
+        guard !isCompiling else { return }
+        var candidate = settings.contentBlocker
+        guard let index = candidate.subscriptions?.firstIndex(where: { $0.id == id }),
+              let previous = candidate.subscriptions?[index].previousCacheHash else { return }
+        let current = candidate.subscriptions?[index].cacheHash
+        candidate.subscriptions?[index].cacheHash = previous
+        candidate.subscriptions?[index].previousCacheHash = current
+        candidate.subscriptions?[index].etag = nil; candidate.subscriptions?[index].lastModified = nil
+        await change(candidate)
+    }
+
     public func refreshSubscriptions() async {
         guard !isCompiling else { return }
         isCompiling = true
