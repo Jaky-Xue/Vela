@@ -38,6 +38,8 @@ final class LocalHTTPServer {
         /// Held before the response is written. Used to observe a tab that is
         /// still loading.
         var delay: TimeInterval = 0
+        var chunks: [String]? = nil
+        var chunkDelay: TimeInterval = 0.2
 
         static func html(_ body: String, status: Int = 200) -> Response {
             Response(status: status, body: body)
@@ -176,13 +178,22 @@ final class LocalHTTPServer {
         let write: () -> Void = {
             var text = "HTTP/1.1 \(response.status) \(Self.reason(response.status))\r\n"
             text += "Content-Type: \(response.contentType)\r\n"
-            let body = Data(response.body.utf8)
+            let body = Data((response.chunks?.joined() ?? response.body).utf8)
             text += "Content-Length: \(body.count)\r\n"
             for (name, value) in response.headers {
                 text += "\(name): \(value)\r\n"
             }
             text += "Connection: close\r\n\r\n"
 
+            if let chunks = response.chunks {
+                connection.send(content: Data(text.utf8), completion: .contentProcessed { _ in })
+                for (index, chunk) in chunks.enumerated() {
+                    self.queue.asyncAfter(deadline: .now() + Double(index) * response.chunkDelay) {
+                        connection.send(content: Data(chunk.utf8), completion: .contentProcessed { _ in if index == chunks.count - 1 { connection.cancel() } })
+                    }
+                }
+                return
+            }
             var payload = Data(text.utf8)
             payload.append(body)
 

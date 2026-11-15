@@ -79,13 +79,37 @@ final class CompletionRegressionTests: XCTestCase {
         var script = InstalledUserScriptState(name:"Page",source:"unsafeWindow.test=1",matches:["*://*/*"],grants:[.unsafeWindow],runAt:.documentEnd)
         XCTAssertTrue(UserScriptService.permitsPageWorld(script))
         let h = try BrowserHarness(); try h.coordinator.userScripts.upsert(script)
-        h.coordinator.userScripts.setPageWorld(true,for:script)
-        XCTAssertTrue(h.coordinator.userScripts.usesPageWorld(script))
+        let service = UserScriptService(repository:h.coordinator.userScripts,settings:h.settings)
+        service.setPageWorld(true,for:script)
+        XCTAssertTrue(service.usesPageWorld(script))
         script.updatedAt = script.updatedAt.addingTimeInterval(1)
-        XCTAssertFalse(h.coordinator.userScripts.usesPageWorld(script))
+        XCTAssertFalse(service.usesPageWorld(script))
         script.grants.append(.gmCookie)
         XCTAssertFalse(UserScriptService.permitsPageWorld(script))
     }
+    func testNetworkChunksArriveBeforeCompletionAndCrossOriginRedirectIsDeclined() async throws {
+        let other = try LocalHTTPServer(routes: ["/secret": .html("secret")])
+        let otherBase = try await other.start(); defer { other.stop() }
+        let server = try LocalHTTPServer(routes: [
+            "/stream": .init(body:"",contentType:"text/plain",chunks:["first\\n","second\\n"],chunkDelay:0.5),
+            "/redirect": .redirect(to:otherBase.appendingPathComponent("secret").absoluteString)
+        ])
+        let base = try await server.start(); defer { server.stop() }
+        var script = InstalledUserScriptState(name:"Stream",source:"",matches:["*://*/*"],grants:[.gmFetch],runAt:.documentEnd)
+        script.connectRules=["127.0.0.1"]
+        let started = Date()
+        var firstAt: Date?, collected = Data()
+        let (body, _) = try await UserScriptHTTP.load(URLRequest(url:base.appendingPathComponent("stream")),script:script,origin:base,buffered:false) { data,_,_ in
+            if !data.isEmpty { firstAt = firstAt ?? Date(); collected.append(data) }
+        }
+        XCTAssertTrue(body.isEmpty)
+        XCTAssertEqual(String(data:collected,encoding:.utf8),"first\\nsecond\\n")
+        XCTAssertLessThan(try XCTUnwrap(firstAt).timeIntervalSince(started),0.4)
+        let (_, response) = try await UserScriptHTTP.load(URLRequest(url:base.appendingPathComponent("redirect")),script:script,origin:base,buffered:true,progress:nil)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode,302)
+        XCTAssertEqual(other.requestCount(for:"/secret"),0)
+    }
+
     func testDownloadPermissionRequiresGrantAndConnect() {
         let origin = URL(string:"https://origin.test")!
         var script = InstalledUserScriptState(name:"Download",source:"",matches:["*://*/*"],grants:[.gmDownload],runAt:.documentEnd)

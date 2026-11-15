@@ -181,10 +181,10 @@ public final class ContentBlocker {
             return text
         }
         try FilterValidation.validate(expanded, limit: FilterValidation.combinedByteLimit)
-        let data = Data(expanded.utf8)
-        let hash = Self.hash(data)
+        let expandedData = Data(expanded.utf8)
+        let hash = Self.hash(expandedData)
         try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
-        try data.write(to: cacheURL(hash), options: .atomic)
+        try expandedData.write(to: cacheURL(hash), options: .atomic)
         if source.cacheHash != hash { source.previousCacheHash = source.cacheHash }
         source.cacheHash = hash
         source.etag = hasIncludes ? nil : http.value(forHTTPHeaderField: "ETag")
