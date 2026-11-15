@@ -1,0 +1,23 @@
+{
+  "commit": "0f68a3c9d50da0d0e0cc4ba16e5413951856cdea",
+  "run": "43690304802",
+  "kind": "tests-iPhone",
+  "workflow": "https://github.com/Jaky-Xue/Vela/actions/runs/43690304802",
+  "tests": 375,
+  "testExecutions": 385,
+  "retriedTests": [
+    "-[VelaTests.AdBlockContentRuleCompilationTests testAHostScopedCosmeticRuleCompiles]",
+    "-[VelaTests.AdBlockRuleSafetyTests testACosmeticRuleWithBothSidesIsNotFlattened]",
+    "-[VelaTests.AdBlockRuleSafetyTests testADomainScopedCosmeticRuleKeepsItsScope]",
+    "-[VelaTests.AdBlockRuleSafetyTests testTheCompilerRefusesAFilterItCannotRepresent]",
+    "-[VelaTests.CompletionRegressionTests testNetworkChunksArriveBeforeCompletionAndCrossOriginRedirectIsDeclined]"
+  ],
+  "failedAttempts": 14,
+  "finalFailures": [
+    "-[VelaTests.AdBlockContentRuleCompilationTests testAHostScopedCosmeticRuleCompiles]",
+    "-[VelaTests.AdBlockRuleSafetyTests testACosmeticRuleWithBothSidesIsNotFlattened]",
+    "-[VelaTests.AdBlockRuleSafetyTests testADomainScopedCosmeticRuleKeepsItsScope]",
+    "-[VelaTests.AdBlockRuleSafetyTests testTheCompilerRefusesAFilterItCannotRepresent]"
+  ],
+  "testGate": "failure"
+}
