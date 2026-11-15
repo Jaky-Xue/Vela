@@ -87,7 +87,9 @@ enum HomeTileStyle {
     ///
     /// The count answers the same question the row does — how many cells plus
     /// the gaps between them fit — and a small window is allowed to show a
-    /// single column rather than overflow the shelf.
+    /// single column rather than overflow the shelf. There is no upper cap:
+    /// a wide landscape window was drawing ten columns and leaving the rest
+    /// of the row empty, which reads as a shelf that stopped halfway.
     static func columnCount(width: CGFloat, iconSize: CGFloat, spacing: CGFloat) -> Int {
         columnCount(width: width, cellWidth: cellWidth(iconSize: iconSize), spacing: spacing)
     }
@@ -99,6 +101,6 @@ enum HomeTileStyle {
         let cell = max(1, cellWidth)
         let gap = max(0, spacing)
         let count = Int((width + gap) / (cell + gap))
-        return max(1, min(10, count))
+        return max(1, count)
     }
 }

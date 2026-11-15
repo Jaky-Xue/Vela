@@ -150,6 +150,21 @@ final class HomeTileGeometryTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(tight, loose)
     }
 
+    func testALandscapeRowUsesTheWholeWidth() {
+        // 1180 pt is a landscape window: fourteen cells fit, and a tenth-cell
+        // cap used to leave most of the row empty.
+        let width: CGFloat = 1180
+        let icon: CGFloat = 40
+        let spacing: CGFloat = 12
+        let count = HomeTileStyle.columnCount(width: width, iconSize: icon, spacing: spacing)
+        let cell = HomeTileStyle.cellWidth(iconSize: icon)
+        XCTAssertEqual(count, 14)
+        let used = CGFloat(count) * cell + CGFloat(count - 1) * spacing
+        XCTAssertLessThanOrEqual(used, width)
+        // The row is as full as it can be: one more cell would not fit.
+        XCTAssertGreaterThan(CGFloat(count + 1) * cell + CGFloat(count) * spacing, width)
+    }
+
     func testACellHoldsTheIconAndSomeRoomForItsName() {
         XCTAssertEqual(HomeTileStyle.cellWidth(iconSize: 28), 68)
         XCTAssertEqual(HomeTileStyle.cellWidth(iconSize: 40), 68)
