@@ -1,0 +1,4 @@
+/Users/runner/work/Vela/Vela/Vela/Services/Privacy/ContentBlocker.swift:184:13: error: invalid redeclaration of 'data'
+/Users/runner/work/Vela/Vela/Vela/Services/Privacy/ContentBlocker.swift:187:54: error: cannot infer contextual base in reference to member 'atomic'
+/Users/runner/work/Vela/Vela/Vela/Services/Web/BrowserWebCoordinator+UserScripts.swift:34:28: error: value of type 'UserScriptRepository' has no member 'usesPageWorld'
+** TEST FAILED **
