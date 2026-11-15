@@ -230,6 +230,9 @@ public enum UserScriptInjector {
           }
 
           function post(message) {
+            Object.keys(message).forEach(function (key) {
+              if (typeof message[key] === 'undefined') { delete message[key]; }
+            });
             try {
               if (window.webkit && window.webkit.messageHandlers &&
                   window.webkit.messageHandlers.\(messageHandlerName)) {

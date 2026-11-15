@@ -6,7 +6,7 @@ import WebKit
 final class ScriptStorageIntegrationTests: XCTestCase {
     private func eval(_ source: String, web: WKWebView, world: String) async throws -> Any {
         try await withCheckedThrowingContinuation { continuation in
-            web.evaluateJavaScript(source, in: nil, in: .world(name: world)) { continuation.resume(with: $0) }
+            web.evaluateJavaScript("with (window.__velaUserScriptBridge.api) { \(source) }", in: nil, in: .world(name: world)) { continuation.resume(with: $0) }
         }
     }
     private func waitJS(_ source: String, web: WKWebView, world: String) async throws {
