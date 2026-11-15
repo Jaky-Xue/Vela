@@ -163,6 +163,7 @@ struct BrowserPalette: Equatable, Identifiable, Sendable {
     var displayName: String
     var light: BrowserColorTokens
     var dark: BrowserColorTokens
+    var visualStyle: BrowserVisualStyle = .standard
 
     /// The token set for an explicit appearance.
     ///
@@ -204,9 +205,8 @@ struct BrowserPalette: Equatable, Identifiable, Sendable {
 
     // MARK: Catalogue
 
-    /// The palettes Vela ships, reduced to the four that read well at both
-    /// Dynamic Type extremes and in both appearances.
-    static let all: [BrowserPalette] = [
+    /// Stable catalogue identifiers with appearance and visual-character tokens.
+    static let all: [BrowserPalette] = ([
         BrowserPalette(
             id: "default",
             displayName: "默认",
@@ -335,7 +335,11 @@ struct BrowserPalette: Equatable, Identifiable, Sendable {
                 onAccent: Color(red: 0.102, green: 0.063, blue: 0.059)
             )
         )
-    ] + designerPalettes
+    ] + designerPalettes).map { palette in
+        var themed = palette
+        themed.visualStyle = .forPalette(palette.id)
+        return themed
+    }
 
     private static let designerPalettes: [BrowserPalette] = [
         designed("iris", "鸢尾紫", accent: 0x683BB6, bright: 0xC5A6FF, light: 0xFCFAFF, dark: 0x171222),
@@ -459,7 +463,7 @@ struct BrowserElevation {
     func shadowColor(for scheme: ColorScheme) -> Color {
         // A dark surface needs a heavier shadow to separate at all, not a
         // lighter one.
-        .black.opacity(scheme == .dark ? opacity * 4 : opacity)
+        .black.opacity(scheme == .dark ? opacity * 1.8 : opacity)
     }
 }
 
