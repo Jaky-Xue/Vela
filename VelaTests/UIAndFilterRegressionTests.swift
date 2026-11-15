@@ -121,6 +121,45 @@ final class UIAndFilterRegressionTests: XCTestCase {
         XCTAssertEqual(restored.script(id: local.id)?.matches, ["https://local.test/*"])
     }
 
+    func testRenderSettingsLayoutsAndUpdateReview() async throws {
+        let env = AppEnvironment(services: AppServices(), windowId: "SettingsQA-" + UUID().uuidString)
+        let namespace = UUID().uuidString
+        let first = "// ==UserScript==\n// @name 更新预览\n// @namespace " + namespace + "\n// @version 1\n// @match https://example.test/*\n// @grant none\n// ==/UserScript==\nwindow.qa = 1;"
+        guard case let .success(outcome) = await env.userScripts.install(text: first, source: .paste, sourceUrl: "") else { return XCTFail("preview fixture failed") }
+        defer { env.userScripts.delete(id: outcome.script.id) }
+        let current = try XCTUnwrap(env.userScripts.script(id: outcome.script.id))
+        let second = first.replacingOccurrences(of: "@version 1", with: "@version 2")
+            .replacingOccurrences(of: "@grant none", with: "@grant GM_xmlhttpRequest\n// @connect api.example.test")
+        let candidate = try XCTUnwrap(UserScriptParser.parse(second).candidate)
+        _ = try await env.userScripts.stageUpdate(candidate, for: current)
+        let screens: [(String, AnyView)] = [
+            ("settings-root", AnyView(NavigationStack { SettingsView() })),
+            ("settings-filters", AnyView(NavigationStack { FilterSourcesSettingsView() })),
+            ("settings-input", AnyView(NavigationStack { List {
+                Section { SettingsInputRow(title: "订阅名称", prompt: "常用过滤", text: .constant(""))
+                          SettingsInputRow(title: "订阅地址", prompt: "https://example.com/filter.txt", text: .constant(""), keyboard: .URL) }
+            }.settingsList().navigationTitle("添加订阅").navigationBarTitleDisplayMode(.inline) })),
+            ("update-review", AnyView(PendingScriptUpdateView(scriptID: current.id)))
+        ]
+        for (name, screen) in screens {
+            let content = screen.environment(env).environment(\.browserPalette, BrowserPalette.default).environment(\.colorScheme, .light)
+            let controller = UIHostingController(rootView: content)
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 375, height: 780))
+            window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+            window.overrideUserInterfaceStyle = .light
+            window.rootViewController = controller; window.makeKeyAndVisible()
+            window.frame = CGRect(x: 0, y: 0, width: 375, height: 780)
+            controller.view.frame = window.bounds; controller.view.layoutIfNeeded()
+            try await Task.sleep(nanoseconds: 350_000_000)
+            let format = UIGraphicsImageRendererFormat(); format.scale = 1
+            let image = UIGraphicsImageRenderer(size: window.bounds.size, format: format).image { _ in
+                controller.view.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image); attachment.name = name; attachment.lifetime = .keepAlways
+            add(attachment); window.isHidden = true
+        }
+    }
+
     func testRenderMenuAndPalettePreviews() async throws {
         let env = AppEnvironment(services: AppServices(), windowId: "UIQA-" + UUID().uuidString)
         for (name, width, scheme) in [("menu-phone-light", 375.0, ColorScheme.light), ("menu-phone-dark", 375.0, .dark), ("menu-pad", 744.0, .light)] {

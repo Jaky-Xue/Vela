@@ -57,6 +57,7 @@ struct MenuPanelView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isEditing = false
     @State private var showingShortcutEditor = false
+    @State private var showingScriptCommands = false
 
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 120 : 58), spacing: 10)]
@@ -106,19 +107,8 @@ struct MenuPanelView: View {
                 }
                 tileGrid
                 if !scriptCommands.isEmpty {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("脚本命令").font(.headline)
-                            ForEach(scriptCommands) { command in
-                                Button { onRunScriptCommand?(command) } label: {
-                                    VStack(alignment: .leading) {
-                                        Text(command.name).font(.body)
-                                        Text(command.scriptName).font(.caption).foregroundStyle(palette.secondaryText)
-                                    }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                }
-                            }
-                        }.padding(.horizontal)
-                    }
+                    Button("脚本命令", systemImage: "curlybraces") { showingScriptCommands = true }
+                        .foregroundStyle(palette.primaryText).padding(.bottom, 12)
                 }
             }
         }
@@ -126,6 +116,22 @@ struct MenuPanelView: View {
         .browserSurfaceBackground(opacity: 0.72)
         .presentationDetents(panelDetents)
         .presentationDragIndicator(.hidden)
+        .sheet(isPresented: $showingScriptCommands) {
+            NavigationStack {
+                List(scriptCommands) { command in
+                    Button {
+                        showingScriptCommands = false
+                        onRunScriptCommand?(command)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(command.name).foregroundStyle(palette.primaryText)
+                            Text(command.scriptName).font(.caption).foregroundStyle(palette.secondaryText)
+                        }.frame(minHeight: 44)
+                    }
+                }.settingsList().navigationTitle("脚本命令").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { showingScriptCommands = false } } }
+            }
+        }
         .sheet(isPresented: $showingShortcutEditor) {
             MenuShortcutEditorView { shortcut in
                 showingShortcutEditor = false
@@ -142,7 +148,7 @@ struct MenuPanelView: View {
     private var tileGrid: some View {
         ScrollView {
             if tiles.isEmpty {
-                Text("菜单项已全部隐藏，点右上角的编辑按钮恢复。")
+                Text("暂无菜单")
                     .font(.footnote)
                     .foregroundStyle(palette.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -258,12 +264,12 @@ struct MenuPanelView: View {
         }
         .contextMenu {
             if tile.action == .privateTab && isPrivateMode {
-                Button("离开无痕模式", systemImage: "eyeglasses.slash", role: .destructive) {
+                Button("退出无痕", systemImage: "eyeglasses.slash", role: .destructive) {
                     onPerform(.leavePrivate)
                 }
             }
             if tile.action == .desktopSite, let onResetSiteDisplay {
-                Button("恢复此站点的自动设置", systemImage: "arrow.uturn.backward") {
+                Button("自动模式", systemImage: "arrow.uturn.backward") {
                     onResetSiteDisplay()
                 }
             }
@@ -358,7 +364,7 @@ struct MenuPanelView: View {
                 }
             }
 
-            Section("自定义快捷方式") {
+            Section("快捷方式") {
                 ForEach(layout.shortcuts) { shortcut in
                     HStack(spacing: 12) {
                         Image(systemName: shortcut.symbolName)
@@ -389,13 +395,13 @@ struct MenuPanelView: View {
                 Button {
                     showingShortcutEditor = true
                 } label: {
-                    Label("新建网址快捷方式", systemImage: "link.badge.plus")
+                    Label("添加网址", systemImage: "link.badge.plus")
                         .foregroundStyle(palette.primaryText)
                 }
             }
 
             Section {
-                Button("恢复默认菜单", systemImage: "arrow.counterclockwise") {
+                Button("恢复默认", systemImage: "arrow.counterclockwise") {
                     env.settings.menuLayout = layout.reset()
                 }
                 .foregroundStyle(palette.primaryText)

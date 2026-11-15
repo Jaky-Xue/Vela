@@ -197,7 +197,7 @@ struct ExternalNavigationSettingsView: View {
 
             Section {
                 HStack {
-                    TextField("例如 bilibili.com", text: $newHost)
+                    SettingsInputRow(title: "网站域名", prompt: "example.com", text: $newHost, keyboard: .URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)

@@ -244,13 +244,14 @@ public final class UserScriptService {
                 }
             }
             try repository.upsert(script)
+            settings.updateUserScriptSettings { $0.pendingUpdates?.removeValue(forKey: script.id) }
             if let backup, let existing { recordPrevious(id: script.id, hash: backup, version: existing.version) }
             if let backup { await versionStore.release(backup) }
             await pruneVersions()
         } catch {
             if let backup { await versionStore.release(backup) }
             await pruneVersions()
-            let failure = UserScriptServiceError.writeFailed(error.localizedDescription)
+            let failure = (error as? UserScriptServiceError) ?? UserScriptServiceError.writeFailed(error.localizedDescription)
             lastError = failure.localizedDescription
             return .failure(failure)
         }
@@ -760,6 +761,7 @@ public final class UserScriptService {
                     throw UserScriptServiceError.writeFailed("脚本已改变，更新未应用")
                 }
                 try repository.upsert(updated)
+                settings.updateUserScriptSettings { $0.pendingUpdates?.removeValue(forKey: script.id) }
                 if let backup { recordPrevious(id: script.id, hash: backup, version: current.version); await versionStore.release(backup) }
                 await pruneVersions()
             } catch {
@@ -834,7 +836,7 @@ public final class UserScriptService {
                   let latest = try repository.script(id: id), latest.updatedAt == pending.baseUpdatedAt else { throw UserScriptServiceError.writeFailed("更新内容已改变，请重新审阅") }
             let document = candidate.metadataBlock + "\n\n" + candidate.source
             let result = await install(text: document, source: .url, sourceUrl: candidate.sourceUrl, replacingId: id)
-            guard case .success = result else { return false }
+            if case let .failure(error) = result { lastError = error.localizedDescription; return false }
             settings.updateUserScriptSettings { $0.pendingUpdates?.removeValue(forKey: id) }
             updateStatus[id] = "更新完成"
             await pruneVersions()

@@ -87,7 +87,8 @@ struct UserAgentSettingsView: View {
             }
 
             Section {
-                TextField("自定义 User-Agent", text: Binding(
+                DisclosureGroup("编辑标识") {
+                TextField("粘贴完整 User-Agent", text: Binding(
                     get: { env.settings.preferences.customUserAgent },
                     set: { value in
                         env.settings.update { $0.customUserAgent = value }
@@ -104,6 +105,7 @@ struct UserAgentSettingsView: View {
                     // left where the user put them.
                     env.settings.update { $0.customUserAgent = "" }
                     apply(reload: true)
+                }
                 }
             } header: {
                 Text("自定义标识")

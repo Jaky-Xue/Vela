@@ -496,7 +496,8 @@ struct UserScriptsView: View {
             if case .failed = $0 { return true }
             return false
         }.count
-        checkAllMessage = "已检查 \(results.count) 个脚本：\(updated) 个更新，\(failed) 个失败。"
+        let pending = results.values.filter { if case .pendingConfirmation = $0 { return true }; return false }.count
+        checkAllMessage = "更新 \(updated)，待确认 \(pending)，失败 \(failed)"
     }
 }
 
@@ -532,6 +533,7 @@ struct UserScriptDetailView: View {
     @State private var excludeText = ""
     @State private var excludeMatchText = ""
     @State private var ruleError: String?
+    @State private var showAdvancedRules = false
 
     private var current: InstalledUserScriptState {
         env.userScripts.script(id: script.id) ?? script
@@ -807,46 +809,24 @@ struct UserScriptDetailView: View {
                     }
                 }
 
-                Section {
-                    TextEditor(text: $matchText)
-                        .font(.system(size: 12, design: .monospaced))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .frame(minHeight: 88)
-                } header: {
-                    Text("@match · 每行一条")
+                Section("运行网站") {
+                    SettingsRuleEditor(prompt: "https://*.example.com/*", text: $matchText).accessibilityLabel("运行网站")
                 }
+                Section("排除网站") {
+                    SettingsRuleEditor(prompt: "https://example.com/private/*", text: $excludeText).accessibilityLabel("排除网站")
+                }
+                Section {
+                    DisclosureGroup("高级规则", isExpanded: $showAdvancedRules) {
+                        Text("@include").font(.caption)
+                        SettingsRuleEditor(prompt: "包含网址，每行一条", text: $includeText)
+                        Text("@exclude-match").font(.caption)
+                        SettingsRuleEditor(prompt: "排除匹配，每行一条", text: $excludeMatchText)
+                    }
+                } footer: { Text("每行一条，刷新生效。") }
 
-                Section {
-                    TextEditor(text: $includeText)
-                        .font(.system(size: 12, design: .monospaced))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .frame(minHeight: 88)
-                } header: {
-                    Text("@include · 每行一条")
-                }
-
-                Section {
-                    TextEditor(text: $excludeText)
-                        .font(.system(size: 12, design: .monospaced))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .frame(minHeight: 66)
-                } header: {
-                    Text("@exclude · 每行一条")
-                }
-
-                Section {
-                    TextEditor(text: $excludeMatchText)
-                        .font(.system(size: 12, design: .monospaced))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .frame(minHeight: 66)
-                } header: {
-                    Text("@exclude-match · 每行一条")
-                }
             }
+            .settingsList()
+            .onAppear { showAdvancedRules = !includeText.isEmpty || !excludeMatchText.isEmpty }
             .navigationTitle("匹配规则")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -870,7 +850,7 @@ struct UserScriptDetailView: View {
         let matches = lines(matchText)
         let includes = lines(includeText)
         guard !matches.isEmpty || !includes.isEmpty else {
-            ruleError = "至少需要一条 @match 或 @include 规则，否则脚本不会在任何网页运行。"
+            ruleError = "请填写运行网站或包含规则"
             return
         }
 
@@ -884,7 +864,7 @@ struct UserScriptDetailView: View {
             )
             showRuleEditor = false
             ruleError = nil
-            notice = "本地运行规则已保存，不会因编辑源码或自动更新而被覆盖。重新载入网页后生效。"
+            notice = "规则已保存，刷新生效"
         } catch {
             ruleError = "保存失败：\(error.localizedDescription)"
         }

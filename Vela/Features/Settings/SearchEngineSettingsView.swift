@@ -159,7 +159,7 @@ private struct CustomSearchEngineForm: View {
                     TextField("例如：站内搜索", text: $name)
                 }
                 Section {
-                    TextField("网址模板", text: $template)
+                    TextField("https://example.com/search?q={searchTerms}", text: $template)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)

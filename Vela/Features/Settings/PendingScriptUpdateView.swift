@@ -9,6 +9,23 @@ struct PendingScriptUpdateView: View {
     @State private var applying = false
     @State private var pending: PendingScriptUpdate?
 
+    private func permissionTitle(_ grant: UserScriptGrant) -> String {
+        switch grant {
+        case .none: return "无额外权限"
+        case .gmXmlhttpRequest, .gmFetch: return "网络请求"
+        case .gmCookie, .gmCookieSet, .gmCookieDelete: return "Cookie 管理"
+        case .gmSetClipboard: return "写剪贴板"
+        case .gmOpenInTab: return "打开标签"
+        case .gmDownload: return "文件下载"
+        case .gmGetValue, .gmGetValues, .gmListValues: return "读取数据"
+        case .gmSetValue, .gmSetValues, .gmDeleteValue, .gmDeleteValues: return "修改数据"
+        case .gmNotification: return "显示通知"
+        case .gmAddStyle, .gmAddElement: return "页面样式"
+        case .gmRegisterMenuCommand, .gmUnregisterMenuCommand: return "脚本菜单"
+        default: return grant.rawValue
+        }
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -16,12 +33,14 @@ struct PendingScriptUpdateView: View {
                     Section("版本") {
                         LabeledContent("当前版本", value: pending.fromVersion.isEmpty ? "未标注" : pending.fromVersion)
                         LabeledContent("新版本", value: pending.toVersion.isEmpty ? "未标注" : pending.toVersion)
-                        ForEach(pending.changes, id: \.self) { change in Label(change, systemImage: "arrow.triangle.2.circlepath") }
+                        LabeledContent("变更项目", value: pending.changes.joined(separator: "、"))
                     }
                 }
                 if let candidate {
                     Section("授权能力") {
-                        ForEach(Array(Set(candidate.grants.map(\.rawValue))).sorted(), id: \.self) { Text($0).font(.footnote.monospaced()) }
+                        ForEach(Array(Set(candidate.grants.map(\.rawValue))).sorted(), id: \.self) { token in
+                            DisclosureGroup(permissionTitle(UserScriptGrant(token: token))) { Text(token).font(.footnote.monospaced()) }
+                        }
                         if candidate.grants.contains(where: { !$0.isSupportedByVela }) { Label("含未支持能力", systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
                     }
                     Section("运行网站") {
@@ -37,6 +56,7 @@ struct PendingScriptUpdateView: View {
                         if candidate.connectRules.isEmpty { Text("未声明") }
                         ForEach(Array(Set(candidate.connectRules)).sorted(), id: \.self) { Text($0).font(.footnote) }
                     }
+                    if !candidate.requireUrls.isEmpty || !candidate.resourceDeclarations.isEmpty || !candidate.updateUrl.isEmpty || !candidate.downloadUrl.isEmpty {
                     Section("依赖来源") {
                         LabeledContent("脚本依赖", value: String(candidate.requireUrls.count))
                         LabeledContent("资源数量", value: String(candidate.resourceDeclarations.count))
@@ -45,6 +65,7 @@ struct PendingScriptUpdateView: View {
                             if !candidate.updateUrl.isEmpty { LabeledContent("更新地址", value: candidate.updateUrl).font(.footnote) }
                             if !candidate.downloadUrl.isEmpty { LabeledContent("下载地址", value: candidate.downloadUrl).font(.footnote) }
                         }
+                    }
                     }
                     Section {
                         Button("确认更新") { Task {
