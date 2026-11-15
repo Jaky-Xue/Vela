@@ -1,0 +1,61 @@
+{
+  "commit": "bf43da105a3b02ecc248f969c6d35c87af2ca05d",
+  "run": "43720436855",
+  "kind": "tests-iPhone",
+  "workflow": "https://github.com/Jaky-Xue/Vela/actions/runs/43720436855",
+  "tests": 397,
+  "testExecutions": 397,
+  "retriedTests": [],
+  "failedAttempts": 0,
+  "finalFailures": [],
+  "testGate": "success",
+  "observedConsoleTests": 397,
+  "xcresultSummary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "FCC5F673-7BEC-4A7D-8F2A-4DC35E2668EC",
+          "deviceName": "iPhone 17 Pro",
+          "modelName": "iPhone 17 Pro",
+          "osBuildNumber": "23F77",
+          "osVersion": "26.5",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 397,
+        "skippedTests": 0,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "Vela · Built with macOS 26.7.2",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1794750897.531,
+    "passedTests": 397,
+    "result": "Passed",
+    "skippedTests": 0,
+    "startTime": 1794750194.699,
+    "statistics": [
+      {
+        "subtitle": "397 test runs",
+        "title": "1 configuration ran with test repetitions"
+      }
+    ],
+    "testFailures": [],
+    "title": "Test - Vela",
+    "topInsights": [
+      {
+        "category": "Longest Test Runs",
+        "impact": "75% of duration",
+        "text": "1 longest test run with outlier durations exceeding 51.96s (three standard deviations)"
+      }
+    ],
+    "totalTestCount": 397
+  },
+  "skippedTests": []
+}
