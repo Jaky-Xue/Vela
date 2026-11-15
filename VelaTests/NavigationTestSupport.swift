@@ -179,7 +179,7 @@ final class LocalHTTPServer {
             var text = "HTTP/1.1 \(response.status) \(Self.reason(response.status))\r\n"
             text += "Content-Type: \(response.contentType)\r\n"
             let body = Data((response.chunks?.joined() ?? response.body).utf8)
-            text += "Content-Length: \(body.count)\r\n"
+            text += response.chunks == nil ? "Content-Length: \(body.count)\r\n" : "Transfer-Encoding: chunked\r\n"
             for (name, value) in response.headers {
                 text += "\(name): \(value)\r\n"
             }
@@ -189,7 +189,9 @@ final class LocalHTTPServer {
                 connection.send(content: Data(text.utf8), completion: .contentProcessed { _ in })
                 for (index, chunk) in chunks.enumerated() {
                     self.queue.asyncAfter(deadline: .now() + Double(index) * response.chunkDelay) {
-                        connection.send(content: Data(chunk.utf8), completion: .contentProcessed { _ in if index == chunks.count - 1 { connection.cancel() } })
+                        var wire = String(chunk.utf8.count, radix:16) + "\r\n" + chunk + "\r\n"
+                        if index == chunks.count - 1 { wire += "0\r\n\r\n" }
+                        connection.send(content: Data(wire.utf8), completion: .contentProcessed { _ in if index == chunks.count - 1 { connection.cancel() } })
                     }
                 }
                 return

@@ -28,7 +28,7 @@ public enum UserScriptRunAt: String, Codable, Sendable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .documentStart: return "文档开始前"
+        case .documentStart: return "文档开始时"
         case .documentBody: return "body 出现后"
         case .documentIdle: return "文档空闲时"
         case .documentEnd: return "文档加载完成后"

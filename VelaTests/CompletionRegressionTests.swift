@@ -48,6 +48,30 @@ final class CompletionRegressionTests: XCTestCase {
         h.coordinator.runMenuScript(id:manual.id,tabId:tab.id)
         try await wait("document.querySelector('iframe').contentDocument.documentElement.dataset.manual==='ok'",web:web)
     }
+    func testManualHidesMatchEachFrameAndPauseWithoutReload() async throws {
+        let server = try LocalHTTPServer(routes:["/parent":.html("<title>Manual</title><div id='ad' class='ad-banner'>ad</div><iframe id='child'></iframe><script>document.getElementById('child').src='http://localhost:'+location.port+'/child';</script>"), "/child":.html("<div id='ad' class='ad-banner'>child ad</div>")])
+        let base = try await server.start(); defer { server.stop() }
+        let h = try BrowserHarness()
+        h.settings.updateContentBlocker { $0.enabled = false }
+        h.settings.updateManualElementHide { $0.sites=[ManualElementHideSiteRules(host:"127.0.0.1",rules:[ManualElementHideRule(selector:"["),ManualElementHideRule(selector:".ad-banner")])] }
+        let tab = h.open(base.appendingPathComponent("parent")); await waitForSettled(tab,expectingTitle:"Manual")
+        let web = try XCTUnwrap(h.tabManager.webView(for:tab.id))
+        try await wait("getComputedStyle(document.getElementById('ad')).display==='none'",web:web)
+        var childFrame: WKFrameInfo?
+        for _ in 0..<100 {
+            childFrame=h.coordinator.manualHideFrames.values.first { $0.request.url?.host=="localhost" }
+            if childFrame != nil { break }; try await Task.sleep(nanoseconds:25_000_000)
+        }
+        let frame=try XCTUnwrap(childFrame)
+        let visible: Any = try await withCheckedThrowingContinuation { continuation in
+            web.evaluateJavaScript("getComputedStyle(document.getElementById('ad')).display!=='none'",in:frame,in:.defaultClient) { continuation.resume(with:$0) }
+        }
+        XCTAssertEqual(visible as? Bool,true)
+        h.settings.updateManualElementHide { $0.pausedHosts=["127.0.0.1"] }
+        h.coordinator.applyManualElementHides(to:web,host:"127.0.0.1")
+        try await wait("getComputedStyle(document.getElementById('ad')).display!=='none'",web:web)
+    }
+
     func testIncludeExpansionIsBoundedAndRejectsCycles() async throws {
         let base = URL(string:"https://lists.test/main.txt")!
         let (text, expanded) = try await FilterIncludeResolver.expand("!#include child.txt\n||root.test^",base:base) { url in
@@ -68,6 +92,10 @@ final class CompletionRegressionTests: XCTestCase {
         try await store.removeContentRuleList(forIdentifier:id)
         let complex = AdBlockRuleCompiler.compile(filterList:"example.com,~shop.example.com##.ad\nexample.com#@#.ad\n~keep.example.com#@#.other\n##.other")
         _ = try await store.compileContentRuleList(forIdentifier:id,encodedContentRuleList:AdBlockRuleCompiler.encode(complex.rules))
+        try await store.removeContentRuleList(forIdentifier:id)
+        let mixed = AdBlockRuleCompiler.compile(filterList:"||ad.test^$script,domain=example.com|~shop.example.com\n/ads[0-9]+[.]js/$script")
+        XCTAssertEqual(mixed.rules.count,2)
+        _ = try await store.compileContentRuleList(forIdentifier:id,encodedContentRuleList:AdBlockRuleCompiler.encode(mixed.rules))
         try await store.removeContentRuleList(forIdentifier:id)
     }
     func testDiagnosticLineNumbersRetainBlankLines() {
@@ -92,7 +120,7 @@ final class CompletionRegressionTests: XCTestCase {
         let other = try LocalHTTPServer(routes: ["/secret": .html("secret")])
         let otherBase = try await other.start(); defer { other.stop() }
         let server = try LocalHTTPServer(routes: [
-            "/stream": .init(body:"",contentType:"text/plain",chunks:["first\\n","second\\n"],chunkDelay:0.5),
+            "/stream": .init(body:"",contentType:"text/event-stream",chunks:["first\\n","second\\n"],chunkDelay:0.5),
             "/redirect": .redirect(to:otherBase.appendingPathComponent("secret").absoluteString)
         ])
         let base = try await server.start(); defer { server.stop() }

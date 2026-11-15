@@ -70,6 +70,7 @@ public final class DownloadService: NSObject {
     /// a WebKit fallback counts against the same slots but starts immediately,
     /// because WebKit has no way to hold a transfer at the gate.
     private var queued: [String: QueuedDownload] = [:]
+    private var reservedScriptDestinations: Set<String> = []
     /// Live segmented transfers.
     private var segmentedSessions: [String: SegmentedDownloadSession] = [:]
     /// Every transfer occupying a concurrency slot, whichever engine runs it.
@@ -239,12 +240,12 @@ public final class DownloadService: NSObject {
         let directory = downloadsDirectory
         let sanitized = Self.sanitizeFileName(suggestedFileName)
         var candidate = directory.appendingPathComponent(sanitized)
-        guard FileManager.default.fileExists(atPath: candidate.path) else { return candidate }
+        guard FileManager.default.fileExists(atPath: candidate.path) || reservedScriptDestinations.contains(candidate.path) else { return candidate }
 
         let base = (sanitized as NSString).deletingPathExtension
         let ext = (sanitized as NSString).pathExtension
         var index = 1
-        while FileManager.default.fileExists(atPath: candidate.path) {
+        while FileManager.default.fileExists(atPath: candidate.path) || reservedScriptDestinations.contains(candidate.path) {
             let name = ext.isEmpty ? "\(base) (\(index))" : "\(base) (\(index)).\(ext)"
             candidate = directory.appendingPathComponent(name)
             index += 1
@@ -340,13 +341,20 @@ public final class DownloadService: NSObject {
     public func saveScriptFile(_ data: Data, response: URLResponse, suggestedName: String, boundary: BrowserDataBoundary) async throws -> DownloadTask {
         let name = Self.sanitizeFileName(suggestedName.isEmpty ? (response.suggestedFilename ?? "download") : suggestedName)
         let destination = resolveDestination(suggestedFileName: name)
-        try await Task.detached(priority: .utility) { try data.write(to: destination, options: .atomic) }.value
+        reservedScriptDestinations.insert(destination.path)
+        defer { reservedScriptDestinations.remove(destination.path) }
+        try await Task.detached(priority: .utility) {
+            let temp = destination.deletingLastPathComponent().appendingPathComponent(".vela-script-" + UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: temp) }
+            try data.write(to: temp, options: .withoutOverwriting)
+            try FileManager.default.moveItem(at: temp, to: destination)
+        }.value
         let task = DownloadTask(profileId: boundary.profileId, privacyMode: boundary.privacyMode, dataScope: boundary.dataScope,
             requestUrl: response.url?.absoluteString ?? "", finalUrl: response.url?.absoluteString ?? "",
             suggestedFileName: name, resolvedFileName: destination.lastPathComponent, mimeType: response.mimeType ?? "",
             status: .completed, receivedBytes: Int64(data.count), totalBytes: Int64(data.count), writtenBytes: Int64(data.count),
             destinationPath: destination.path, completedAt: Date())
-        do { try repository.upsert(task) } catch { try? FileManager.default.removeItem(at: destination); throw error }
+        do { try Task.checkCancellation(); try repository.upsert(task) } catch { try? FileManager.default.removeItem(at: destination); throw error }
         reload(privacyMode: boundary.privacyMode)
         return task
     }

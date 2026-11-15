@@ -635,6 +635,7 @@ public enum UserScriptInjector {
             if (typeof details === 'string') { details = { url: details }; }
             details = details || {};
             var requestId = newRequestId('download');
+            if(typeof details.onprogress === 'function') bridge.progressHandlers[SCRIPT_ID][requestId] = function(p){details.onprogress({loaded:p.loaded||0,total:p.total||0,lengthComputable:p.total>0});};
             expectResolution(requestId, function (payload) {
               if (payload.aborted) { if(details.onabort) details.onabort(payload); return; }
               if (payload.error) {
@@ -655,7 +656,7 @@ public enum UserScriptInjector {
               scriptId: SCRIPT_ID,
               requestId: requestId,
               url: new URL(String(details.url || ''), location.href).href,
-              name: String(details.name || '')
+              name: String(details.name || ''), headers: details.headers || {}, anonymous: !!details.anonymous, timeout: Number(details.timeout)||0, progress: typeof details.onprogress === 'function'
             });
             return {abort:function(){post({type:'xhrAbort',scriptId:SCRIPT_ID,requestId:requestId});}};
           };
@@ -735,6 +736,7 @@ public enum UserScriptInjector {
             var requestId = newRequestId('xhr');
             var headers = details.headers || {};
             var data = details.data;
+            if(details.binary && typeof data === 'string') data=Uint8Array.from(data,function(c){return c.charCodeAt(0)&255;});
             if (data && typeof data === 'object' && !(data instanceof ArrayBuffer) && !ArrayBuffer.isView(data) && !(data instanceof Blob) && !(data instanceof FormData) && !(data instanceof URLSearchParams) && !(data instanceof ReadableStream)) {
               var pairs = [];
               for (var key in data) {
@@ -761,7 +763,7 @@ public enum UserScriptInjector {
             if (reportsProgress) {
               bridge.progressHandlers[SCRIPT_ID][requestId] = function (payload) {
                 var chunk = Uint8Array.from(atob(payload.responseChunkBase64 || ''), function(c) { return c.charCodeAt(0); });
-                progressText += progressDecoder.decode(chunk, {stream:true});
+                if(details.responseType !== 'stream') progressText += progressDecoder.decode(chunk, {stream:true});
                 payload.responseText = progressText;
                 var values = responseValue(details, payload);
                 try {

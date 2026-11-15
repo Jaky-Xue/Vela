@@ -311,8 +311,8 @@ final class AdBlockRuleSafetyTests: XCTestCase {
         )
         // Only the one representable rule becomes a rule; the rest are counted as
         // unsupported rather than silently dropped.
-        XCTAssertEqual(result.rules.count, 1)
-        XCTAssertGreaterThanOrEqual(result.unsupportedRuleCount, 3)
+        XCTAssertEqual(result.rules.count, 2)
+        XCTAssertEqual(result.unsupportedRuleCount, 2)
     }
 
     /// A host-scoped cosmetic rule keeps its host.
@@ -359,9 +359,12 @@ final class AdBlockRuleSafetyTests: XCTestCase {
             filterList: "example.com,~shop.example.com##.ad-banner",
             includeCosmetic: true
         )
-        XCTAssertTrue(result.rules.isEmpty)
+        XCTAssertEqual(result.rules.count, 1)
         XCTAssertTrue(result.cosmeticSelectors.isEmpty)
-        XCTAssertEqual(result.unsupportedRuleCount, 1)
+        XCTAssertEqual(result.unsupportedRuleCount, 0)
+        XCTAssertEqual(result.rules.first?.trigger.unlessDomain, ["*shop.example.com"])
+        let expression = try? NSRegularExpression(pattern: result.rules.first?.trigger.urlFilter ?? "INVALID")
+        XCTAssertNotNil(expression?.firstMatch(in: "https://example.com/news", range: NSRange(location: 0, length: 24)))
     }
 
     /// A scoped selector has to stay out of the stylesheet the app injects on

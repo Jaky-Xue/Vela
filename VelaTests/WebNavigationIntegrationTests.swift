@@ -604,14 +604,14 @@ final class WebNavigationIntegrationTests: XCTestCase {
         // to `customUserAgent` reads back as the empty string, not as nil, which
         // is a WebKit detail rather than a property of this code.
         XCTAssertTrue(
-            (webView.customUserAgent ?? "").isEmpty,
-            "the default should set no override: \(webView.customUserAgent ?? "-")"
+            (webView.customUserAgent ?? "") == (BrowserUserAgent.identity(custom: "", prefersDesktop: false).customUserAgent ?? ""),
+            "the default must follow the device: \(webView.customUserAgent ?? "-")"
         )
         // A phone's default is the mobile layout, and WebKit is told so before
         // the first request rather than being left to guess.
         XCTAssertEqual(
             webView.configuration.defaultWebpagePreferences.preferredContentMode,
-            .mobile
+            BrowserDeviceClass.current.prefersDesktopIdentity ? .desktop : .mobile
         )
 
         let value = try? await webView.evaluateJavaScript("navigator.userAgent")
@@ -633,7 +633,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
         // including the marker is WebKit's, so if this project ever writes down a
         // platform or engine token, this is where it shows.
         let webKitPrefix = String(referenceIdentifier[referenceIdentifier.startIndex..<marker.upperBound])
-        XCTAssertTrue(identifier.hasPrefix(webKitPrefix), identifier)
+        XCTAssertTrue(BrowserDeviceClass.current.prefersDesktopIdentity ? identifier == BrowserUserAgent.desktopIdentifier : identifier.hasPrefix(webKitPrefix), identifier)
     }
 
     func testDesktopIdentifierPresentsADesktopPage() async {
@@ -687,8 +687,8 @@ final class WebNavigationIntegrationTests: XCTestCase {
 
         value = try? await webView.evaluateJavaScript("navigator.userAgent")
         let identifier = value as? String ?? ""
-        XCTAssertFalse(identifier.contains("Macintosh"), identifier)
-        XCTAssertTrue(identifier.contains("iPhone"), identifier)
+        XCTAssertEqual(identifier.contains("Macintosh"), BrowserDeviceClass.current.prefersDesktopIdentity, identifier)
+        XCTAssertTrue(BrowserDeviceClass.current.prefersDesktopIdentity || identifier.contains("iPhone"), identifier)
         XCTAssertTrue(identifier.contains("Safari/"), identifier)
     }
 

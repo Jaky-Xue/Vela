@@ -539,7 +539,7 @@ final class BrowserUserAgentTests: XCTestCase {
 
     func testAWhitespaceOnlyCustomIdentifierIsNotACustomIdentifier() {
         XCTAssertNil(
-            BrowserUserAgent.identity(custom: "   \n ", prefersDesktop: false).customUserAgent
+            BrowserUserAgent.identity(custom: "   \n ", prefersDesktop: false, device: .phone).customUserAgent
         )
     }
 

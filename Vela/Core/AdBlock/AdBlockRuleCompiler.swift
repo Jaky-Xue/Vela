@@ -216,8 +216,8 @@ public enum AdBlockRuleCompiler {
                         result.rules.append(
                             ContentBlockerRule(
                                 trigger: ContentBlockerRule.Trigger(
-                                    urlFilter: domainURLFilter(includeDomains),
-                                    ifDomain: nil,
+                                    urlFilter: includeDomains.isEmpty || excludeDomains.isEmpty ? ".*" : domainURLFilter(includeDomains),
+                                    ifDomain: includeDomains.isEmpty || !excludeDomains.isEmpty ? nil : includeDomains,
                                     unlessDomain: excludeDomains.isEmpty ? nil : excludeDomains
                                 ),
                                 action: .hide(selector: selector)

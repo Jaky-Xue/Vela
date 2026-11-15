@@ -219,11 +219,12 @@ public final class BrowserWebCoordinator: NSObject {
     ///
     /// Selectors containing a brace are skipped rather than allowed to break
     /// out of the declaration block.
-    private func manualHideCSS(for host: String) -> String? {
+    private func manualHideSelectorJSON(for host: String) -> String? {
         let selectors = settings.manualElementHide.effectiveSelectors(for: host)
             .filter { !$0.contains("{") && !$0.contains("}") }
         guard !selectors.isEmpty else { return nil }
-        return selectors.map { $0 + " { display: none !important; }" }.joined(separator: "\n")
+        guard let data = try? JSONEncoder().encode(selectors) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     /// Applies a host's manual hides to the document already on screen.
@@ -237,8 +238,8 @@ public final class BrowserWebCoordinator: NSObject {
         for (key, frame) in manualHideFrames where key.hasPrefix(tab.id + "|") {
             guard let currentHost = frame.request.url?.host else { continue }
             let token = String(key.split(separator: "|").last ?? "")
-            let css = manualHideCSS(for: currentHost) ?? ""
-            webView.evaluateJavaScript("if(window.__velaManualDocument === \(jsonLiteral(token))) window.__velaApplyManualCSS(\(jsonLiteral(css)));", in: frame, in: .defaultClient) { _ in }
+            let selectors = manualHideSelectorJSON(for: currentHost) ?? "[]"
+            webView.evaluateJavaScript("if(window.__velaManualDocument === \(jsonLiteral(token))) window.__velaApplyManualCSS(\(selectors));", in: frame, in: .defaultClient) { _ in }
         }
     }
 
@@ -257,8 +258,8 @@ public final class BrowserWebCoordinator: NSObject {
            ["http", "https"].contains(url.scheme ?? ""), let host = url.host {
             guard manualHideFrames.keys.filter({ $0.hasPrefix(tab.id + "|") }).count < 256 else { return }
             manualHideFrames[tab.id + "|" + token] = message.frameInfo
-            let css = manualHideCSS(for: host) ?? ""
-            webView.evaluateJavaScript("if(window.__velaManualDocument === \(jsonLiteral(token))) window.__velaApplyManualCSS(\(jsonLiteral(css)));", in: message.frameInfo, in: .defaultClient) { _ in }
+            let selectors = manualHideSelectorJSON(for: host) ?? "[]"
+            webView.evaluateJavaScript("if(window.__velaManualDocument === \(jsonLiteral(token))) window.__velaApplyManualCSS(\(selectors));", in: message.frameInfo, in: .defaultClient) { _ in }
             return
         }
         switch WebPageScripts.Handler(rawValue: message.name) {
@@ -720,7 +721,8 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         let manualBootstrap = """
         (function(){
           window.__velaManualDocument = '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,function(c){return (Number(c)^crypto.getRandomValues(new Uint8Array(1))[0]&15>>Number(c)/4).toString(16);});
-          window.__velaApplyManualCSS = function(css) {
+          window.__velaApplyManualCSS = function(selectors) {
+            var css=(selectors||[]).filter(function(selector){try{document.querySelector(selector);return true;}catch(_){return false;}}).map(function(selector){return selector+' {display:none!important;}';}).join('\\n');
             var apply=function(){
               if(!document.documentElement) return false;
               var style=document.getElementById('\(Self.manualHideStyleIdentifier)');
