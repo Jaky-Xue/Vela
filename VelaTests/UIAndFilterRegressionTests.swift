@@ -190,7 +190,8 @@ final class UIAndFilterRegressionTests: XCTestCase {
             ("tabs-overview-dark",AnyView(TabsOverviewView(onClose:{})),375,.dark),
             ("tabs-overview-pad",AnyView(TabsOverviewView(onClose:{})),744,.light),
             ("private-home",AnyView(NewTabHomeView(isPrivate:true,onNavigate:{_ in})),375,.light),
-            ("browser-page",AnyView(BrowserShellView(environment:env)),375,.light)
+            ("browser-page",AnyView(BrowserShellView(environment:env)),375,.light),
+            ("settings-root-dark",AnyView(NavigationStack { SettingsView() }),375,.dark)
         ]
         for (name,view,width,scheme) in screens {
             let content=view.environment(env).environment(\.browserPalette,BrowserPalette.default).environment(\.colorScheme,scheme)

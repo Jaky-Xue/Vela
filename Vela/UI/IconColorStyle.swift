@@ -7,6 +7,12 @@ enum IconColorStyle {
         Int(key.utf8.reduce(UInt64(5381)) { ($0 &* 33) &+ UInt64($1) } % UInt64(hexColors.count))
     }
     static func color(for key: String) -> Color { Color(velaHex: hexColors[index(for: key)]) }
+    static func lineColor(for key: String) -> Color {
+        let bright: [UInt32] = [0x91B8FF, 0x79DEC9, 0xD4A5F6, 0xFFA4B6, 0xFFC18C, 0xA1DAA1, 0x8CCFE9, 0xC8B1FF]
+        let light = UIColor(Color(velaHex: hexColors[index(for: key)]))
+        let dark = UIColor(Color(velaHex: bright[index(for: key)]))
+        return Color(uiColor: UIColor { trait in trait.userInterfaceStyle == .dark ? dark : light })
+    }
     static func gradient(for key: String) -> LinearGradient {
         let color = color(for: key)
         return LinearGradient(colors: [color, color.opacity(0.92)], startPoint: .topLeading, endPoint: .bottomTrailing)

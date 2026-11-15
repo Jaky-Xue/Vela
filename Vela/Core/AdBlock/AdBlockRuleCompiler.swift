@@ -540,8 +540,20 @@ public enum AdBlockRuleCompiler {
             loadType: parsedOptions.loadType,
             urlFilterIsCaseSensitive: parsedOptions.matchCase
         )
-        let base = ContentBlockerRule(trigger: trigger, action: action)
-        let types = Set(parsedOptions.resourceTypes)
+        var base = ContentBlockerRule(trigger: trigger, action: action)
+        var types = Set(parsedOptions.resourceTypes)
+        var pageAllows: [ContentBlockerRule] = []
+        if isException && types.contains("vela-top-document") {
+            guard parsedOptions.includeDomains.isEmpty, parsedOptions.excludeDomains.isEmpty,
+                  parsedOptions.loadType == nil, parsedOptions.matchCase != true else { return .unsupported }
+            var page = base
+            page.trigger.urlFilter = ".*"; page.trigger.ifTopURL = [urlFilter]
+            page.trigger.resourceType = nil; page.trigger.loadContext = nil
+            pageAllows.append(page)
+            types.remove("vela-top-document")
+            if types.isEmpty { return .success(pageAllows) }
+            base.trigger.resourceType = types.sorted()
+        }
         let top = types.contains("vela-top-document"), child = types.contains("vela-child-document")
         if top != child {
             var result: [ContentBlockerRule] = []
@@ -550,11 +562,11 @@ public enum AdBlockRuleCompiler {
             var document = base; document.trigger.resourceType = ["document"]
             document.trigger.loadContext = [top ? "top-frame" : "child-frame"]
             result.append(document)
-            return .success(result)
+            return .success(pageAllows + result)
         }
         var rule = base
         if top && child { rule.trigger.resourceType = Array(types.subtracting(["vela-top-document", "vela-child-document"]).union(["document"])).sorted() }
-        return .success([rule])
+        return .success(pageAllows + [rule])
     }
 
     /// Splits the filter pattern from its `$`-options.

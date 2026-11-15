@@ -161,6 +161,18 @@ final class CompletionRegressionTests: XCTestCase {
         _ = try await store.compileContentRuleList(forIdentifier:id,encodedContentRuleList:AdBlockRuleCompiler.encode(mixed.rules))
         try await store.removeContentRuleList(forIdentifier:id)
     }
+    func testDocumentExceptionAllowsPageResourcesWithoutDisablingOtherSites() async throws {
+        let result=AdBlockRuleCompiler.compile(filterList:"||ads.test^\n@@||example.com^$document")
+        let allow=try XCTUnwrap(result.rules.last)
+        XCTAssertEqual(allow.action.type,"ignore-previous-rules")
+        XCTAssertEqual(allow.trigger.urlFilter,".*")
+        XCTAssertNotNil(allow.trigger.ifTopURL)
+        XCTAssertNil(allow.trigger.resourceType)
+        let store=WKContentRuleListStore.default()!, id=UUID().uuidString
+        _ = try await store.compileContentRuleList(forIdentifier:id,encodedContentRuleList:AdBlockRuleCompiler.encode(result.rules))
+        try await store.removeContentRuleList(forIdentifier:id)
+    }
+
     func testDocumentKindsAndModernNetworkTypesCompileExactly() async throws {
         let result = AdBlockRuleCompiler.compile(filterList:"||ad.test^$document,script\n||ad.test^$subdocument\n||ad.test^$~document\n||ad.test^$xhr,websocket,ping,other")
         XCTAssertTrue(result.rules.contains { $0.trigger.resourceType == ["document"] && $0.trigger.loadContext == ["top-frame"] })
