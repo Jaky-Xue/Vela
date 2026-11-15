@@ -1,0 +1,13 @@
+{
+  "commit": "ac8b72d9978ca8542f2a845b7fead1825980dd9b",
+  "run": "43711031674",
+  "kind": "tests-iPad",
+  "workflow": "https://github.com/Jaky-Xue/Vela/actions/runs/43711031674",
+  "tests": 11,
+  "testExecutions": 7,
+  "retriedTests": [],
+  "failedAttempts": 0,
+  "finalFailures": [],
+  "testGate": "failure",
+  "skippedTests": []
+}
