@@ -40,3 +40,6 @@
 新增 ReportRegressionTests，覆盖主域/子域和路径大小写、原生 grant/connect 拒绝、Cookie 路径边界、实际 WebKit 运行域隔离、实际 DOM 隐藏与移除规则恢复、隐藏例外不解除网络阻断。保留现有完整测试门禁，GitHub Actions 测试成功后才构建 Release 未签名 IPA。
 
 最终构建链接、提交和 SHA256 随交付验证记录提供。本说明不表示整份报告所有阶段均已完成，也不表示已经做过 iPhone/iPad 真机验收。
+
+
+后续 3.9.54 已继续完成其中部分事项，见 [RELEASE_3.9.54.md](RELEASE_3.9.54.md)。本文件保留为 3.9.53 当时的状态记录。

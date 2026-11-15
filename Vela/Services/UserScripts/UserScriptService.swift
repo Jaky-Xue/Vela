@@ -325,6 +325,22 @@ public final class UserScriptService {
         return Self.reconstructedSource(for: script)
     }
 
+    public func exportSource(for script: InstalledUserScriptState, includingLocalRules: Bool) -> String {
+        let original = editableSource(for: script)
+        guard includingLocalRules, let rules = settings.userScriptSettings.localRules?[script.id],
+              let end = original.range(of: "==/UserScript==") else { return original }
+        let lineStart = original[..<end.lowerBound].lastIndex(of: "\n").map { original.index(after: $0) } ?? original.startIndex
+        let header = String(original[..<lineStart]).components(separatedBy: .newlines).filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "//", with: "").trimmingCharacters(in: .whitespaces)
+            let key = trimmed.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
+            return !["@match", "@include", "@exclude", "@exclude-match"].contains(key)
+        }.filter { !$0.isEmpty }
+        let injected = [("match", rules.matches), ("include", rules.includes),
+                        ("exclude", rules.excludes), ("exclude-match", rules.excludeMatches)]
+            .flatMap { key, values in values.map { "// @" + key + " " + $0 } }
+        return (header + injected).joined(separator: "\n") + "\n" + String(original[lineStart...])
+    }
+
     /// Rebuilds a metadata block around a body that was stored without one.
     static func reconstructedSource(for script: InstalledUserScriptState) -> String {
         func line(_ key: String, _ value: String) -> String? {

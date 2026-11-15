@@ -269,13 +269,33 @@ public enum UserScriptInjector {
               snapshotRevision = revision;
               return;
             }
-            if (revision <= (keyRevisions[key] || snapshotRevision)) { return; }
+            if (revision <= (Math.max(keyRevisions[key] || 0, snapshotRevision))) { return; }
             keyRevisions[key] = revision;
             var oldValue = parseStoredValue(valueStore[key], undefined);
             if (removed) { delete valueStore[key]; } else { valueStore[key] = raw; }
             var newValue = removed ? undefined : parseStoredValue(raw, undefined);
             if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) { notifyListeners(key, oldValue, newValue, remote); }
           };
+
+          function asyncReadValues(type, key) {
+            return new Promise(function (resolve, reject) {
+              var requestId = newRequestId('value-read');
+              expectResolution(requestId, function (payload) {
+                if (payload.error) { reject(new Error(payload.error)); return; }
+                if (type === 'listValues') { resolve(payload.keys || []); return; }
+                var values = payload.values || {};
+                var names = type === 'getValue' ? [key] : Array.from(new Set(Object.keys(valueStore).concat(Object.keys(values))));
+                names.forEach(function (name) {
+                  bridge.applyValue(name, values[name], !Object.prototype.hasOwnProperty.call(values, name), false, payload.revision, true);
+                });
+                if (type !== 'getValue') { snapshotRevision = Math.max(snapshotRevision, Number(payload.revision || 0)); }
+                resolve(values);
+              });
+              if (!post({ type: type, scriptId: SCRIPT_ID, requestId: requestId, key: key })) {
+                delete bridge.resolvers[SCRIPT_ID][requestId]; reject(new Error('GM storage bridge unavailable'));
+              }
+            });
+          }
 
           function asyncWriteValue(type, key, value, optimistic) {
             return new Promise(function (resolve, reject) {
@@ -285,7 +305,7 @@ public enum UserScriptInjector {
               var requestId = newRequestId('value');
               key = String(key);
               var oldRaw = valueStore[key];
-              var oldRevision = keyRevisions[key] || snapshotRevision;
+              var oldRevision = Math.max(keyRevisions[key] || 0, snapshotRevision);
               var oldValue = parseStoredValue(oldRaw, undefined);
               if (optimistic) {
                 if (type === 'deleteValue') { delete valueStore[key]; } else { valueStore[key] = encoded; }
@@ -293,7 +313,7 @@ public enum UserScriptInjector {
               }
               expectResolution(requestId, function (payload) {
                 if (payload.error) {
-                  if (optimistic && (keyRevisions[key] || snapshotRevision) === oldRevision && (type === 'deleteValue' ? typeof valueStore[key] === 'undefined' : valueStore[key] === encoded)) {
+                  if (optimistic && (Math.max(keyRevisions[key] || 0, snapshotRevision)) === oldRevision && (type === 'deleteValue' ? typeof valueStore[key] === 'undefined' : valueStore[key] === encoded)) {
                     if (typeof oldRaw === 'undefined') { delete valueStore[key]; } else { valueStore[key] = oldRaw; }
                   }
                   reject(new Error(payload.error)); return;
@@ -844,10 +864,15 @@ public enum UserScriptInjector {
           api.GM = {
             info: api.GM_info,
             getValue: function (key, defaultValue) {
-              return promiseCall(api.GM_getValue(key, defaultValue));
+              return asyncReadValues('getValue', String(key)).then(function (values) { return parseStoredValue(values[key], defaultValue); });
             },
             getValues: function (defaults) {
-              return promiseCall(api.GM_getValues(defaults));
+              return asyncReadValues('getValues').then(function (values) {
+                var result = {};
+                var names = Array.isArray(defaults) ? defaults : (defaults && typeof defaults === 'object' ? Object.keys(defaults) : Object.keys(values));
+                names.forEach(function (name) { result[name] = parseStoredValue(values[name], Array.isArray(defaults) ? undefined : defaults && defaults[name]); });
+                return result;
+              });
             },
             setValue: function (key, value) {
               return asyncWriteValue('setValue', key, value);
@@ -862,7 +887,7 @@ public enum UserScriptInjector {
               return Promise.all(keys.map(function (key) { return asyncWriteValue('deleteValue', key); }));
             },
             listValues: function () {
-              return promiseCall(api.GM_listValues());
+              return asyncReadValues('listValues');
             },
             addValueChangeListener: function (key, listener) {
               return api.GM_addValueChangeListener(key, listener);

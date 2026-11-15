@@ -4,6 +4,7 @@ import Foundation
 enum UserScriptNativePolicy {
     static func allows(type: String, payload: [String: Any], script: InstalledUserScriptState, origin: URL) -> Bool {
         let required: [String: [UserScriptGrant]] = [
+            "getValue": [.gmGetValue], "getValues": [.gmGetValues], "listValues": [.gmListValues],
             "setValue": [.gmSetValue, .gmSetValues], "deleteValue": [.gmDeleteValue, .gmDeleteValues],
             "setClipboard": [.gmSetClipboard], "notification": [.gmNotification],
             "registerMenuCommand": [.gmRegisterMenuCommand], "unregisterMenuCommand": [.gmUnregisterMenuCommand],

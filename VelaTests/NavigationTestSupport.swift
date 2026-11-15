@@ -309,6 +309,7 @@ final class BrowserHarness {
 
         let database = try SQLiteDatabase(path: ":memory:")
         self.database = database
+        for statement in BrowserSchema.creationStatements { try database.execute(statement) }
         let history = HistoryService(repository: HistoryRepository(database: database), settings: settings)
         self.history = history
         let downloads = DownloadService(repository: DownloadRepository(database: database), settings: settings)

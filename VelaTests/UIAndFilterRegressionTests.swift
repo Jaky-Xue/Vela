@@ -55,6 +55,19 @@ final class UIAndFilterRegressionTests: XCTestCase {
         for hex in IconColorStyle.hexColors { XCTAssertGreaterThanOrEqual(contrast(.white, Color(velaHex: hex)), 4.5) }
     }
 
+    func testRuleOptionsAndInvalidScriptPatterns() {
+        let exclusion = AdBlockRuleCompiler.compile(filterList: "||ad.test^$~image")
+        XCTAssertFalse(exclusion.rules.first?.trigger.resourceType?.contains("image") ?? true)
+        let caseSensitive = AdBlockRuleCompiler.compile(filterList: "||ad.test^$match-case")
+        XCTAssertEqual(caseSensitive.rules.first?.trigger.urlFilterIsCaseSensitive, true)
+        let unknown = AdBlockRuleCompiler.compile(filterList: "||ad.test^$unknown-option")
+        XCTAssertTrue(unknown.rules.isEmpty)
+        XCTAssertEqual(unknown.unsupportedRuleCount, 1)
+        XCTAssertNil(UserScriptMatcher.ruleError("https://*.example.com/*", isMatch: true))
+        XCTAssertNotNil(UserScriptMatcher.ruleError("bad pattern", isMatch: true))
+        XCTAssertNotNil(UserScriptMatcher.ruleError("/[broken/", isMatch: false))
+    }
+
     func testInvalidFilterInputsAreRejectedWithoutNetwork() throws {
         for text in ["", "<html><body>error</body></html>", "!#include https://bad.test/list", String(repeating: "x", count: 2_000_001)] {
             XCTAssertThrowsError(try FilterValidation.validate(text))
@@ -84,13 +97,19 @@ final class UIAndFilterRegressionTests: XCTestCase {
         let suite = "ScriptOverrides-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let repo = UserScriptRepository(database: try SQLiteDatabase(path: ":memory:"))
+        let database = try SQLiteDatabase(path: ":memory:")
+        for statement in BrowserSchema.creationStatements { try database.execute(statement) }
+        let repo = UserScriptRepository(database: database)
         let settings = SettingsService(defaults: defaults)
         let service = UserScriptService(repository: repo, settings: settings)
         let source = "// ==UserScript==\n// @name Local\n// @match https://original.test/*\n// @grant none\n// ==/UserScript==\nwindow.ran = true;"
         guard case let .success(outcome) = await service.install(text: source, source: .paste, sourceUrl: "") else { return XCTFail("install failed") }
         try service.updateRules(matches: ["https://local.test/*"], includes: [], for: outcome.script)
         let local = try XCTUnwrap(service.script(id: outcome.script.id))
+        let exported = UserScriptParser.parse(service.exportSource(for: local, includingLocalRules: true))
+        XCTAssertEqual(exported.candidate?.matches, ["https://local.test/*"])
+        let original = UserScriptParser.parse(service.exportSource(for: local, includingLocalRules: false))
+        XCTAssertEqual(original.candidate?.matches, ["https://original.test/*"])
         try service.saveRawSource("unfinished {", for: local)
         XCTAssertEqual(service.script(id: local.id)?.source, "window.ran = true;")
         XCTAssertEqual(service.draftSource(for: local), "unfinished {")
@@ -111,7 +130,10 @@ final class UIAndFilterRegressionTests: XCTestCase {
                 .environment(\.colorScheme, scheme).frame(width: width, height: 670)
             let controller = UIHostingController(rootView: menu)
             let window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: 670))
-            window.rootViewController = controller; window.isHidden = false
+            window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+            window.overrideUserInterfaceStyle = scheme == .dark ? .dark : .light
+            window.rootViewController = controller
+            window.makeKeyAndVisible()
             controller.view.frame = window.bounds
             controller.view.layoutIfNeeded()
             try await Task.sleep(nanoseconds: 200_000_000)

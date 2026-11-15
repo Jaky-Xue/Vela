@@ -560,10 +560,11 @@ private struct HomeContentWidthKey: PreferenceKey {
 
 /// The press feedback for a home tile.
 private struct HomeTileButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.92 : 1)
             .opacity(configuration.isPressed ? 0.7 : 1)
-            .animation(.spring(response: 0.24, dampingFraction: 0.72), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }

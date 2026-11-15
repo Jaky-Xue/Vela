@@ -152,6 +152,8 @@ struct MenuPanelView: View {
                         menuItem(tile)
                     }
                 }
+                .frame(maxWidth: 390)
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, BrowserSpacing.regular)
                 .padding(.bottom, BrowserSpacing.compact)
             }
@@ -166,7 +168,7 @@ struct MenuPanelView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                withAnimation(.snappy(duration: 0.22)) { isEditing = true }
+                withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) { isEditing = true }
             } label: {
                 Text("编辑")
                     .font(.system(size: 14, weight: .semibold))
@@ -282,7 +284,7 @@ struct MenuPanelView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                withAnimation(.snappy(duration: 0.22)) { isEditing = false }
+                withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) { isEditing = false }
             } label: {
                 Text("完成")
                     .font(.system(size: 14, weight: .semibold))
@@ -429,6 +431,6 @@ private struct MenuTileButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed && enabled && !reduceMotion ? 0.92 : 1)
             .opacity(configuration.isPressed && enabled ? 0.7 : 1)
-            .animation(.spring(response: 0.24, dampingFraction: 0.72), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }

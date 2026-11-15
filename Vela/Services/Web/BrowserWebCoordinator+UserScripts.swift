@@ -44,6 +44,29 @@ extension BrowserWebCoordinator {
         let frame = message.frameInfo
 
         switch type {
+        case "getValue", "getValues", "listValues":
+            guard let requestId = payload["requestId"] as? String else { return }
+            do {
+                let snapshot = try userScripts.storageSnapshot(scriptId: scriptId)
+                var values = snapshot.values
+                if type == "listValues" {
+                    resolveUserScript(scriptId: scriptId, requestId: requestId,
+                        payload: ["keys": snapshot.values.keys.sorted(), "revision": snapshot.revision], in: webView, frame: frame)
+                    return
+                }
+                if type == "getValue" {
+                    guard let key = payload["key"] as? String else {
+                        throw FilterError.invalid("GM.getValue 缺少键名")
+                    }
+                    values = snapshot.values[key].map { [key: $0] } ?? [:]
+                }
+                resolveUserScript(scriptId: scriptId, requestId: requestId,
+                    payload: ["values": values, "revision": snapshot.revision], in: webView, frame: frame)
+            } catch {
+                resolveUserScript(scriptId: scriptId, requestId: requestId,
+                    payload: ["error": error.localizedDescription], in: webView, frame: frame)
+            }
+
         case "setValue", "deleteValue":
             guard let key = payload["key"] as? String else { return }
             var response: [String: Any] = ["success": true]

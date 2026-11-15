@@ -523,6 +523,7 @@ struct UserScriptDetailView: View {
     @State private var updateURLText = ""
     @State private var updateURLError: String?
     @State private var showSourceShare = false
+    @State private var shareIncludesLocalRules = false
     @State private var matchText = ""
     @State private var includeText = ""
     @State private var excludeText = ""
@@ -691,9 +692,10 @@ struct UserScriptDetailView: View {
                     editedSource = env.userScripts.draftSource(for: current) ?? env.userScripts.editableSource(for: current)
                     showEditor = true
                 }
-                Button("分享脚本源码", systemImage: "square.and.arrow.up") {
-                    showSourceShare = true
-                }
+                Menu {
+                    Button("原始声明与当前源码") { shareIncludesLocalRules = false; showSourceShare = true }
+                    Button("包含本地运行规则") { shareIncludesLocalRules = true; showSourceShare = true }
+                } label: { Label("分享脚本源码", systemImage: "square.and.arrow.up") }
                 Button("删除脚本", systemImage: "trash", role: .destructive) {
                     showDeleteConfirm = true
                 }
@@ -719,7 +721,7 @@ struct UserScriptDetailView: View {
             updateURLSheet
         }
         .sheet(isPresented: $showSourceShare) {
-            ShareSheet(items: [env.userScripts.editableSource(for: current)])
+            ShareSheet(items: [env.userScripts.exportSource(for: current, includingLocalRules: shareIncludesLocalRules)])
         }
         .alert("删除「\(current.displayName)」？", isPresented: $showDeleteConfirm) {
             Button("取消", role: .cancel) {}

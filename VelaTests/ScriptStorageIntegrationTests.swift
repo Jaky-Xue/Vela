@@ -36,6 +36,8 @@ final class ScriptStorageIntegrationTests: XCTestCase {
         let bw = try XCTUnwrap(harness.coordinator.userScriptWorlds[second.id + "|" + script.id])
         _ = try await eval("GM.setValue('x', 42).then(function(){ window.writeDone = true; }); true;", web: a, world: aw)
         try await waitJS("window.writeDone === true", web: a, world: aw)
+        _ = try await eval("GM.getValue('x').then(function(value){ window.authoritativeRead = value; }); true;", web: b, world: bw)
+        try await waitJS("window.authoritativeRead === 42", web: b, world: bw)
         XCTAssertEqual(try harness.coordinator.userScripts.value(key: "x", scriptId: script.id), "42")
         try await waitJS("GM_getValue('x') === 42 && window.lastRemote && window.lastRemote.remote === true", web: b, world: bw)
 

@@ -650,7 +650,7 @@ public enum AdBlockRuleCompiler {
     /// Encodes rules into the JSON `WKContentRuleListStore` accepts.
     public static func encode(_ rules: [ContentBlockerRule]) throws -> String {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.withoutEscapingSlashes]
+        encoder.outputFormatting = [.withoutEscapingSlashes, .sortedKeys]
         let data = try encoder.encode(rules)
         guard let json = String(data: data, encoding: .utf8) else {
             throw AdBlockError.encodingFailed

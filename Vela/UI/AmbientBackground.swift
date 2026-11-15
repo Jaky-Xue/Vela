@@ -169,6 +169,7 @@ struct AmbientBackgroundView: View {
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.browserBackgroundStyle) private var style
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var legacyStyle: BrowserBackgroundStyle {
         switch style { case .nightSky, .pearl, .forest, .desert: return .solid; default: return style }
@@ -212,7 +213,7 @@ struct AmbientBackgroundView: View {
         // The field's colours are a visual choice made in a settings list;
         // letting one field dissolve into the next reads as the choice being
         // applied rather than as the screen repainting itself.
-        .animation(.easeInOut(duration: 0.28), value: style)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: style)
     }
 
     /// The light field: the mesh, then the glass, sheen and grain that give

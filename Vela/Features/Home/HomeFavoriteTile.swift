@@ -34,8 +34,9 @@ struct HomeFavoriteTile: View {
 
             if showsTitle {
                 Text(favorite.displayTitle)
-                    .font(.system(size: 11, weight: .medium))
-                    .lineLimit(1)
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
                     .truncationMode(.middle)
                     .foregroundStyle(titleColor)
                     .shadow(color: titleShadow, radius: 3, y: 1)

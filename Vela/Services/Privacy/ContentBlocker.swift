@@ -56,7 +56,10 @@ public final class ContentBlocker {
     /// Navigation can await this before its first request, including cold start.
     public func waitUntilPrepared() async {
         if !isReady && !isCompiling { prepare() }
-        while isCompiling && !isReady { try? await Task.sleep(nanoseconds: 10_000_000) }
+        while isCompiling && !isReady {
+            if Task.isCancelled { return }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
     }
 
     public func setBuiltIn(_ id: String, enabled: Bool) async {
@@ -212,10 +215,13 @@ public final class ContentBlocker {
             }
             // WebKit requires a nonempty list even when the user disabled every source.
             let rules = compiled.rules.isEmpty ? [ContentBlockerRule(trigger: .init(urlFilter: ".*"), action: .ignorePreviousRules)] : compiled.rules
+            try await CSSSelectorValidation.validate(rules.compactMap { $0.action.selector })
             let encoded = try AdBlockRuleCompiler.encode(rules)
             guard encoded.utf8.count < 45_000_000 else { throw FilterError.invalid("编译输出过大") }
             let id = Self.identifier + ".v2." + Self.hash(Data(encoded.utf8))
-            let list = try await store.compileContentRuleList(forIdentifier: id, encodedContentRuleList: encoded)
+            let list: WKContentRuleList?
+            if compiledList?.identifier == id { list = compiledList }
+            else { list = try await store.compileContentRuleList(forIdentifier: id, encodedContentRuleList: encoded) }
             guard let list else { throw FilterError.invalid("WebKit 未返回有效规则") }
             let hidden = compiled.rules.filter { $0.action.type == "css-display-none" }.count
             let snapshot = FilterSnapshotInfo(identifier: id, networkCount: compiled.rules.count - hidden,
