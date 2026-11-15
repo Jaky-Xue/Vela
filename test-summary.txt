@@ -1,0 +1,7 @@
+/Users/runner/work/Vela/Vela/VelaTests/ThemeMaterialRegressionTests.swift:54:38: error: cannot convert value of type 'KeyPath<EnvironmentValues, Bool>' to expected argument type 'WritableKeyPath<EnvironmentValues, Bool>'
+/Users/runner/work/Vela/Vela/VelaTests/ThemeMaterialRegressionTests.swift:55:38: error: cannot convert value of type 'KeyPath<EnvironmentValues, Bool>' to expected argument type 'WritableKeyPath<EnvironmentValues, Bool>'
+/Users/runner/work/Vela/Vela/VelaTests/ThemeMaterialRegressionTests.swift:70:44: error: cannot infer contextual base in reference to member 'keepAlways'
+/Users/runner/work/Vela/Vela/VelaTests/ThemeMaterialRegressionTests.swift:86:30: error: cannot convert value of type 'KeyPath<EnvironmentValues, Bool>' to expected argument type 'WritableKeyPath<EnvironmentValues, Bool>'
+/Users/runner/work/Vela/Vela/VelaTests/ThemeMaterialRegressionTests.swift:87:30: error: cannot convert value of type 'KeyPath<EnvironmentValues, Bool>' to expected argument type 'WritableKeyPath<EnvironmentValues, Bool>'
+/Users/runner/work/Vela/Vela/VelaTests/ThemeMaterialRegressionTests.swift:99:60: error: cannot infer contextual base in reference to member 'keepAlways'
+** TEST FAILED **
