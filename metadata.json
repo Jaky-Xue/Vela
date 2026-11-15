@@ -1,0 +1,25 @@
+{
+  "commit": "c4420ad279cce92c1a6b7c7aba5b40e62248888f",
+  "run": "43690040697",
+  "kind": "tests-iPhone",
+  "workflow": "https://github.com/Jaky-Xue/Vela/actions/runs/43690040697",
+  "tests": 375,
+  "testExecutions": 386,
+  "retriedTests": [
+    "-[VelaTests.AdBlockContentRuleCompilationTests testAHostScopedCosmeticRuleCompiles]",
+    "-[VelaTests.AdBlockRuleSafetyTests testACosmeticRuleWithBothSidesIsNotFlattened]",
+    "-[VelaTests.AdBlockRuleSafetyTests testADomainScopedCosmeticRuleKeepsItsScope]",
+    "-[VelaTests.AdBlockRuleSafetyTests testTheCompilerRefusesAFilterItCannotRepresent]",
+    "-[VelaTests.CompletionRegressionTests testNetworkChunksArriveBeforeCompletionAndCrossOriginRedirectIsDeclined]",
+    "-[VelaTests.WebNavigationIntegrationTests testOpeningALinkInANewTabLeavesTheCurrentTabAlone]"
+  ],
+  "failedAttempts": 16,
+  "finalFailures": [
+    "-[VelaTests.AdBlockContentRuleCompilationTests testAHostScopedCosmeticRuleCompiles]",
+    "-[VelaTests.AdBlockRuleSafetyTests testACosmeticRuleWithBothSidesIsNotFlattened]",
+    "-[VelaTests.AdBlockRuleSafetyTests testADomainScopedCosmeticRuleKeepsItsScope]",
+    "-[VelaTests.AdBlockRuleSafetyTests testTheCompilerRefusesAFilterItCannotRepresent]",
+    "-[VelaTests.CompletionRegressionTests testNetworkChunksArriveBeforeCompletionAndCrossOriginRedirectIsDeclined]"
+  ],
+  "testGate": "failure"
+}
