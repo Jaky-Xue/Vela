@@ -398,7 +398,7 @@ struct MenuPanelView: View {
                 let dy = drag.translation.height
                 guard dx * dx + dy * dy > 36 else { return }
                 beginDragging(tile)
-                moveDraggedTile(tile, translation: drag.translation)
+                moveDraggedTile(tile, translation: drag.translation, at: drag.location)
             }
             .onEnded { _ in
                 endDragging()
@@ -418,17 +418,16 @@ struct MenuPanelView: View {
         draggingTileID = tile.id
     }
 
-    private func moveDraggedTile(_ tile: MenuTile, translation: CGSize) {
+    private func moveDraggedTile(_ tile: MenuTile, translation: CGSize, at finger: CGPoint) {
         // Layout may not have measured its slots yet on the very first frame;
         // a tile that never lifted must not rearrange the grid.
         guard draggingTileID == tile.id else { return }
         dragTranslation = translation
         let visible = layout.visibleTiles
         guard let source = visible.firstIndex(where: { $0.id == tile.id }) else { return }
-        let finger = CGPoint(
-            x: dragStartCenter.x + translation.width,
-            y: dragStartCenter.y + translation.height
-        )
+        // The finger itself decides the slot, not the carried tile's centre:
+        // a tile grabbed near its edge should change slots where the finger
+        // crosses, the way the system's own grids behave.
         guard let slot = slotIndex(at: finger, count: visible.count), slot != source else { return }
         // SwiftUI's move semantics: an item moving forwards lands after the
         // slot it was dragged over, one moving backwards lands on it.
