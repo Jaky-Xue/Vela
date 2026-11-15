@@ -91,7 +91,7 @@ final class ReportRegressionTests: XCTestCase {
 
     func testHiddenExceptionsNeverDisableNetworkRules() {
         let result = AdBlockRuleCompiler.compile(filterList: "##.ad\nexample.com#@#.ad\n||tracker.test^")
-        XCTAssertFalse(result.rules.contains { $0.action.selector == ".ad" })
+        XCTAssertTrue(result.rules.contains { $0.action.selector == ".ad" && $0.trigger.unlessDomain == ["*example.com"] })
         XCTAssertTrue(result.rules.contains { $0.action.type == "block" })
     }
 }

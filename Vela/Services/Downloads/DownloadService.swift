@@ -336,6 +336,21 @@ public final class DownloadService: NSObject {
         return task
     }
 
+    /// Script downloads use a permission-checked foreground transport, then commit file + record.
+    public func saveScriptFile(_ data: Data, response: URLResponse, suggestedName: String, boundary: BrowserDataBoundary) async throws -> DownloadTask {
+        let name = Self.sanitizeFileName(suggestedName.isEmpty ? (response.suggestedFilename ?? "download") : suggestedName)
+        let destination = resolveDestination(suggestedFileName: name)
+        try await Task.detached(priority: .utility) { try data.write(to: destination, options: .atomic) }.value
+        let task = DownloadTask(profileId: boundary.profileId, privacyMode: boundary.privacyMode, dataScope: boundary.dataScope,
+            requestUrl: response.url?.absoluteString ?? "", finalUrl: response.url?.absoluteString ?? "",
+            suggestedFileName: name, resolvedFileName: destination.lastPathComponent, mimeType: response.mimeType ?? "",
+            status: .completed, receivedBytes: Int64(data.count), totalBytes: Int64(data.count), writtenBytes: Int64(data.count),
+            destinationPath: destination.path, completedAt: Date())
+        do { try repository.upsert(task) } catch { try? FileManager.default.removeItem(at: destination); throw error }
+        reload(privacyMode: boundary.privacyMode)
+        return task
+    }
+
     public func confirmPendingPrompt() {
         guard let item = pendingPromptPayload else {
             pendingPrompt = nil

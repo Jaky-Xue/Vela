@@ -38,9 +38,9 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.9.55</string>
+	<string>3.9.56</string>
 	<key>CFBundleVersion</key>
-	<string>58</string>
+	<string>59</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>

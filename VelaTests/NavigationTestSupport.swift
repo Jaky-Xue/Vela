@@ -355,7 +355,7 @@ final class BrowserHarness {
     /// Opens a URL in a fresh tab, which is how every navigation test starts.
     @discardableResult
     func open(_ url: URL) -> BrowserTabState {
-        tabManager.openTab(url: url)
+        tabManager.openTab(url: url, privacyMode: .regular)
     }
 }
 

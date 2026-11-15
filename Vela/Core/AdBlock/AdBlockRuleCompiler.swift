@@ -111,7 +111,16 @@ public struct ContentBlockerRule: Codable, Equatable, Sendable {
 }
 
 /// The outcome of compiling one filter list.
+public struct FilterLineDiagnostic: Identifiable, Equatable, Sendable {
+    public var line: Int
+    public var text: String
+    public var reason: String
+    public var source: String
+    public var id: String { "\(source)|\(line)|\(text)" }
+}
+
 public struct AdBlockCompileResult: Sendable {
+    public var diagnostics: [FilterLineDiagnostic] = []
     public var rules: [ContentBlockerRule]
     public var cosmeticSelectors: [String]
     /// Filters that parsed but have no WebKit representation.
@@ -151,15 +160,24 @@ public enum AdBlockRuleCompiler {
         includeCosmetic: Bool = true
     ) -> AdBlockCompileResult {
         var result = AdBlockCompileResult()
-        var lines: [Substring] = filterList.split(whereSeparator: \.isNewline)
+        let lines = filterList.components(separatedBy: .newlines).map(Substring.init)
         result.sourceLineCount = lines.count
 
         // A list can declare `!#include`; Vela does not follow those, and a
         // silently missing include would look like under-blocking, so it counts
         // as unsupported rather than being dropped without a trace.
-        for rawLine in lines {
+        var diagnosticSource = "本地规则"
+        for (lineIndex, rawLine) in lines.enumerated() {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty else { continue }
+            if line.hasPrefix("! Source: ") { diagnosticSource = String(line.dropFirst(10)) }
+            let before = result.unsupportedRuleCount + result.invalidRuleCount
+            defer {
+                if result.unsupportedRuleCount + result.invalidRuleCount > before {
+                    let reason = result.invalidRuleCount > 0 && result.invalidRuleCount + result.unsupportedRuleCount > before && result.unsupportedRuleCount == before ? "规则格式无效" : "当前 WebKit 转换器不支持此语法或作用域"
+                    result.diagnostics.append(FilterLineDiagnostic(line: lineIndex + 1, text: line, reason: reason, source: diagnosticSource))
+                }
+            }
             guard !line.hasPrefix("!") else {
                 if line.hasPrefix("!#include") { result.unsupportedRuleCount += 1 }
                 continue
@@ -169,6 +187,7 @@ public enum AdBlockRuleCompiler {
                 continue
             }
 
+            if includeCosmetic, line.contains("#@#") { continue }
             if includeCosmetic, let cosmetic = compileCosmetic(line) {
                 switch cosmetic {
                 case let .hide(selector, includeDomains, excludeDomains):
@@ -185,8 +204,8 @@ public enum AdBlockRuleCompiler {
                         result.rules.append(
                             ContentBlockerRule(
                                 trigger: ContentBlockerRule.Trigger(
-                                    urlFilter: ".*",
-                                    ifDomain: includeDomains.isEmpty ? nil : includeDomains,
+                                    urlFilter: domainURLFilter(includeDomains),
+                                    ifDomain: nil,
                                     unlessDomain: excludeDomains.isEmpty ? nil : excludeDomains
                                 ),
                                 action: .hide(selector: selector)
@@ -215,17 +234,17 @@ public enum AdBlockRuleCompiler {
             }
         }
 
-        let cosmeticExceptions = lines.compactMap { raw -> String? in
-            let line = raw.trimmingCharacters(in: .whitespaces)
-            guard let range = line.range(of: "#@#") else { return nil }
-            return String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        if includeCosmetic {
+            let exceptionSelectors = Set(lines.compactMap { raw -> String? in
+                guard let r = raw.range(of: "#@#") else { return nil }
+                return String(raw[r.upperBound...]).trimmingCharacters(in: .whitespaces)
+            })
+            for selector in exceptionSelectors {
+                result.rules.removeAll { $0.action.selector == selector }
+                result.cosmeticSelectors.removeAll { $0 == selector }
+                result.rules.append(contentsOf: scopedCosmeticRules(selector: selector, lines: lines))
+            }
         }
-        // Until scoped hide exceptions can be represented exactly, preserve
-        // visibility for that selector on all sites. Never silently over-hide.
-        result.rules.removeAll { rule in
-            rule.action.type == "css-display-none" && cosmeticExceptions.contains(rule.action.selector ?? "")
-        }
-        result.cosmeticSelectors.removeAll { cosmeticExceptions.contains($0) }
         let globalHides = result.cosmeticSelectors.map {
             ContentBlockerRule(trigger: .init(urlFilter: ".*"), action: .hide(selector: $0))
         }
@@ -235,6 +254,43 @@ public enum AdBlockRuleCompiler {
         // The user's per-site exceptions go last so they override the list.
         result.rules.append(contentsOf: exceptionRules(for: exceptedHosts))
         return result
+    }
+
+    private static func domainURLFilter(_ domains: [String]) -> String {
+        guard !domains.isEmpty else { return ".*" }
+        let alternatives = domains.map { NSRegularExpression.escapedPattern(for: String($0.drop(while: { $0 == "*" }))) }.joined(separator: "|")
+        return "^https?://([^/]+\\.)?(" + alternatives + ")[:/]"
+    }
+
+    /// Split a selector into non-overlapping host regions. Exceptions affect only this selector.
+    private static func scopedCosmeticRules(selector: String, lines: [Substring]) -> [ContentBlockerRule] {
+        struct Scope { var include: [String]; var exclude: [String]; var exception: Bool }
+        var scopes: [Scope] = []
+        for raw in lines {
+            let line = String(raw).trimmingCharacters(in: .whitespaces)
+            let exception = line.contains("#@#"), separator = exception ? "#@#" : "##"
+            guard let range = line.range(of: separator), String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces) == selector else { continue }
+            let scope = cosmeticScope(String(line[..<range.lowerBound]))
+            switch scope {
+            case .global: scopes.append(Scope(include: [], exclude: [], exception: exception))
+            case let .domains(include, exclude): scopes.append(Scope(include: include.map { String($0.dropFirst()) }, exclude: exclude.map { String($0.dropFirst()) }, exception: exception))
+            case .invalid: continue
+            }
+        }
+        let domains = Set(scopes.flatMap { $0.include + $0.exclude })
+        func within(_ host: String, _ domain: String) -> Bool { host == domain || host.hasSuffix("." + domain) }
+        func applies(_ scope: Scope, _ host: String) -> Bool {
+            (scope.include.isEmpty || scope.include.contains { within(host, $0) }) && !scope.exclude.contains { within(host, $0) }
+        }
+        func parent(_ host: String) -> String {
+            domains.filter { $0 != host && within(host, $0) }.max { $0.count < $1.count } ?? ""
+        }
+        return ([""] + domains.sorted()).compactMap { host in
+            guard scopes.contains(where: { !$0.exception && applies($0, host) }),
+                  !scopes.contains(where: { $0.exception && applies($0, host) }) else { return nil }
+            let children = domains.filter { $0 != host && parent($0) == host }.map { "*" + $0 }.sorted()
+            return ContentBlockerRule(trigger: .init(urlFilter: domainURLFilter(host.isEmpty ? [] : [host]), unlessDomain: children.isEmpty ? nil : children), action: .hide(selector: selector))
+        }
     }
 
     private enum CosmeticOutcome {
@@ -284,7 +340,6 @@ public enum AdBlockRuleCompiler {
             // it under-hides on the included hosts; merging it into a global
             // hide would hide content on the hosts the list explicitly
             // excluded, which is the worse failure.
-            guard include.isEmpty || exclude.isEmpty else { return .unsupported }
             return .hide(selector: selector, includeDomains: include, excludeDomains: exclude)
         case .invalid:
             return .invalid

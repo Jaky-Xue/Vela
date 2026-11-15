@@ -53,6 +53,17 @@ struct FilterSourcesSettingsView: View {
                 if blocker.isCompiling { ProgressView("处理中…") }
                 LabeledContent("网络规则", value: String(blocker.ruleCount - blocker.hiddenRuleCount))
                 LabeledContent("隐藏规则", value: String(blocker.hiddenRuleCount))
+                if !blocker.diagnostics.isEmpty {
+                    NavigationLink("规则诊断") {
+                        List(blocker.diagnostics) { item in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("第 \(item.line) 行 · " + item.reason).font(.subheadline)
+                                Text(item.text).font(.footnote.monospaced()).textSelection(.enabled)
+                                Text(item.source).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }.settingsList().navigationTitle("规则诊断")
+                    }
+                }
                 if blocker.skippedRuleCount > 0 { LabeledContent("跳过规则", value: String(blocker.skippedRuleCount)) }
                 if let error = blocker.lastError {
                     DisclosureGroup("错误详情") { Text(error).font(.footnote) }

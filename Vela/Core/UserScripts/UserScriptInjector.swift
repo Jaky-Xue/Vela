@@ -647,7 +647,7 @@ public enum UserScriptInjector {
                 } catch (_error) {}
                 return;
               }
-              var result = { id: payload.taskId || '', finalUrl: details.url };
+              var result = { id: payload.taskId || '', finalUrl: payload.finalUrl || details.url };
               try {
                 if (details.onload) { details.onload(result); }
                 if (onload) { onload(result); }
@@ -657,9 +657,10 @@ public enum UserScriptInjector {
               type: 'download',
               scriptId: SCRIPT_ID,
               requestId: requestId,
-              url: String(details.url || ''),
+              url: new URL(String(details.url || ''), location.href).href,
               name: String(details.name || '')
             });
+            return {abort:function(){post({type:'xhrAbort',scriptId:SCRIPT_ID,requestId:requestId});}};
           };
 
           api.GM_cookie = function (action, details, callback) {
@@ -737,7 +738,7 @@ public enum UserScriptInjector {
             var requestId = newRequestId('xhr');
             var headers = details.headers || {};
             var data = details.data;
-            if (data && typeof data === 'object' && !(data instanceof ArrayBuffer)) {
+            if (data && typeof data === 'object' && !(data instanceof ArrayBuffer) && !ArrayBuffer.isView(data) && !(data instanceof Blob) && !(data instanceof FormData) && !(data instanceof URLSearchParams)) {
               var pairs = [];
               for (var key in data) {
                 if (!Object.prototype.hasOwnProperty.call(data, key)) { continue; }
@@ -748,20 +749,27 @@ public enum UserScriptInjector {
                 headers['Content-Type'] = 'application/x-www-form-urlencoded';
               }
             }
+            var wasAborted = false;
             var handle = {
               abort: function () {
+                wasAborted = true;
                 post({ type: 'xhrAbort', scriptId: SCRIPT_ID, requestId: requestId });
               }
             };
             // The native side sends the body in increments when the script
             // asked for progress, which is what makes a streaming service's
             // output appear while the response is still open.
+            var progressDecoder = new TextDecoder(), progressText = '';
             var reportsProgress = typeof details.onprogress === 'function';
             if (reportsProgress) {
               bridge.progressHandlers[SCRIPT_ID][requestId] = function (payload) {
+                var chunk = Uint8Array.from(atob(payload.responseChunkBase64 || ''), function(c) { return c.charCodeAt(0); });
+                progressText += progressDecoder.decode(chunk, {stream:true});
+                payload.responseText = progressText;
                 var values = responseValue(details, payload);
                 try {
                   details.onprogress({
+                    chunk: chunk, loaded: payload.loaded || 0, total: payload.total || 0,
                     readyState: 3,
                     status: payload.status || 0,
                     statusText: payload.statusText || '',
@@ -801,14 +809,25 @@ public enum UserScriptInjector {
                 if (details.onload) { details.onload(response); }
               } catch (_error) {}
             });
+            var sendBody = async function() {
+              var binary = '';
+              if (data && (typeof data !== 'string')) {
+                var prepared = new Request(new URL(String(details.url || ''), location.href).href, {method:'POST', body:data});
+                if (!headers['Content-Type'] && prepared.headers.get('content-type')) headers['Content-Type'] = prepared.headers.get('content-type');
+                var bytes = new Uint8Array(await prepared.arrayBuffer());
+                if (bytes.length > 24000000) throw new RangeError('Request body exceeds 24 MB');
+                for (var offset=0; offset<bytes.length; offset+=16384) binary += String.fromCharCode.apply(null, bytes.subarray(offset,offset+16384));
+                binary = btoa(binary);
+              }
+              if (wasAborted) { if(details.onabort) details.onabort({readyState:4}); return; }
             post({
               type: 'xhr',
               scriptId: SCRIPT_ID,
               requestId: requestId,
               method: String(details.method || 'GET').toUpperCase(),
-              url: String(details.url || ''),
+              url: new URL(String(details.url || ''), location.href).href,
               headers: headers,
-              data: typeof data === 'string' ? data : '',
+              data: typeof data === 'string' ? data : '', dataBase64: binary,
               responseType: details.responseType || '',
               timeout: Number(details.timeout) || 0,
               anonymous: !!details.anonymous,
@@ -816,59 +835,39 @@ public enum UserScriptInjector {
               password: details.password || '',
               progress: reportsProgress
             });
+            };
+            sendBody().catch(function(error) { delete bridge.resolvers[SCRIPT_ID][requestId]; if(details.onerror) details.onerror({error:String(error)}); });
             return handle;
           };
 
-          api.GM_fetch = function (input, init) {
-            return new Promise(function (resolve, reject) {
-              var url = typeof input === 'string' ? input : ((input && input.url) || '');
-              var method = (init && init.method) || (input && input.method) || 'GET';
+          api.GM_fetch = function(input, init) {
+            init = init || {};
+            return new Promise(function(resolve,reject) {
+              var controller, answered = false, handle;
+              var stream = new ReadableStream({start:function(c){controller=c;}, cancel:function(){if(handle) handle.abort();}});
               var headers = {};
-              var sourceHeaders = (init && init.headers) || (input && input.headers);
-              if (sourceHeaders) {
-                if (Array.isArray(sourceHeaders)) {
-                  for (var i = 0; i < sourceHeaders.length; i++) {
-                    headers[sourceHeaders[i][0]] = sourceHeaders[i][1];
+              new Headers(init.headers || (input && input.headers) || {}).forEach(function(v,k){headers[k]=v;});
+              var fail = function(error) { if(!answered) reject(error); try { controller.error(error); } catch(_){} };
+              var signal = init.signal;
+              if(signal && signal.aborted) { fail(new DOMException('Aborted','AbortError')); return; }
+              handle = api.GM_xmlhttpRequest({
+                url: typeof input === 'string' || input instanceof URL ? String(input) : input.url,
+                method:init.method || (input && input.method) || 'GET', headers:headers,
+                data:init.body, anonymous:init.credentials === 'omit', responseType:'stream',
+                onprogress:function(response) {
+                  if(!answered) {
+                    answered=true;
+                    var status=response.status || 200;
+                    resolve(new Response([101,204,205,304].indexOf(status)>=0 ? null : stream, {status:status, headers:parseResponseHeaders(response.responseHeaders)}));
                   }
-                } else if (typeof sourceHeaders.forEach === 'function') {
-                  sourceHeaders.forEach(function (value, key) { headers[key] = value; });
-                } else {
-                  for (var key in sourceHeaders) {
-                    if (Object.prototype.hasOwnProperty.call(sourceHeaders, key)) {
-                      headers[key] = String(sourceHeaders[key]);
-                    }
-                  }
-                }
-              }
-              var handle = api.GM_xmlhttpRequest({
-                method: method,
-                url: url,
-                headers: headers,
-                data: init && init.body,
-                responseType: 'arraybuffer',
-                onload: function (response) {
-                  try {
-                    resolve(new Response(response.response, {
-                      // A data: or local response has status 0, which the
-                      // Response constructor rejects; those are successes.
-                      status: response.status || 200,
-                      statusText: response.statusText,
-                      headers: parseResponseHeaders(response.responseHeaders)
-                    }));
-                  } catch (error) {
-                    reject(error);
-                  }
+                  if(response.chunk && response.chunk.length) controller.enqueue(response.chunk);
                 },
-                onerror: function () { reject(new TypeError('Failed to fetch')); },
-                ontimeout: function () { reject(new TypeError('Network timeout')); },
-                onabort: function () { reject(new DOMException('Aborted', 'AbortError')); }
+                onload:function(){try{controller.close();}catch(_){}},
+                onerror:function(){fail(new TypeError('Failed to fetch'));},
+                ontimeout:function(){fail(new TypeError('Network timeout'));},
+                onabort:function(){fail(new DOMException('Aborted','AbortError'));}
               });
-              var signal = init && init.signal;
-              if (signal && typeof signal.addEventListener === 'function') {
-                signal.addEventListener('abort', function () {
-                  if (handle && typeof handle.abort === 'function') { handle.abort(); }
-                });
-              }
+              if(signal) signal.addEventListener('abort',function(){handle.abort();},{once:true});
             });
           };
 

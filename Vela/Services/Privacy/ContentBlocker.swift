@@ -11,6 +11,7 @@ public final class ContentBlocker {
     public private(set) var ruleCount = 0
     public private(set) var hiddenRuleCount = 0
     public private(set) var skippedRuleCount = 0
+    public private(set) var diagnostics: [FilterLineDiagnostic] = []
     public private(set) var lastError: String?
     public private(set) var loadedAt: Date?
     public var onChange: (() -> Void)?
@@ -30,7 +31,7 @@ public final class ContentBlocker {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.urlCredentialStorage = nil
-        self.session = session ?? URLSession(configuration: configuration)
+        self.session = session ?? URLSession(configuration: configuration, delegate: FilterHTTPSRedirectPolicy(), delegateQueue: nil)
     }
 
     public func ruleList(forHost host: String?) -> WKContentRuleList? {
@@ -160,14 +161,22 @@ public final class ContentBlocker {
         guard http.statusCode == 200, response.mimeType?.lowercased() != "text/html",
               response.expectedContentLength <= FilterValidation.sourceByteLimit else { throw FilterError.invalid("订阅状态、类型或大小不符合要求") }
         guard let text = String(data: data, encoding: .utf8) else { throw FilterError.invalid("订阅须为 UTF-8 文本") }
-        try FilterValidation.validate(text)
+        let (expanded, hasIncludes) = try await FilterIncludeResolver.expand(text, base: url) { [session] child in
+            var request = URLRequest(url: child); request.timeoutInterval = 30
+            let (data, response) = try await BoundedHTTPData.load(request, limit: FilterValidation.sourceByteLimit, session: session)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200, response.url?.scheme == "https",
+                  response.mimeType?.lowercased() != "text/html", let text = String(data: data, encoding: .utf8) else { throw FilterError.invalid("include 下载失败") }
+            return text
+        }
+        try FilterValidation.validate(expanded, limit: FilterValidation.combinedByteLimit)
+        let data = Data(expanded.utf8)
         let hash = Self.hash(data)
         try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         try data.write(to: cacheURL(hash), options: .atomic)
         if source.cacheHash != hash { source.previousCacheHash = source.cacheHash }
         source.cacheHash = hash
-        source.etag = http.value(forHTTPHeaderField: "ETag")
-        source.lastModified = http.value(forHTTPHeaderField: "Last-Modified")
+        source.etag = hasIncludes ? nil : http.value(forHTTPHeaderField: "ETag")
+        source.lastModified = hasIncludes ? nil : http.value(forHTTPHeaderField: "Last-Modified")
         source.lastSuccess = Date(); source.error = nil
         return source
     }
@@ -210,6 +219,7 @@ public final class ContentBlocker {
                 let result = AdBlockRuleCompiler.compile(filterList: text)
                 return result
             }.value
+            diagnostics = compiled.diagnostics
             guard compiled.invalidRuleCount == 0, compiled.rules.count <= AdBlockCompileResult.webKitRuleLimit else {
                 throw FilterError.invalid("规则无效或超过 WebKit 条数上限；上一版本已保留")
             }

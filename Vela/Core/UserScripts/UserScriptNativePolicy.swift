@@ -9,10 +9,9 @@ enum UserScriptNativePolicy {
             "setClipboard": [.gmSetClipboard], "notification": [.gmNotification],
             "registerMenuCommand": [.gmRegisterMenuCommand], "unregisterMenuCommand": [.gmUnregisterMenuCommand],
             "openInTab": [.gmOpenInTab], "download": [.gmDownload],
-            "xhr": [.gmXmlhttpRequest, .gmFetch], "xhrAbort": [.gmXmlhttpRequest, .gmFetch],
+            "xhr": [.gmXmlhttpRequest, .gmFetch], "xhrAbort": [.gmXmlhttpRequest, .gmFetch, .gmDownload],
             "getTab": [.gmGetTab], "saveTab": [.gmSaveTab], "getTabs": [.gmGetTabs]
         ]
-        if type == "download" { return false } // Transfer engine lacks redirect permission hooks.
         if type == "executionError" { return true }
         if type == "cookie" {
             let action = payload["action"] as? String ?? ""

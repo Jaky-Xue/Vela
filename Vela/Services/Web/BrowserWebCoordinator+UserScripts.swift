@@ -296,81 +296,10 @@ extension BrowserWebCoordinator {
     /// Sends one userscript request. With progress requested the body is
     /// yielded as the server sends it; otherwise the whole response is taken
     /// in one go, which is cheaper and is what most scripts want.
-    private func streamUserScriptRequest(
-        _ request: URLRequest,
-        reportsProgress: Bool,
-        onProgress: ((Data, HTTPURLResponse?) -> Void)?,
-        script: InstalledUserScriptState, origin: URL
-    ) async throws -> (Data, URLResponse) {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.httpCookieStorage = nil
-        configuration.httpShouldSetCookies = false
-        configuration.urlCredentialStorage = nil
-        configuration.urlCache = nil
-        let session = URLSession(configuration: configuration,
-                                 delegate: UserScriptRedirectPolicy(script: script, origin: origin),
-                                 delegateQueue: nil)
-        defer { session.invalidateAndCancel() }
-        let (bytes, response) = try await session.bytes(for: request)
-        let http = response as? HTTPURLResponse
-        var buffer = Data()
-        var lastReportedCount = 0
-        var lastReportedAt = Date.distantPast
-        for try await byte in bytes {
-            buffer.append(byte)
-            if buffer.count > 24_000_000 {
-                throw URLError(.dataLengthExceedsMaximum)
-            }
-            if buffer.count % 65_536 == 0 {
-                try Task.checkCancellation()
-            }
-            let now = Date()
-            if reportsProgress && buffer.count - lastReportedCount >= 16_384
-                && now.timeIntervalSince(lastReportedAt) >= 0.12 {
-                lastReportedCount = buffer.count
-                lastReportedAt = now
-                onProgress?(buffer, http)
-                try Task.checkCancellation()
-            }
-        }
-        onProgress?(buffer, http)
-        return (buffer, response)
-    }
-
-    /// Starts a `GM_download` through the browser's own transfer engine.
-    private func handleUserScriptDownload(
-        _ payload: [String: Any],
-        tab: BrowserTabState,
-        webView: WKWebView,
-        frame: WKFrameInfo?
-    ) {
-        guard let scriptId = payload["scriptId"] as? String,
-              let requestId = payload["requestId"] as? String else { return }
-        guard let raw = payload["url"] as? String,
-              let url = URL(string: raw) else {
-            resolveUserScript(
-                scriptId: scriptId,
-                requestId: requestId,
-                payload: ["error": "无效的下载地址"],
-                in: webView,
-                frame: frame
-            )
-            return
-        }
-        let name = payload["name"] as? String ?? ""
-        let task = downloads.enqueueScriptDownload(
-            url: url,
-            suggestedFileName: name,
-            boundary: tab.dataBoundary,
-            webView: webView
-        )
-        resolveUserScript(
-            scriptId: scriptId,
-            requestId: requestId,
-            payload: ["taskId": task.guid],
-            in: webView,
-            frame: frame
-        )
+    private func handleUserScriptDownload(_ payload: [String: Any], tab: BrowserTabState, webView: WKWebView, frame: WKFrameInfo?) {
+        var request = payload
+        request["method"] = "GET"; request["responseType"] = "arraybuffer"; request["_download"] = true
+        handleUserScriptXHR(request, tab: tab, webView: webView, frame: frame)
     }
 
     /// Performs a `GM_xmlhttpRequest` with the page's cookies and identity.
@@ -401,6 +330,10 @@ extension BrowserWebCoordinator {
         let reportsProgress = payload["progress"] as? Bool ?? false
         let headers = payload["headers"] as? [String: Any] ?? [:]
         let body = payload["data"] as? String ?? ""
+        let binaryBody = (payload["dataBase64"] as? String).flatMap { Data(base64Encoded: $0) }
+        guard (binaryBody?.count ?? body.utf8.count) <= 24_000_000 else {
+            resolveUserScript(scriptId: scriptId, requestId: requestId, payload: ["error": "请求正文超过 24 MB"], in: webView, frame: frame); return
+        }
         let timeoutMilliseconds = (payload["timeout"] as? NSNumber)?.doubleValue ?? 0
         let user = payload["user"] as? String ?? ""
         let password = payload["password"] as? String ?? ""
@@ -418,7 +351,8 @@ extension BrowserWebCoordinator {
                 for (name, value) in headers {
                     request.setValue(String(describing: value), forHTTPHeaderField: name)
                 }
-                if !body.isEmpty {
+                if let binaryBody { request.httpBody = binaryBody }
+                else if !body.isEmpty {
                     request.httpBody = body.data(using: .utf8)
                 }
                 if let agent = webView.customUserAgent, !agent.isEmpty {
@@ -452,41 +386,20 @@ extension BrowserWebCoordinator {
                       self.userScriptWorlds[tab.id + "|" + scriptId] == payload["_world"] as? String,
                       self.settings.preferences.userScriptsEnabled,
                       (try? self.userScripts.script(id: scriptId))?.enabled == true else { return }
-                var progress: ((Data, HTTPURLResponse?) -> Void)?
-                if reportsProgress {
-                    progress = { [weak self] buffer, response in
+                var progress: (@MainActor @Sendable (Data, HTTPURLResponse?, Int) -> Void)?
+                if reportsProgress || responseType == "stream" {
+                    progress = { [weak self] chunk, response, received in
                         guard let self else { return }
-                        // A chunk can end in the middle of a UTF-8 sequence;
-                        // skipping that tick leaves the text valid, and the
-                        // next cumulative report carries the character.
-                        guard let text = String(data: buffer, encoding: .utf8), !text.isEmpty else { return }
-                        let status = response?.statusCode ?? 0
-                        let headerLines = (response?.allHeaderFields ?? [:])
-                            .map { "\($0.key): \($0.value)" }
-                            .joined(separator: "\n")
-                        self.resolveUserScriptProgress(
-                            scriptId: scriptId,
-                            requestId: requestId,
-                            payload: [
-                                "status": status,
-                                "statusText": response.map {
-                                    HTTPURLResponse.localizedString(forStatusCode: $0.statusCode)
-                                } ?? "",
-                                "responseHeaders": headerLines,
-                                "finalUrl": response?.url?.absoluteString ?? url.absoluteString,
-                                "responseText": text
-                            ],
-                            in: webView,
-                            frame: frame
-                        )
+                        let headers = (response?.allHeaderFields ?? [:]).map { "\($0.key): \($0.value)" }.joined(separator: "\n")
+                        self.resolveUserScriptProgress(scriptId: scriptId, requestId: requestId,
+                            payload: ["status": response?.statusCode ?? 0, "responseHeaders": headers,
+                                      "finalUrl": response?.url?.absoluteString ?? url.absoluteString,
+                                      "responseChunkBase64": chunk.base64EncodedString(), "loaded": received,
+                                      "total": response?.expectedContentLength ?? -1], in: webView, frame: frame)
                     }
                 }
-                let (data, response) = try await streamUserScriptRequest(
-                    request,
-                    reportsProgress: reportsProgress,
-                    onProgress: progress,
-                    script: installedScript, origin: origin
-                )
+                let (data, response) = try await UserScriptHTTP.load(request, script: installedScript, origin: origin,
+                                                                   buffered: responseType != "stream", progress: progress)
                 try Task.checkCancellation()
                 if data.count > 24_000_000 {
                     throw URLError(.dataLengthExceedsMaximum)
@@ -511,6 +424,17 @@ extension BrowserWebCoordinator {
                     result["responseText"] = String(data: data, encoding: .utf8)
                         ?? String(data: data, encoding: .isoLatin1)
                         ?? ""
+                }
+                if payload["_download"] as? Bool == true {
+                    guard let http, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+                    guard let token = payload["documentToken"] as? String,
+                          let frame, let live = self.userScriptWorlds[tab.id + "|" + scriptId], live == payload["_world"] as? String else { return }
+                    let current = try await webView.evaluateJavaScript("window.__velaDocument", in: frame, contentWorld: .world(name: live)) as? String
+                    guard current == token, self.settings.preferences.userScriptsEnabled,
+                          (try? self.userScripts.script(id: scriptId))?.enabled == true else { return }
+                    let saved = try await self.downloads.saveScriptFile(data, response: response,
+                        suggestedName: payload["name"] as? String ?? "", boundary: tab.dataBoundary)
+                    result = ["taskId": saved.guid, "finalUrl": saved.finalUrl, "success": true]
                 }
                 self.resolveUserScript(
                     scriptId: scriptId,
