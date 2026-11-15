@@ -175,6 +175,10 @@ public final class BrowserWebCoordinator: NSObject {
         for key in Array(userScriptXHRTasks.keys) where key.hasPrefix(prefix) {
             userScriptXHRTasks.removeValue(forKey: key)?.cancel()
         }
+        userScriptWorlds = userScriptWorlds.filter { !$0.key.hasPrefix(prefix) }
+        userScriptVersions = userScriptVersions.filter { !$0.key.hasPrefix(prefix) }
+        userScriptCommandFrames = userScriptCommandFrames.filter { !$0.key.hasPrefix(prefix) }
+        overlays.userScriptRuntimeErrors = overlays.userScriptRuntimeErrors.filter { !$0.key.hasPrefix(prefix) }
         userScriptTabStates.removeValue(forKey: tab.id)
         history.clearTabChain(tabId: tab.id)
         overlays.userScriptMenuCommands.removeAll { $0.tabId == tab.id }

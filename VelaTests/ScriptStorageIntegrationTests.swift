@@ -59,5 +59,9 @@ final class ScriptStorageIntegrationTests: XCTestCase {
         _ = try await eval("window.__velaUserScriptBridge.applyValue('beta', '2', false, false, 100, true); window.__velaUserScriptBridge.applyValue('alpha', '1', false, false, 99, true); true;", web: a, world: aw)
         let differentKeys = try await eval("GM_getValue('alpha') === 1 && GM_getValue('beta') === 2", web: a, world: aw)
         XCTAssertEqual(differentKeys as? Bool, true)
+        harness.tabManager.onWillCloseTab = { [weak coordinator = harness.coordinator] tab in coordinator?.cleanupClosedTab(tab) }
+        harness.tabManager.closeTab(id: first.id)
+        XCTAssertNil(harness.coordinator.userScriptWorlds[first.id + "|" + script.id])
+        XCTAssertNotNil(harness.coordinator.userScriptWorlds[second.id + "|" + script.id])
     }
 }
