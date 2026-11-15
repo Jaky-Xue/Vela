@@ -25,11 +25,28 @@ final class TabPreviewStore {
 
     private let cache = NSCache<NSString, UIImage>()
     private let directory: URL?
+    private let fileQueue = DispatchQueue(label: "org.vela.browser.preview-files", qos: .utility)
+    private var epoch = UUID()
+    private var pendingClear = false
+    private var blockedReads = Set<String>()
+    private var tabRevisions: [String: UUID] = [:]
 
-    init() {
+    struct Revision: Equatable, Sendable {
+        let epoch: UUID
+        let tab: UUID?
+    }
+
+    func revision(for tabId: String) -> Revision {
+        Revision(epoch: epoch, tab: tabRevisions[tabId])
+    }
+
+    init(directoryOverride: URL? = nil) {
         cache.countLimit = 32
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        if let base {
+        if let directoryOverride {
+            try? FileManager.default.createDirectory(at: directoryOverride, withIntermediateDirectories: true)
+            directory = directoryOverride
+        } else if let base {
             let folder = base.appendingPathComponent("Vela/TabPreviews", isDirectory: true)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             directory = folder
@@ -41,7 +58,7 @@ final class TabPreviewStore {
 
     func image(for tabId: String) -> UIImage? {
         if let cached = cache.object(forKey: tabId as NSString) { return cached }
-        guard let directory else { return nil }
+        guard !pendingClear, !blockedReads.contains(tabId), let directory else { return nil }
         let url = directory.appendingPathComponent(Self.fileName(for: tabId))
         guard let image = UIImage(contentsOfFile: url.path) else { return nil }
         cache.setObject(image, forKey: tabId as NSString)
@@ -56,56 +73,76 @@ final class TabPreviewStore {
     /// session had grown past the live-view pool.
     func imageAsync(for tabId: String) async -> UIImage? {
         if let cached = cache.object(forKey: tabId as NSString) { return cached }
-        guard let directory else { return nil }
+        guard !pendingClear, !blockedReads.contains(tabId), let directory else { return nil }
+        let expected = revision(for: tabId)
         let url = directory.appendingPathComponent(Self.fileName(for: tabId))
-        let image = await Task.detached(priority: .userInitiated) {
-            UIImage(contentsOfFile: url.path)
-        }.value
-        if let image {
-            cache.setObject(image, forKey: tabId as NSString)
+        let image: UIImage? = await withCheckedContinuation { continuation in
+            fileQueue.async { continuation.resume(returning: UIImage(contentsOfFile: url.path)) }
         }
+        guard revision(for: tabId) == expected else { return nil }
+        if let image { cache.setObject(image, forKey: tabId as NSString) }
         return image
     }
 
-    func store(_ image: UIImage, for tabId: String, persistToDisk: Bool = true) {
-        // The render and JPEG encode are the expensive half; the cache write
-        // must be on the main actor, and the file write stays off it.
-        Task.detached(priority: .utility) { [weak self] in
-            let prepared = Self.downscaled(image)
-            guard let data = prepared.jpegData(compressionQuality: 0.72) else { return }
-            let url = await MainActor.run { [weak self] () -> URL? in
-                self?.cache.setObject(prepared, forKey: tabId as NSString)
-                guard persistToDisk, let directory = self?.directory else { return nil }
-                return directory.appendingPathComponent(Self.fileName(for: tabId))
-            }
-            if let url {
-                try? data.write(to: url, options: .atomic)
+    /// Preparation runs off-main. Only a current revision may publish a result.
+    /// File writes and deletions share a FIFO queue: a deletion cannot be overtaken
+    /// by an earlier write that was already approved by the main actor.
+    @discardableResult
+    func store(_ image: UIImage, for tabId: String, persistToDisk: Bool = true,
+               expectedRevision: Revision? = nil) -> Task<Void, Never> {
+        let expected = expectedRevision ?? revision(for: tabId)
+        return Task { [weak self] in
+            let prepared = await Task.detached(priority: .utility) {
+                let image = Self.downscaled(image)
+                return (image, persistToDisk ? image.jpegData(compressionQuality: 0.72) : nil)
+            }.value
+            guard let self, self.revision(for: tabId) == expected else { return }
+            self.cache.setObject(prepared.0, forKey: tabId as NSString)
+            self.blockedReads.remove(tabId)
+            guard persistToDisk, let data = prepared.1, let directory = self.directory else { return }
+            let url = directory.appendingPathComponent(Self.fileName(for: tabId))
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                self.fileQueue.async {
+                    try? data.write(to: url, options: .atomic)
+                    continuation.resume()
+                }
             }
         }
     }
 
     func remove(_ tabId: String) {
+        tabRevisions[tabId] = UUID()
+        blockedReads.insert(tabId)
         cache.removeObject(forKey: tabId as NSString)
         guard let directory else { return }
         let url = directory.appendingPathComponent(Self.fileName(for: tabId))
-        try? FileManager.default.removeItem(at: url)
+        fileQueue.async { try? FileManager.default.removeItem(at: url) }
     }
 
-    /// Forgets every picture, in memory and on disk.
-    ///
-    /// 不保留标签页 uses this: the preview folder is a record of the pages the
-    /// user looked at, so turning the switch on (or launching with it on) must
-    /// remove the ones already there, not merely stop writing new ones.
     func removeAll() {
+        epoch = UUID()
+        let clearedEpoch = epoch
+        pendingClear = true
+        blockedReads.removeAll()
+        tabRevisions.removeAll()
         cache.removeAllObjects()
-        guard let directory,
-              let files = try? FileManager.default.contentsOfDirectory(
-                  at: directory,
-                  includingPropertiesForKeys: nil,
-                  options: [.skipsHiddenFiles]
-              ) else { return }
-        for url in files {
-            try? FileManager.default.removeItem(at: url)
+        guard let directory else { return }
+        fileQueue.async {
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+            ) else { return }
+            for url in files { try? FileManager.default.removeItem(at: url) }
+            Task { @MainActor [weak self] in
+                guard let self, self.epoch == clearedEpoch else { return }
+                self.pendingClear = false
+            }
+        }
+    }
+
+    /// A synchronization boundary for lifecycle tests and orderly cleanup.
+    func flushFileOperations() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            fileQueue.async { continuation.resume() }
         }
     }
 

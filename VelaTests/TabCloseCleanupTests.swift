@@ -45,4 +45,26 @@ final class TabCloseCleanupTests: XCTestCase {
             harness.coordinator.overlays.userScriptMenuCommands.allSatisfy { $0.tabId != tab.id }
         )
     }
+    func testEndingPrivateSessionCleansEveryPrivateTabAndKeepsRegularWork() throws {
+        let harness = try BrowserHarness()
+        harness.tabManager.onWillCloseTab = { [weak coordinator = harness.coordinator] in
+            coordinator?.cleanupClosedTab($0)
+        }
+        let regular = harness.open(URL(string: "about:blank")!)
+        let privateTabs = (0..<2).map { _ in
+            harness.tabManager.openTab(url: URL(string: "about:blank")!, privacyMode: .private)
+        }
+        let requests = privateTabs.map { _ in Task<Void, Never> { try? await Task.sleep(nanoseconds: 10_000_000_000) } }
+        for (tab, request) in zip(privateTabs, requests) {
+            harness.coordinator.userScriptXHRTasks["\(tab.id)|script|request"] = request
+            harness.coordinator.userScriptTabStates[tab.id] = "{}"
+        }
+        harness.coordinator.userScriptTabStates[regular.id] = "regular"
+        harness.tabManager.endPrivateSession()
+        XCTAssertTrue(harness.tabManager.privateTabs.isEmpty)
+        XCTAssertTrue(requests.allSatisfy(\.isCancelled))
+        for tab in privateTabs { XCTAssertNil(harness.coordinator.userScriptTabStates[tab.id]) }
+        XCTAssertEqual(harness.coordinator.userScriptTabStates[regular.id], "regular")
+    }
+
 }

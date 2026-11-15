@@ -220,12 +220,13 @@ public final class TabManager {
 
     /// Keeps a page picture for the overview, downscaled to card size.
     public func storePreview(_ image: UIImage, for tabId: String) {
+        guard let tab = tab(id: tabId) else { return }
         previews.store(
             image,
             for: tabId,
             // 不保留标签页 also means the picture is not carried into a later
             // launch; the in-memory copy still serves the overview now.
-            persistToDisk: persistsSession && tab(id: tabId)?.privacyMode != .private
+            persistToDisk: persistsSession && tab.privacyMode != .private
         )
     }
 
@@ -235,13 +236,28 @@ public final class TabManager {
     /// with a blank frame on this WebKit, and a stored blank would be worse
     /// than the icon placeholder it replaced.
     public func capturePreview(for tabId: String) {
-        guard let webView = webViews[tabId], webView.window != nil else { return }
-        webView.takeSnapshot(with: nil) { [weak self] image, _ in
-            guard let image else { return }
-            Task { @MainActor in
-                let isPrivate = self?.tab(id: tabId)?.privacyMode == .private
-                self?.previews.store(image, for: tabId, persistToDisk: !isPrivate)
+        guard webViews[tabId]?.window != nil else { return }
+        capturePreview(for: tabId) { webView in
+            await withCheckedContinuation { continuation in
+                webView.takeSnapshot(with: nil) { image, _ in continuation.resume(returning: image) }
             }
+        }
+    }
+
+    /// Capture identity and storage revision before WebKit's asynchronous reply.
+    /// A missing/closed tab is never interpreted as an ordinary tab.
+    @discardableResult
+    func capturePreview(for tabId: String,
+                        snapshot: @escaping @MainActor (WKWebView) async -> UIImage?) -> Task<Void, Never>? {
+        guard let tab = tab(id: tabId), let webView = webViews[tabId] else { return nil }
+        let revision = previews.revision(for: tabId)
+        let mayPersist = persistsSession && tab.privacyMode != .private
+        return Task { @MainActor [weak self, weak tab] in
+            guard let image = await snapshot(webView), let self, let tab,
+                  self.tab(id: tabId) === tab else { return }
+            await self.previews.store(image, for: tabId,
+                                     persistToDisk: mayPersist && self.persistsSession && tab.privacyMode != .private,
+                                     expectedRevision: revision).value
         }
     }
 
