@@ -1,0 +1,67 @@
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.006 (0.052) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 1.952 (5.846) seconds
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.902 (1.086) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.004 (0.735) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 2.750 (2.805) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.126 (1.601) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.015 (2.630) seconds
+	 Executed 30 tests, with 0 failures (0 unexpected) in 0.566 (3.853) seconds
+	 Executed 19 tests, with 0 failures (0 unexpected) in 0.550 (0.600) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.005 (1.214) seconds
+	 Executed 15 tests, with 0 failures (0 unexpected) in 15.067 (16.017) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.013 (0.051) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.014 (0.015) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.076 (1.076) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.008) seconds
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.026 (0.062) seconds
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.098 (0.137) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.041 (0.041) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.022) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.014 (0.016) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.005 (0.016) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.019 (0.021) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.002 (0.005) seconds
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.314 (0.327) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.030) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.038 (0.040) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.010 (0.014) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.243 (0.246) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.026) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.013 (0.014) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.011 (0.012) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 13.246 (13.249) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 1.431 (1.433) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.552 (1.553) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.087 (0.090) seconds
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.071 (0.093) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.015 (0.017) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.058 (0.060) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.026) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.061 (0.062) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.020) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.053 (0.054) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.007) seconds
+	 Executed 29 tests, with 0 failures (0 unexpected) in 1.669 (1.778) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.013 (0.038) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.005 (0.121) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 25.992 (26.001) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.007 (0.009) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.020 (0.715) seconds
+	 Executed 10 tests, with 0 failures (0 unexpected) in 19.490 (19.496) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.136 (0.142) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.053 (0.056) seconds
+/Users/runner/work/Vela/Vela/VelaTests/NavigationTestSupport.swift:449: error: -[VelaTests.WebNavigationIntegrationTests testAPlainPageLoadsAndReportsItsTitleAndUrl] : failed - timed out after 20.0s waiting for: tab to settle (state=requested, loading=true) and report the title Page One
+/Users/runner/work/Vela/Vela/VelaTests/WebNavigationIntegrationTests.swift:71: error: -[VelaTests.WebNavigationIntegrationTests testAPlainPageLoadsAndReportsItsTitleAndUrl] : XCTAssertEqual failed: ("requested") is not equal to ("finished")
+/Users/runner/work/Vela/Vela/VelaTests/WebNavigationIntegrationTests.swift:72: error: -[VelaTests.WebNavigationIntegrationTests testAPlainPageLoadsAndReportsItsTitleAndUrl] : XCTAssertFalse failed
+/Users/runner/work/Vela/Vela/VelaTests/WebNavigationIntegrationTests.swift:73: error: -[VelaTests.WebNavigationIntegrationTests testAPlainPageLoadsAndReportsItsTitleAndUrl] : XCTAssertEqual failed: ("0.0") is not equal to ("1.0")
+/Users/runner/work/Vela/Vela/VelaTests/WebNavigationIntegrationTests.swift:75: error: -[VelaTests.WebNavigationIntegrationTests testAPlainPageLoadsAndReportsItsTitleAndUrl] : XCTAssertEqual failed: ("") is not equal to ("Page One")
+/Users/runner/work/Vela/Vela/VelaTests/WebNavigationIntegrationTests.swift:77: error: -[VelaTests.WebNavigationIntegrationTests testAPlainPageLoadsAndReportsItsTitleAndUrl] : XCTAssertEqual failed: ("0") is not equal to ("200")
+Test Case '-[VelaTests.WebNavigationIntegrationTests testAPlainPageLoadsAndReportsItsTitleAndUrl]' failed (58.423 seconds).
+	 Executed 36 tests, with 6 failures (0 unexpected) in 354.762 (354.807) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.005 (0.007) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.031 (0.032) seconds
+	 Executed 396 tests, with 6 failures (0 unexpected) in 442.663 (458.629) seconds
+	 Executed 396 tests, with 6 failures (0 unexpected) in 442.663 (458.632) seconds
+** TEST SUCCEEDED **
