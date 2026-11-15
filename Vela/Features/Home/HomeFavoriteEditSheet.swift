@@ -13,7 +13,7 @@
 import SwiftUI
 
 struct HomeFavoriteEditSheet: View {
-    @Environment(AppEnvironment.self) private var env
+    var settings: SettingsService
     @Environment(\.dismiss) private var dismiss
 
     /// `nil` creates a new tile; a value edits that one.
@@ -26,7 +26,8 @@ struct HomeFavoriteEditSheet: View {
     @State private var url: String
     @State private var showsTitleOverride: Bool?
 
-    init(favorite: HomeFavorite?, onSave: @escaping (String, String, Bool?) -> Void) {
+    init(settings: SettingsService, favorite: HomeFavorite?, onSave: @escaping (String, String, Bool?) -> Void) {
+        self.settings = settings
         self.favorite = favorite
         self.onSave = onSave
         _title = State(initialValue: favorite?.title ?? "")
@@ -41,7 +42,7 @@ struct HomeFavoriteEditSheet: View {
     }
 
     private var defaultShowsTitle: Bool {
-        env.settings.preferences.homeTileShowsTitle ?? true
+        settings.preferences.homeTileShowsTitle ?? true
     }
 
     var body: some View {

@@ -189,7 +189,7 @@ final class UIAndFilterRegressionTests: XCTestCase {
             ("tabs-overview-light",AnyView(TabsOverviewView(onClose:{})),375,.light),
             ("tabs-overview-dark",AnyView(TabsOverviewView(onClose:{})),375,.dark),
             ("tabs-overview-pad",AnyView(TabsOverviewView(onClose:{})),744,.light),
-            ("private-home",AnyView(NewTabHomeView(isPrivate:true,onNavigate:{_ in})),375,.light),
+            ("private-home",AnyView(NewTabHomeView(settings:env.settings,favoritesService:env.homeFavorites,tabManager:env.tabManager,isPrivate:true,onNavigate:{_ in})),375,.light),
             ("browser-page",AnyView(BrowserShellView(environment:env)),375,.light),
             ("browser-page-dark",AnyView(BrowserShellView(environment:env)),375,.dark),
             ("settings-root-dark",AnyView(NavigationStack { SettingsView() }),375,.dark)
@@ -212,7 +212,7 @@ final class UIAndFilterRegressionTests: XCTestCase {
     func testRenderMenuAndPalettePreviews() async throws {
         let env = AppEnvironment(services: AppServices(), windowId: "UIQA-" + UUID().uuidString)
         for (name, width, scheme) in [("menu-phone-light", 375.0, ColorScheme.light), ("menu-phone-dark", 375.0, .dark), ("menu-pad", 744.0, .light)] {
-            let menu = MenuPanelView(canActOnPage: true, isPrivateMode: false, isPrivateBrowsingOn: false,
+            let menu = MenuPanelView(settings: env.settings, canActOnPage: true, isPrivateMode: false, isPrivateBrowsingOn: false,
                 pageTitle: "Vela · 当前页面", onPerform: { _ in }, onOpenShortcut: { _ in })
                 .environment(env).environment(\.browserPalette, BrowserPalette.all.first { $0.id == "iris" }!)
                 .environment(\.colorScheme, scheme).frame(width: width, height: 670)

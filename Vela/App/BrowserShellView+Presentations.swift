@@ -97,6 +97,7 @@ extension BrowserShellView {
         // UIKit to dismiss and present in the same update.
         .sheet(isPresented: $showMenu, onDismiss: { performPendingMenuPresentation() }) {
             MenuPanelView(
+                settings: env.settings,
                 canActOnPage: canActOnPage,
                 isPrivateMode: activeTab?.privacyMode == .private,
                 isPrivateBrowsingOn: env.settings.preferences.privateBrowsingMode ?? false,

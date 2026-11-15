@@ -91,6 +91,9 @@ extension BrowserShellView {
             Group {
                 if tab.isHome {
                     NewTabHomeView(
+                        settings: env.settings,
+                        favoritesService: env.homeFavorites,
+                        tabManager: tabManager,
                         isPrivate: tab.privacyMode == .private,
                         onNavigate: { url in navigate(to: url, in: tab) },
                         onChromeSwipe: { translation in

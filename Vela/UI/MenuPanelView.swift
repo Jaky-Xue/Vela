@@ -18,7 +18,7 @@
 //  Opening 设置 to rearrange the menu was a detour for a control the user was
 //  already looking at.
 //
-//  Current-page script commands are shown beneath the built-in actions.
+//  Script commands belong to site details; this panel only presents browser actions.
 //
 
 import SwiftUI
@@ -26,7 +26,7 @@ import SwiftUI
 /// The menu panel: a header row, the grid of tiles, and the editor behind the
 /// pencil.
 struct MenuPanelView: View {
-    @Environment(AppEnvironment.self) private var env
+    var settings: SettingsService
     @Environment(\.browserPalette) private var palette
 
     /// Whether the panel's target is a loaded page — `false` greys out every
@@ -62,7 +62,7 @@ struct MenuPanelView: View {
 
     /// The live arrangement. Reading the settings service rather than a value
     /// passed in is what makes an edit repaint the grid behind it.
-    private var layout: MenuLayout { env.settings.menuLayout }
+    private var layout: MenuLayout { settings.menuLayout }
     private var tiles: [MenuTile] { layout.visibleTiles }
     /// The editor is a list with drag handles and its own sections; the compact
     /// detent is too short to drag in without hunting for the row.
@@ -95,9 +95,8 @@ struct MenuPanelView: View {
             MenuShortcutEditorView { shortcut in
                 showingShortcutEditor = false
                 guard let shortcut else { return }
-                env.settings.menuLayout = layout.adding(shortcut)
+                settings.menuLayout = layout.adding(shortcut)
             }
-            .environment(env)
             .browserAmbientSheet()
         }
     }
@@ -217,7 +216,7 @@ struct MenuPanelView: View {
             let source = String(raw.dropFirst("vela-menu:".count))
             guard layout.visibleTiles.contains(where: { $0.id == source }), source != tile.id else { return false }
             withAnimation(reduceMotion ? nil : BrowserMotion.layout(reduceMotion)) {
-                env.settings.menuLayout = layout.movingTile(source, before: tile.id)
+                settings.menuLayout = layout.movingTile(source, before: tile.id)
             }
             return true
         }
@@ -289,10 +288,10 @@ struct MenuPanelView: View {
                     }
                 }
                 .onMove { source, destination in
-                    env.settings.menuLayout = layout.movingVisible(from: source, to: destination)
+                    settings.menuLayout = layout.movingVisible(from: source, to: destination)
                 }
                 .onDelete { offsets in
-                    env.settings.menuLayout = removing(at: offsets)
+                    settings.menuLayout = removing(at: offsets)
                 }
             } header: {
                 Text("显示的菜单项")
@@ -302,7 +301,7 @@ struct MenuPanelView: View {
                 Section("已隐藏") {
                     ForEach(layout.hiddenTiles) { tile in
                         Button {
-                            env.settings.menuLayout = layout.settingVisible(true, id: tile.id)
+                            settings.menuLayout = layout.settingVisible(true, id: tile.id)
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: tile.symbolName)
@@ -340,7 +339,7 @@ struct MenuPanelView: View {
                         }
                         Spacer(minLength: 8)
                         Button(role: .destructive) {
-                            env.settings.menuLayout = layout.removingShortcut(id: shortcut.id)
+                            settings.menuLayout = layout.removingShortcut(id: shortcut.id)
                         } label: {
                             Image(systemName: "trash")
                         }
@@ -360,7 +359,7 @@ struct MenuPanelView: View {
 
             Section {
                 Button("恢复默认", systemImage: "arrow.counterclockwise") {
-                    env.settings.menuLayout = layout.reset()
+                    settings.menuLayout = layout.reset()
                 }
                 .foregroundStyle(palette.primaryText)
             }

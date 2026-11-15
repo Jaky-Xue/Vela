@@ -20,7 +20,9 @@ import SwiftUI
 import UIKit
 
 struct NewTabHomeView: View {
-    @Environment(AppEnvironment.self) private var env
+    var settings: SettingsService
+    var favoritesService: HomeFavoritesService
+    var tabManager: TabManager
     @Environment(\.browserPalette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -44,7 +46,10 @@ struct NewTabHomeView: View {
     /// favourites grid uses it to choose a column count that suits the window
     /// instead of always drawing five over-stretched cells.
     @State private var contentWidth: CGFloat = 0
-    @State private var recentlyClosed: [RecentlyClosedTabRecord] = []
+    /// Derived from the current privacy boundary, never a stale copy of regular data.
+    var recentlyClosed: [RecentlyClosedTabRecord] {
+        isPrivate ? [] : tabManager.recentlyClosed.filter { $0.privacyMode == .regular }
+    }
     /// The custom background, reloaded whenever the settings document's stamp
     /// moves — which happens the moment a picture is saved or cleared behind
     /// the settings sheet, so the change is live without leaving the screen.
@@ -160,26 +165,24 @@ struct NewTabHomeView: View {
                     onChromeSwipe?(abs(predicted) > abs(vertical) ? predicted : vertical)
                 }
         )
-        .task(id: env.settings.preferences.backgroundImageStamp) {
+        .task(id: settings.preferences.backgroundImageStamp) {
             reloadBackgroundImage()
         }
         .sheet(item: $editingFavorite) { favorite in
-            HomeFavoriteEditSheet(favorite: favorite) { title, url, showsTitle in
-                env.homeFavorites.update(
+            HomeFavoriteEditSheet(settings: settings, favorite: favorite) { title, url, showsTitle in
+                favoritesService.update(
                     id: favorite.id,
                     title: title,
                     url: url,
                     showsTitle: showsTitle
                 )
             }
-            .environment(env)
             .browserAmbientSheet()
         }
         .sheet(isPresented: $showingNewFavorite) {
-            HomeFavoriteEditSheet(favorite: nil) { title, url, showsTitle in
-                env.homeFavorites.add(url: url, title: title, showsTitle: showsTitle)
+            HomeFavoriteEditSheet(settings: settings, favorite: nil) { title, url, showsTitle in
+                favoritesService.add(url: url, title: title, showsTitle: showsTitle)
             }
-            .environment(env)
             .browserAmbientSheet()
         }
     }
@@ -286,7 +289,7 @@ struct NewTabHomeView: View {
     }
 
     private func reloadBackgroundImage() {
-        guard let stamp = env.settings.preferences.backgroundImageStamp,
+        guard let stamp = settings.preferences.backgroundImageStamp,
               let image = BackgroundImageStore.load(stamp: stamp) else {
             backgroundImage = nil
             backgroundIsLight = true
@@ -302,14 +305,14 @@ struct NewTabHomeView: View {
     /// rename, a name-visibility flip or a removal repaint the grid without a
     /// reload call at the call site.
     private var favorites: [HomeFavorite] {
-        isPrivate ? [] : env.homeFavorites.favorites
+        isPrivate ? [] : favoritesService.favorites
     }
 
     /// Whether one tile draws its name. A tile that has never been edited
     /// follows the 外观 ▸ 主页图标 default; once it has an opinion of its own,
     /// that wins.
     private func showsTitle(for favorite: HomeFavorite) -> Bool {
-        favorite.showsTitle ?? (env.settings.preferences.homeTileShowsTitle ?? true)
+        favorite.showsTitle ?? (settings.preferences.homeTileShowsTitle ?? true)
     }
 
     /// How many favourites fit in a row at the measured width.
@@ -382,16 +385,16 @@ struct NewTabHomeView: View {
 
     /// The tile customisation from 外观 ▸ 主页图标, resolved to concrete values.
     private var tileIconSize: CGFloat {
-        CGFloat(env.settings.preferences.homeTileIconSize ?? 40)
+        CGFloat(settings.preferences.homeTileIconSize ?? 40)
     }
 
     private var tileSpacing: CGFloat {
-        CGFloat(env.settings.preferences.homeTileSpacing ?? 12)
+        CGFloat(settings.preferences.homeTileSpacing ?? 12)
     }
 
     private var tileCornerRadius: CGFloat? {
         HomeTileStyle.cornerRadius(
-            shape: env.settings.preferences.homeTileShape,
+            shape: settings.preferences.homeTileShape,
             iconSize: tileIconSize
         )
     }
@@ -426,7 +429,7 @@ struct NewTabHomeView: View {
             let id = String(raw.dropFirst("vela-favorite:".count))
             var swapped = false
             withAnimation(reduceMotion ? nil : BrowserMotion.layout(reduceMotion)) {
-                swapped = env.homeFavorites.swap(id, with: favorite.id)
+                swapped = favoritesService.swap(id, with: favorite.id)
             }
             return swapped
         } isTargeted: { targeted in
@@ -435,7 +438,7 @@ struct NewTabHomeView: View {
         .contextMenu {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {
                 guard let url = BrowserUrlResolver.storedUrl(favorite.url) else { return }
-                env.tabManager.openTab(
+                tabManager.openTab(
                     url: url,
                     openSource: .shortcut,
                     activate: false
@@ -448,13 +451,13 @@ struct NewTabHomeView: View {
                 titleVisible ? "隐藏名称" : "显示名称",
                 systemImage: titleVisible ? "eye.slash" : "eye"
             ) {
-                env.homeFavorites.setShowsTitle(id: favorite.id, value: !titleVisible)
+                favoritesService.setShowsTitle(id: favorite.id, value: !titleVisible)
             }
             Divider()
             // Removing a tile removes the tile and nothing else. The store is
             // the home's; the bookmark list is a different inventory.
             Button("从主页移除", systemImage: "minus.square", role: .destructive) {
-                env.homeFavorites.remove(id: favorite.id)
+                favoritesService.remove(id: favorite.id)
             }
         }
         .accessibilityLabel(favorite.displayTitle)
@@ -474,13 +477,12 @@ struct NewTabHomeView: View {
                         if let url = URL(string: record.url) {
                             // The mode routes the restore: a page opened from
                             // the home is a new page like any other.
-                            env.tabManager.openTab(
+                            tabManager.openTab(
                                 url: url,
                                 openSource: .restore
                             )
                         }
-                        env.tabManager.removeRecentlyClosedRecord(id: record.id)
-                        reloadRecentlyClosed()
+                        tabManager.removeRecentlyClosedRecord(id: record.id)
                     } label: {
                         HStack(spacing: BrowserSpacing.compact) {
                             SiteIconView(host: URL(string: record.url)?.host ?? "", size: 24)
@@ -523,9 +525,6 @@ struct NewTabHomeView: View {
         }
     }
 
-    private func reloadRecentlyClosed() {
-        recentlyClosed = env.tabManager.recentlyClosed.filter { $0.privacyMode == .regular }
-    }
 }
 
 // MARK: - Add sheet
