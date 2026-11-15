@@ -1,0 +1,63 @@
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.006 (0.030) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 2.299 (2.302) seconds
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.066 (0.073) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (0.022) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.004 (0.038) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.027) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 3.861 (3.863) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.011 (0.042) seconds
+	 Executed 30 tests, with 0 failures (0 unexpected) in 0.089 (0.186) seconds
+	 Executed 19 tests, with 0 failures (0 unexpected) in 0.028 (0.059) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.013 (0.015) seconds
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:154: error: -[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules] : failed: caught error: "Error Domain=WKErrorDomain Code=6 "(null)" UserInfo={NSHelpAnchor=Rule list compilation failed: Invalid or unsupported regular expression.}"
+Test Case '-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]' failed (0.409 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:154: error: -[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules] : failed: caught error: "Error Domain=WKErrorDomain Code=6 "(null)" UserInfo={NSHelpAnchor=Rule list compilation failed: Invalid or unsupported regular expression.}"
+Test Case '-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]' failed (0.069 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:154: error: -[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules] : failed: caught error: "Error Domain=WKErrorDomain Code=6 "(null)" UserInfo={NSHelpAnchor=Rule list compilation failed: Invalid or unsupported regular expression.}"
+Test Case '-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]' failed (0.007 seconds).
+	 Executed 15 tests, with 3 failures (3 unexpected) in 17.674 (17.682) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.009 (0.011) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (0.005) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.523 (0.523) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.038 (0.058) seconds
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.050 (0.114) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.032) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.004 (0.034) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.004 (0.006) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.014 (0.016) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.013 (0.021) seconds
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.181 (0.216) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.007 (0.074) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.009 (0.011) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.010 (0.011) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 5.274 (5.276) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 1.019 (1.022) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.275 (1.275) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.072 (0.075) seconds
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.028 (0.349) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.136 (0.138) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.054 (0.080) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.009 (0.010) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.056 (0.393) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.004 (0.005) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.014 (0.014) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.040) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.066) seconds
+	 Executed 29 tests, with 0 failures (0 unexpected) in 2.020 (3.306) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.212 (0.231) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.006 (0.014) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.004 (0.008) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.006 (0.014) seconds
+	 Executed 10 tests, with 0 failures (0 unexpected) in 21.647 (21.656) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.016 (0.094) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+	 Executed 35 tests, with 0 failures (0 unexpected) in 37.657 (37.682) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.004 (0.006) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.024 (0.042) seconds
+	 Executed 382 tests, with 3 failures (3 unexpected) in 94.477 (97.378) seconds
+	 Executed 382 tests, with 3 failures (3 unexpected) in 94.477 (97.380) seconds
+** TEST FAILED **
