@@ -2,12 +2,17 @@
 //  AddBookmarkChoiceSheet.swift
 //  Vela
 //
-//  The sheet the "添加书签" menu tile opens: choose which root the bookmark
-//  lands in, and whether the home surface carries it too.
+//  The sheet the "添加书签" menu tile opens: what to create, and where.
 //
-//  The choice is the whole point of the sheet — a bookmark's destination is a
-//  decision the user makes once, at save time, not something to reorganise
-//  later from the bookmark list.
+//  Two inventories sit behind this sheet — the bookmark roots and the home's
+//  own favourite shelf — and they are independent stores. The sheet therefore
+//  offers both directions: save a bookmark (optionally carried to the home as
+//  a copy), or add a tile to the home and no bookmark at all. The previous
+//  version made the bookmark mandatory and the home tile a toggle on it, which
+//  left "I just want this page on my home screen" impossible.
+//
+//  The choice is the whole point of the sheet — a destination is a decision
+//  the user makes once, at save time, not something to reorganise later.
 //
 
 import SwiftUI
@@ -20,9 +25,16 @@ struct AddBookmarkChoiceSheet: View {
     var url: String
     var title: String
 
-    @State private var chosenRole: BookmarkRootRole = .toolbar
-    // The home carries every bookmark by default now — the surface's own add
-    // tile is gone, so this toggle is the one way to keep a bookmark off it.
+    /// What 添加 creates. The bookmark roots carry an optional home copy; the
+    /// third choice creates only the home tile.
+    private enum SaveTarget: Hashable {
+        case bookmark(BookmarkRootRole)
+        case homeOnly
+    }
+
+    @State private var target: SaveTarget = .bookmark(.toolbar)
+    // A bookmark saved to a root is carried to the home by default: the home
+    // is where the user starts, so the shelf is the useful default.
     @State private var addToHome = true
 
     var body: some View {
@@ -39,7 +51,7 @@ struct AddBookmarkChoiceSheet: View {
                 }
                 .accessibilityLabel("关闭")
 
-                Text("添加书签")
+                Text("添加书签或收藏")
                     .font(.system(size: 19, weight: .bold))
 
                 Spacer(minLength: 0)
@@ -57,41 +69,43 @@ struct AddBookmarkChoiceSheet: View {
                         ForEach([BookmarkRootRole.toolbar, .other]) { role in
                             folderRow(role)
 
-                            if role != .other {
-                                Rectangle()
-                                    .fill(palette.separator)
-                                    .frame(height: 0.5)
-                                    .padding(.leading, 64)
-                            }
+                            Rectangle()
+                                .fill(palette.separator)
+                                .frame(height: 0.5)
+                                .padding(.leading, 64)
                         }
+
+                        homeOnlyRow
                     }
                     .background(palette.controlFill.opacity(0.4))
                     .clipShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
                     .padding(.horizontal, BrowserSpacing.regular)
                     .padding(.top, BrowserSpacing.loose)
 
-                    HStack(spacing: BrowserSpacing.compact) {
-                        Image(systemName: "house")
-                            .font(.system(size: 14, weight: .medium))
-                            .frame(width: 36, height: 36)
-                            .background(palette.controlFill.opacity(0.7), in: Circle())
+                    if case .bookmark = target {
+                        HStack(spacing: BrowserSpacing.compact) {
+                            Image(systemName: "house")
+                                .font(.system(size: 14, weight: .medium))
+                                .frame(width: 36, height: 36)
+                                .background(palette.controlFill.opacity(0.7), in: Circle())
 
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("同时添加到主页收藏")
-                                .font(.system(size: 15, weight: .medium))
-                            Text("主页收藏与书签分开保存")
-                                .font(.caption)
-                                .foregroundStyle(palette.secondaryText)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("同时添加到主页收藏")
+                                    .font(.system(size: 15, weight: .medium))
+                                Text("主页收藏与书签分开保存")
+                                    .font(.caption)
+                                    .foregroundStyle(palette.secondaryText)
+                            }
+
+                            Spacer(minLength: 0)
+
+                            Toggle("", isOn: $addToHome)
+                                .labelsHidden()
                         }
-
-                        Spacer(minLength: 0)
-
-                        Toggle("", isOn: $addToHome)
-                            .labelsHidden()
+                        .padding(.horizontal, BrowserSpacing.regular)
+                        .padding(.top, BrowserSpacing.loose)
+                        .padding(.bottom, BrowserSpacing.regular)
                     }
-                    .padding(.horizontal, BrowserSpacing.regular)
-                    .padding(.top, BrowserSpacing.loose)
-                    .padding(.bottom, BrowserSpacing.regular)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -116,13 +130,13 @@ struct AddBookmarkChoiceSheet: View {
         .presentationDragIndicator(.hidden)
     }
 
-    /// One destination row: the folder, its bookmark count, and a check when it
+    /// One bookmark root: the folder, its bookmark count, and a check when it
     /// is the chosen destination.
     @ViewBuilder
     private func folderRow(_ role: BookmarkRootRole) -> some View {
-        let isChosen = chosenRole == role
+        let isChosen = target == .bookmark(role)
         Button {
-            chosenRole = role
+            target = .bookmark(role)
         } label: {
             HStack(spacing: BrowserSpacing.compact) {
                 Image(systemName: "folder.fill")
@@ -135,6 +149,41 @@ struct AddBookmarkChoiceSheet: View {
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(palette.primaryText)
                     Text("\(bookmarkCount(in: role)) 个书签")
+                        .font(.caption)
+                        .foregroundStyle(palette.secondaryText)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: isChosen ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .light))
+                    .foregroundStyle(isChosen ? Color.blue : palette.secondaryText.opacity(0.55))
+            }
+            .padding(.horizontal, BrowserSpacing.compact + 2)
+            .frame(height: 62)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The third destination: the home's shelf and nothing else.
+    @ViewBuilder
+    private var homeOnlyRow: some View {
+        let isChosen = target == .homeOnly
+        Button {
+            target = .homeOnly
+        } label: {
+            HStack(spacing: BrowserSpacing.compact) {
+                Image(systemName: "house.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.blue)
+                    .frame(width: 34)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("仅添加到主页收藏")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(palette.primaryText)
+                    Text("不创建书签")
                         .font(.caption)
                         .foregroundStyle(palette.secondaryText)
                 }
@@ -171,15 +220,22 @@ struct AddBookmarkChoiceSheet: View {
     }
 
     private func onAdd() {
-        let parentNodeId = env.bookmarks.rootNodeId(for: chosenRole)
-        let node = env.bookmarks.addBookmark(url: url, title: title, parentNodeId: parentNodeId)
-        if addToHome, let saved = node ?? env.bookmarks.bookmark(for: url) {
-            // The tile gets a copy of the name and address. Editing it later
-            // is a home affair; the bookmark stays the bookmark list's.
-            env.homeFavorites.add(
-                url: saved.url ?? url,
-                title: saved.title
-            )
+        switch target {
+        case let .bookmark(role):
+            let parentNodeId = env.bookmarks.rootNodeId(for: role)
+            let node = env.bookmarks.addBookmark(url: url, title: title, parentNodeId: parentNodeId)
+            if addToHome, let saved = node ?? env.bookmarks.bookmark(for: url) {
+                // The tile gets a copy of the name and address. Editing it later
+                // is a home affair; the bookmark stays the bookmark list's.
+                env.homeFavorites.add(
+                    url: saved.url ?? url,
+                    title: saved.title
+                )
+            }
+        case .homeOnly:
+            // The shelf is its own inventory: this creates exactly one tile and
+            // leaves the bookmark tree untouched.
+            env.homeFavorites.add(url: url, title: title)
         }
         dismiss()
     }

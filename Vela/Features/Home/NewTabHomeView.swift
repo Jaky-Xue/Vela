@@ -41,11 +41,24 @@ struct NewTabHomeView: View {
     /// The tile being edited, and whether the sheet is creating a new one.
     @State private var editingFavorite: HomeFavorite?
     @State private var showingNewFavorite = false
-    @State private var favoriteDropTarget: String?
-    /// The width of the content column, measured once per layout. The
-    /// favourites grid uses it to choose a column count that suits the window
-    /// instead of always drawing five over-stretched cells.
-    @State private var contentWidth: CGFloat = 0
+
+    /// The coordinate space the shelf reports its slots in, and the one a
+    /// carried tile is drawn in.
+    private static let favoriteDragSpace = "vela.home.favorites"
+    /// The tile under the finger, once a long press has lifted it.
+    @State private var draggingFavoriteID: String?
+    @State private var favoriteDragTranslation: CGSize = .zero
+    @State private var favoriteDragStartCenter: CGPoint = .zero
+    @State private var favoriteDragStartSize: CGSize = .zero
+    /// The shelf's frame and the height each cell asked for, both in
+    /// `favoriteDragSpace`. Slot geometry is derived from these rather than
+    /// from the tiles' own frames, which are mid-flight during a reorder.
+    @State private var favoriteGridFrame: CGRect = .zero
+    @State private var favoriteCellHeights: [Int: CGFloat] = [:]
+    /// A drag ends by lifting the finger: that release is not a tap, and its
+    /// vertical travel is not a chrome swipe either.
+    @State private var suppressFavoriteTap = false
+    @State private var suppressChromeSwipe = false
     /// Derived from the current privacy boundary, never a stale copy of regular data.
     var recentlyClosed: [RecentlyClosedTabRecord] {
         isPrivate ? [] : tabManager.recentlyClosed.filter { $0.privacyMode == .regular }
@@ -136,21 +149,18 @@ struct NewTabHomeView: View {
             // clear of the home indicator even though the surface itself runs
             // edge to edge below the safe area.
             .padding(.bottom, BrowserSpacing.loose + 12)
-            .background {
-                GeometryReader { geo in
-                    Color.clear.preference(key: HomeContentWidthKey.self, value: geo.size.width)
-                }
-            }
-            .onPreferenceChange(HomeContentWidthKey.self) { width in
-                if abs(width - contentWidth) > 0.5 {
-                    contentWidth = width
-                }
-            }
         }
         // The surface reaches the bottom edge of the screen: a strip of dead
         // background above the home indicator reads as something sitting on
         // top of the page, which is exactly what the user called occlusion.
         .ignoresSafeArea(edges: .bottom)
+        .coordinateSpace(.named(Self.favoriteDragSpace))
+        // The carried tile is a sibling of the scroll view rather than a child
+        // of it, so the shelf's own clip cannot cut it off at the edge.
+        .overlay(alignment: .topLeading) { floatingFavoriteLayer }
+        // The carried tile owns the finger; a scroll underneath it would move
+        // every slot the tile is being aimed at.
+        .scrollDisabled(draggingFavoriteID != nil)
         .background { homeBackground }
         .scrollDismissesKeyboard(.immediately)
         // The bar hides on a drag the way it hides on a page's scroll: up
@@ -159,6 +169,9 @@ struct NewTabHomeView: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 24)
                 .onEnded { value in
+                    // Carrying a tile up or down the shelf is a reorder, not a
+                    // request to push the command bar away.
+                    guard !suppressChromeSwipe else { return }
                     let vertical = value.translation.height
                     guard abs(vertical) > abs(value.translation.width) else { return }
                     let predicted = value.predictedEndTranslation.height
@@ -315,22 +328,6 @@ struct NewTabHomeView: View {
         favorite.showsTitle ?? (settings.preferences.homeTileShowsTitle ?? true)
     }
 
-    /// How many favourites fit in a row at the measured width.
-    ///
-    /// A fixed five columns was fine on a phone and left each tile a huge
-    /// square with a 40-point icon floating in it on an iPad. The row is
-    /// measured instead, so the grid stays a favourites shelf at every size.
-    /// The cell width is fixed (`HomeTileStyle.cellWidth`), which is what
-    /// makes 间距 behave like a spacing control rather than like a column
-    /// count in disguise.
-    private var tileColumnCount: Int {
-        HomeTileStyle.columnCount(
-            width: contentWidth > 1 ? contentWidth : 360,
-            iconSize: tileIconSize,
-            spacing: tileSpacing
-        )
-    }
-
     /// The width the grid gives one tile.
     private var tileCellWidth: CGFloat {
         HomeTileStyle.cellWidth(iconSize: tileIconSize)
@@ -374,10 +371,35 @@ struct NewTabHomeView: View {
                         .foregroundStyle(homeSecondaryText)
                         .padding(.vertical, 4)
                 } else {
-                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(tileCellWidth), spacing: tileSpacing), count: tileColumnCount), alignment: .leading, spacing: tileSpacing) {
-                        ForEach(favorites) { favorite in favoriteCell(favorite) }
+                    // The same fixed-width cells the lazy grid drew, but
+                    // placed by the layout itself so a reorder is one animated
+                    // frame change per tile and the rows shift together.
+                    HomeFavoriteGridLayout(
+                        cellWidth: tileCellWidth,
+                        spacing: tileSpacing
+                    ) {
+                        ForEach(Array(favorites.enumerated()), id: \.element.id) { index, favorite in
+                            favoriteCell(favorite, index: index)
+                        }
                     }
-                    .animation(BrowserMotion.layout(reduceMotion), value: favorites.map(\.id))
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: HomeFavoriteGridFrameKey.self,
+                                value: proxy.frame(in: CoordinateSpace.named(Self.favoriteDragSpace))
+                            )
+                        }
+                    }
+                    .onPreferenceChange(HomeFavoriteCellHeightKey.self) { heights in
+                        favoriteCellHeights = heights
+                    }
+                    .onPreferenceChange(HomeFavoriteGridFrameKey.self) { frame in
+                        favoriteGridFrame = frame
+                    }
+                    // Tiles appearing and disappearing animate; a reorder is
+                    // already inside its own spring and is not keyed on the
+                    // count.
+                    .animation(BrowserMotion.layout(reduceMotion), value: favorites.count)
                 }
             }
         }
@@ -403,37 +425,34 @@ struct NewTabHomeView: View {
     /// the long-press editor owns. Size, shape and spacing answer to 主页设置;
     /// the tile itself is the shared `HomeFavoriteTile`, so the settings
     /// preview draws the same thing.
-    private func favoriteCell(_ favorite: HomeFavorite) -> some View {
+    private func favoriteCell(_ favorite: HomeFavorite, index: Int) -> some View {
         let titleVisible = showsTitle(for: favorite)
         return Button {
+            // A long press already carried this tile; the release that ended
+            // it is not a tap.
+            if suppressFavoriteTap {
+                suppressFavoriteTap = false
+                return
+            }
+            guard draggingFavoriteID == nil else { return }
             guard let url = BrowserUrlResolver.storedUrl(favorite.url) else { return }
             onNavigate(url)
         } label: {
-            HomeFavoriteTile(
-                favorite: favorite,
-                showsTitle: titleVisible,
-                iconSize: tileIconSize,
-                cornerRadius: tileCornerRadius,
-                titleColor: homePrimaryText,
-                titleShadow: homeTextShadow
-            )
-            .contentShape(Rectangle())
+            favoriteTileLabel(favorite, showsTitle: titleVisible)
         }
         .frame(width: tileCellWidth)
         .buttonStyle(HomeTileButtonStyle())
-        .scaleEffect(favoriteDropTarget == favorite.id && !reduceMotion ? 1.04 : 1)
-        .animation(BrowserMotion.layout(reduceMotion), value: favoriteDropTarget)
-        .draggable(isPrivate ? "" : "vela-favorite:" + favorite.id)
-        .dropDestination(for: String.self) { items, _ in
-            guard !isPrivate, let raw = items.first, raw.hasPrefix("vela-favorite:") else { return false }
-            let id = String(raw.dropFirst("vela-favorite:".count))
-            var swapped = false
-            withAnimation(reduceMotion ? nil : BrowserMotion.layout(reduceMotion)) {
-                swapped = favoritesService.swap(id, with: favorite.id)
+        // The carried copy is the only tile the finger can see; the slot keeps
+        // its space as a gap the other tiles slide around.
+        .opacity(draggingFavoriteID == favorite.id ? 0 : 1)
+        .simultaneousGesture(favoriteDragGesture(favorite))
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: HomeFavoriteCellHeightKey.self,
+                    value: [index: proxy.size.height]
+                )
             }
-            return swapped
-        } isTargeted: { targeted in
-            if targeted { favoriteDropTarget = favorite.id } else if favoriteDropTarget == favorite.id { favoriteDropTarget = nil }
         }
         .contextMenu {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {
@@ -461,6 +480,170 @@ struct NewTabHomeView: View {
             }
         }
         .accessibilityLabel(favorite.displayTitle)
+        .accessibilityHint(draggingFavoriteID == nil ? "长按并拖动可排序" : "")
+    }
+
+    /// The tile itself, without the button or the gesture: the shelf draws it
+    /// in its slot, and the floating copy draws the same view at the finger.
+    private func favoriteTileLabel(_ favorite: HomeFavorite, showsTitle: Bool) -> some View {
+        HomeFavoriteTile(
+            favorite: favorite,
+            showsTitle: showsTitle,
+            iconSize: tileIconSize,
+            cornerRadius: tileCornerRadius,
+            titleColor: homePrimaryText,
+            titleShadow: homeTextShadow
+        )
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Carrying a favourite
+
+    /// The tile the finger is carrying, drawn at the finger rather than in its
+    /// slot, exactly like the menu panel's tiles.
+    @ViewBuilder
+    private var floatingFavoriteLayer: some View {
+        if let id = draggingFavoriteID,
+           let favorite = favorites.first(where: { $0.id == id }) {
+            favoriteTileLabel(favorite, showsTitle: showsTitle(for: favorite))
+                .frame(width: favoriteDragStartSize.width, height: favoriteDragStartSize.height)
+                .scaleEffect(reduceMotion ? 1 : 1.06)
+                .shadow(color: Color.black.opacity(0.3), radius: 14, y: 7)
+                .opacity(0.94)
+                .allowsHitTesting(false)
+                .position(
+                    x: favoriteDragStartCenter.x + favoriteDragTranslation.width,
+                    y: favoriteDragStartCenter.y + favoriteDragTranslation.height
+                )
+                .transition(.scale(scale: 0.88).combined(with: .opacity))
+        }
+    }
+
+    /// The shelf's cell geometry, derived from what the grid reported.
+    private struct FavoriteGridGeometry {
+        var columns: Int
+        var cellWidth: CGFloat
+        var rowHeights: [CGFloat]
+        var origin: CGPoint
+    }
+
+    private var favoriteGridGeometry: FavoriteGridGeometry? {
+        guard favoriteGridFrame.width > 1, !favorites.isEmpty else { return nil }
+        let columns = HomeTileStyle.columnCount(
+            width: favoriteGridFrame.width,
+            cellWidth: tileCellWidth,
+            spacing: tileSpacing
+        )
+        var rowHeights: [CGFloat] = []
+        var index = 0
+        while index < favorites.count {
+            var height: CGFloat = 0
+            for cellIndex in index..<min(index + columns, favorites.count) {
+                height = max(height, favoriteCellHeights[cellIndex] ?? 0)
+            }
+            // The first frame has not measured the cells yet; a drag that
+            // cannot compute a slot must not start.
+            guard height > 0 else { return nil }
+            rowHeights.append(height)
+            index += columns
+        }
+        return FavoriteGridGeometry(
+            columns: columns,
+            cellWidth: tileCellWidth,
+            rowHeights: rowHeights,
+            origin: favoriteGridFrame.origin
+        )
+    }
+
+    private func favoriteSlotCenter(at index: Int) -> CGPoint? {
+        guard let geometry = favoriteGridGeometry, index < favorites.count else { return nil }
+        let row = index / geometry.columns
+        let column = index % geometry.columns
+        var y = geometry.origin.y
+        for earlierRow in 0..<row {
+            y += geometry.rowHeights[earlierRow] + tileSpacing
+        }
+        return CGPoint(
+            x: geometry.origin.x + CGFloat(column) * (geometry.cellWidth + tileSpacing) + geometry.cellWidth / 2,
+            y: y + geometry.rowHeights[row] / 2
+        )
+    }
+
+    private func favoriteSlotIndex(at point: CGPoint, count: Int) -> Int? {
+        guard let geometry = favoriteGridGeometry, count > 0, !geometry.rowHeights.isEmpty else { return nil }
+        let column = min(
+            max(Int((point.x - geometry.origin.x) / (geometry.cellWidth + tileSpacing)), 0),
+            geometry.columns - 1
+        )
+        var y = geometry.origin.y
+        var row = 0
+        while row < geometry.rowHeights.count - 1, point.y >= y + geometry.rowHeights[row] + tileSpacing / 2 {
+            y += geometry.rowHeights[row] + tileSpacing
+            row += 1
+        }
+        return min(row * geometry.columns + column, count - 1)
+    }
+
+    private func favoriteDragGesture(_ favorite: HomeFavorite) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.32)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.favoriteDragSpace)))
+            .onChanged { value in
+                guard !isPrivate, case .second(true, let drag?) = value else { return }
+                // A long press that stays where it started is the tile's
+                // context menu; picking the tile up waits for real movement.
+                let dx = drag.translation.width
+                let dy = drag.translation.height
+                guard dx * dx + dy * dy > 36 else { return }
+                beginFavoriteDrag(favorite)
+                moveFavorite(favorite, translation: drag.translation, at: drag.location)
+            }
+            .onEnded { _ in
+                endFavoriteDrag()
+            }
+    }
+
+    private func beginFavoriteDrag(_ favorite: HomeFavorite) {
+        guard draggingFavoriteID == nil,
+              let index = favorites.firstIndex(where: { $0.id == favorite.id }),
+              let center = favoriteSlotCenter(at: index),
+              let geometry = favoriteGridGeometry else { return }
+        favoriteDragStartCenter = center
+        favoriteDragStartSize = CGSize(
+            width: geometry.cellWidth,
+            height: geometry.rowHeights[index / geometry.columns]
+        )
+        suppressFavoriteTap = true
+        suppressChromeSwipe = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        draggingFavoriteID = favorite.id
+    }
+
+    private func moveFavorite(_ favorite: HomeFavorite, translation: CGSize, at finger: CGPoint) {
+        guard draggingFavoriteID == favorite.id else { return }
+        favoriteDragTranslation = translation
+        guard let source = favorites.firstIndex(where: { $0.id == favorite.id }),
+              let slot = favoriteSlotIndex(at: finger, count: favorites.count),
+              slot != source else { return }
+        // SwiftUI's move semantics: an item moving forwards lands after the
+        // slot it was dragged over, one moving backwards lands on it.
+        let destination = source < slot ? slot + 1 : slot
+        withAnimation(BrowserMotion.tileDrag(reduceMotion)) {
+            favoritesService.move(fromOffsets: IndexSet(integer: source), toOffset: destination)
+        }
+    }
+
+    private func endFavoriteDrag() {
+        guard draggingFavoriteID != nil else { return }
+        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88)) {
+            draggingFavoriteID = nil
+            favoriteDragTranslation = .zero
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            suppressFavoriteTap = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            suppressChromeSwipe = false
+        }
     }
 
     // MARK: - Recently closed
@@ -527,17 +710,94 @@ struct NewTabHomeView: View {
 
 }
 
-// MARK: - Add sheet
+// MARK: - Grid layout
 
-/// The form behind the "添加" tile.
+/// Places the favourites shelf in fixed-width cells, one row at a time.
 ///
-/// The width of the home's content column, reported once per layout so the
-/// favourites grid can choose its column count from the real width.
-private struct HomeContentWidthKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+/// `LazyVGrid` laid the shelf out before; it only places the cells it has
+/// built, and a reorder across rows it never built cannot animate as one
+/// movement. Every slot here is arithmetic, so dragging a tile moves the whole
+/// shelf — including the rows below — in the same spring. Rows keep their own
+/// heights because a tile may hide its name, which is why the pitch is not a
+/// single constant.
+private struct HomeFavoriteGridLayout: Layout {
+    var cellWidth: CGFloat
+    var spacing: CGFloat
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+    private var gap: CGFloat { max(0, spacing) }
+
+    private struct Metrics {
+        var columns: Int
+        var rowHeights: [CGFloat]
+    }
+
+    private func metrics(for width: CGFloat, subviews: Subviews) -> Metrics {
+        let columns = HomeTileStyle.columnCount(width: width, cellWidth: cellWidth, spacing: gap)
+        var rowHeights: [CGFloat] = []
+        var index = 0
+        while index < subviews.count {
+            let end = min(index + columns, subviews.count)
+            var height: CGFloat = 0
+            for cellIndex in index..<end {
+                height = max(
+                    height,
+                    subviews[cellIndex].sizeThatFits(ProposedViewSize(width: cellWidth, height: nil)).height
+                )
+            }
+            rowHeights.append(height)
+            index = end
+        }
+        return Metrics(columns: columns, rowHeights: rowHeights)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+        let width = proposal.width ?? 0
+        let metrics = metrics(for: width, subviews: subviews)
+        guard !metrics.rowHeights.isEmpty else { return CGSize(width: width, height: 0) }
+        let height = metrics.rowHeights.reduce(0, +) + gap * CGFloat(metrics.rowHeights.count - 1)
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+        let metrics = metrics(for: bounds.width, subviews: subviews)
+        var y = bounds.minY
+        for row in metrics.rowHeights.indices {
+            let height = metrics.rowHeights[row]
+            for column in 0..<metrics.columns {
+                let index = row * metrics.columns + column
+                guard index < subviews.count else { break }
+                subviews[index].place(
+                    at: CGPoint(
+                        x: bounds.minX + CGFloat(column) * (cellWidth + gap) + cellWidth / 2,
+                        y: y + height / 2
+                    ),
+                    anchor: .center,
+                    proposal: ProposedViewSize(width: cellWidth, height: height)
+                )
+            }
+            y += height + gap
+        }
+    }
+}
+
+/// The height one cell asked for, by its place in the shelf. Heights do not
+/// change while a drag animates, which is what lets the slot arithmetic ignore
+/// the tiles' moving frames.
+private struct HomeFavoriteCellHeightKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+/// Where the shelf itself sits on the home, once its width has settled.
+private struct HomeFavoriteGridFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next != .zero {
+            value = next
+        }
     }
 }
 

@@ -21,6 +21,25 @@ final class UIAndFilterRegressionTests: XCTestCase {
         XCTAssertFalse(restored.swap(a.id, with: "missing"))
     }
 
+    func testFavoriteMoveUsesListCoordinates() throws {
+        let suite = "FavoriteMove-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = HomeFavoritesService(defaults: defaults)
+        let a = try XCTUnwrap(service.add(url: "https://a.test", title: "A"))
+        let b = try XCTUnwrap(service.add(url: "https://b.test", title: "B"))
+        let c = try XCTUnwrap(service.add(url: "https://c.test", title: "C"))
+
+        // Dragging A past C is the same call List.onMove makes.
+        XCTAssertTrue(service.move(fromOffsets: IndexSet(integer: 0), toOffset: 3))
+        XCTAssertEqual(service.favorites.map(\.id), [b.id, c.id, a.id])
+
+        // A move to where the tile already is changes nothing and writes
+        // nothing, so the grid does not animate a no-op.
+        XCTAssertFalse(service.move(fromOffsets: IndexSet(integer: 1), toOffset: 2))
+        XCTAssertEqual(service.favorites.map(\.id), [b.id, c.id, a.id])
+    }
+
     func testMenuDragKeepsHiddenAndShortcutTiles() {
         let shortcut = MenuShortcut(title: "Work", url: "https://work.test", symbolName: "star")
         let original = MenuLayout().adding(shortcut).settingVisible(false, id: VelaMenuAction.share.id)

@@ -151,6 +151,34 @@ public final class HomeFavoritesService {
         persist()
     }
 
+    /// Moves one tile, using the same source/destination coordinates as
+    /// `List.onMove` so the shelf's slot arithmetic and the store agree. The
+    /// grid reorders live while a tile is carried, and a swap could not
+    /// express "everything between the two slots shifts by one".
+    @discardableResult
+    public func move(fromOffsets source: IndexSet, toOffset destination: Int) -> Bool {
+        let moving = source.sorted().compactMap { favorites.indices.contains($0) ? favorites[$0] : nil }
+        guard !moving.isEmpty else { return false }
+
+        var remaining = favorites
+        for index in source.sorted(by: >) where remaining.indices.contains(index) {
+            remaining.remove(at: index)
+        }
+        // An insertion after the removed rows shifts left by how many were
+        // removed before it.
+        var insertion = destination
+        for index in source where index < destination {
+            insertion -= 1
+        }
+        insertion = max(0, min(insertion, remaining.count))
+        remaining.insert(contentsOf: moving, at: insertion)
+
+        guard remaining.map(\.id) != favorites.map(\.id) else { return false }
+        favorites = remaining
+        persist()
+        return true
+    }
+
     /// Swap complete records; IDs, URLs and per-tile preferences stay together.
     @discardableResult
     public func swap(_ firstID: String, with secondID: String) -> Bool {

@@ -89,8 +89,14 @@ enum HomeTileStyle {
     /// the gaps between them fit — and a small window is allowed to show a
     /// single column rather than overflow the shelf.
     static func columnCount(width: CGFloat, iconSize: CGFloat, spacing: CGFloat) -> Int {
+        columnCount(width: width, cellWidth: cellWidth(iconSize: iconSize), spacing: spacing)
+    }
+
+    /// The same count from a cell width already resolved, for the grid layout
+    /// which has only the width it was handed.
+    static func columnCount(width: CGFloat, cellWidth: CGFloat, spacing: CGFloat) -> Int {
         guard width > 1 else { return 3 }
-        let cell = cellWidth(iconSize: iconSize)
+        let cell = max(1, cellWidth)
         let gap = max(0, spacing)
         let count = Int((width + gap) / (cell + gap))
         return max(1, min(10, count))
