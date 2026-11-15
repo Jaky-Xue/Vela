@@ -88,7 +88,7 @@ struct MenuPanelView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .background(palette.surface)
+        .background { AmbientSurfaceFill(opacity: palette.visualStyle.menuVeil) }
         .presentationDetents(panelDetents)
         .presentationDragIndicator(.hidden)
         .sheet(isPresented: $showingShortcutEditor) {
@@ -129,7 +129,7 @@ struct MenuPanelView: View {
     private var headerRow: some View {
         HStack(spacing: BrowserSpacing.compact) {
             Text("菜单")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.headline)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -137,7 +137,7 @@ struct MenuPanelView: View {
                 withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) { isEditing = true }
             } label: {
                 Text("编辑")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(palette.primaryText)
                     .padding(.horizontal, 14)
                     .frame(height: 44)
@@ -150,7 +150,7 @@ struct MenuPanelView: View {
                 onPerform(.settings)
             } label: {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(palette.primaryText)
                     .frame(width: 36, height: 36)
                     .background(palette.controlFill, in: Circle())
@@ -245,14 +245,14 @@ struct MenuPanelView: View {
     private var editingHeader: some View {
         HStack(spacing: BrowserSpacing.compact) {
             Text("编辑菜单")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
                 withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) { isEditing = false }
             } label: {
                 Text("完成")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(palette.onAccent)
                     .padding(.horizontal, 16)
                     .frame(height: 44)
@@ -269,7 +269,7 @@ struct MenuPanelView: View {
                 ForEach(layout.visibleTiles) { tile in
                     HStack(spacing: 12) {
                         Image(systemName: tile.symbolName)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                             .symbolRenderingMode(.monochrome)
                             .foregroundStyle(palette.primaryText)
                             .frame(width: 26)

@@ -122,7 +122,7 @@ struct OmniboxSearchPageView: View {
         .padding(.horizontal, BrowserChrome.sideInset)
         .browserFloatingChrome(
             radius: BrowserRadius.omnibox,
-            material: .regularMaterial,
+            material: .ultraThinMaterial,
             tintStrength: 0.35,
             elevation: .floating,
             interactive: false

@@ -61,7 +61,7 @@ struct OmniboxView: View {
             fieldContent
                 .browserFloatingChrome(
                     radius: BrowserRadius.omnibox,
-                    material: .thinMaterial,
+                    material: .ultraThinMaterial,
                     tintStrength: 0.32,
                     elevation: .card
                 )

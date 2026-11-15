@@ -101,6 +101,19 @@ struct AppearanceSettingsView: View {
                         Label("移除图片", systemImage: "trash")
                     }
                 }
+                if backgroundImageStamp == nil && env.settings.backgroundStyle != palette.visualStyle.recommendedBackground {
+                    Button {
+                        env.settings.backgroundStyle = palette.visualStyle.recommendedBackground
+                    } label: {
+                        HStack {
+                            Label("配套背景", systemImage: "sparkles")
+                            Spacer()
+                            Text(palette.visualStyle.recommendedBackground.displayName)
+                                .font(.footnote)
+                                .foregroundStyle(palette.secondaryText)
+                        }
+                    }
+                }
                 ForEach(BrowserBackgroundStyle.allCases) { style in
                     Button {
                         env.settings.backgroundStyle = style

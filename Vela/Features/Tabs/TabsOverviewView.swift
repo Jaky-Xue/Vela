@@ -128,9 +128,10 @@ struct TabsOverviewView: View {
         // overflow: `scaledToFill` answers with the size it would like to be,
         // and a background that told its container how big to be is exactly
         // the bug this layer used to be.
-        LinearGradient(colors: [palette.chromeBackground, palette.card, palette.chromeBackground],
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
-            .ignoresSafeArea()
+        ZStack {
+            AmbientBackgroundView()
+            AmbientSurfaceFill(opacity: palette.visualStyle.menuVeil)
+        }.ignoresSafeArea()
     }
 
     // MARK: - Content
@@ -554,6 +555,7 @@ struct TabsOverviewView: View {
 /// — the shape Safari's overview uses, which is what this one is modelled on.
 private struct TabCard: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.browserPalette) private var palette
 
     var tab: BrowserTabState
@@ -583,7 +585,9 @@ private struct TabCard: View {
 
                 closeButton
             }
-            .shadow(color: .black.opacity(0.09), radius: 12, y: 5)
+            .shadow(color: palette.visualStyle.resolvedElevation(.card).shadowColor(for: colorScheme),
+                    radius: palette.visualStyle.resolvedElevation(.card).radius,
+                    y: palette.visualStyle.resolvedElevation(.card).y)
 
             // A private card carries no caption. Its title and host are the
             // one part of the card a blur cannot cover — the picture is
@@ -653,9 +657,9 @@ private struct TabCard: View {
                     thumbnail.frame(width: geo.size.width, height: geo.size.height, alignment: .top).clipped()
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: palette.visualStyle.cardRadius, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                RoundedRectangle(cornerRadius: palette.visualStyle.cardRadius, style: .continuous)
                     .strokeBorder(
                         isActive ? palette.accent : palette.cardStroke,
                         lineWidth: isActive ? 2 : 0.5
@@ -863,10 +867,10 @@ private struct OverviewGlass<S: InsettableShape>: ViewModifier {
                 // The system's reduced-transparency setting must not turn the
                 // overview's controls into washed-out smears over the page
                 // print; a palette control fill keeps their silhouette.
-                if reduceTransparency {
-                    shape.fill(palette.controlFill)
+                if reduceTransparency || palette.visualStyle.surface == .paper {
+                    shape.fill(palette.card)
                 } else {
-                    shape.fill(.ultraThinMaterial)
+                    shape.fill(palette.visualStyle.cardMaterial)
                 }
             }
             .overlay {

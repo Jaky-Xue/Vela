@@ -306,6 +306,7 @@ struct SettingsView: View {
     ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
+                .symbolVariant(palette.visualStyle.icons == .filled ? .fill : .none)
                 .font(.system(size: 14, weight: .semibold))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(IconColorStyle.lineColor(for: icon))

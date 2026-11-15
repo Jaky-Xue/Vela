@@ -25,7 +25,7 @@ struct BrowserCardStyle: ViewModifier {
     /// silhouette and the same contrast without the blur.
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    var material: Material = .regularMaterial
+    var material: Material? = nil
     var radius: CGFloat = BrowserRadius.card
     var elevation: BrowserElevation = .card
     /// Drawn behind the material. A material over a white page washes out, so
@@ -34,24 +34,25 @@ struct BrowserCardStyle: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let style = palette.visualStyle
+        let resolvedRadius = radius == BrowserRadius.card ? style.cardRadius : radius
+        let resolvedElevation = style.resolvedElevation(elevation)
+        let shape = RoundedRectangle(cornerRadius: resolvedRadius, style: .continuous)
         content
             .background {
-                if reduceTransparency {
+                if reduceTransparency || style.surface == .paper {
                     shape.fill(palette.card)
                 } else {
-                    if let tint {
-                        shape.fill(tint)
-                    }
-                    shape.fill(material)
+                    shape.fill(tint ?? palette.card.opacity(style.cardOpacity(reduceTransparency: false)))
+                    shape.fill(material ?? style.cardMaterial)
                 }
             }
             .overlay(shape.strokeBorder(palette.cardStroke, lineWidth: 0.5))
             .clipShape(shape)
             .shadow(
-                color: elevation.shadowColor(for: colorScheme),
-                radius: elevation.radius,
-                y: elevation.y
+                color: resolvedElevation.shadowColor(for: colorScheme),
+                radius: resolvedElevation.radius,
+                y: resolvedElevation.y
             )
     }
 }
@@ -59,7 +60,7 @@ struct BrowserCardStyle: ViewModifier {
 extension View {
     /// Wraps the receiver in the shared raised-card treatment.
     func browserCard(
-        material: Material = .regularMaterial,
+        material: Material? = nil,
         radius: CGFloat = BrowserRadius.card,
         elevation: BrowserElevation = .card,
         tint: Color? = nil
@@ -78,6 +79,7 @@ extension View {
 /// rows keep a card fill so the grouped rhythm survives the change of surface.
 struct BrowserListSurface: ViewModifier {
     @Environment(\.browserPalette) private var palette
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     /// Whether the rows get a card fill of their own. Off for a plain list,
     /// where cards-in-a-list would be a third level of nesting.
@@ -94,7 +96,7 @@ struct BrowserListSurface: ViewModifier {
             }
             .toolbarBackground(palette.chromeBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            .listRowBackground(rowsAreCards ? palette.card : Color.clear)
+            .listRowBackground(rowsAreCards ? palette.card.opacity(palette.visualStyle.rowOpacity(reduceTransparency: reduceTransparency)) : Color.clear)
     }
 }
 
@@ -123,7 +125,8 @@ struct SettingsListStyle: ViewModifier {
             .listStyle(.insetGrouped)
             .browserListSurface()
             .tint(palette.accent)
-            .listSectionSpacing(16)
+            .listSectionSpacing(20)
+            .listRowSeparatorTint(palette.separator)
             .environment(\.defaultMinListRowHeight, 48)
             .textFieldStyle(.roundedBorder)
     }
@@ -144,10 +147,8 @@ extension View {
 /// On iOS 26 the fill is the system's own Liquid Glass — `glassEffect` — which
 /// refracts the page scrolling underneath it the way the rest of the system
 /// does. Earlier SDKs cannot express that call at all, so the same modifier
-/// carries a hand-built fallback: a tint under a blur material. The luminous
-/// sheen is layered on top in both paths, because the light-play is what makes
-/// the chrome read as one material family whether or not the system supplies
-/// the refraction.
+/// carries a light tint under a blur material. No opaque card sits underneath:
+/// the native material must sample the actual page to remain translucent.
 struct BrowserFloatingChrome: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.browserPalette) private var palette
@@ -155,8 +156,7 @@ struct BrowserFloatingChrome: ViewModifier {
 
     var radius: CGFloat
     var material: Material
-    /// How strongly the palette's control fill sits under the fallback material.
-    /// Unused on the iOS 26 path, where the system glass supplies its own body.
+    /// A light tint under the fallback material. Native glass supplies its own body.
     var tintStrength: Double
     var elevation: BrowserElevation
     /// Whether the glass responds to touch with the system's own highlight.
@@ -167,16 +167,14 @@ struct BrowserFloatingChrome: ViewModifier {
         #if compiler(>=6.2)
         if #available(iOS 26.0, *), !reduceTransparency {
             content
-                .background(shape.fill(palette.card.opacity(0.94)))
                 .glassEffect(
                     interactive ? Glass.regular.interactive() : Glass.regular,
                     in: shape
                 )
-                .luminousSheen(shape: shape)
                 .shadow(
-                    color: elevation.shadowColor(for: colorScheme),
-                    radius: elevation.radius,
-                    y: elevation.y
+                    color: palette.visualStyle.resolvedElevation(elevation).shadowColor(for: colorScheme),
+                    radius: palette.visualStyle.resolvedElevation(elevation).radius,
+                    y: palette.visualStyle.resolvedElevation(elevation).y
                 )
         } else {
             legacySurface(content, shape: shape)
@@ -194,18 +192,17 @@ struct BrowserFloatingChrome: ViewModifier {
                 if reduceTransparency {
                     shape.fill(palette.chromeBackground)
                 } else {
-                    shape.fill(palette.card.opacity(0.94))
-                    shape.fill(palette.controlFill.opacity(tintStrength))
+                    shape.fill(palette.chromeBackground.opacity(palette.visualStyle.chromeTint))
+                    shape.fill(palette.controlFill.opacity(tintStrength * 0.16))
                     shape.fill(material)
                 }
             }
-            .luminousSheen(shape: shape)
             .overlay(shape.strokeBorder(palette.cardStroke, lineWidth: 0.5))
             .clipShape(shape)
             .shadow(
-                color: elevation.shadowColor(for: colorScheme),
-                radius: elevation.radius,
-                y: elevation.y
+                color: palette.visualStyle.resolvedElevation(elevation).shadowColor(for: colorScheme),
+                radius: palette.visualStyle.resolvedElevation(elevation).radius,
+                y: palette.visualStyle.resolvedElevation(elevation).y
             )
     }
 }
