@@ -106,7 +106,10 @@ final class CompletionRegressionTests: XCTestCase {
         script.connectRules=["self"];try h.coordinator.userScripts.upsert(script)
         let tab=h.open(base.appendingPathComponent("page"));await waitForSettled(tab,expectingTitle:"Native networking")
         let web=try XCTUnwrap(h.tabManager.webView(for:tab.id))
-        try await wait("!!document.documentElement.dataset.first && !!document.documentElement.dataset.download && document.documentElement.dataset.uploaded==='OK'",web:web)
+        try await wait("!!document.documentElement.dataset.first",web:web)
+        let completedEarly = try await web.evaluateJavaScript("document.documentElement.dataset.streamDone || null")
+        XCTAssertTrue(completedEarly is NSNull)
+        try await wait("!!document.documentElement.dataset.download && document.documentElement.dataset.uploaded==='OK'",web:web)
         let rawID = try await web.evaluateJavaScript("document.documentElement.dataset.download")
         let id=try XCTUnwrap(rawID as? String)
         let saved=try XCTUnwrap(h.downloads.tasks.first{$0.guid==id})
@@ -115,6 +118,14 @@ final class CompletionRegressionTests: XCTestCase {
         XCTAssertEqual(try String(contentsOfFile:saved.destinationPath,encoding:.utf8),"download fixture")
         XCTAssertEqual(server.requestBody(for:"/upload"),Data([0,127,128,255]))
         try await wait("document.documentElement.dataset.streamDone==='yes'",web:web)
+    }
+
+    func testMixedDomainLanguageIncludesOnlyAllowedHosts() throws {
+        let source = try XCTUnwrap(AdBlockRuleCompiler.domainScopeURLFilter(including:["*example.com"],excluding:["*shop.example.com","*ads.news.example.com"]))
+        let regex = try NSRegularExpression(pattern:source)
+        func matches(_ url: String) -> Bool { regex.firstMatch(in:url,range:NSRange(url.startIndex..<url.endIndex,in:url)) != nil }
+        for host in ["example.com","a.example.com","shopper.example.com","news.example.com","safe.news.example.com"] { XCTAssertTrue(matches("https://"+host+"/path"),host) }
+        for host in ["shop.example.com","x.shop.example.com","ads.news.example.com","x.ads.news.example.com","otherexample.com"] { XCTAssertFalse(matches("https://"+host+"/path"),host) }
     }
 
     func testIncludeExpansionIsBoundedAndRejectsCycles() async throws {

@@ -166,7 +166,7 @@ struct MenuPanelView: View {
         let enabled = canActOnPage || !tile.requiresPage
         // The two switches draw their state on the tile: a filled accent
         // square and its inverted glyph, with no badge to read around.
-        let isModeOn = (tile.action == .privateTab && isPrivateBrowsingOn)
+        let isModeOn = (tile.action == .privateTab && isPrivateMode)
             || (tile.action == .desktopSite && isDesktopSiteOn)
         let symbol = tile.symbolName
         return Button {

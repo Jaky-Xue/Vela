@@ -174,10 +174,10 @@ public enum AdBlockRuleCompiler {
         var sourceLine = 0
         for rawLine in lines {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
-            guard !line.isEmpty else { continue }
             if line.hasPrefix("! Source: ") { diagnosticSource = String(line.dropFirst(10)); sourceLine = 0; continue }
             if line.hasPrefix("! Line: "), let number = Int(line.dropFirst(8)) { sourceLine = number - 1; continue }
             sourceLine += 1
+            guard !line.isEmpty else { continue }
             let invalidBefore = result.invalidRuleCount
             let before = result.unsupportedRuleCount + result.invalidRuleCount
             defer {
@@ -306,6 +306,68 @@ public enum AdBlockRuleCompiler {
             let children = domains.filter { $0 != host && parent($0) == host }.map { "*" + $0 }.sorted()
             return ContentBlockerRule(trigger: .init(urlFilter: domainURLFilter(host.isEmpty ? [] : [host]), unlessDomain: children.isEmpty ? nil : children), action: .hide(selector: selector))
         }
+    }
+
+    private final class DomainTrie {
+        var terminal = false
+        var children: [String: DomainTrie] = [:]
+    }
+    /// WebKit permits exactly ONE scope condition. Generate a positive URL language
+    /// for include-minus-exclude instead of combining mutually exclusive fields.
+    static func domainScopeURLFilter(including included: [String], excluding excluded: [String]) -> String? {
+        func normalized(_ host: String) -> String { String(host.drop(while: { $0 == "*" })).lowercased() }
+        let includes = Set(included.map(normalized)), excludes = Set(excluded.map(normalized))
+        func within(_ host: String, _ root: String) -> Bool { host == root || host.hasSuffix("." + root) }
+        let alphabet = Array("abcdefghijklmnopqrstuvwxyz0123456789_-").map(String.init)
+        // A label language excluding a finite set, expressed without lookaround.
+        func otherLabels(_ forbidden: [String]) -> String {
+            let trie = DomainTrie()
+            for word in forbidden {
+                var node = trie
+                for character in word.map(String.init) {
+                    if node.children[character] == nil { node.children[character] = DomainTrie() }
+                    node = node.children[character]!
+                }
+                node.terminal = true
+            }
+            func visit(_ node: DomainTrie, prefix: String) -> [String] {
+                var alternatives: [String] = []
+                if !prefix.isEmpty && !node.terminal { alternatives.append(prefix) }
+                let rest = alphabet.filter { node.children[$0] == nil }.map { $0 == "-" ? "\\-" : $0 }.joined()
+                if !rest.isEmpty { alternatives.append(prefix + "[" + rest + "][a-z0-9_-]*") }
+                for key in node.children.keys.sorted() { alternatives += visit(node.children[key]!, prefix: prefix + key) }
+                return alternatives
+            }
+            return "(" + visit(trie, prefix: "").joined(separator: "|") + ")"
+        }
+        var alternatives: [String] = []
+        for root in includes.sorted() {
+            if includes.contains(where: { $0 != root && within(root, $0) }) { continue }
+            if excludes.contains(where: { within(root, $0) }) { continue }
+            let trie = DomainTrie()
+            for host in excludes where within(host, root) {
+                let prefix = String(host.dropLast(root.count + 1))
+                var node = trie
+                for label in prefix.split(separator: ".").reversed().map(String.init) {
+                    if node.children[label] == nil { node.children[label] = DomainTrie() }
+                    node = node.children[label]!
+                }
+                node.terminal = true
+            }
+            func visit(_ node: DomainTrie, host: String) -> [String] {
+                guard !node.terminal else { return [] }
+                let escaped = NSRegularExpression.escapedPattern(for: host)
+                if node.children.isEmpty { return ["([a-z0-9_-]+\\.)*" + escaped] }
+                var patterns = [escaped, "([a-z0-9_-]+\\.)*" + otherLabels(Array(node.children.keys)) + "\\." + escaped]
+                for key in node.children.keys.sorted() { patterns += visit(node.children[key]!, host: key + "." + host) }
+                return patterns
+            }
+            alternatives += visit(trie, host: root)
+        }
+        guard !alternatives.isEmpty else { return "^$" }
+        let result = "^https?://([^/@]+@)?(" + alternatives.joined(separator: "|") + ")[:/]"
+        guard result.utf8.count <= 32_768, isAcceptable(result) else { return nil }
+        return result
     }
 
     private enum CosmeticOutcome {
@@ -447,6 +509,9 @@ public enum AdBlockRuleCompiler {
             return .invalid
         }
 
+        let mixedScope = !parsedOptions.includeDomains.isEmpty && !parsedOptions.excludeDomains.isEmpty
+        let scopeFilter = mixedScope ? domainScopeURLFilter(including: parsedOptions.includeDomains, excluding: parsedOptions.excludeDomains) : nil
+        if mixedScope && scopeFilter == nil { return .unsupported }
         let action: ContentBlockerRule.Action = isException
             ? .ignorePreviousRules
             : .block
@@ -454,8 +519,8 @@ public enum AdBlockRuleCompiler {
         let trigger = ContentBlockerRule.Trigger(
             urlFilter: urlFilter,
             ifDomain: parsedOptions.includeDomains.isEmpty || !parsedOptions.excludeDomains.isEmpty ? nil : parsedOptions.includeDomains,
-            ifTopURL: !parsedOptions.includeDomains.isEmpty && !parsedOptions.excludeDomains.isEmpty ? [domainURLFilter(parsedOptions.includeDomains)] : nil,
-            unlessDomain: parsedOptions.excludeDomains.isEmpty ? nil : parsedOptions.excludeDomains,
+            ifTopURL: scopeFilter.map { [$0] },
+            unlessDomain: mixedScope || parsedOptions.excludeDomains.isEmpty ? nil : parsedOptions.excludeDomains,
             resourceType: parsedOptions.resourceTypes.isEmpty ? nil : parsedOptions.resourceTypes,
             loadType: parsedOptions.loadType,
             urlFilterIsCaseSensitive: parsedOptions.matchCase

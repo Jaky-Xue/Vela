@@ -347,7 +347,7 @@ public final class AppEnvironment {
     /// `setPrivateBrowsingMode` remains for internal state transitions that
     /// cannot prompt (boot, session end).
     public func requestPrivateBrowsingToggle() async {
-        let turningOn = !(settings.preferences.privateBrowsingMode ?? false)
+        let turningOn = currentPrivacyMode != .private
         if turningOn {
             switch await requestPrivateAccess(reason: "进入无痕模式") {
             case .granted:
