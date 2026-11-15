@@ -1,0 +1,16 @@
+{
+  "commit": "4e8f5a292fe5d216e13396508498eacaa40ec36e",
+  "run": "43690926700",
+  "kind": "tests-iPhone",
+  "workflow": "https://github.com/Jaky-Xue/Vela/actions/runs/43690926700",
+  "tests": 377,
+  "testExecutions": 379,
+  "retriedTests": [
+    "-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]"
+  ],
+  "failedAttempts": 3,
+  "finalFailures": [
+    "-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]"
+  ],
+  "testGate": "failure"
+}
