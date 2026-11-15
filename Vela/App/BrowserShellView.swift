@@ -65,6 +65,8 @@ struct BrowserShellView: View {
     /// would throw away the user's collapsed-section choices on each one.
     @State var omnibox: OmniboxViewModel
 
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @State var showSiteCapabilities = false
     @State var showTabsOverview = false
     /// A print of the real home surface taken before the overview covers it.
     /// The home is native SwiftUI, so it has no web view to photograph; this
@@ -443,11 +445,11 @@ struct BrowserShellView: View {
                         homePreviewTabId = nil
                     }
                 )
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
                 .zIndex(20)
             }
         }
-        .animation(.snappy(duration: 0.3), value: showTabsOverview)
+        .animation(BrowserMotion.overview(reduceMotion), value: showTabsOverview)
         .overlay {
             // The scanner rides the same in-hierarchy rule the overview does:
             // a presented controller's geometry is the thing that wedges on

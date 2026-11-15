@@ -234,7 +234,8 @@ extension BrowserShellView {
                     guard let tab = activeTab else { return }
                     tabManager.stopLoading(tab: tab)
                 },
-                foregroundOverride: barForeground
+                foregroundOverride: barForeground,
+                onSiteInfo: { showSiteCapabilities = true }
             )
             .frame(maxWidth: .infinity)
 
@@ -323,7 +324,7 @@ extension BrowserShellView {
             homePreview = print
             homePreviewTabId = tab.id
         }
-        withAnimation(.snappy(duration: 0.3)) {
+        withAnimation(BrowserMotion.overview(reduceMotion)) {
             showTabsOverview = true
         }
     }

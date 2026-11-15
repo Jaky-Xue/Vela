@@ -58,6 +58,7 @@ public final class BrowserWebCoordinator: NSObject {
     var userScriptTabStates: [String: String] = [:]
     /// Fresh isolated world per script and navigation; old documents lose authority.
     var userScriptWorlds: [String: String] = [:]
+    var userScriptFrames: [String: WKFrameInfo] = [:]
     var userScriptVersions: [String: Date] = [:]
     var userScriptCommandFrames: [String: WKFrameInfo] = [:]
     @ObservationIgnored private let userScriptValueObserver = UserScriptValueObserver()
@@ -178,6 +179,7 @@ public final class BrowserWebCoordinator: NSObject {
         userScriptWorlds = userScriptWorlds.filter { !$0.key.hasPrefix(prefix) }
         userScriptVersions = userScriptVersions.filter { !$0.key.hasPrefix(prefix) }
         userScriptCommandFrames = userScriptCommandFrames.filter { !$0.key.hasPrefix(prefix) }
+        userScriptFrames = userScriptFrames.filter { !$0.key.hasPrefix(prefix) }
         overlays.userScriptRuntimeErrors = overlays.userScriptRuntimeErrors.filter { !$0.key.hasPrefix(prefix) }
         userScriptTabStates.removeValue(forKey: tab.id)
         history.clearTabChain(tabId: tab.id)
@@ -743,13 +745,14 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         }
         overlays.userScriptRuntimeErrors = overlays.userScriptRuntimeErrors.filter { !$0.key.hasPrefix(tab.id + "|") }
         userScriptCommandFrames = userScriptCommandFrames.filter { !$0.key.hasPrefix(tab.id + "|") }
+        userScriptFrames = userScriptFrames.filter { !$0.key.hasPrefix(tab.id + "|") }
         // User scripts belong to this page, so the match is recomputed here,
         // for this URL, on every navigation.
         if settings.preferences.userScriptsEnabled,
            tab.privacyMode != .private,
            let pageURL = url {
             let installed = (try? userScripts.enabledScripts()) ?? []
-            let matching = UserScriptMatcher.matchingScripts(in: installed, url: pageURL)
+            let matching = installed.sorted { $0.createdAt < $1.createdAt }
             if !matching.isEmpty {
                 var values: [String: [String: String]] = [:]
                 var revisions: [String: Int] = [:]
@@ -774,7 +777,8 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                     valuesByScriptId: values,
                     tabId: tab.id,
                     worldsByScriptId: worlds,
-                    revisionsByScriptId: revisions
+                    revisionsByScriptId: revisions,
+                    requiresNativeAuthorization: true
                 )
                 for script in built.scripts {
                     controller.addUserScript(script)

@@ -43,6 +43,7 @@ struct TabsOverviewView: View {
     /// out down here.
     var onClose: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showPrivateTabs = false
     @State private var didSyncMode = false
     @State private var pendingPrivateUnlock = false
@@ -125,7 +126,6 @@ struct TabsOverviewView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background { backgroundLayer }
-        .environment(\.colorScheme, .dark)
         .task { await prepare() }
         .sheet(isPresented: $pendingPrivateUnlock) {
             PrivateUnlockSheet(
@@ -155,28 +155,9 @@ struct TabsOverviewView: View {
         // overflow: `scaledToFill` answers with the size it would like to be,
         // and a background that told its container how big to be is exactly
         // the bug this layer used to be.
-        GeometryReader { geo in
-            ZStack {
-                if let backgroundPrint {
-                    Image(uiImage: backgroundPrint)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .blur(radius: 32)
-                        .overlay(palette.chromeBackground.opacity(0.72))
-                        .scaleEffect(1.2)
-                        .clipped()
-                } else {
-                    // No page to print: the app's own background is the
-                    // backdrop, so the overview reads as the same place pulled
-                    // back rather than as a flat sheet of colour.
-                    AmbientBackgroundView()
-                }
-            }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .clipped()
-        }
-        .ignoresSafeArea()
+        LinearGradient(colors: [palette.chromeBackground, palette.surface, palette.accent.opacity(0.07)],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+            .ignoresSafeArea()
     }
 
     // MARK: - Content
@@ -222,7 +203,7 @@ struct TabsOverviewView: View {
         Image(systemName: systemName)
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(palette.primaryText)
-            .frame(width: 36, height: 36)
+            .frame(width: 44, height: 44)
             .overviewGlass(Circle())
     }
 
@@ -242,7 +223,7 @@ struct TabsOverviewView: View {
             .disabled(tabManager.recentlyClosed.allSatisfy { $0.privacyMode != currentMode })
 
             Button(role: .destructive) {
-                withAnimation(.snappy(duration: 0.25)) {
+                withAnimation(BrowserMotion.layout(reduceMotion)) {
                     tabManager.closeAllTabs(privacyMode: currentMode)
                 }
             } label: {
@@ -252,7 +233,7 @@ struct TabsOverviewView: View {
         } label: {
             HamburgerGlyph(width: 15, thickness: 1.8, spacing: 3.6)
                 .foregroundStyle(palette.primaryText)
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44)
                 .overviewGlass(Circle())
         }
         .accessibilityLabel("标签页操作")
@@ -264,7 +245,7 @@ struct TabsOverviewView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(palette.primaryText)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -272,12 +253,12 @@ struct TabsOverviewView: View {
 
             Button {
                 if isSearching {
-                    withAnimation(.snappy(duration: 0.2)) {
+                    withAnimation(BrowserMotion.layout(reduceMotion)) {
                         isSearching = false
                     }
                     searchQuery = ""
                 } else {
-                    withAnimation(.snappy(duration: 0.2)) {
+                    withAnimation(BrowserMotion.layout(reduceMotion)) {
                         isSearching = true
                     }
                     // The field has to exist before it can take focus, so the
@@ -288,7 +269,7 @@ struct TabsOverviewView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(isSearching ? palette.accent : palette.primaryText)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .background(palette.accent.opacity(isSearching ? 0.2 : 0), in: Circle())
                     .contentShape(Circle())
             }
@@ -301,7 +282,7 @@ struct TabsOverviewView: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(palette.onAccent)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .background(palette.accent, in: Circle())
             }
             .buttonStyle(.plain)
@@ -369,7 +350,7 @@ struct TabsOverviewView: View {
 
     private func switchMode(to isPrivate: Bool) {
         guard isPrivate != showPrivateTabs else { return }
-        withAnimation(.snappy(duration: 0.25)) {
+        withAnimation(BrowserMotion.layout(reduceMotion)) {
             showPrivateTabs = isPrivate
             // The search was over one mode's tabs; the other mode starts
             // unfiltered and with the field closed.
@@ -413,7 +394,7 @@ struct TabsOverviewView: View {
             .overviewGlass(Capsule())
 
             Button {
-                withAnimation(.snappy(duration: 0.2)) {
+                withAnimation(BrowserMotion.layout(reduceMotion)) {
                     isSearching = false
                     searchQuery = ""
                 }
@@ -464,7 +445,7 @@ struct TabsOverviewView: View {
                             tabManager.setPinned(false, id: tab.id)
                         }
                         Button("关闭标签页", systemImage: "xmark", role: .destructive) {
-                            withAnimation(.snappy(duration: 0.25)) {
+                            withAnimation(BrowserMotion.layout(reduceMotion)) {
                                 tabManager.closeTab(id: tab.id)
                             }
                         }
@@ -494,10 +475,8 @@ struct TabsOverviewView: View {
             let bucket = Int((aspect * 100).rounded())
 
             ScrollView {
-                VStack(spacing: BrowserSpacing.loose) {
-                    ForEach(gridRows(count: count)) { row in
-                        HStack(alignment: .top, spacing: BrowserSpacing.loose) {
-                            ForEach(row.tabs) { tab in
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: BrowserSpacing.regular), count: count), spacing: 24) {
+                    ForEach(unpinnedTabs) { tab in
                                 TabCard(
                                     tab: tab,
                                     aspect: aspect,
@@ -507,7 +486,7 @@ struct TabsOverviewView: View {
                                     homePreview: tab.id == homePreviewTabId ? homePreview : nil,
                                     onSelect: { activate(tab) },
                                     onClose: {
-                                        withAnimation(.snappy(duration: 0.25)) {
+                                        withAnimation(BrowserMotion.layout(reduceMotion)) {
                                             tabManager.closeTab(id: tab.id)
                                         }
                                     },
@@ -515,19 +494,10 @@ struct TabsOverviewView: View {
                                         tabManager.setPinned(!tab.pinned, id: tab.id)
                                     }
                                 )
-                                .frame(maxWidth: .infinity)
-                            }
-                            // The tail row's empty slots, so its cards keep
-                            // the width a full row would give them instead of
-                            // stretching wide across the leftover space.
-                            ForEach(0..<max(0, count - row.tabs.count), id: \.self) { _ in
-                                Color.clear
-                                    .frame(height: 0)
-                                    .frame(maxWidth: .infinity)
-                            }
-                        }
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.92)))
                     }
                 }
+                .animation(BrowserMotion.layout(reduceMotion), value: unpinnedTabs.map(\.id))
                 .padding(.horizontal, BrowserSpacing.regular + 4)
                 .padding(.top, BrowserSpacing.regular - 6)
                 .padding(.bottom, BrowserSpacing.loose)
@@ -663,7 +633,7 @@ private struct TabCard: View {
 
                 closeButton
             }
-            .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
+            .shadow(color: .black.opacity(0.09), radius: 12, y: 5)
 
             // A private card carries no caption. Its title and host are the
             // one part of the card a blur cannot cover — the picture is
@@ -704,7 +674,10 @@ private struct TabCard: View {
             if snapshot == nil {
                 snapshot = await env.tabManager.previewImage(for: tab.id)
             }
-            snapshot = await takeSnapshot()
+            // Let the overview finish its entrance before requesting a fresh WebKit print.
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            if let fresh = await takeSnapshot(), !Task.isCancelled { snapshot = fresh }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tab.displayTitle)
@@ -728,7 +701,7 @@ private struct TabCard: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .strokeBorder(
-                        isActive ? palette.accent : .white.opacity(0.16),
+                        isActive ? palette.accent : palette.cardStroke,
                         lineWidth: isActive ? 2 : 0.5
                     )
                     .allowsHitTesting(false)
@@ -810,11 +783,12 @@ private struct TabCard: View {
         Button(action: onClose) {
             Image(systemName: "xmark")
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white.opacity(0.92))
-                .frame(width: 27, height: 27)
-                .background(Color(white: 0.14).opacity(0.92), in: Circle())
+                .foregroundStyle(palette.primaryText)
+                .frame(width: 30, height: 30)
+                .background(palette.card, in: Circle())
+                .frame(width: 44, height: 44)
                 .overlay {
-                    Circle().strokeBorder(.white.opacity(0.22), lineWidth: 0.5)
+                    Circle().strokeBorder(palette.cardStroke, lineWidth: 0.5)
                 }
                 .contentShape(Circle())
         }
@@ -940,7 +914,7 @@ private struct OverviewGlass<S: InsettableShape>: ViewModifier {
             }
             .overlay {
                 shape.strokeBorder(
-                    reduceTransparency ? palette.cardStroke : .white.opacity(0.16),
+                    palette.cardStroke,
                     lineWidth: 0.5
                 )
                 .allowsHitTesting(false)

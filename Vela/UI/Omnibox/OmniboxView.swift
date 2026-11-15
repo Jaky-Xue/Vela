@@ -37,6 +37,7 @@ struct OmniboxView: View {
     /// `nil` keeps the palette's own colours, which is what every surface that
     /// owns its backdrop wants.
     var foregroundOverride: Color? = nil
+    var onSiteInfo: (() -> Void)? = nil
     /// Whether the field draws its own glass pill.
     ///
     /// The phone bar gives the omnibox its own capsule between two button
@@ -76,7 +77,9 @@ struct OmniboxView: View {
 
     private var fieldContent: some View {
         HStack(spacing: BrowserSpacing.tight) {
-            securityBadge
+            Button { onSiteInfo?() } label: { securityBadge.frame(width: 44, height: 44).contentShape(Rectangle()) }
+                .buttonStyle(.plain).disabled(viewModel.currentPageUrl.isEmpty)
+                .accessibilityLabel("站点详情")
 
             fieldArea
 
@@ -299,6 +302,7 @@ struct OmniboxTextField: UIViewRepresentable {
     /// The field's ink when the caller knows the backdrop; `nil` keeps the
     /// palette's own.
     var foregroundOverride: Color? = nil
+    var onSiteInfo: (() -> Void)? = nil
 
     func makeUIView(context: Context) -> OmniboxUITextField {
         let field = OmniboxUITextField()

@@ -364,9 +364,6 @@ struct NewTabHomeView: View {
             // the row left a wide screen with a shelf floating in the middle
             // of it, away from the 收藏 heading it belongs to.
             VStack(alignment: .leading, spacing: tileSpacing) {
-                if !isPrivate && favorites.count > 1 {
-                    Text("长按拖动，交换位置").font(.caption).foregroundStyle(homeSecondaryText)
-                }
                 if favorites.isEmpty {
                     Text("还没有收藏。点右上角的 + 添加。")
                         .font(.footnote)
@@ -447,7 +444,6 @@ struct NewTabHomeView: View {
             }
             return swapped
         }
-        .accessibilityHint(isPrivate ? "" : "长按拖动到另一图标可交换位置")
         .contextMenu {
             Button("在新标签页打开", systemImage: "plus.square.on.square") {
                 guard let url = BrowserUrlResolver.storedUrl(favorite.url) else { return }

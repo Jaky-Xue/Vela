@@ -235,7 +235,8 @@ extension BrowserShellView {
                         guard let tab = activeTab else { return }
                         tabManager.stopLoading(tab: tab)
                     },
-                    foregroundOverride: padInk
+                    foregroundOverride: padInk,
+                onSiteInfo: { showSiteCapabilities = true }
                 )
                 .frame(width: fieldWidth)
 

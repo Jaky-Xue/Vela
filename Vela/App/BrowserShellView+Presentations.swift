@@ -13,6 +13,11 @@ import WebKit
 extension BrowserShellView {
     func presentations() -> some View {
         shellRoot
+        .sheet(isPresented: $showSiteCapabilities) {
+            if let tab = activeTab {
+                NavigationStack { SiteCapabilitiesView(tab: tab) }.environment(env).browserAmbientSheet()
+            }
+        }
         .sheet(isPresented: $showBookmarks) {
             NavigationStack { BookmarksView() }
                 .environment(env)
@@ -110,12 +115,7 @@ extension BrowserShellView {
                 },
                 pageTitle: menuPanelTitle,
                 onPerform: handleMenuAction,
-                onOpenShortcut: handleMenuShortcut,
-                scriptCommands: env.overlays.userScriptMenuCommands.filter { $0.tabId == activeTab?.id },
-                onRunScriptCommand: { command in
-                    env.webCoordinator.runUserScriptMenuCommand(command)
-                    showMenu = false
-                }
+                onOpenShortcut: handleMenuShortcut
             )
             .environment(env)
             .browserAmbientSheet()

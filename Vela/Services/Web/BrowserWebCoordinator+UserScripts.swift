@@ -18,20 +18,53 @@ extension BrowserWebCoordinator {
               let scriptId = payload["scriptId"] as? String else { return }
         let contextKey = tab.id + "|" + scriptId
         guard settings.preferences.userScriptsEnabled, tab.privacyMode != .private,
-              message.frameInfo.isMainFrame,
+              (message.frameInfo.isMainFrame || !((try? userScripts.script(id: scriptId))?.noframes ?? true)),
               let world = userScriptWorlds[contextKey], message.world.name == world,
               let script = try? userScripts.script(id: scriptId),
               script.updatedAt == userScriptVersions[contextKey],
               let frameURL = message.frameInfo.request.url,
               UserScriptMatcher.matches(script, url: frameURL)
         else { return }
+        guard let token = payload["documentToken"] as? String, UUID(uuidString: token) != nil else { return }
+        let frame = message.frameInfo
+        let frameKey = contextKey + "|" + token
+        if type == "authorize" {
+            userScriptFrames[frameKey] = frame
+            let start = "if(window.__velaDocument === \(jsonLiteral(token))) { window.__velaStart(\(jsonLiteral(token))); }"
+            webView.evaluateJavaScript(start, in: frame, in: .world(name: world)) { _ in }
+            return
+        }
+        guard userScriptFrames[frameKey] != nil else { return }
         if let requestId = payload["requestId"] as? String,
-           !requestId.hasPrefix(world + "|") { return }
+           !requestId.hasPrefix(world + "|" + token + "|") { return }
+        let probe = "JSON.stringify([window.__velaDocument,location.href])"
+        webView.evaluateJavaScript(probe, in: frame, in: .world(name: world)) { [weak self, weak webView] result in
+            guard let self, let webView, case let .success(value) = result,
+                  let raw = value as? String, let data = raw.data(using: .utf8),
+                  let current = try? JSONDecoder().decode([String].self, from: data), current.count == 2,
+                  current[0] == token, let currentURL = URL(string: current[1]),
+                  self.userScriptWorlds[contextKey] == world,
+                  self.settings.preferences.userScriptsEnabled,
+                  let live = try? self.userScripts.script(id: scriptId), live.enabled,
+                  live.updatedAt == self.userScriptVersions[contextKey],
+                  UserScriptMatcher.matches(live, url: currentURL),
+                  self.tab(for: webView)?.privacyMode != .private else { return }
+            payload["_world"] = world
+            self.dispatchUserScriptMessage(payload, script: live, origin: currentURL, tab: tab, webView: webView, frame: frame)
+        }
+    }
+
+    private func dispatchUserScriptMessage(_ original: [String: Any], script: InstalledUserScriptState, origin frameURL: URL,
+                                          tab: BrowserTabState, webView: WKWebView, frame: WKFrameInfo) {
+        var payload = original
+        guard let type = payload["type"] as? String, let scriptId = payload["scriptId"] as? String,
+              let world = payload["_world"] as? String else { return }
+        let contextKey = tab.id + "|" + scriptId
         guard UserScriptNativePolicy.allows(type: type, payload: payload, script: script, origin: frameURL) else {
             if let requestId = payload["requestId"] as? String {
                 resolveUserScript(scriptId: scriptId, requestId: requestId,
                                   payload: ["error": "脚本未获准执行该操作或访问目标域名"],
-                                  in: webView, frame: message.frameInfo)
+                                  in: webView, frame: frame)
             }
             return
         }
@@ -41,7 +74,6 @@ extension BrowserWebCoordinator {
         // main frame, so a request a script made inside an iframe was answered
         // into a table that never held it, and the caller waited forever.
         payload["_world"] = world
-        let frame = message.frameInfo
 
         switch type {
         case "getValue", "getValues", "listValues":
@@ -73,8 +105,8 @@ extension BrowserWebCoordinator {
             do {
                 if type == "setValue" {
                     guard let value = payload["value"] as? String else { throw FilterError.invalid("GM 值必须能被 JSON 编码") }
-                    response["revision"] = try userScripts.setValue(value, key: key, scriptId: scriptId, origin: world)
-                } else { response["revision"] = try userScripts.removeValue(key: key, scriptId: scriptId, origin: world) }
+                    response["revision"] = try userScripts.setValue(value, key: key, scriptId: scriptId, origin: world + "|" + (payload["documentToken"] as? String ?? ""))
+                } else { response["revision"] = try userScripts.removeValue(key: key, scriptId: scriptId, origin: world + "|" + (payload["documentToken"] as? String ?? "")) }
             } catch {
                 response = ["error": error.localizedDescription]
                 overlays.userScriptRuntimeErrors[contextKey] = "存储失败：" + error.localizedDescription
@@ -192,14 +224,16 @@ extension BrowserWebCoordinator {
                                   origin: String, removed: Bool, reset: Bool, revision: Int) {
         guard settings.preferences.userScriptsEnabled,
               let installed = try? userScripts.script(id: scriptId), installed.enabled else { return }
-        let suffix = "|" + scriptId
-        for (context, world) in userScriptWorlds where context.hasSuffix(suffix) && world != origin {
-            let tabId = String(context.dropLast(suffix.count))
-            guard let web = webView(for: tabId), let tab = tab(for: web), tab.privacyMode != .private,
+        for (frameKey, frame) in userScriptFrames {
+            let parts = frameKey.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 3, parts[1] == scriptId else { continue }
+            let context = parts[0] + "|" + scriptId
+            guard let world = userScriptWorlds[context], world + "|" + parts[2] != origin,
+                  let web = webView(for: parts[0]), let tab = tab(for: web), tab.privacyMode != .private,
                   installed.updatedAt == userScriptVersions[context],
-                  let url = web.url, UserScriptMatcher.matches(installed, url: url) else { continue }
-            let source = "window.__velaUserScriptBridge && window.__velaUserScriptBridge.applyValue && window.__velaUserScriptBridge.applyValue(\(jsonLiteral(key)), \(jsonLiteral(value)), \(removed ? "true" : "false"), \(reset ? "true" : "false"), \(revision), true);"
-            web.evaluateJavaScript(source, in: nil, in: .world(name: world)) { _ in }
+                  let url = frame.request.url, UserScriptMatcher.matches(installed, url: url) else { continue }
+            let source = "if(window.__velaDocument === \(jsonLiteral(parts[2]))) { window.__velaUserScriptBridge && window.__velaUserScriptBridge.applyValue && window.__velaUserScriptBridge.applyValue(\(jsonLiteral(key)), \(jsonLiteral(value)), \(removed ? "true" : "false"), \(reset ? "true" : "false"), \(revision), true); }"
+            web.evaluateJavaScript(source, in: frame, in: .world(name: world)) { _ in }
         }
     }
 
@@ -231,7 +265,7 @@ extension BrowserWebCoordinator {
               requestId.hasPrefix(world + "|"),
               let installed = try? userScripts.script(id: scriptId), installed.enabled,
               installed.updatedAt == userScriptVersions[tab.id + "|" + scriptId],
-              let currentURL = webView.url, UserScriptMatcher.matches(installed, url: currentURL) else { return }
+              let currentURL = frame.request.url, UserScriptMatcher.matches(installed, url: currentURL) else { return }
         webView.evaluateJavaScript(script, in: frame, in: .world(name: world)) { _ in }
     }
 
@@ -255,7 +289,7 @@ extension BrowserWebCoordinator {
               requestId.hasPrefix(world + "|"),
               let installed = try? userScripts.script(id: scriptId), installed.enabled,
               installed.updatedAt == userScriptVersions[tab.id + "|" + scriptId],
-              let currentURL = webView.url, UserScriptMatcher.matches(installed, url: currentURL) else { return }
+              let currentURL = frame.request.url, UserScriptMatcher.matches(installed, url: currentURL) else { return }
         webView.evaluateJavaScript(script, in: frame, in: .world(name: world)) { _ in }
     }
 
@@ -737,6 +771,18 @@ extension BrowserWebCoordinator {
         return value
     }
 
+    public func runMenuScript(id: String, tabId: String) {
+        guard settings.preferences.userScriptsEnabled, let installed = try? userScripts.script(id: id),
+              installed.enabled, !installed.runAt.injectsOnLoad, let target = webView(for: tabId),
+              tab(for: target)?.privacyMode != .private,
+              let world = userScriptWorlds[tabId + "|" + id], installed.updatedAt == userScriptVersions[tabId + "|" + id] else { return }
+        for (key, frame) in userScriptFrames where key.hasPrefix(tabId + "|" + id + "|") {
+            guard let url = frame.request.url, UserScriptMatcher.matches(installed, url: url) else { continue }
+            let token = String(key.split(separator: "|").last ?? "")
+            target.evaluateJavaScript("if(window.__velaDocument === \(jsonLiteral(token))) { window.__velaUserScriptBridge?.runMenuScript?.(); }", in: frame, in: .world(name: world)) { _ in }
+        }
+    }
+
     /// Runs a menu command a page's script registered.
     public func runUserScriptMenuCommand(_ command: UserScriptMenuCommand) {
         guard let target = webView(for: command.tabId) else { return }
@@ -752,8 +798,10 @@ extension BrowserWebCoordinator {
               installed.updatedAt == userScriptVersions[key],
               let world = userScriptWorlds[key],
               let frame = userScriptCommandFrames[key + "|" + command.commandId],
-              let url = target.url, UserScriptMatcher.matches(installed, url: url) else { return }
-        target.evaluateJavaScript(script, in: frame, in: .world(name: world)) { _ in }
+              let url = frame.request.url, UserScriptMatcher.matches(installed, url: url) else { return }
+        let parts = command.commandId.split(separator: "|")
+        guard parts.count >= 3 else { return }
+        target.evaluateJavaScript("if(window.__velaDocument === \(jsonLiteral(String(parts[1])))) { \(script) }", in: frame, in: .world(name: world)) { _ in }
     }
 
 }

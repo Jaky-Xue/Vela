@@ -44,13 +44,14 @@ public enum UserScriptInjector {
         valuesByScriptId: [String: [String: String]],
         tabId: String = "",
         worldsByScriptId: [String: String] = [:],
-        revisionsByScriptId: [String: Int] = [:]
+        revisionsByScriptId: [String: Int] = [:],
+        requiresNativeAuthorization: Bool = false
     ) -> (scripts: [WKUserScript], summary: UserScriptInjectionSummary) {
         var built: [WKUserScript] = []
         let failed: [String] = []
 
         for script in scripts {
-            guard script.runAt.injectsOnLoad, script.requireSources.count == script.requireUrls.count,
+            guard script.requireSources.count == script.requireUrls.count,
                   !script.requireSources.contains(""), script.resources.count == script.resourceDeclarations.count else { continue }
 
             let values = valuesByScriptId[script.id] ?? [:]
@@ -68,9 +69,21 @@ public enum UserScriptInjector {
             // A `@noframes` script runs in the top frame only. WebKit decides
             // this per frame, so the flag is passed as a comment the bootstrap
             // checks against `window.top`.
-            let wrapper = script.noframes
+            let ungated = script.noframes
                 ? "if (window.top === window) {\n\(source)\n}"
                 : source
+            let wrapper = requiresNativeAuthorization ? """
+            (function () {
+              if (window.__velaDocument) return;
+              window.__velaDocument = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function(c) { return (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16); });
+              window.__velaStart = function (token) {
+                if (token !== window.__velaDocument || window.__velaStarted) return;
+                window.__velaStarted = true;
+                \(ungated)
+              };
+              window.webkit.messageHandlers.velaUserScript.postMessage({type:'authorize', scriptId:\(jsonString(script.id)), documentToken:window.__velaDocument});
+            })();
+            """ : ungated
 
             built.append(
                 WKUserScript(
@@ -78,7 +91,7 @@ public enum UserScriptInjector {
                     injectionTime: injectionTime,
                     // Subframe execution is paused until per-frame matching and
                     // document identity can be enforced before injection.
-                    forMainFrameOnly: true,
+                    forMainFrameOnly: script.noframes,
                     in: WKContentWorld.world(name: worldsByScriptId[script.id] ?? "org.vela.script.\(script.id)")
                 )
             )
@@ -221,7 +234,7 @@ public enum UserScriptInjector {
           }
 
           function newRequestId(prefix) {
-            return WORLD_NAME + '|' + prefix + '-' + Date.now().toString(36) + '-' +
+            return WORLD_NAME + '|' + (window.__velaDocument || 'standalone') + '|' + prefix + '-' + Date.now().toString(36) + '-' +
               Math.random().toString(36).slice(2);
           }
 
@@ -230,6 +243,7 @@ public enum UserScriptInjector {
           }
 
           function post(message) {
+            message.documentToken = window.__velaDocument;
             Object.keys(message).forEach(function (key) {
               if (typeof message[key] === 'undefined') { delete message[key]; }
             });
@@ -579,7 +593,7 @@ public enum UserScriptInjector {
           };
 
           api.GM_registerMenuCommand = function (name, fn, accessKey) {
-            var commandId = 'cmd-' + Math.random().toString(36).slice(2);
+            var commandId = newRequestId('cmd');
             bridge.menuCommands[commandId] = fn;
             post({
               type: 'registerMenuCommand',
@@ -1119,7 +1133,9 @@ public enum UserScriptInjector {
               }
             };
 
-            if (SCRIPT_RUN_AT === 'document-idle' && document.readyState !== 'complete') {
+            if (['main-menu','tool-menu','context-menu'].indexOf(SCRIPT_RUN_AT) >= 0) {
+              bridge.runMenuScript = runScript;
+            } else if (SCRIPT_RUN_AT === 'document-idle' && document.readyState !== 'complete') {
               var hasRun = false;
               var runOnce = function () {
                 if (hasRun) { return; }

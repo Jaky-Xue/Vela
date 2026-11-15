@@ -49,15 +49,12 @@ struct MenuPanelView: View {
     var pageTitle: String
     var onPerform: (VelaMenuAction) -> Void
     var onOpenShortcut: (MenuShortcut) -> Void
-    var scriptCommands: [UserScriptMenuCommand] = []
-    var onRunScriptCommand: ((UserScriptMenuCommand) -> Void)? = nil
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// Whether the panel is showing its editor instead of its grid.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isEditing = false
     @State private var showingShortcutEditor = false
-    @State private var showingScriptCommands = false
 
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 120 : 58), spacing: 10)]
@@ -67,15 +64,10 @@ struct MenuPanelView: View {
     /// passed in is what makes an edit repaint the grid behind it.
     private var layout: MenuLayout { env.settings.menuLayout }
     private var tiles: [MenuTile] { layout.visibleTiles }
-    private var runtimeErrors: [String] {
-        guard let id = env.tabManager.activeTab?.id else { return [] }
-        return env.overlays.userScriptRuntimeErrors.filter { $0.key.hasPrefix(id + "|") }.sorted { $0.key < $1.key }.map(\.value)
-    }
-
     /// The editor is a list with drag handles and its own sections; the compact
     /// detent is too short to drag in without hunting for the row.
     private var panelDetents: Set<PresentationDetent> {
-        isEditing || !scriptCommands.isEmpty || dynamicTypeSize.isAccessibilitySize ? [.medium, .large] : [.height(460), .large]
+        isEditing || dynamicTypeSize.isAccessibilitySize ? [.medium, .large] : [.height(460), .large]
     }
 
     var body: some View {
@@ -91,47 +83,14 @@ struct MenuPanelView: View {
                 editingList
             } else {
                 headerRow
-                HStack(spacing: 5) {
-                    Image(systemName: "hand.draw")
-                    Text("长按拖动")
-                }.font(.caption).foregroundStyle(palette.secondaryText).padding(.horizontal)
-                if !runtimeErrors.isEmpty {
-                    DisclosureGroup("运行异常") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(runtimeErrors, id: \.self) { error in
-                            Label(error, systemImage: "exclamationmark.triangle.fill")
-                                .font(.caption).foregroundStyle(palette.primaryText)
-                        }
-                    }
-                    }.font(.caption).padding(.horizontal)
-                }
                 tileGrid
-                if !scriptCommands.isEmpty {
-                    Button("脚本命令", systemImage: "curlybraces") { showingScriptCommands = true }
-                        .foregroundStyle(palette.primaryText).padding(.bottom, 12)
-                }
+
             }
         }
         .frame(maxWidth: .infinity)
         .browserSurfaceBackground(opacity: 0.72)
         .presentationDetents(panelDetents)
         .presentationDragIndicator(.hidden)
-        .sheet(isPresented: $showingScriptCommands) {
-            NavigationStack {
-                List(scriptCommands) { command in
-                    Button {
-                        showingScriptCommands = false
-                        onRunScriptCommand?(command)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(command.name).foregroundStyle(palette.primaryText)
-                            Text(command.scriptName).font(.caption).foregroundStyle(palette.secondaryText)
-                        }.frame(minHeight: 44)
-                    }
-                }.settingsList().navigationTitle("脚本命令").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { showingScriptCommands = false } } }
-            }
-        }
         .sheet(isPresented: $showingShortcutEditor) {
             MenuShortcutEditorView { shortcut in
                 showingShortcutEditor = false

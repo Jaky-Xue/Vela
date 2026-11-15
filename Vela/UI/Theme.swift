@@ -338,12 +338,12 @@ struct BrowserPalette: Equatable, Identifiable, Sendable {
     ] + designerPalettes
 
     private static let designerPalettes: [BrowserPalette] = [
-        designed("iris", "鸢尾紫", accent: 0x683BB6, bright: 0xC5A6FF, light: 0xF2EDFA, dark: 0x171222),
-        designed("jade", "翡翠绿", accent: 0x087363, bright: 0x68DEBC, light: 0xEAF5F0, dark: 0x0D201C),
-        designed("amber", "琥珀金", accent: 0x965013, bright: 0xF6C66B, light: 0xFBF2E4, dark: 0x241C10),
-        designed("rose", "玫瑰粉", accent: 0xA32E62, bright: 0xFFA3C9, light: 0xFBEFF4, dark: 0x25131D),
-        designed("cobalt", "钴蓝", accent: 0x224FC5, bright: 0x96BAFF, light: 0xEDF2FC, dark: 0x101A30),
-        designed("slate", "石墨灰", accent: 0x46596B, bright: 0xB5CEDF, light: 0xEFF2F4, dark: 0x141B22)
+        designed("iris", "鸢尾紫", accent: 0x683BB6, bright: 0xC5A6FF, light: 0xFCFAFF, dark: 0x171222),
+        designed("jade", "翡翠绿", accent: 0x087363, bright: 0x68DEBC, light: 0xF7FFFC, dark: 0x0D201C),
+        designed("amber", "琥珀金", accent: 0x965013, bright: 0xF6C66B, light: 0xFFFCF5, dark: 0x241C10),
+        designed("rose", "玫瑰粉", accent: 0xA32E62, bright: 0xFFA3C9, light: 0xFFFAFC, dark: 0x25131D),
+        designed("cobalt", "钴蓝", accent: 0x224FC5, bright: 0x96BAFF, light: 0xF8FBFF, dark: 0x101A30),
+        designed("slate", "石墨灰", accent: 0x46596B, bright: 0xB5CEDF, light: 0xFAFCFD, dark: 0x141B22)
     ]
 
     private static func designed(_ id: String, _ name: String, accent: UInt32, bright: UInt32,

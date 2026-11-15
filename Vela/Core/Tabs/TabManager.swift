@@ -280,7 +280,7 @@ public final class TabManager {
     ) -> BrowserTabState {
         // A caller that names a mode asked for that mode; one that does not
         // gets 无痕模式's routing.
-        let resolvedMode = privacyMode ?? newPagePrivacyMode
+        let resolvedMode = privacyMode ?? activeTab?.privacyMode ?? newPagePrivacyMode
         if let existing = tabs.first(where: { $0.isHome && $0.privacyMode == resolvedMode }) {
             if activate {
                 activateTab(id: existing.id)
@@ -361,7 +361,7 @@ public final class TabManager {
         // filler would turn it into a page and leave the mode without one.
         // The mode resolves the same way createTab's does.
         let tab = appendHomeTab(
-            privacyMode: privacyMode ?? newPagePrivacyMode,
+            privacyMode: privacyMode ?? activeTab?.privacyMode ?? newPagePrivacyMode,
             openerTabId: openerTabId,
             openSource: openSource
         )
@@ -395,7 +395,7 @@ public final class TabManager {
         activate: Bool
     ) -> BrowserTabState {
         let tab = appendHomeTab(
-            privacyMode: privacyMode ?? newPagePrivacyMode,
+            privacyMode: privacyMode ?? activeTab?.privacyMode ?? newPagePrivacyMode,
             openerTabId: openerTabId,
             openSource: .webWindowOpen
         )

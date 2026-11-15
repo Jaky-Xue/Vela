@@ -38,7 +38,7 @@ struct BrowserNavigationActions {
         if tab.isHome { return .returnToPage }
         if webCoordinator.goBack() { return .webView }
         if !tab.openerTabId.isEmpty,
-           tabManager.tabs.contains(where: { $0.id == tab.openerTabId }) {
+           tabManager.tabs.contains(where: { $0.id == tab.openerTabId && $0.privacyMode == tab.privacyMode }) {
             return .opener(tab.openerTabId)
         }
         return .home
@@ -55,6 +55,6 @@ struct BrowserNavigationActions {
     @discardableResult
     func openHomeTab(from activeTab: BrowserTabState?) -> BrowserTabState? {
         guard activeTab?.isHome != true else { return nil }
-        return tabManager.createTab(openSource: .user)
+        return tabManager.createTab(privacyMode: activeTab?.privacyMode, openSource: .user)
     }
 }
