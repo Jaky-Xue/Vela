@@ -1,0 +1,63 @@
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.007 (0.061) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 14.742 (14.749) seconds
+	 Executed 17 tests, with 0 failures (0 unexpected) in 12.120 (12.310) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.074 (0.076) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.340 (0.342) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.361) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.457 (0.459) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.011 (0.013) seconds
+	 Executed 30 tests, with 0 failures (0 unexpected) in 1.136 (3.108) seconds
+	 Executed 19 tests, with 0 failures (0 unexpected) in 0.305 (0.459) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.008 (0.359) seconds
+/Users/runner/work/Vela/Vela/VelaTests/NavigationTestSupport.swift:449: error: -[VelaTests.CompletionRegressionTests testGMFetchStreamsAndBinaryUploadsAndDownloadAcknowledgesSavedFile] : failed - timed out after 20.0s waiting for: tab to settle (state=requested, loading=true) and report the title Native networking
+Test Case '-[VelaTests.CompletionRegressionTests testGMFetchStreamsAndBinaryUploadsAndDownloadAcknowledgesSavedFile]' failed (27.080 seconds).
+	 Executed 16 tests, with 1 failure (0 unexpected) in 32.303 (33.343) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.472 (0.474) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.185 (0.187) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.779 (1.780) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.004 (0.005) seconds
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.411 (0.417) seconds
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.488 (0.492) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.034 (0.037) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.216 (0.217) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.025 (0.027) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.018 (0.042) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.684 (0.686) seconds
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.601 (0.698) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.245 (0.246) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.101 (0.105) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.081 (0.083) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.006 (0.008) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.482 (0.482) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.013 (0.014) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 10.876 (10.879) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 1.587 (1.590) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.676 (1.676) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.080 (0.118) seconds
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.073 (0.258) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.010 (0.012) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.047 (0.050) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.006 (0.162) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.071 (0.710) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.009 (0.020) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.047 (0.048) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.002 (0.004) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.103 (0.106) seconds
+	 Executed 29 tests, with 0 failures (0 unexpected) in 4.974 (5.539) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.914 (1.055) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.322 (0.326) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.103 (0.106) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.005 (0.101) seconds
+/Users/runner/work/Vela/Vela/VelaTests/UIAndFilterRegressionTests.swift:85: error: -[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot] : XCTAssertTrue failed
+/Users/runner/work/Vela/Vela/VelaTests/UIAndFilterRegressionTests.swift:91: error: -[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot] : XCTAssertEqual failed: ("nil") is not equal to ("Optional("##.test-ad")")
+/Users/runner/work/Vela/Vela/VelaTests/UIAndFilterRegressionTests.swift:93: error: -[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot] : XCTAssertTrue failed
+Test Case '-[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot]' failed (19.433 seconds).
+	 Executed 11 tests, with 3 failures (0 unexpected) in 39.337 (39.345) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.285 (0.291) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.194 (0.196) seconds
+	 Executed 35 tests, with 0 failures (0 unexpected) in 36.857 (36.887) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.040 (0.040) seconds
+	 Executed 384 tests, with 4 failures (0 unexpected) in 164.972 (176.450) seconds
+	 Executed 384 tests, with 4 failures (0 unexpected) in 164.972 (176.454) seconds
+** TEST SUCCEEDED **
