@@ -171,16 +171,19 @@ public enum AdBlockRuleCompiler {
         // silently missing include would look like under-blocking, so it counts
         // as unsupported rather than being dropped without a trace.
         var diagnosticSource = "本地规则"
-        for (lineIndex, rawLine) in lines.enumerated() {
+        var sourceLine = 0
+        for rawLine in lines {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty else { continue }
-            if line.hasPrefix("! Source: ") { diagnosticSource = String(line.dropFirst(10)) }
+            if line.hasPrefix("! Source: ") { diagnosticSource = String(line.dropFirst(10)); sourceLine = 0; continue }
+            if line.hasPrefix("! Line: "), let number = Int(line.dropFirst(8)) { sourceLine = number - 1; continue }
+            sourceLine += 1
             let invalidBefore = result.invalidRuleCount
             let before = result.unsupportedRuleCount + result.invalidRuleCount
             defer {
                 if result.unsupportedRuleCount + result.invalidRuleCount > before {
                     let reason = result.invalidRuleCount > invalidBefore ? "规则格式无效" : "当前 WebKit 转换器不支持此语法或作用域"
-                    result.diagnostics.append(FilterLineDiagnostic(line: lineIndex + 1, text: line, reason: reason, source: diagnosticSource))
+                    result.diagnostics.append(FilterLineDiagnostic(line: sourceLine, text: line, reason: reason, source: diagnosticSource))
                 }
             }
             guard !line.hasPrefix("!") else {

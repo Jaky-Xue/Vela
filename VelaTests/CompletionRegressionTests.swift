@@ -83,7 +83,8 @@ final class CompletionRegressionTests: XCTestCase {
         let tab=h.open(base.appendingPathComponent("page"));await waitForSettled(tab,expectingTitle:"Page mode")
         let web=try XCTUnwrap(h.tabManager.webView(for:tab.id))
         try await wait("document.documentElement.dataset.page==='42:undefined'",web:web)
-        XCTAssertEqual((try await web.evaluateJavaScript("typeof GM_getValue==='undefined' && typeof window.__velaUserScriptBridge==='undefined'")) as? Bool,true)
+        let noBridge = try await web.evaluateJavaScript("typeof GM_getValue==='undefined' && typeof window.__velaUserScriptBridge==='undefined'")
+        XCTAssertEqual(noBridge as? Bool,true)
     }
 
     func testGMFetchStreamsAndBinaryUploadsAndDownloadAcknowledgesSavedFile() async throws {
@@ -106,7 +107,8 @@ final class CompletionRegressionTests: XCTestCase {
         let tab=h.open(base.appendingPathComponent("page"));await waitForSettled(tab,expectingTitle:"Native networking")
         let web=try XCTUnwrap(h.tabManager.webView(for:tab.id))
         try await wait("!!document.documentElement.dataset.first && !!document.documentElement.dataset.download && document.documentElement.dataset.uploaded==='OK'",web:web)
-        let id=try XCTUnwrap(try await web.evaluateJavaScript("document.documentElement.dataset.download") as? String)
+        let rawID = try await web.evaluateJavaScript("document.documentElement.dataset.download")
+        let id=try XCTUnwrap(rawID as? String)
         let saved=try XCTUnwrap(h.downloads.tasks.first{$0.guid==id})
         defer {h.downloads.remove(guid:id,deleteFile:true)}
         XCTAssertEqual(saved.status,.completed)

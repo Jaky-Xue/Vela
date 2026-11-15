@@ -12,7 +12,7 @@ enum FilterIncludeResolver {
             guard !lower.hasPrefix("<!doctype"), !lower.hasPrefix("<html"), !lower.contains("<body") else { throw FilterError.invalid("include 返回 HTML") }
             var output: [String] = [], chain = path
             chain.insert(url.absoluteString)
-            for line in body.components(separatedBy: .newlines) {
+            for (lineIndex, line) in body.components(separatedBy: .newlines).enumerated() {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 if trimmed.hasPrefix("!#include ") {
                     expanded = true
@@ -24,6 +24,7 @@ enum FilterIncludeResolver {
                     output.append("! Source: " + child.absoluteString)
                     output.append(try await visit(content, url: child, path: chain, depth: depth + 1))
                     output.append("! Source: " + url.absoluteString)
+                    output.append("! Line: " + String(lineIndex + 2))
                 } else if trimmed.hasPrefix("!#include") { throw FilterError.invalid("include 指令无效") }
                 else { output.append(line) }
             }

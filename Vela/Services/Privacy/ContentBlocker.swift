@@ -219,12 +219,12 @@ public final class ContentBlocker {
         do {
             let disabled = Set(proposed.disabledBuiltIns ?? [])
             var parts = AdBlockBuiltInRules.filterLists.sorted { $0.key < $1.key }
-                .filter { !disabled.contains($0.key) }.map(\.value)
+                .filter { !disabled.contains($0.key) }.map { "! Source: 内置/" + $0.key + "\n" + $0.value }
             for source in proposed.subscriptions ?? [] where source.enabled {
                 guard let hash = source.cacheHash else { throw FilterError.invalid("订阅缺少缓存，请先更新") }
-                parts.append(try String(contentsOf: cacheURL(hash), encoding: .utf8))
+                parts.append("! Source: " + source.url + "\n" + (try String(contentsOf: cacheURL(hash), encoding: .utf8)))
             }
-            parts.append(proposed.customRules ?? "")
+            parts.append("! Source: 自定义\n" + (proposed.customRules ?? ""))
             let text = parts.joined(separator: "\n")
             guard text.utf8.count <= FilterValidation.combinedByteLimit else { throw FilterError.invalid("合并规则超过 8 MB 上限") }
             let compiled = await Task.detached(priority: .utility) {
