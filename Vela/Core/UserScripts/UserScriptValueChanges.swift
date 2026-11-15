@@ -1,6 +1,7 @@
 import Foundation
 
 extension Notification.Name {
+    static let velaScriptPolicyChanged = Notification.Name("org.vela.script-policy-changed")
     static let velaScriptValueChanged = Notification.Name("org.vela.script-value-changed")
 }
 

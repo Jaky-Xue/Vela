@@ -63,6 +63,7 @@ public final class BrowserWebCoordinator: NSObject {
     var userScriptVersions: [String: Date] = [:]
     var userScriptCommandFrames: [String: WKFrameInfo] = [:]
     @ObservationIgnored private let userScriptValueObserver = UserScriptValueObserver()
+    @ObservationIgnored let userScriptPolicyObserver = UserScriptValueObserver()
 
     /// What is known about the navigation each live web view is running.
     ///
@@ -143,6 +144,7 @@ public final class BrowserWebCoordinator: NSObject {
         self.permissionAudit = permissionAudit
         self.navigationLog = navigationLog
         super.init()
+        observeScriptPolicy()
         userScriptValueObserver.token = NotificationCenter.default.addObserver(
             forName: .velaScriptValueChanged, object: nil, queue: nil
         ) { [weak self] notification in

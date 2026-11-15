@@ -12,6 +12,28 @@ import UIKit
 import WebKit
 
 extension BrowserWebCoordinator {
+    func observeScriptPolicy() {
+        userScriptPolicyObserver.token = NotificationCenter.default.addObserver(forName: .velaScriptPolicyChanged, object: nil, queue: nil) { [weak self] notification in
+            let repository = notification.object as? UserScriptRepository
+            let settings = notification.object as? SettingsService
+            Task { @MainActor [weak self] in
+                guard let self, repository === self.userScripts || settings === self.settings else { return }
+                for (key, world) in self.userScriptWorlds {
+                    let parts = key.split(separator: "|").map(String.init)
+                    guard parts.count == 2 else { continue }
+                    let script = try? self.userScripts.script(id: parts[1])
+                    guard !self.settings.preferences.userScriptsEnabled || script?.enabled != true || script?.updatedAt != self.userScriptVersions[key] else { continue }
+                    for taskKey in Array(self.userScriptXHRTasks.keys) where taskKey.hasPrefix(key + "|") { self.userScriptXHRTasks.removeValue(forKey: taskKey)?.cancel() }
+                    self.webView(for: parts[0])?.configuration.userContentController.removeScriptMessageHandler(forName: UserScriptInjector.messageHandlerName, contentWorld: .world(name: world))
+                    self.userScriptWorlds.removeValue(forKey: key); self.userScriptVersions.removeValue(forKey: key)
+                    self.userScriptFrames = self.userScriptFrames.filter { !$0.key.hasPrefix(key + "|") }
+                    self.userScriptCommandFrames = self.userScriptCommandFrames.filter { !$0.key.hasPrefix(key + "|") }
+                    self.overlays.userScriptMenuCommands.removeAll { $0.tabId == parts[0] && $0.scriptId == parts[1] }
+                }
+            }
+        }
+    }
+
     func handleUserScriptMessage(_ message: WKScriptMessage, tab: BrowserTabState, webView: WKWebView) {
         guard var payload = message.body as? [String: Any],
               let type = payload["type"] as? String,
@@ -394,7 +416,9 @@ extension BrowserWebCoordinator {
                 guard !Task.isCancelled,
                       self.userScriptWorlds[tab.id + "|" + scriptId] == payload["_world"] as? String,
                       self.settings.preferences.userScriptsEnabled,
-                      (try? self.userScripts.script(id: scriptId))?.enabled == true else { return }
+                      let liveScript = try? self.userScripts.script(id: scriptId), liveScript.enabled,
+                      liveScript.updatedAt == self.userScriptVersions[tab.id + "|" + scriptId],
+                      UserScriptNativePolicy.allows(type: payload["_download"] as? Bool == true ? "download" : "xhr", payload: payload, script: liveScript, origin: origin) else { return }
                 var progress: (@MainActor @Sendable (Data, HTTPURLResponse?, Int) -> Void)?
                 if reportsProgress || responseType == "stream" {
                     progress = { [weak self] chunk, response, received in
@@ -440,7 +464,9 @@ extension BrowserWebCoordinator {
                           let frame, let live = self.userScriptWorlds[tab.id + "|" + scriptId], live == payload["_world"] as? String else { return }
                     let current = try await webView.evaluateJavaScript("window.__velaDocument", in: frame, contentWorld: .world(name: live)) as? String
                     guard current == token, self.settings.preferences.userScriptsEnabled,
-                          (try? self.userScripts.script(id: scriptId))?.enabled == true else { return }
+                          let liveScript = try? self.userScripts.script(id: scriptId), liveScript.enabled,
+                      liveScript.updatedAt == self.userScriptVersions[tab.id + "|" + scriptId],
+                      UserScriptNativePolicy.allows(type: payload["_download"] as? Bool == true ? "download" : "xhr", payload: payload, script: liveScript, origin: origin) else { return }
                     let saved = try await self.downloads.saveScriptFile(data, response: response,
                         suggestedName: payload["name"] as? String ?? "", boundary: tab.dataBoundary)
                     result = ["taskId": saved.guid, "finalUrl": saved.finalUrl, "success": true]
@@ -469,7 +495,7 @@ extension BrowserWebCoordinator {
                     requestId: requestId,
                     payload: [
                         "error": error.localizedDescription,
-                        "timeout": timedOut
+                        "timeout": timedOut, "aborted": nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
                     ],
                     in: webView,
                     frame: frame
@@ -524,7 +550,8 @@ extension BrowserWebCoordinator {
             guard let self else { return }
             guard self.userScriptWorlds[tab.id + "|" + scriptId] == payload["_world"] as? String,
                   self.settings.preferences.userScriptsEnabled,
-                  (try? self.userScripts.script(id: scriptId))?.enabled == true else { return }
+                  let liveScript = try? self.userScripts.script(id: scriptId), liveScript.enabled,
+                  liveScript.updatedAt == self.userScriptVersions[tab.id + "|" + scriptId] else { return }
             switch action {
             case "list":
                 let all = await self.cookies(from: webView.configuration.websiteDataStore, for: origin)

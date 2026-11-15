@@ -43,6 +43,7 @@ public final class UserScriptRepository: @unchecked Sendable {
         cacheLock.lock()
         enabledCache = nil
         cacheLock.unlock()
+        NotificationCenter.default.post(name: .velaScriptPolicyChanged, object: self)
     }
 
     private func invalidateValues(scriptId: String) {

@@ -31,7 +31,10 @@ public final class SettingsService {
     }
 
     public private(set) var preferences: BrowserPreferences {
-        didSet { persistPreferences() }
+        didSet {
+            persistPreferences()
+            if oldValue.userScriptsEnabled != preferences.userScriptsEnabled { NotificationCenter.default.post(name: .velaScriptPolicyChanged, object: self) }
+        }
     }
 
     /// Light, dark, or whatever the system says.

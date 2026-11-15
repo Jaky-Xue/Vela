@@ -74,7 +74,8 @@ public final class UserScriptService {
         Self.permitsPageWorld(script) && settings.userScriptSettings.pageWorldApprovals?[script.id] == script.updatedAt
     }
     public func setPageWorld(_ enabled: Bool, for script: InstalledUserScriptState) {
-        guard !enabled || Self.permitsPageWorld(script) else { lastError = "页面模式不支持原生特权"; return }
+        guard let live = try? repository.script(id: script.id), live.updatedAt == script.updatedAt else { lastError = "脚本已改变，请重新确认"; return }
+        guard !enabled || Self.permitsPageWorld(live) else { lastError = "页面模式不支持原生特权"; return }
         settings.updateUserScriptSettings {
             var approvals = $0.pageWorldApprovals ?? [:]
             if enabled { approvals[script.id] = script.updatedAt } else { approvals.removeValue(forKey: script.id) }

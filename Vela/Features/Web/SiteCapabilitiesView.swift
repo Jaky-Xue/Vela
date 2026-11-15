@@ -46,7 +46,7 @@ struct SiteCapabilitiesView: View {
                         Button { env.webCoordinator.runMenuScript(id: script.id, tabId: tab.id); dismiss() } label: {
                             Label(script.displayName, systemImage: "play.circle")
                         }
-                    } else { Text(script.displayName) }
+                    } else { LabeledContent(script.displayName, value: env.webCoordinator.hasScriptFrame(id: script.id, tabId: tab.id) ? "已匹配" : "等待刷新") }
                 }
                 ForEach(env.overlays.userScriptMenuCommands.filter { $0.tabId == tab.id }) { command in
                     Button { env.webCoordinator.runUserScriptMenuCommand(command); dismiss() } label: {
