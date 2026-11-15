@@ -1,0 +1,16 @@
+{
+  "devicesAndConfigurations": [],
+  "environmentDescription": "Vela · Built with macOS 26.7.2",
+  "expectedFailures": 0,
+  "failedTests": 0,
+  "finishTime": 1794746162.688,
+  "passedTests": 0,
+  "result": "unknown",
+  "skippedTests": 0,
+  "startTime": 1794746090.123,
+  "statistics": [],
+  "testFailures": [],
+  "title": "Test - Vela",
+  "topInsights": [],
+  "totalTestCount": 0
+}
