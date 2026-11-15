@@ -32,6 +32,30 @@ final class UIAndFilterRegressionTests: XCTestCase {
         XCTAssertEqual(moved.movingTile("foreign", before: shortcut.id), moved)
     }
 
+    func testSettingsRowIconsCarryAWhiteGlyph() {
+        for destination in SettingsDestination.allCases {
+            XCTAssertGreaterThanOrEqual(
+                contrast(.white, Color(velaHex: destination.iconTopHex)),
+                4.5,
+                destination.rawValue + " top"
+            )
+            XCTAssertGreaterThanOrEqual(
+                contrast(.white, Color(velaHex: destination.iconBottomHex)),
+                4.5,
+                destination.rawValue + " bottom"
+            )
+        }
+    }
+
+    func testSettingsDestinationsAreDistinct() {
+        let titles = SettingsDestination.allCases.map(\.title)
+        XCTAssertEqual(Set(titles).count, titles.count)
+        for destination in SettingsDestination.allCases {
+            XCTAssertFalse(destination.searchKeywords.isEmpty, destination.rawValue)
+            XCTAssertFalse(destination.symbolName.isEmpty, destination.rawValue)
+        }
+    }
+
     private func luminance(_ color: UIColor) -> Double {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         color.getRed(&r, green: &g, blue: &b, alpha: &a)

@@ -12,6 +12,11 @@
 //  values — the section already says the context, and the screen behind the
 //  row is where the detail belongs.
 //
+//  Two things make the map navigable: every destination owns a coloured icon,
+//  so a row is recognised before it is read, and the search field above the
+//  list filters by the row's name and by what the feature is called elsewhere
+//  ("UA", "广告", "无痕"), rather than by the screen's title alone.
+//
 //  Only destinations with a backing implementation are listed, and the About
 //  page records which of the remaining ones are absent rather than shipping
 //  rows that lead nowhere. A settings row that opens an empty screen is worse
@@ -31,6 +36,8 @@ struct SettingsView: View {
     /// screen pushes it directly instead of landing the user on a list of
     /// nouns to hunt through.
     @State private var pushedDestination: SettingsDestination?
+    /// What the search field holds. Empty means the whole map.
+    @State private var searchText = ""
 
     init(initialDestination: SettingsDestination? = nil) {
         _pushedDestination = State(initialValue: initialDestination)
@@ -38,208 +45,51 @@ struct SettingsView: View {
 
     var body: some View {
         List {
-            Section {
-                NavigationLink {
-                    GeneralSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "gearshape",
-                        title: "通用"
-                    )
+            ForEach(visibleSections) { section in
+                Section {
+                    ForEach(section.rows) { row in
+                        NavigationLink {
+                            row.destination.view
+                        } label: {
+                            settingsRow(row)
+                        }
+                    }
+                } header: {
+                    Text(section.title)
                 }
-
-                NavigationLink {
-                    AppearanceSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "paintpalette",
-                        title: "外观",
-                        detail: appearanceDetail
-                    )
-                }
-
-                NavigationLink {
-                    ToolbarSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "dock.rectangle",
-                        title: "工具栏"
-                    )
-                }
-
-                NavigationLink {
-                    MenuSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "square.grid.2x2",
-                        title: "菜单面板"
-                    )
-                }
-
-                NavigationLink {
-                    DownloadSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "arrow.down.circle",
-                        title: "下载",
-                        detail: env.downloads.activeCount > 0
-                            ? "\(env.downloads.activeCount) 个进行中"
-                            : ""
-                    )
-                }
-            } header: {
-                Text("浏览器")
             }
 
-            Section {
-                NavigationLink {
-                    SearchEngineSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "magnifyingglass",
-                        title: "搜索引擎",
-                        detail: env.settings.preferences.searchEngine.activeEngine.name
-                    )
+            if visibleSections.isEmpty {
+                Section {
+                    VStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.title3)
+                            .foregroundStyle(palette.secondaryText)
+                        Text("没有找到匹配的设置项")
+                            .font(.footnote)
+                            .foregroundStyle(palette.secondaryText)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, BrowserSpacing.loose)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
-
-                NavigationLink {
-                    UserAgentSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "safari",
-                        title: "网页标识",
-                        detail: userAgentDetail
-                    )
-                }
-
-                NavigationLink {
-                    UserScriptsView()
-                } label: {
-                    settingsRow(
-                        icon: "curlybraces",
-                        title: "用户脚本",
-                        detail: env.settings.preferences.userScriptsEnabled ? "" : "已关闭"
-                    )
-                }
-
-                NavigationLink {
-                    ContentBlockerSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "shield",
-                        title: "广告拦截",
-                        detail: contentBlockerDetail
-                    )
-                }
-
-                NavigationLink {
-                    ElementHideSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "eye.slash",
-                        title: "隐藏的元素",
-                        detail: env.settings.manualElementHide.sites.isEmpty
-                            ? ""
-                            : "\(env.settings.manualElementHide.sites.count) 个网站"
-                    )
-                }
-            } header: {
-                Text("网页与内容")
-            }
-
-            Section {
-                NavigationLink {
-                    PasswordVaultView()
-                } label: {
-                    settingsRow(
-                        icon: "key.fill",
-                        title: "密码与保险箱",
-                        detail: env.passwords.credentials.isEmpty ? "" : "\(env.passwords.credentials.count) 条"
-                    )
-                }
-
-                NavigationLink {
-                    PrivateBrowsingSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "eyeglasses",
-                        title: "无痕模式",
-                        detail: env.settings.preferences.lockPrivateTabs ? "需验证" : "无需验证"
-                    )
-                }
-
-                NavigationLink {
-                    SitePermissionsSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "lock.shield",
-                        title: "网站权限"
-                    )
-                }
-
-                NavigationLink {
-                    ExternalNavigationSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "arrow.up.forward.app",
-                        title: "外部应用跳转",
-                        detail: env.settings.preferences.externalNavigationDefault.displayName
-                    )
-                }
-
-                NavigationLink {
-                    WebRTCProtectionSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "shield.lefthalf.filled",
-                        title: "WebRTC 泄露防护",
-                        detail: env.settings.webRTCProtectionEnabled
-                            ? env.settings.webRTCProtectionSelection.displayName
-                            : "已关闭"
-                    )
-                }
-
-                NavigationLink {
-                    ClearDataView()
-                } label: {
-                    settingsRow(
-                        icon: "trash",
-                        title: "清除浏览数据"
-                    )
-                }
-            } header: {
-                Text("隐私与安全")
-            }
-
-            Section {
-                NavigationLink {
-                    DataTransferSettingsView()
-                } label: {
-                    settingsRow(
-                        icon: "arrow.up.arrow.down.circle",
-                        title: "导入与导出",
-                        detail: ""
-                    )
-                }
-            } header: {
-                Text("数据")
-            }
-
-            Section {
-                NavigationLink {
-                    AboutView()
-                } label: {
-                    settingsRow(
-                        icon: "info.circle",
-                        title: "关于 Vela"
-                    )
-                }
-            } header: {
-                Text("关于")
             }
         }
-        .listStyle(.insetGrouped)
         .settingsList()
+        .scrollDismissesKeyboard(.immediately)
+        // A safe-area inset rather than a sibling above the list: the bar then
+        // shares the list's own background instead of stacking a second veil
+        // over the sheet, and it stays put while the rows scroll under it.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            searchField
+                .padding(.horizontal, BrowserSpacing.regular)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+                // Rows scroll under the bar; the fill keeps them from reading
+                // through it.
+                .background { AmbientSurfaceFill(opacity: 0.58) }
+        }
         .navigationDestination(item: $pushedDestination) { destination in
             destination.view
         }
@@ -253,6 +103,127 @@ struct SettingsView: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button("完成") { dismiss() }
             }
+        }
+    }
+
+    // MARK: - Search
+
+    /// The field above the list. It stays put while the rows scroll: the
+    /// search is how a long list is avoided, so it should not be the first
+    /// thing to scroll away.
+    private var searchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(palette.secondaryText)
+                .accessibilityHidden(true)
+
+            TextField("搜索设置项", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .foregroundStyle(palette.primaryText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(palette.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("清除搜索")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 46)
+        .background(palette.controlFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(palette.cardStroke, lineWidth: 0.5)
+                .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: - The map
+
+    /// Every row, in the order the root shows them. The details are the values
+    /// in force and are read from the environment at body time.
+    private var allSections: [SettingsSectionSpec] {
+        [
+            SettingsSectionSpec(title: "浏览器", rows: [
+                SettingsRowSpec(destination: .general),
+                SettingsRowSpec(destination: .appearance, detail: appearanceDetail),
+                SettingsRowSpec(destination: .toolbar),
+                SettingsRowSpec(destination: .menuPanel),
+                SettingsRowSpec(
+                    destination: .downloads,
+                    detail: env.downloads.activeCount > 0
+                        ? "\(env.downloads.activeCount) 个进行中"
+                        : ""
+                )
+            ]),
+            SettingsSectionSpec(title: "网页与内容", rows: [
+                SettingsRowSpec(
+                    destination: .searchEngine,
+                    detail: env.settings.preferences.searchEngine.activeEngine.name
+                ),
+                SettingsRowSpec(destination: .userAgent, detail: userAgentDetail),
+                SettingsRowSpec(
+                    destination: .userScripts,
+                    detail: env.settings.preferences.userScriptsEnabled ? "" : "已关闭"
+                ),
+                SettingsRowSpec(destination: .contentBlocker, detail: contentBlockerDetail),
+                SettingsRowSpec(
+                    destination: .elementHide,
+                    detail: env.settings.manualElementHide.sites.isEmpty
+                        ? ""
+                        : "\(env.settings.manualElementHide.sites.count) 个网站"
+                )
+            ]),
+            SettingsSectionSpec(title: "隐私与安全", rows: [
+                SettingsRowSpec(
+                    destination: .passwords,
+                    detail: env.passwords.credentials.isEmpty ? "" : "\(env.passwords.credentials.count) 条"
+                ),
+                SettingsRowSpec(
+                    destination: .privateBrowsing,
+                    detail: env.settings.preferences.lockPrivateTabs ? "需验证" : "无需验证"
+                ),
+                SettingsRowSpec(destination: .sitePermissions),
+                SettingsRowSpec(
+                    destination: .externalNavigation,
+                    detail: env.settings.preferences.externalNavigationDefault.displayName
+                ),
+                SettingsRowSpec(
+                    destination: .webrtc,
+                    detail: env.settings.webRTCProtectionEnabled
+                        ? env.settings.webRTCProtectionSelection.displayName
+                        : "已关闭"
+                ),
+                SettingsRowSpec(destination: .clearData)
+            ]),
+            SettingsSectionSpec(title: "数据", rows: [
+                SettingsRowSpec(destination: .dataTransfer)
+            ]),
+            SettingsSectionSpec(title: "关于", rows: [
+                SettingsRowSpec(destination: .about)
+            ])
+        ]
+    }
+
+    /// The sections the search leaves standing. A section disappears with its
+    /// last matching row, so the result is the answer rather than a set of
+    /// empty headings.
+    private var visibleSections: [SettingsSectionSpec] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return allSections }
+        return allSections.compactMap { section in
+            let rows = section.rows.filter { $0.matches(query) }
+            return rows.isEmpty ? nil : SettingsSectionSpec(title: section.title, rows: rows)
         }
     }
 
@@ -286,53 +257,36 @@ struct SettingsView: View {
         return "自动"
     }
 
-    /// One settings row: a themed icon tile, the name, and the value in force.
-    ///
-    /// Colored glyphs on a quiet tint anchor each group. The palette may
-    /// prefer filled symbols; the menu deliberately remains monochrome.
+    // MARK: - Rows
+
+    /// One settings row: the destination's coloured tile, the name, and the
+    /// value in force.
     ///
     /// The value is the only secondary line. It answers "what is set" — a
     /// palette name, a count, a mode — without the row restating what its
     /// screen contains; the root is a map, and opening a row is how a screen's
     /// scope becomes known.
-    private func settingsRow(
-        icon: String,
-        title: String,
-        detail: String = ""
-    ) -> some View {
+    private func settingsRow(_ row: SettingsRowSpec) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .symbolVariant(palette.visualStyle.icons == .filled ? .fill : .none)
-                .font(.system(size: 14, weight: .semibold))
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(IconColorStyle.lineColor(for: icon))
-                .frame(width: 34, height: 34)
-                .background(
-                    LinearGradient(
-                        colors: [IconColorStyle.lineColor(for: icon).opacity(0.10), IconColorStyle.lineColor(for: icon).opacity(0.06)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    in: RoundedRectangle(cornerRadius: 8.5, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8.5, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
-                        .allowsHitTesting(false)
-                }
+            SettingsRowIcon(
+                symbolName: row.destination.symbolName,
+                topHex: row.destination.iconTopHex,
+                bottomHex: row.destination.iconBottomHex,
+                filled: palette.visualStyle.icons == .filled
+            )
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(title)
+                Text(row.title)
                     .foregroundStyle(palette.primaryText)
-                if dynamicTypeSize.isAccessibilitySize && !detail.isEmpty {
-                    Text(detail)
+                if dynamicTypeSize.isAccessibilitySize && !row.detail.isEmpty {
+                    Text(row.detail)
                         .font(.caption)
                         .foregroundStyle(palette.secondaryText)
                 }
             }
             Spacer(minLength: 8)
-            if !dynamicTypeSize.isAccessibilitySize && !detail.isEmpty {
-                Text(detail)
+            if !dynamicTypeSize.isAccessibilitySize && !row.detail.isEmpty {
+                Text(row.detail)
                     .font(.caption)
                     .foregroundStyle(palette.secondaryText)
                     .lineLimit(1)
@@ -342,6 +296,30 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - Search models
+
+/// One row of the settings map: the destination the row opens, and the value
+/// the row states for it. The name, symbol, colour and search words all come
+/// from the destination, so a row cannot drift away from its screen.
+private struct SettingsRowSpec: Identifiable {
+    var destination: SettingsDestination
+    var detail: String = ""
+
+    var id: String { destination.rawValue }
+    var title: String { destination.title }
+
+    func matches(_ query: String) -> Bool {
+        title.localizedCaseInsensitiveContains(query)
+            || destination.searchKeywords.localizedCaseInsensitiveContains(query)
+    }
+}
+
+private struct SettingsSectionSpec: Identifiable {
+    var title: String
+    var rows: [SettingsRowSpec]
+
+    var id: String { title }
+}
 
 // MARK: - Deep links
 
@@ -354,18 +332,21 @@ struct SettingsView: View {
 enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
     case general
     case appearance
+    case toolbar
+    case menuPanel
+    case downloads
     case searchEngine
     case userAgent
     case userScripts
     case contentBlocker
-    case dataTransfer
+    case elementHide
     case passwords
     case privateBrowsing
     case sitePermissions
     case externalNavigation
     case webrtc
     case clearData
-    case downloads
+    case dataTransfer
     case about
 
     var id: String { rawValue }
@@ -376,18 +357,21 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
         switch self {
         case .general: GeneralSettingsView()
         case .appearance: AppearanceSettingsView()
+        case .toolbar: ToolbarSettingsView()
+        case .menuPanel: MenuSettingsView()
+        case .downloads: DownloadSettingsView()
         case .searchEngine: SearchEngineSettingsView()
         case .userAgent: UserAgentSettingsView()
         case .userScripts: UserScriptsView()
         case .contentBlocker: ContentBlockerSettingsView()
-        case .dataTransfer: DataTransferSettingsView()
+        case .elementHide: ElementHideSettingsView()
         case .passwords: PasswordVaultView()
         case .privateBrowsing: PrivateBrowsingSettingsView()
         case .sitePermissions: SitePermissionsSettingsView()
         case .externalNavigation: ExternalNavigationSettingsView()
         case .webrtc: WebRTCProtectionSettingsView()
         case .clearData: ClearDataView()
-        case .downloads: DownloadSettingsView()
+        case .dataTransfer: DataTransferSettingsView()
         case .about: AboutView()
         }
     }
