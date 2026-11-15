@@ -392,9 +392,7 @@ extension BrowserWebCoordinator {
                           !agent.isEmpty {
                     request.setValue(agent, forHTTPHeaderField: "User-Agent")
                 }
-                if let referer = webView.url?.absoluteString {
-                    request.setValue(referer, forHTTPHeaderField: "Referer")
-                }
+                request.setValue(origin.absoluteString, forHTTPHeaderField: "Referer")
                 if !anonymous {
                     let cookies = await self.cookies(
                         from: webView.configuration.websiteDataStore,

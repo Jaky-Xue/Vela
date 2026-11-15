@@ -630,7 +630,7 @@ struct UserScriptDetailView: View {
                             Text(token)
                                 .font(.system(size: 12, design: .monospaced))
                             Spacer()
-                            if grant.isSupportedByVela {
+                            if grant.isSupportedByVela || (grant == .unsafeWindow && env.userScripts.usesPageWorld(current)) {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundStyle(.green)
                             } else {

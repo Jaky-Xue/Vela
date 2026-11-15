@@ -64,6 +64,8 @@ final class LocalHTTPServer {
     /// assertions read it from the test's main actor.
     private let counterLock = NSLock()
     private var requestCounts: [String: Int] = [:]
+    private var requestBodies: [String: Data] = [:]
+    func requestBody(for path: String) -> Data? { counterLock.lock(); defer { counterLock.unlock() }; return requestBodies[path] }
 
     private(set) var port: UInt16 = 0
 
@@ -140,17 +142,19 @@ final class LocalHTTPServer {
 
             // The request head ends at the first blank line; nothing here sends a
             // body, so that is the whole request.
-            if let head = String(data: accumulated, encoding: .utf8),
-               let range = head.range(of: "\r\n\r\n") {
-                let path = Self.path(of: head)
-                self.respond(on: connection, path: path, head: String(head[..<range.lowerBound]))
-                return
+            if let range = accumulated.range(of: Data("\r\n\r\n".utf8)),
+               let head = String(data: accumulated[..<range.lowerBound], encoding: .utf8) {
+                let length = head.components(separatedBy: "\r\n").first { $0.lowercased().hasPrefix("content-length:") }
+                    .flatMap { Int($0.split(separator: ":", maxSplits: 1).last?.trimmingCharacters(in: .whitespaces) ?? "0") } ?? 0
+                if accumulated.count >= range.upperBound + length {
+                    let path = Self.path(of: head)
+                    self.counterLock.lock(); self.requestBodies[path] = accumulated.subdata(in: range.upperBound..<(range.upperBound + length)); self.counterLock.unlock()
+                    self.respond(on: connection, path: path, head: head)
+                    return
+                }
             }
+            if isComplete || error != nil { connection.cancel(); return }
 
-            if isComplete || error != nil {
-                connection.cancel()
-                return
-            }
             self.receive(on: connection, buffer: accumulated)
         }
     }
@@ -311,6 +315,7 @@ final class BrowserHarness {
     let tabManager: TabManager
     let navigationLog: NavigationLog
     let history: HistoryService
+    let downloads: DownloadService
 
     init() throws {
         // A defaults suite of its own, so a test run cannot read or write the
@@ -326,6 +331,7 @@ final class BrowserHarness {
         let history = HistoryService(repository: HistoryRepository(database: database), settings: settings)
         self.history = history
         let downloads = DownloadService(repository: DownloadRepository(database: database), settings: settings)
+        self.downloads = downloads
         let userScripts = UserScriptRepository(database: database)
         let sessions = TabSessionRepository(database: database)
         let permissionAudit = PermissionAuditService()

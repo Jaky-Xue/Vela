@@ -72,6 +72,49 @@ final class CompletionRegressionTests: XCTestCase {
         try await wait("getComputedStyle(document.getElementById('ad')).display!=='none'",web:web)
     }
 
+    func testPageModeSeesPageGlobalsWithoutNativeBridge() async throws {
+        let server = try LocalHTTPServer(routes:["/page":.html("<title>Page mode</title><script>window.pageFixture=42;</script>")])
+        let base=try await server.start(); defer {server.stop()}
+        let h=try BrowserHarness();h.settings.update{$0.userScriptsEnabled=true}
+        let original=InstalledUserScriptState(name:"Page",source:"document.documentElement.dataset.page=String(unsafeWindow.pageFixture)+':'+typeof window.webkit?.messageHandlers?.velaUserScript;",matches:["*://*/*"],grants:[.unsafeWindow],runAt:.documentEnd)
+        try h.coordinator.userScripts.upsert(original)
+        let script=try XCTUnwrap(h.coordinator.userScripts.script(id:original.id))
+        let service=UserScriptService(repository:h.coordinator.userScripts,settings:h.settings);service.setPageWorld(true,for:script)
+        let tab=h.open(base.appendingPathComponent("page"));await waitForSettled(tab,expectingTitle:"Page mode")
+        let web=try XCTUnwrap(h.tabManager.webView(for:tab.id))
+        try await wait("document.documentElement.dataset.page==='42:undefined'",web:web)
+        XCTAssertEqual((try await web.evaluateJavaScript("typeof GM_getValue==='undefined' && typeof window.__velaUserScriptBridge==='undefined'")) as? Bool,true)
+    }
+
+    func testGMFetchStreamsAndBinaryUploadsAndDownloadAcknowledgesSavedFile() async throws {
+        let server=try LocalHTTPServer(routes:[
+            "/page":.html("<title>Native networking</title>"),
+            "/stream":.init(body:"",contentType:"text/event-stream",chunks:["data: first\n\n","data: last\n\n"],chunkDelay:1.5),
+            "/upload":.init(body:"OK",contentType:"text/plain"),
+            "/file":.init(body:"download fixture",contentType:"application/octet-stream")
+        ])
+        let base=try await server.start();defer{server.stop()}
+        let h=try BrowserHarness();h.settings.update{$0.userScriptsEnabled=true}
+        let filename="Vela-QA-"+UUID().uuidString+".txt"
+        let source="""
+        GM_fetch('/stream').then(async function(response){var reader=response.body.getReader();var first=await reader.read();document.documentElement.dataset.first=new TextDecoder().decode(first.value);while(!(await reader.read()).done){}document.documentElement.dataset.streamDone='yes';}).catch(function(e){document.documentElement.dataset.error=String(e);});
+        GM_fetch('/upload',{method:'POST',body:new Uint8Array([0,127,128,255])}).then(function(r){return r.text();}).then(function(text){document.documentElement.dataset.uploaded=text;});
+        GM_download({url:'/file',name:'\(filename)',onload:function(r){document.documentElement.dataset.download=r.id;},onerror:function(e){document.documentElement.dataset.error=String(e);}});
+        """
+        var script=InstalledUserScriptState(name:"Native network",source:source,matches:["*://*/*"],grants:[.gmFetch,.gmDownload],runAt:.documentEnd)
+        script.connectRules=["self"];try h.coordinator.userScripts.upsert(script)
+        let tab=h.open(base.appendingPathComponent("page"));await waitForSettled(tab,expectingTitle:"Native networking")
+        let web=try XCTUnwrap(h.tabManager.webView(for:tab.id))
+        try await wait("!!document.documentElement.dataset.first && !!document.documentElement.dataset.download && document.documentElement.dataset.uploaded==='OK'",web:web)
+        let id=try XCTUnwrap(try await web.evaluateJavaScript("document.documentElement.dataset.download") as? String)
+        let saved=try XCTUnwrap(h.downloads.tasks.first{$0.guid==id})
+        defer {h.downloads.remove(guid:id,deleteFile:true)}
+        XCTAssertEqual(saved.status,.completed)
+        XCTAssertEqual(try String(contentsOfFile:saved.destinationPath,encoding:.utf8),"download fixture")
+        XCTAssertEqual(server.requestBody(for:"/upload"),Data([0,127,128,255]))
+        try await wait("document.documentElement.dataset.streamDone==='yes'",web:web)
+    }
+
     func testIncludeExpansionIsBoundedAndRejectsCycles() async throws {
         let base = URL(string:"https://lists.test/main.txt")!
         let (text, expanded) = try await FilterIncludeResolver.expand("!#include child.txt\n||root.test^",base:base) { url in
