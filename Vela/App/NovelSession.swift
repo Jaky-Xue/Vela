@@ -65,4 +65,3 @@ struct NovelSession: Identifiable, Equatable {
         isPrivateSession && sessionGeneration != generation
     }
 }
-

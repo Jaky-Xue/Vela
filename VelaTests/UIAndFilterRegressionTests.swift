@@ -176,13 +176,20 @@ final class UIAndFilterRegressionTests: XCTestCase {
             let tab=env.tabManager.openTab(url:base.appendingPathComponent(path),privacyMode:.regular)
             let web=try XCTUnwrap(env.tabManager.webView(for:tab.id))
             web.frame=window.bounds;window.rootViewController!.view.addSubview(web)
-            try await Task.sleep(nanoseconds:700_000_000)
+            let titles = ["one": "阅读 · 测试页面", "two": "灵感 · 测试页面", "three": "探索 · 测试页面"]
+            guard await waitForSettled(tab, expectingTitle: titles[path]) else { return }
+            let colors: [String: [UInt8]] = ["one": [247,250,255], "two": [255,248,239], "three": [242,251,245]]
             let config=WKSnapshotConfiguration();config.snapshotWidth=375
-            let image: UIImage? = await withCheckedContinuation { c in web.takeSnapshot(with:config){image,_ in c.resume(returning:image)} }
-            if let image {
-                env.tabManager.storePreview(image,for:tab.id)
-                let original = XCTAttachment(image:image); original.name = "tabs-fixture-" + path; original.lifetime = .keepAlways; add(original)
+            var readyImage: UIImage?
+            for _ in 0..<30 {
+                await waitForFixturePaint(web)
+                let image: UIImage? = await withCheckedContinuation { c in web.takeSnapshot(with:config){image,_ in c.resume(returning:image)} }
+                if let image, fixtureBackgroundIsVisible(image, rgb: colors[path]!) { readyImage = image; break }
+                try await Task.sleep(nanoseconds:100_000_000)
             }
+            let image = try XCTUnwrap(readyImage, "WebKit must paint the fixture before its preview is accepted")
+            env.tabManager.storePreview(image,for:tab.id)
+            let original = XCTAttachment(image:image); original.name = "tabs-fixture-" + path; original.lifetime = .keepAlways; add(original)
             web.removeFromSuperview()
         }
         let screens:[(String,AnyView,Double,ColorScheme)] = [
@@ -202,11 +209,49 @@ final class UIAndFilterRegressionTests: XCTestCase {
             controller.view.frame=window.bounds;controller.view.layoutIfNeeded()
             try await Task.sleep(nanoseconds:700_000_000)
             let format=UIGraphicsImageRendererFormat();format.scale=1
-            let image=UIGraphicsImageRenderer(size:window.bounds.size,format:format).image{_ in controller.view.drawHierarchy(in:window.bounds,afterScreenUpdates:true)}
+            func render() -> UIImage {
+                UIGraphicsImageRenderer(size:window.bounds.size,format:format).image{_ in controller.view.drawHierarchy(in:window.bounds,afterScreenUpdates:true)}
+            }
+            var image = render()
+            if name.hasPrefix("browser-page") {
+                let web = try XCTUnwrap(env.tabManager.activeTab.flatMap { env.tabManager.webView(for: $0.id) })
+                for _ in 0..<30 {
+                    if fixtureBackgroundIsVisible(image, rgb: [242,251,245]) { break }
+                    await waitForFixturePaint(web)
+                    try await Task.sleep(nanoseconds:100_000_000)
+                    image = render()
+                }
+                XCTAssertTrue(fixtureBackgroundIsVisible(image, rgb: [242,251,245]), "Browser content must be visible, not a reattachment white frame")
+            }
             let attachment=XCTAttachment(image:image);attachment.name=name;attachment.lifetime = .keepAlways;add(attachment)
         }
         window.isHidden=true
         for tab in Array(env.tabManager.tabs) { env.tabManager.closeTab(id:tab.id) }
+    }
+
+    private func waitForFixturePaint(_ web: WKWebView) async {
+        _ = try? await web.callAsyncJavaScript(
+            "await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));",
+            arguments: [:], in: nil, contentWorld: .page
+        )
+    }
+
+    /// A local fixture's flat center distinguishes actual web content from an
+    /// empty native surface. Use a known RGBA context instead of assuming the
+    /// renderer's native BGRA layout or color space.
+    private func fixtureBackgroundIsVisible(_ image: UIImage, rgb: [UInt8]) -> Bool {
+        guard let cg = image.cgImage else { return false }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let rendered = pixel.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(data: bytes.baseAddress, width: 1, height: 1,
+                                          bitsPerComponent: 8, bytesPerRow: 4,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(cg, in: CGRect(x: -CGFloat(cg.width / 2), y: -CGFloat(cg.height / 2),
+                                       width: CGFloat(cg.width), height: CGFloat(cg.height)))
+            return true
+        }
+        return rendered && zip(pixel.prefix(3), rgb).allSatisfy { abs(Int($0.0) - Int($0.1)) <= 2 }
     }
 
     func testRenderMenuAndPalettePreviews() async throws {

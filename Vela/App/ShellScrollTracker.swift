@@ -107,4 +107,3 @@ final class ShellScrollTracker {
         return .none
     }
 }
-

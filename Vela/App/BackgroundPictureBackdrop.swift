@@ -44,4 +44,3 @@ struct BackgroundPictureBackdrop: View {
         .accessibilityHidden(true)
     }
 }
-

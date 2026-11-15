@@ -91,4 +91,3 @@ struct WindowSafeAreaReader: UIViewRepresentable {
         }
     }
 }
-
