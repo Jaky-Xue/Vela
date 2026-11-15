@@ -1,0 +1,30 @@
+{
+  "commit": "2fd85a9526b810c666e4fc844285a4009fa88dd5",
+  "run": "43714711402",
+  "kind": "tests-iPhone",
+  "workflow": "https://github.com/Jaky-Xue/Vela/actions/runs/43714711402",
+  "tests": 0,
+  "testExecutions": 0,
+  "retriedTests": [],
+  "failedAttempts": 0,
+  "finalFailures": [],
+  "testGate": "failure",
+  "observedConsoleTests": 0,
+  "xcresultSummary": {
+    "devicesAndConfigurations": [],
+    "environmentDescription": "Vela · Built with macOS 26.7.2",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1794746253.648,
+    "passedTests": 0,
+    "result": "unknown",
+    "skippedTests": 0,
+    "startTime": 1794746201.508,
+    "statistics": [],
+    "testFailures": [],
+    "title": "Test - Vela",
+    "topInsights": [],
+    "totalTestCount": 0
+  },
+  "skippedTests": []
+}
