@@ -1,0 +1,63 @@
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.011 (0.104) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 3.220 (3.227) seconds
+	 Executed 17 tests, with 0 failures (0 unexpected) in 3.380 (11.015) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (2.144) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.346 (0.347) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.188) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.309 (0.898) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.174 (0.576) seconds
+	 Executed 30 tests, with 0 failures (0 unexpected) in 0.208 (0.511) seconds
+	 Executed 19 tests, with 0 failures (0 unexpected) in 0.058 (0.077) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.008 (0.015) seconds
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:98: error: -[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules] : failed: caught error: "Error Domain=WKErrorDomain Code=6 "(null)" UserInfo={NSHelpAnchor=Rule list compilation failed: A trigger cannot have more than one condition (if-domain, unless-domain, if-top-url, or unless-top-url)}"
+Test Case '-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]' failed (0.577 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:98: error: -[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules] : failed: caught error: "Error Domain=WKErrorDomain Code=6 "(null)" UserInfo={NSHelpAnchor=Rule list compilation failed: A trigger cannot have more than one condition (if-domain, unless-domain, if-top-url, or unless-top-url)}"
+Test Case '-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]' failed (0.014 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/CompletionRegressionTests.swift:98: error: -[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules] : failed: caught error: "Error Domain=WKErrorDomain Code=6 "(null)" UserInfo={NSHelpAnchor=Rule list compilation failed: A trigger cannot have more than one condition (if-domain, unless-domain, if-top-url, or unless-top-url)}"
+Test Case '-[VelaTests.CompletionRegressionTests testScopedHideExceptionsPreserveOtherSitesAndNetworkRules]' failed (0.020 seconds).
+	 Executed 12 tests, with 3 failures (3 unexpected) in 4.118 (4.300) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.011 (0.014) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (0.005) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.647 (0.647) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.010 (0.023) seconds
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.049 (0.082) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.034 (0.035) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.016 (0.018) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.014 (0.027) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.209 (0.260) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.031 (0.032) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.006 (0.034) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.011 (0.013) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.012 (0.013) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.008 (0.009) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 7.657 (7.659) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 1.451 (1.453) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.675 (1.676) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.113 (0.118) seconds
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.094 (0.121) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.005 (0.019) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.051 (0.099) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.060 (0.061) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.004 (0.006) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.023 (0.023) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.021 (0.022) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.088 (0.089) seconds
+	 Executed 29 tests, with 0 failures (0 unexpected) in 4.069 (5.965) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 1.313 (1.680) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 3.951 (3.955) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 1.319 (1.321) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.817 (1.037) seconds
+	 Executed 10 tests, with 0 failures (0 unexpected) in 18.643 (18.649) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.029 (0.101) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.004 (0.006) seconds
+	 Executed 35 tests, with 0 failures (0 unexpected) in 57.936 (57.977) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (0.005) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.036 (0.036) seconds
+	 Executed 379 tests, with 3 failures (3 unexpected) in 112.273 (126.785) seconds
+	 Executed 379 tests, with 3 failures (3 unexpected) in 112.273 (126.786) seconds
+** TEST FAILED **
