@@ -355,7 +355,8 @@ extension BrowserShellView {
         // window hierarchy directly can drop them. The direct path stays as
         // the fallback for a window that has not rendered yet.
         let snapshot = window.snapshotView(afterScreenUpdates: false)
-        let renderer = UIGraphicsImageRenderer(bounds: bounds)
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let renderer = UIGraphicsImageRenderer(bounds: bounds, format: format)
         let image = renderer.image { _ in
             if let snapshot {
                 snapshot.frame = bounds

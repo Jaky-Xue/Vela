@@ -2,22 +2,8 @@
 //  TabsOverviewView.swift
 //  Vela
 //
-//  The tab switcher, styled on Safari's iPad overview: a full-screen take-over
-//  rather than a panel — a blurred print of the page you came from behind a
-//  scrim, round header buttons around a mode-and-count pill, pinned tabs as a
-//  chip rail, and a grid of page cards with their titles printed underneath.
-//
-//  The card's shape answers to the screen's own aspect — wide in landscape,
-//  upright in portrait — which is the behaviour Safari's overview has and the
-//  reason the grid reads as "the pages, shrunk" instead of a wall of tiles.
-//
-//  The surface pins itself to the dark appearance. Everything on screen sits
-//  on the scrim over the blurred page, and a scrim that tracked the user's
-//  palette would need re-tuning per palette to hold contrast — pinning dark
-//  buys one contrast that always holds.
-//
-//  The privacy split is exact: regular and private tabs never appear in the
-//  same list, and the private grid is what the lock setting gates.
+//  Stable page-card identities, an appearance-aware background and restrained motion.
+//  The privacy split is applied before the first body render, including locked sessions.
 //
 
 import SwiftUI
@@ -49,14 +35,16 @@ struct TabsOverviewView: View {
     @State private var pendingPrivateUnlock = false
     @State private var isSearching = false
     @State private var searchQuery = ""
-    @State private var backgroundPrint: UIImage?
+    @Namespace private var modeAnimation
     @FocusState private var searchFieldFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var tabManager: TabManager { env.tabManager }
 
+    private var displaysPrivateTabs: Bool { didSyncMode ? showPrivateTabs : tabManager.activeTab?.privacyMode == .private }
+
     private var currentMode: BrowserSessionPrivacyMode {
-        showPrivateTabs ? .private : .regular
+        displaysPrivateTabs ? .private : .regular
     }
 
     /// The tabs of the mode on screen, narrowed by the search field when it
@@ -69,7 +57,7 @@ struct TabsOverviewView: View {
     /// strip only after the last page has been closed, which is also the
     /// moment it is the one card left behind.
     private var visibleTabs: [BrowserTabState] {
-        let tabs = showPrivateTabs ? tabManager.privateTabs : tabManager.regularTabs
+        let tabs = displaysPrivateTabs ? tabManager.privateTabs : tabManager.regularTabs
         let realTabs = tabs.filter { !$0.isHome }
         let listed: [BrowserTabState] = realTabs.isEmpty ? tabs : realTabs
         guard !searchQuery.isEmpty else { return listed }
@@ -103,7 +91,7 @@ struct TabsOverviewView: View {
         // the print's aspect instead of the screen's. A background is
         // proposed the content's size and cannot grow it.
         Group {
-            if showPrivateTabs && isLocked {
+            if displaysPrivateTabs && isLocked {
                 lockedState
             } else {
                 contentStack
@@ -165,21 +153,15 @@ struct TabsOverviewView: View {
     }
 
     private var header: some View {
-        ZStack {
-            // The pill is centred on the screen, not on the leftover space
-            // between the two button clusters, which is why it overlays the
-            // row rather than sitting in it.
-            modePill
-
-            HStack(spacing: BrowserSpacing.compact) {
-                overflowMenu
-                Spacer()
+        VStack(spacing: 14) {
+            HStack {
+                Text("标签页").font(.title2.bold()).foregroundStyle(palette.primaryText)
+                Spacer(minLength: 8)
                 trailingButtons
             }
+            HStack(spacing: 12) { modePill; Spacer(minLength: 0); overflowMenu }
         }
-        .padding(.horizontal, BrowserSpacing.regular + 4)
-        .padding(.top, BrowserSpacing.compact)
-        .padding(.bottom, BrowserSpacing.tight)
+        .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 16)
     }
 
     /// The round translucent button the header's actions live in — the shape
@@ -286,14 +268,14 @@ struct TabsOverviewView: View {
             modeSegment(
                 title: "普通",
                 count: overviewTabCount(.regular),
-                isActive: !showPrivateTabs
+                isActive: !displaysPrivateTabs
             ) {
                 switchMode(to: false)
             }
             modeSegment(
                 title: "无痕",
                 count: overviewTabCount(.private),
-                isActive: showPrivateTabs
+                isActive: displaysPrivateTabs
             ) {
                 switchMode(to: true)
             }
@@ -324,7 +306,8 @@ struct TabsOverviewView: View {
                 if isActive {
                     // The active side is the brighter capsule, the way
                     // Safari's own indicator reads.
-                    Capsule().fill(palette.primaryText.opacity(0.15))
+                    if reduceMotion { Capsule().fill(palette.card) }
+                    else { Capsule().fill(palette.card).matchedGeometryEffect(id: "mode", in: modeAnimation) }
                 }
             }
             .contentShape(Capsule())
@@ -334,7 +317,7 @@ struct TabsOverviewView: View {
     }
 
     private func switchMode(to isPrivate: Bool) {
-        guard isPrivate != showPrivateTabs else { return }
+        guard isPrivate != displaysPrivateTabs else { return }
         withAnimation(BrowserMotion.layout(reduceMotion)) {
             showPrivateTabs = isPrivate
             // The search was over one mode's tabs; the other mode starts
@@ -561,27 +544,8 @@ struct TabsOverviewView: View {
             // way Safari's does, rather than always landing on regular.
             showPrivateTabs = tabManager.activeTab?.privacyMode == .private
         }
-        // The print behind the scrim is the page you came from — unless that
-        // page is private. 无痕模糊 is a blur of the tab cards, and a blurred
-        // print of a private page stretched across the whole surface is not a
-        // card blur: it is the private page itself, on screen, at whatever
-        // detail thirty-two points of blur still leave. The gradient stands in
-        // for it. (The lock's stricter rule — no private page anywhere, cards
-        // included — sits on top of this one.)
-        guard let active = tabManager.activeTab, !active.isHome,
-              active.privacyMode != .private
-        else { return }
-        backgroundPrint = await takeSnapshot(of: active.id)
     }
 
-    private func takeSnapshot(of tabId: String) async -> UIImage? {
-        guard let webView = tabManager.webView(for: tabId) else { return nil }
-        return await withCheckedContinuation { continuation in
-            webView.takeSnapshot(with: nil) { image, _ in
-                continuation.resume(returning: image)
-            }
-        }
-    }
 }
 
 /// One tab card: the page's own screenshot with its title printed underneath
@@ -753,7 +717,8 @@ private struct TabCard: View {
             return await env.tabManager.previewImage(for: tab.id)
         }
         let fresh: UIImage? = await withCheckedContinuation { continuation in
-            webView.takeSnapshot(with: nil) { image, _ in
+            let config = WKSnapshotConfiguration(); config.snapshotWidth = 420
+            webView.takeSnapshot(with: config) { image, _ in
                 continuation.resume(returning: image)
             }
         }

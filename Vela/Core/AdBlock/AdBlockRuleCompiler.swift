@@ -164,7 +164,7 @@ public enum AdBlockRuleCompiler {
         includeCosmetic: Bool = true
     ) -> AdBlockCompileResult {
         var result = AdBlockCompileResult()
-        let lines = filterList.components(separatedBy: .newlines).map(Substring.init)
+        let lines = filterList.components(separatedBy: .newlines).map { Substring($0) }
         result.sourceLineCount = lines.count
 
         // A list can declare `!#include`; Vela does not follow those, and a

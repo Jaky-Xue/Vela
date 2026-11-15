@@ -55,7 +55,7 @@ public enum UserScriptInjector {
                   !script.requireSources.contains(""), script.resources.count == script.resourceDeclarations.count else { continue }
 
             let values = valuesByScriptId[script.id] ?? [:]
-            let source = bootstrapSource(
+            let source = requiresNativeAuthorization ? "" : bootstrapSource(
                 for: script,
                 valuesJSON: encodeValues(values),
                 tabId: tabId,
@@ -76,11 +76,6 @@ public enum UserScriptInjector {
             (function () {
               if (window.__velaDocument) return;
               window.__velaDocument = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function(c) { return (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16); });
-              window.__velaStart = function (token) {
-                if (token !== window.__velaDocument || window.__velaStarted) return;
-                window.__velaStarted = true;
-                \(ungated)
-              };
               window.webkit.messageHandlers.velaUserScript.postMessage({type:'authorize', scriptId:\(jsonString(script.id)), documentToken:window.__velaDocument});
             })();
             """ : ungated

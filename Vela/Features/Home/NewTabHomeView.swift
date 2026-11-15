@@ -302,7 +302,7 @@ struct NewTabHomeView: View {
     /// rename, a name-visibility flip or a removal repaint the grid without a
     /// reload call at the call site.
     private var favorites: [HomeFavorite] {
-        env.homeFavorites.favorites
+        isPrivate ? [] : env.homeFavorites.favorites
     }
 
     /// Whether one tile draws its name. A tile that has never been edited

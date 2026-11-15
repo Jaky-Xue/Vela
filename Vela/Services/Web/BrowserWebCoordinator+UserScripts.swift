@@ -35,7 +35,11 @@ extension BrowserWebCoordinator {
                 webView.evaluateJavaScript(UserScriptInjector.pageWorldSource(for: script), in: frame, in: .page) { _ in }
                 return
             }
-            let start = "if(window.__velaDocument === \(jsonLiteral(token))) { window.__velaStart(\(jsonLiteral(token))); }"
+            guard let snapshot = try? userScripts.storageSnapshot(scriptId: scriptId),
+                  let source = UserScriptInjector.makeUserScripts(for: [script], url: frameURL,
+                      valuesByScriptId: [scriptId: snapshot.values], tabId: tab.id,
+                      worldsByScriptId: [scriptId: world], revisionsByScriptId: [scriptId: snapshot.revision]).scripts.first?.source else { return }
+            let start = "if(window.__velaDocument === \(jsonLiteral(token)) && !window.__velaStarted) { window.__velaStarted = true; \(source) }"
             webView.evaluateJavaScript(start, in: frame, in: .world(name: world)) { _ in }
             return
         }

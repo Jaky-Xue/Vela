@@ -712,9 +712,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         )
         // Resolve manual rules natively for each HTTP(S) frame; never inject a top-site stylesheet into third-party frames.
-        if !manualHideFrames.keys.contains(where: { $0.hasPrefix(tab.id + "|") }) {
-            // Handler belongs to the controller, and is recreated with its scripts on navigation.
-        }
         controller.removeScriptMessageHandler(forName: "velaManualStyle", contentWorld: .defaultClient)
         controller.add(MessageBridge(coordinator: self), contentWorld: .defaultClient, name: "velaManualStyle")
         manualHideFrames = manualHideFrames.filter { !$0.key.hasPrefix(tab.id + "|") }
@@ -766,13 +763,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             let installed = (try? userScripts.enabledScripts()) ?? []
             let matching = installed.sorted { $0.createdAt < $1.createdAt }
             if !matching.isEmpty {
-                var values: [String: [String: String]] = [:]
-                var revisions: [String: Int] = [:]
-                for script in matching {
-                    let snapshot = try? userScripts.storageSnapshot(scriptId: script.id)
-                    values[script.id] = snapshot?.values ?? [:]
-                    revisions[script.id] = snapshot?.revision ?? 0
-                }
                 var worlds: [String: String] = [:]
                 for script in matching {
                     let key = tab.id + "|" + script.id
@@ -786,10 +776,10 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                 let built = UserScriptInjector.makeUserScripts(
                     for: matching,
                     url: pageURL,
-                    valuesByScriptId: values,
+                    valuesByScriptId: [:],
                     tabId: tab.id,
                     worldsByScriptId: worlds,
-                    revisionsByScriptId: revisions,
+                    revisionsByScriptId: [:],
                     requiresNativeAuthorization: true
                 )
                 for script in built.scripts {
