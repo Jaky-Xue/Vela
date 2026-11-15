@@ -9,12 +9,12 @@ final class HomePresentationTests: XCTestCase {
         var home = NewTabHomeView(settings: harness.settings, favoritesService: favorites,
                                   tabManager: harness.tabManager, onNavigate: { _ in })
         XCTAssertTrue(home.recentlyClosed.isEmpty)
-        let regular = harness.open(URL(string: "https://example.com/regular")!)
+        let regular = harness.open(URL(string: "about:blank#regular")!)
         harness.tabManager.closeTab(id: regular.id)
-        XCTAssertEqual(home.recentlyClosed.map(\.url), ["https://example.com/regular"])
-        let privateTab = harness.tabManager.openTab(url: URL(string: "https://example.com/private")!, privacyMode: .private)
+        XCTAssertEqual(home.recentlyClosed.map(\.url), ["about:blank#regular"])
+        let privateTab = harness.tabManager.openTab(url: URL(string: "about:blank#private")!, privacyMode: .private)
         harness.tabManager.closeTab(id: privateTab.id)
-        XCTAssertEqual(home.recentlyClosed.map(\.url), ["https://example.com/regular"])
+        XCTAssertEqual(home.recentlyClosed.map(\.url), ["about:blank#regular"])
         home.isPrivate = true
         XCTAssertTrue(home.recentlyClosed.isEmpty)
         home.isPrivate = false

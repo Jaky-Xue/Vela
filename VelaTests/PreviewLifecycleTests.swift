@@ -7,7 +7,7 @@ final class PreviewLifecycleTests: XCTestCase {
     private func image() -> UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { context in
             UIColor.red.setFill()
-            context.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
         }
     }
 

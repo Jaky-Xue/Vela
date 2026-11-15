@@ -92,6 +92,7 @@ final class TabPreviewStore {
                expectedRevision: Revision? = nil) -> Task<Void, Never> {
         let expected = expectedRevision ?? revision(for: tabId)
         return Task { [weak self] in
+            guard self?.revision(for: tabId) == expected else { return }
             let prepared = await Task.detached(priority: .utility) {
                 let image = Self.downscaled(image)
                 return (image, persistToDisk ? image.jpegData(compressionQuality: 0.72) : nil)
