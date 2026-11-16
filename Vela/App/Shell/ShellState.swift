@@ -200,8 +200,14 @@ final class ShellState {
     // MARK: - Overlays
 
     func present(_ overlay: ShellOverlay) {
-        overlays.removeAll { $0.kind == overlay.kind }
-        overlays.insert(overlay)
+        // Build the next set locally and assign once. A mutating method called
+        // through the observable property's accessors (rather than on a local
+        // value) is not something the generated property supports, and one
+        // assignment also means one change notification.
+        var next = overlays
+        next.removeAll { $0.kind == overlay.kind }
+        next.insert(overlay)
+        overlays = next
     }
 
     func dismiss(_ overlay: ShellOverlay) { dismiss(kind: overlay.kind) }
@@ -210,7 +216,9 @@ final class ShellState {
     /// `ShellOverlay`: both enums have cases called `menu` and `bookshelf`, and
     /// an unlabelled overload would make every one of those calls ambiguous.
     func dismiss(kind: ShellOverlay.Kind) {
-        overlays.removeAll { $0.kind == kind }
+        var next = overlays
+        next.removeAll { $0.kind == kind }
+        overlays = next
     }
 
     func isPresented(_ overlay: ShellOverlay) -> Bool { isPresented(kind: overlay.kind) }
