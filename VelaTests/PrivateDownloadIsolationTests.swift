@@ -58,6 +58,22 @@ final class PrivateDownloadIsolationTests: XCTestCase {
         XCTAssertEqual(try repository.task(guid: saved.guid)?.status, .completed)
     }
 
+    func testRelaunchTransfersOrphanRegularOwnershipWithoutLosingResumeData() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try BrowserDatabase.migrate(db)
+        let repository = DownloadRepository(database: db)
+        let task = DownloadTask(windowId: "old-secondary-window", requestUrl: "https://example.com", suggestedFileName: "file", status: .paused)
+        try repository.upsert(task)
+        let resume = Data([1,2,3])
+        try repository.storeResumeData(resume, guid: task.guid)
+        let service = DownloadService(repository: repository, settings: SettingsService(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+        service.adoptRegularDownloadsAfterRelaunch()
+        let restored = try XCTUnwrap(repository.task(guid: task.guid))
+        XCTAssertEqual(restored.status, .paused)
+        XCTAssertTrue(service.canControl(restored, windowId: TabSessionRepository.defaultWindowId))
+        XCTAssertEqual(try repository.resumeData(guid: task.guid), resume)
+    }
+
     func testOldSessionCannotSaveScriptDownloadIntoNewSession() async throws {
         let db = try SQLiteDatabase(path: ":memory:")
         try BrowserDatabase.migrate(db)

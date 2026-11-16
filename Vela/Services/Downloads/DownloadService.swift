@@ -194,6 +194,7 @@ public final class DownloadService: NSObject {
     /// installing the reconnector drains them, so an event delivered before
     /// the environment was built is not lost.
     public func prepareBackgroundSessionReconnection() {
+        adoptRegularDownloadsAfterRelaunch()
         purgeAbandonedPrivateDownloads()
         BackgroundDownloadRegistry.shared.setReconnector { [weak self] identifier in
             Task { @MainActor in
@@ -1186,6 +1187,19 @@ public final class DownloadService: NSObject {
             )
         }
 
+    }
+
+    /// A process restart has no surviving secondary window. Ordinary downloads
+    /// remain durable and become controllable by the restored primary window.
+    /// Called only by process boot, before any live window is registered.
+    func adoptRegularDownloadsAfterRelaunch() {
+        do {
+            for var task in try repository.allTasks() where task.privacyMode == .regular {
+                guard task.windowId != TabSessionRepository.defaultWindowId else { continue }
+                task.windowId = TabSessionRepository.defaultWindowId
+                try repository.upsert(task)
+            }
+        } catch { lastError = error.localizedDescription }
     }
 
     private func purgeAbandonedPrivateDownloads() {
