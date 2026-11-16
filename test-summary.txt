@@ -1,0 +1,68 @@
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.009 (0.196) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 12.326 (12.332) seconds
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.210 (2.061) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.007 (0.199) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.005 (0.073) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.384) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.120 (1.631) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.007 (0.009) seconds
+	 Executed 30 tests, with 0 failures (0 unexpected) in 0.381 (0.576) seconds
+	 Executed 19 tests, with 0 failures (0 unexpected) in 0.156 (1.909) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.004 (0.008) seconds
+	 Executed 15 tests, with 0 failures (0 unexpected) in 25.077 (25.084) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.011 (0.026) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.004 (0.194) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 2.903 (2.904) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.143 (0.149) seconds
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.336 (0.341) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.037 (0.038) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.981 (0.984) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.072 (0.074) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.130 (0.131) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.090 (0.154) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.656 (0.885) seconds
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.524 (0.546) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.374 (0.375) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.117 (0.215) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.126 (0.551) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.845 (1.323) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.913 (0.915) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.020 (0.657) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.017 (0.017) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 9.938 (9.941) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 1.839 (2.132) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.512 (1.513) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.069 (0.071) seconds
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.035 (0.077) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.003 (0.047) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.040 (0.071) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.010) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.060 (0.079) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.007 (0.011) seconds
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.137 (0.139) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.044 (0.045) seconds
+	 Executed 29 tests, with 0 failures (0 unexpected) in 1.686 (4.613) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.090 (0.570) seconds
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.017 (0.025) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 51.085 (51.186) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.067 (0.071) seconds
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.208 (0.912) seconds
+/Users/runner/work/Vela/Vela/VelaTests/UIAndFilterRegressionTests.swift:130: error: -[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot] : XCTAssertTrue failed
+/Users/runner/work/Vela/Vela/VelaTests/UIAndFilterRegressionTests.swift:136: error: -[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot] : XCTAssertEqual failed: ("nil") is not equal to ("Optional("##.test-ad")")
+/Users/runner/work/Vela/Vela/VelaTests/UIAndFilterRegressionTests.swift:138: error: -[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot] : XCTAssertTrue failed
+Test Case '-[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot]' failed (9.241 seconds).
+/Users/runner/work/Vela/Vela/VelaTests/UIAndFilterRegressionTests.swift:130: error: -[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot] : XCTAssertTrue failed
+/Users/runner/work/Vela/Vela/VelaTests/UIAndFilterRegressionTests.swift:136: error: -[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot] : XCTAssertEqual failed: ("nil") is not equal to ("Optional("##.test-ad")")
+/Users/runner/work/Vela/Vela/VelaTests/UIAndFilterRegressionTests.swift:138: error: -[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot] : XCTAssertTrue failed
+Test Case '-[VelaTests.UIAndFilterRegressionTests testInvalidCustomRuleDoesNotReplaceActiveSnapshot]' failed (10.477 seconds).
+	 Executed 15 tests, with 6 failures (0 unexpected) in 50.322 (50.492) seconds
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.122 (0.162) seconds
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+	 Executed 35 tests, with 0 failures (0 unexpected) in 41.588 (41.640) seconds
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.008 (0.010) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.038 (0.038) seconds
+	 Executed 401 tests, with 6 failures (0 unexpected) in 205.528 (220.014) seconds
+	 Executed 401 tests, with 6 failures (0 unexpected) in 205.528 (220.020) seconds
+** TEST SUCCEEDED **
