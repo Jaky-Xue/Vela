@@ -7,6 +7,7 @@
 //  lets a tab change replace an open reader.
 //
 
+import SwiftUI
 import XCTest
 @testable import Vela
 
