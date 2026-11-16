@@ -157,10 +157,10 @@ private struct BrowserWindowRoot: View {
                     // session rather than once per launch.
                     environment.passwords.lock()
                     environment.lockPrivateAccess()
-                    // A backgrounded app that still holds private tabs is the
-                    // case the cleanup exists for: the user has moved on, and
-                    // the ephemeral store must not be the thing that survives.
-                    if !environment.tabManager.privateTabs.isEmpty {
+                    // Downloads and the reader can outlive the last private tab.
+                    // End the scope even when no private tab remains;
+                    // the ephemeral store must not survive backgrounding.
+                    do {
                         let env = environment
                         let expectedGeneration = environment.privateNovelSessionGeneration
                         if let token = env.beginEndPrivateSession(expectedGeneration: expectedGeneration) {
