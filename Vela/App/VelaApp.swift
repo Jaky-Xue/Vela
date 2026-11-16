@@ -115,6 +115,13 @@ private struct BrowserWindowRoot: View {
                     environment.tabManager.discardRetainedTabData()
                 }
             }
+            .onChange(of: environment.settings.preferences.keepsRecentlyClosedTabs) { _, keeps in
+                let records = keeps ?? true
+                environment.tabManager.recordsRecentlyClosed = records
+                if !records {
+                    environment.tabManager.clearRecentlyClosed()
+                }
+            }
             .onChange(of: environment.settings.preferences.privateBrowsingMode) { _, _ in
                 environment.refreshPrivateBrowsingRouting()
             }

@@ -67,7 +67,7 @@ struct OmniboxView: View {
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
-                        .strokeBorder(isEditingStroke, lineWidth: 1)
+                        .strokeBorder(fieldStroke, lineWidth: fieldStrokeWidth)
                         .allowsHitTesting(false)
                 }
         } else {
@@ -118,13 +118,24 @@ struct OmniboxView: View {
         }
     }
 
-    /// The ring drawn around the field while it is open.
+    /// The ring around the field.
+    ///
+    /// A pill of ultra-thin material over a white page is very nearly the page
+    /// itself, so without a rim the closed omnibox disappeared in light mode.
+    /// The rim is drawn in ink rather than one fixed grey, so it chooses black
+    /// on a light palette and white on a dark one and reads in both.
     ///
     /// The omnibox is the only control whose "focused" state is a mode the rest
-    /// of the chrome reacts to, so the state is drawn rather than left to the
-    /// caret alone.
-    private var isEditingStroke: Color {
-        viewModel.isEditing ? palette.accent.opacity(0.55) : .clear
+    /// of the chrome reacts to, so opening it swaps the neutral rim for the
+    /// accent and thickens it rather than leaving focus to the caret alone.
+    private var fieldStroke: Color {
+        viewModel.isEditing
+            ? palette.accent.opacity(0.55)
+            : (colorScheme == .dark ? .white.opacity(0.26) : .black.opacity(0.18))
+    }
+
+    private var fieldStrokeWidth: CGFloat {
+        viewModel.isEditing ? 1.5 : 1
     }
 
     // MARK: - Field

@@ -50,6 +50,12 @@ struct GeneralSettingsView: View {
                     set: { value in env.setTabsNotRetained(value) }
                 ))
 
+                Toggle("记录最近关闭的标签页", isOn: Binding(
+                    get: { env.settings.preferences.recentlyClosedKept },
+                    set: { value in env.setRecordsRecentlyClosed(value) }
+                ))
+                .disabled(env.settings.preferences.tabsNotRetained ?? false)
+
                 Toggle("不保留历史记录", isOn: Binding(
                     get: { env.settings.preferences.historyNotRetained ?? false },
                     set: { value in env.settings.update { $0.historyNotRetained = value } }

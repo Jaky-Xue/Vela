@@ -266,6 +266,26 @@ final class TabManagerTests: XCTestCase {
         XCTAssertNotNil(manager.tab(id: page.id))
     }
 
+    func testClosingATabStopsRecordingWhenTheSwitchIsOff() {
+        let manager = makeManager()
+        manager.recordsRecentlyClosed = false
+        let page = manager.openTab(url: URL(string: "https://example.com/article")!)
+        manager.closeTab(id: page.id)
+
+        XCTAssertTrue(manager.recentlyClosed.isEmpty)
+    }
+
+    func testClearingRecentlyClosedDropsTheList() {
+        let manager = makeManager()
+        let page = manager.openTab(url: URL(string: "https://example.com/article")!)
+        manager.closeTab(id: page.id)
+        XCTAssertEqual(manager.recentlyClosed.count, 1)
+
+        manager.clearRecentlyClosed()
+
+        XCTAssertTrue(manager.recentlyClosed.isEmpty)
+    }
+
     func testReopeningTheLastClosedTabRestoresItsUrl() {
         let manager = makeManager()
         manager.createTab()

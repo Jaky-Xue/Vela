@@ -2,8 +2,9 @@
 //  HomeFavoriteEditSheet.swift
 //  Vela
 //
-//  Editing one home favourite: its name, its address, and whether the tile
-//  draws the name.
+//  Editing one home tile: its name, its address, and whether the tile draws
+//  the name. The home calls its favourites 图标 on screen — the shelf is the
+//  page and there is no 收藏 wording on it.
 //
 //  The sheet is the long-press menu's 编辑 destination. Nothing here touches
 //  the bookmark store: a home tile is its own copy, which is what lets a tile
@@ -81,10 +82,10 @@ struct HomeFavoriteEditSheet: View {
                 } header: {
                     Text("名称显示")
                 } footer: {
-                    Text("「外观 ▸ 主页图标」里的开关是所有收藏的默认值；在这里设置后，只影响这一个收藏。")
+                    Text("「外观 ▸ 主页图标」里的开关是所有图标的默认值；在这里设置后，只影响这一个图标。")
                 }
             }
-            .navigationTitle(isNew ? "新建收藏" : "编辑收藏")
+            .navigationTitle(isNew ? "新建图标" : "编辑图标")
             .navigationBarTitleDisplayMode(.inline)
             .browserListSurface()
             .toolbar {

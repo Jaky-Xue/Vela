@@ -126,6 +126,14 @@ public final class TabManager {
     /// forget.
     public var persistsSession = true
 
+    /// Whether a closed tab is recorded for 最近关闭. Set by the environment
+    /// from 记录最近关闭的标签页.
+    ///
+    /// 不保留标签页 still wins in `closeTab`: that switch asks for no traces
+    /// at all, while this one asks for no list. With this off nothing new is
+    /// recorded and the overview's 重新打开关闭的标签页 has nothing to offer.
+    public var recordsRecentlyClosed = true
+
     /// Fired when the first private tab of a new session is appended.
     ///
     /// The environment rotates its private novel service and private WebKit
@@ -604,8 +612,10 @@ public final class TabManager {
 
         // 不保留标签页 means a closed tab leaves no trace either: recording it
         // would retain its title and address until the next launch, which is
-        // the retention the switch is asking to stop.
-        if !closing.isHome, persistsSession {
+        // the retention the switch is asking to stop. 记录最近关闭的标签页
+        // is the narrower switch: it stops the list without touching the
+        // session or the previews.
+        if !closing.isHome, persistsSession, recordsRecentlyClosed {
             let record = RecentlyClosedTabRecord(
                 title: closing.displayTitle,
                 url: closing.url,
@@ -1123,8 +1133,18 @@ public final class TabManager {
     /// open tabs stay exactly as they are — the switch is about what survives
     /// the session, not about closing what the user is using.
     public func discardRetainedTabData() {
-        recentlyClosed.removeAll()
+        clearRecentlyClosed()
         previews.removeAll()
+    }
+
+    /// Drops the recently-closed list in memory and on disk.
+    ///
+    /// Called when 记录最近关闭的标签页 is turned off. The list holds page
+    /// titles and addresses, and the switch asks the browser not to keep them;
+    /// the session and the page pictures belong to the other switches and are
+    /// left alone.
+    public func clearRecentlyClosed() {
+        recentlyClosed.removeAll()
         try? sessionRepository?.clearRecentlyClosed(privacyMode: .regular)
         try? sessionRepository?.clearRecentlyClosed(privacyMode: .private)
     }

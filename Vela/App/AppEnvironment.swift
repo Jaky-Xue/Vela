@@ -144,6 +144,7 @@ public final class AppEnvironment {
         syncPrivateBrowsingRouting()
 
         tabManager.persistsSession = !(settings.preferences.tabsNotRetained ?? false)
+        tabManager.recordsRecentlyClosed = settings.preferences.recentlyClosedKept
         if tabManager.persistsSession,
            settings.preferences.restoreTabsOnLaunch,
            let snapshot = try? tabSessions.loadSession(windowId: windowId) {
@@ -164,7 +165,7 @@ public final class AppEnvironment {
         // download records and files have no business surviving that, so a
         // launch with no private session clears them before any window reads
         // the shared download service.
-        if tabManager.persistsSession {
+        if tabManager.persistsSession && tabManager.recordsRecentlyClosed {
             var records = (try? tabSessions.recentlyClosed(privacyMode: .regular)) ?? []
             let privateSessionIsOpen = !tabManager.privateTabs.isEmpty
                 || (settings.preferences.privateBrowsingMode ?? false)
@@ -175,8 +176,9 @@ public final class AppEnvironment {
             }
             tabManager.restoreRecentlyClosed(records)
         } else {
-            try? tabSessions.clearRecentlyClosed(privacyMode: .regular)
-            try? tabSessions.clearRecentlyClosed(privacyMode: .private)
+            // 记录最近关闭 off: earlier launches' entries are dropped rather
+            // than shown, exactly like 不保留标签页's own clear below.
+            tabManager.clearRecentlyClosed()
         }
         if tabManager.tabs.isEmpty {
             // First launch, or a restore that produced nothing.
@@ -245,6 +247,20 @@ public final class AppEnvironment {
         if notRetained {
             try? tabSessions.removeSession(windowId: windowId)
             tabManager.discardRetainedTabData()
+        }
+    }
+
+    /// Turns 记录最近关闭的标签页 on or off.
+    ///
+    /// Turning it off drops the list in memory and on disk: the entries are
+    /// page titles and addresses, and the switch asks the browser not to keep
+    /// them any more. Turning it back on starts recording from the next close;
+    /// entries already cleared do not come back.
+    public func setRecordsRecentlyClosed(_ records: Bool) {
+        settings.update { $0.keepsRecentlyClosedTabs = records }
+        tabManager.recordsRecentlyClosed = records
+        if !records {
+            tabManager.clearRecentlyClosed()
         }
     }
 

@@ -2,8 +2,12 @@
 //  NewTabHomeView.swift
 //  Vela
 //
-//  The native new-tab surface: the user's own favourites, and recently closed
-//  tabs.
+//  The native new-tab surface: the user's own favourites, and nothing else.
+//
+//  The home is deliberately quiet. No section titles, counts, folds or
+//  recently-closed list: once a tile has been added, the shelf is the page.
+//  The empty home is the only place with words, and it is where the first
+//  tile is added; afterwards a long press on the page is the door in.
 //
 //  The surface is native rather than a web document because there is no
 //  custom-homepage runtime to load one into.
@@ -27,8 +31,8 @@ struct NewTabHomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Whether this surface is the private mode's home — the ordinary home
-    /// and the private one are the same view, and the badge is what tells
-    /// them apart on screen.
+    /// and the private one are the same view. The private one has no tiles
+    /// and no way to add one, and its empty state names the mode.
     var isPrivate: Bool = false
 
     var onNavigate: (URL) -> Void
@@ -59,10 +63,6 @@ struct NewTabHomeView: View {
     /// vertical travel is not a chrome swipe either.
     @State private var suppressFavoriteTap = false
     @State private var suppressChromeSwipe = false
-    /// Derived from the current privacy boundary, never a stale copy of regular data.
-    var recentlyClosed: [RecentlyClosedTabRecord] {
-        isPrivate ? [] : tabManager.recentlyClosed.filter { $0.privacyMode == .regular }
-    }
     /// The custom background, reloaded whenever the settings document's stamp
     /// moves — which happens the moment a picture is saved or cleared behind
     /// the settings sheet, so the change is live without leaving the screen.
@@ -70,77 +70,15 @@ struct NewTabHomeView: View {
     /// Whether the custom picture is bright enough to need dark text.
     @State private var backgroundIsLight = true
 
-    @AppStorage("org.vela.browser.home-bookmarks-expanded") private var favoritesExpanded = true
-    @AppStorage("org.vela.browser.home-recently-closed-expanded") private var recentlyClosedExpanded = false
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrowserSpacing.loose) {
-                if isPrivate {
-                    HStack(spacing: 6) {
-                        Image(systemName: "eyeglasses")
-                        Text("无痕模式")
-                    }
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(homeSecondaryText)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(palette.controlFill.opacity(0.6)))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 2)
-                }
-
-                // The home carries its own favourites shelf, and the
-                // recently-closed list behind it. The section's plus is how a
-                // tile is added without saving a bookmark first — the two
-                // stores are independent now, so the home needs its own door
-                // in.
-                if showsFavoriteSection {
-                    favoriteBlock
-                }
-                if !recentlyClosed.isEmpty {
-                    recentlyClosedBlock
-                }
-
-                if favorites.isEmpty && recentlyClosed.isEmpty {
-                    // An empty home used to be a blank field, which reads as a
-                    // failed page rather than a start page. One quiet line is
-                    // enough to make the space intentional.
-                    VStack(spacing: 14) {
-                        AccentGlyphBadge(
-                            systemImage: isPrivate ? "eyeglasses" : "safari",
-                            size: 76,
-                            iconSize: 34
-                        )
-                        Text(isPrivate ? "无痕浏览" : "开始浏览")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(homePrimaryText)
-                        Text(isPrivate ? "不留下访问记录" : "输入网址，或添加主页收藏")
-                            .font(.footnote)
-                            .foregroundStyle(homeSecondaryText)
-                            .multilineTextAlignment(.center)
-
-                        // 无痕模式 keeps the shelf read-only: adding here would
-                        // write a shared favourite from a private session.
-                        if !isPrivate {
-                            Button {
-                                showingNewFavorite = true
-                            } label: {
-                                Label("添加主页收藏", systemImage: "plus")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(homePrimaryText)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
-                                    .background(palette.controlFill.opacity(0.7), in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.top, 2)
-                        }
-                    }
-                    .shadow(color: homeTextShadow, radius: 8, y: 1)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 28)
-                    .padding(.bottom, 40)
+                // Icons, and nothing else, once there is a tile. The one
+                // place the home carries words is the empty state.
+                if favorites.isEmpty {
+                    emptyHome
+                } else {
+                    favoritesShelf
                 }
             }
             .padding(.horizontal, BrowserSpacing.regular)
@@ -163,6 +101,10 @@ struct NewTabHomeView: View {
         .scrollDisabled(draggingFavoriteID != nil)
         .background { homeBackground }
         .scrollDismissesKeyboard(.immediately)
+        // With no header there is no visible plus once the shelf has tiles.
+        // A long press on the page — outside a tile, which has its own menu —
+        // is the door to add another; 无痕模式 writes nothing, so it gets none.
+        .modifier(HomeAddMenu(enabled: !isPrivate) { showingNewFavorite = true })
         // The bar hides on a drag the way it hides on a page's scroll: up
         // moves the page out of the way, down brings it back. The flick's
         // predicted distance joins in so a short throw still carries.
@@ -202,69 +144,45 @@ struct NewTabHomeView: View {
 
     // MARK: - Start page
 
-    /// A start-page section: a larger title and a fold, rather than the small
-    /// list header the rest of the app uses. The home is read at a glance and
-    /// from further away than a settings row.
-    private func homeSection<Content: View>(
-        _ title: String,
-        count: Int? = nil,
-        isExpanded: Binding<Bool>,
-        addAction: (() -> Void)? = nil,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: BrowserSpacing.compact + 2) {
-            HStack(spacing: 8) {
+    /// The only state with words on it: the home has no tiles yet, or it is
+    /// 无痕模式, whose shelf is read-only and therefore always empty. One
+    /// quiet line is what keeps a bare field from reading as a failed page.
+    private var emptyHome: some View {
+        VStack(spacing: 14) {
+            AccentGlyphBadge(
+                systemImage: isPrivate ? "eyeglasses" : "safari",
+                size: 76,
+                iconSize: 34
+            )
+            Text(isPrivate ? "无痕浏览" : "开始浏览")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(homePrimaryText)
+            Text(isPrivate ? "不留下访问记录" : "输入网址开始浏览")
+                .font(.footnote)
+                .foregroundStyle(homeSecondaryText)
+                .multilineTextAlignment(.center)
+
+            // 无痕模式 keeps the shelf read-only: adding here would write a
+            // shared favourite from a private session.
+            if !isPrivate {
                 Button {
-                    withAnimation(.snappy(duration: 0.24)) { isExpanded.wrappedValue.toggle() }
+                    showingNewFavorite = true
                 } label: {
-                    HStack(spacing: 7) {
-                        Text(title)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(homePrimaryText)
-
-                        if let count {
-                            Text("\(count)")
-                                .font(.caption.weight(.medium))
-                                .monospacedDigit()
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 2)
-                                .background(palette.controlFill.opacity(0.75), in: Capsule())
-                                .foregroundStyle(homeSecondaryText)
-                        }
-
-                        Spacer(minLength: 0)
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(homeSecondaryText.opacity(0.65))
-                            .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
-                    }
-                    .contentShape(Rectangle())
+                    Label("添加图标", systemImage: "plus")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(homePrimaryText)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(palette.controlFill.opacity(0.7), in: Capsule())
                 }
                 .buttonStyle(.plain)
-
-                // A section that owns its own inventory needs its own way in.
-                // The plus is small and sits beside the fold so the title row
-                // still reads as one line.
-                if let addAction {
-                    Button(action: addAction) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(homeSecondaryText)
-                            .frame(width: 28, height: 28)
-                            .background(palette.controlFill.opacity(0.75), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("添加收藏")
-                }
-            }
-
-            if isExpanded.wrappedValue {
-                content()
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                .padding(.top, 2)
             }
         }
         .shadow(color: homeTextShadow, radius: 8, y: 1)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 28)
+        .padding(.bottom, 40)
     }
 
     // MARK: - Background
@@ -333,76 +251,47 @@ struct NewTabHomeView: View {
         HomeTileStyle.cellWidth(iconSize: tileIconSize)
     }
 
-    /// The shelf is on the regular home even when empty if there is anything
-    /// else on screen: its header is where the add button lives. A private
-    /// home with nothing on it keeps the single quiet empty state.
-    private var showsFavoriteSection: Bool {
-        !favorites.isEmpty || (!isPrivate && !recentlyClosed.isEmpty)
-    }
-
-    /// The plus is a regular-mode affordance: a private session must not
-    /// write a shared favourite.
-    private var addFavoriteAction: (() -> Void)? {
-        guard !isPrivate else { return nil }
-        return { showingNewFavorite = true }
-    }
-
-    private var favoriteBlock: some View {
-        homeSection(
-            "收藏",
-            isExpanded: $favoritesExpanded,
-            addAction: addFavoriteAction
+    /// The shelf is the home: no title, count or fold sits above it, so the
+    /// tiles are what the page shows.
+    private var favoritesShelf: some View {
+        // Laid out in eager rows rather than a lazy grid. A lazy grid that
+        // survives a rotation keeps the cell geometry it laid out for the
+        // old width — the stranded-rows failure the tab overview fixes by
+        // re-keying — and the odd misplaced tile after a turn is exactly
+        // that. A favourites collection is short, so laziness buys nothing
+        // here and determinism is worth more. Each cell is the same fixed
+        // width and the row starts at the page's leading edge, so the
+        // spacing between icons is the number the setting names and a
+        // short last row still lines up with the rows above it.
+        //
+        // The same fixed-width cells the lazy grid drew, but placed by the
+        // layout itself so a reorder is one animated frame change per tile
+        // and the rows shift together.
+        HomeFavoriteGridLayout(
+            cellWidth: tileCellWidth,
+            spacing: tileSpacing
         ) {
-            // Laid out in eager rows rather than a lazy grid. A lazy grid that
-            // survives a rotation keeps the cell geometry it laid out for the
-            // old width — the stranded-rows failure the tab overview fixes by
-            // re-keying — and the odd misplaced tile after a turn is exactly
-            // that. A favourites collection is short, so laziness buys nothing
-            // here and determinism is worth more. Each cell is the same fixed
-            // width and the row starts at the section's leading edge, so the
-            // spacing between icons is the number the setting names and a
-            // short last row still lines up with the rows above it. Centring
-            // the row left a wide screen with a shelf floating in the middle
-            // of it, away from the 收藏 heading it belongs to.
-            VStack(alignment: .leading, spacing: tileSpacing) {
-                if favorites.isEmpty {
-                    Text("还没有收藏。点右上角的 + 添加。")
-                        .font(.footnote)
-                        .foregroundStyle(homeSecondaryText)
-                        .padding(.vertical, 4)
-                } else {
-                    // The same fixed-width cells the lazy grid drew, but
-                    // placed by the layout itself so a reorder is one animated
-                    // frame change per tile and the rows shift together.
-                    HomeFavoriteGridLayout(
-                        cellWidth: tileCellWidth,
-                        spacing: tileSpacing
-                    ) {
-                        ForEach(Array(favorites.enumerated()), id: \.element.id) { index, favorite in
-                            favoriteCell(favorite, index: index)
-                        }
-                    }
-                    .background {
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: HomeFavoriteGridFrameKey.self,
-                                value: proxy.frame(in: CoordinateSpace.named(Self.favoriteDragSpace))
-                            )
-                        }
-                    }
-                    .onPreferenceChange(HomeFavoriteCellHeightKey.self) { heights in
-                        favoriteCellHeights = heights
-                    }
-                    .onPreferenceChange(HomeFavoriteGridFrameKey.self) { frame in
-                        favoriteGridFrame = frame
-                    }
-                    // Tiles appearing and disappearing animate; a reorder is
-                    // already inside its own spring and is not keyed on the
-                    // count.
-                    .animation(BrowserMotion.layout(reduceMotion), value: favorites.count)
-                }
+            ForEach(Array(favorites.enumerated()), id: \.element.id) { index, favorite in
+                favoriteCell(favorite, index: index)
             }
         }
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: HomeFavoriteGridFrameKey.self,
+                    value: proxy.frame(in: CoordinateSpace.named(Self.favoriteDragSpace))
+                )
+            }
+        }
+        .onPreferenceChange(HomeFavoriteCellHeightKey.self) { heights in
+            favoriteCellHeights = heights
+        }
+        .onPreferenceChange(HomeFavoriteGridFrameKey.self) { frame in
+            favoriteGridFrame = frame
+        }
+        // Tiles appearing and disappearing animate; a reorder is already
+        // inside its own spring and is not keyed on the count.
+        .animation(BrowserMotion.layout(reduceMotion), value: favorites.count)
     }
 
     /// The tile customisation from 外观 ▸ 主页图标, resolved to concrete values.
@@ -646,69 +535,6 @@ struct NewTabHomeView: View {
             suppressChromeSwipe = false
         }
     }
-
-    // MARK: - Recently closed
-
-    private var recentlyClosedBlock: some View {
-        homeSection(
-            "最近关闭",
-            count: recentlyClosed.count,
-            isExpanded: $recentlyClosedExpanded
-        ) {
-            VStack(spacing: 0) {
-                ForEach(Array(recentlyClosed.prefix(5).enumerated()), id: \.element.id) { index, record in
-                    Button {
-                        if let url = URL(string: record.url) {
-                            // The mode routes the restore: a page opened from
-                            // the home is a new page like any other.
-                            tabManager.openTab(
-                                url: url,
-                                openSource: .restore
-                            )
-                        }
-                        tabManager.removeRecentlyClosedRecord(id: record.id)
-                    } label: {
-                        HStack(spacing: BrowserSpacing.compact) {
-                            SiteIconView(host: URL(string: record.url)?.host ?? "", size: 24)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(record.title.isEmpty ? record.url : record.title)
-                                    .font(.footnote)
-                                    .lineLimit(1)
-                                    .foregroundStyle(palette.primaryText)
-                                Text(URL(string: record.url)?.host ?? "")
-                                    .font(.caption2)
-                                    .lineLimit(1)
-                                    .foregroundStyle(palette.secondaryText)
-                            }
-                            Spacer(minLength: 0)
-                            Image(systemName: "arrow.up.left")
-                                .font(.system(size: 11))
-                                .foregroundStyle(palette.secondaryText.opacity(0.6))
-                        }
-                        .padding(.vertical, BrowserSpacing.tight + 1)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    if index < min(recentlyClosed.count, 5) - 1 {
-                        Rectangle()
-                            .fill(palette.separator)
-                            .frame(height: 0.5)
-                            .padding(.leading, 34)
-                    }
-                }
-            }
-            .padding(.horizontal, BrowserSpacing.compact + 2)
-            .padding(.vertical, BrowserSpacing.hairline)
-            .browserCard(
-                material: .thinMaterial,
-                radius: BrowserRadius.chip + 4,
-                elevation: BrowserElevation(radius: 10, y: 4, opacity: 0.06),
-                tint: palette.card.opacity(0.4)
-            )
-        }
-    }
-
 }
 
 // MARK: - Grid layout
@@ -798,6 +624,23 @@ private struct HomeFavoriteGridFrameKey: PreferenceKey {
         let next = nextValue()
         if next != .zero {
             value = next
+        }
+    }
+}
+
+/// The home's add door once it has tiles: a context menu on the page itself.
+/// 无痕模式 must not write a shared favourite, so it gets no menu at all.
+private struct HomeAddMenu: ViewModifier {
+    var enabled: Bool
+    var action: () -> Void
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.contextMenu {
+                Button("添加图标", systemImage: "plus", action: action)
+            }
+        } else {
+            content
         }
     }
 }

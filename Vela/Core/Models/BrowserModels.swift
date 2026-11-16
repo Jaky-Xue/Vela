@@ -541,6 +541,10 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// 不保留标签页：开启后浏览器不保留任何标签页痕迹——不写会话、不记录
     /// 「最近关闭」、不保存预览图片。当前打开的标签页不受影响。
     public var tabsNotRetained: Bool?
+    /// 记录最近关闭的标签页：关闭的页面进入「最近关闭」，可在标签页总览里
+    /// 重新打开。Optional for the decode reason every new preference here
+    /// carries — an absent key decodes to the default, which is on.
+    public var keepsRecentlyClosedTabs: Bool?
     /// 小说阅读的翻页方式：scroll 或 paged。
     public var novelPageMode: String?
     /// 强制网页缩放：允许用双指手势缩放每一页，包括声明了
@@ -595,6 +599,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         padToolbarTrailingItems: [String]? = nil,
         historyNotRetained: Bool? = nil,
         tabsNotRetained: Bool? = nil,
+        keepsRecentlyClosedTabs: Bool? = nil,
         novelPageMode: String? = nil,
         forcedZoomEnabled: Bool? = nil,
         desktopViewportEnabled: Bool? = nil
@@ -641,6 +646,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.padToolbarTrailingItems = padToolbarTrailingItems
         self.historyNotRetained = historyNotRetained
         self.tabsNotRetained = tabsNotRetained
+        self.keepsRecentlyClosedTabs = keepsRecentlyClosedTabs
         self.novelPageMode = novelPageMode
         self.forcedZoomEnabled = forcedZoomEnabled
         self.desktopViewportEnabled = desktopViewportEnabled
@@ -648,6 +654,9 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
 
     /// The resolved switch: protection is on unless explicitly turned off.
     public var topProtectionEnabled: Bool { topProtection ?? true }
+
+    /// The resolved switch: 最近关闭 is recorded unless explicitly turned off.
+    public var recentlyClosedKept: Bool { keepsRecentlyClosedTabs ?? true }
 
     /// The most specific stored answer for a site and permission kind.
     ///
