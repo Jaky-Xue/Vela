@@ -466,9 +466,15 @@ public final class UserScriptService {
         if updated.requireSources.count != updated.requireUrls.count || updated.requireSources.contains("")
             || updated.resources.count != updated.resourceDeclarations.count { updated.enabled = false }
         updated.updatedAt = Date()
-        try? repository.upsert(updated)
-        reload()
-        return dependencies.warnings
+        do {
+            try repository.upsert(updated)
+            reload()
+            lastError = nil
+            return dependencies.warnings
+        } catch {
+            lastError = error.localizedDescription
+            return dependencies.warnings + ["依赖更新未保存：" + error.localizedDescription]
+        }
     }
 
     private func resolveDependencies(

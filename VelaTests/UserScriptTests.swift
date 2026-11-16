@@ -11,6 +11,21 @@ import XCTest
 
 @MainActor
 final class UserScriptTests: XCTestCase {
+    func testDependencyWriteFailureIsReturnedToCaller() async throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try BrowserDatabase.migrate(db)
+        let repository = UserScriptRepository(database: db)
+        let script = InstalledUserScriptState(name: "Failure fixture", source: "", matches: ["https://example.com/*"], grants: [.none], runAt: .documentEnd)
+        try repository.upsert(script)
+        let service = UserScriptService(repository: repository, settings: SettingsService(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+        service.reload()
+        db.close()
+        let warnings = await service.refreshDependencies(for: script)
+        XCTAssertNotNil(service.lastError)
+        XCTAssertTrue(warnings.contains { $0.contains("未保存") })
+        XCTAssertEqual(service.scripts.first?.id, script.id)
+    }
+
     func testVersionComparisonUsesNumericSegments() {
         XCTAssertTrue(UserScriptService.isNewer("1.10", than: "1.9"))
         XCTAssertTrue(UserScriptService.isNewer("2.0.1", than: "2.0"))

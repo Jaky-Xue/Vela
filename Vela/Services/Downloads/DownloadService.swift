@@ -56,7 +56,7 @@ public final class DownloadService: NSObject {
 
     public func visibleTasks(privacyMode: BrowserSessionPrivacyMode, windowId: String, sessionId: String) -> [DownloadTask] {
         Array(tasks.lazy.filter { task in
-            task.privacyMode == privacyMode && (privacyMode == .regular ||
+            isLive(task) && task.privacyMode == privacyMode && (privacyMode == .regular ||
                 (task.windowId == windowId && task.privateSessionId == sessionId))
         }.prefix(300))
     }
@@ -453,7 +453,7 @@ public final class DownloadService: NSObject {
         let limit = settings.downloadSettings.maxConcurrentDownloadCount
         while activeGuids.count < limit {
             let next = queued.values
-                .filter { $0.task.status == .pending }
+                .filter { $0.task.status == .pending && self.isLive($0.task) }
                 .sorted { $0.task.createdAt < $1.task.createdAt }
                 .first
             guard let next else { break }
@@ -472,7 +472,7 @@ public final class DownloadService: NSObject {
 
     private func startQueued(_ item: QueuedDownload) async {
         let guid = item.task.guid
-        guard var task = try? repository.task(guid: guid),
+        guard var task = try? repository.task(guid: guid), isLive(task),
               let url = item.request.url else {
             activeGuids.remove(guid)
             sourceWebViews.removeValue(forKey: guid)
@@ -1146,7 +1146,13 @@ public final class DownloadService: NSObject {
         if prompts[windowId]?.task.privateSessionId == sessionId { prompts.removeValue(forKey: windowId) }
         let privateTasks: [DownloadTask]
         do { privateTasks = try repository.privateTasks(windowId: windowId, sessionId: sessionId) }
-        catch { lastError = error.localizedDescription; return }
+        catch {
+            lastError = error.localizedDescription
+            let known = tasks + queued.values.map(\.task)
+            discardPrivateTasks(known.filter { $0.privacyMode == .private && $0.windowId == windowId && $0.privateSessionId == sessionId })
+            refreshActiveCount()
+            return
+        }
         discardPrivateTasks(privateTasks)
         do { try repository.clearPrivateRecords(windowId: windowId, sessionId: sessionId) }
         catch { lastError = error.localizedDescription }

@@ -232,3 +232,5 @@ P2：大型 Swift 文件多职责仍在；不为减少行数改 actor/所有权�
 | `Vela/UI/Theme.swift` | 483 | 0 |
 
 CI 最小权限：build/test 使用 contents: read；旧分支证据镜像移到独立 mirror job，仅该 job 拥有 contents: write。迁移、下载入队、标签保存具备错误信号；全项目临时/清理 try? 未机械替换，持久化 UI 全链路仍需真机验证。
+
+错误处理补充：脚本依赖刷新写入失败返回警告并保留 lastError；小说 TOC 仅在写入成功后发布缓存，失败不显示未保存状态。新增关闭数据库的故障注入回归测试。

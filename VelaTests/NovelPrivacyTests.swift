@@ -42,6 +42,15 @@ final class NovelPrivacyTests: XCTestCase {
         try await super.tearDown()
     }
 
+    func testFailedTOCSaveDoesNotPublishUnsavedCache() throws {
+        let entries = [NovelTOCEntry(title: "Chapter", url: "https://example.com/1")]
+        _ = regular.tocEntries(bookId: "book")
+        regularDatabase.close()
+        regular.saveTOC(bookId: "book", entries: entries)
+        XCTAssertNotNil(regular.lastError)
+        XCTAssertTrue(regular.tocEntries(bookId: "book").isEmpty)
+    }
+
     // MARK: - Fixtures
 
     private func extraction(chapter: Int) -> NovelExtraction {

@@ -235,8 +235,10 @@ public final class NovelLibraryService {
 
     public func saveTOC(bookId: String, entries: [NovelTOCEntry]) {
         guard !entries.isEmpty else { return }
-        try? repository.replaceTOC(bookId: bookId, entries: entries)
-        tocCache[bookId] = entries
+        do {
+            try repository.replaceTOC(bookId: bookId, entries: entries)
+            tocCache[bookId] = entries
+        } catch { lastError = error.localizedDescription }
     }
 
     /// The TOC entry before or after a chapter URL, when a TOC is cached.
@@ -273,7 +275,8 @@ public final class NovelLibraryService {
     /// the chapter page had no usable link for it.
     public func saveTOCSource(bookId: String, url: String) {
         guard !url.isEmpty else { return }
-        try? repository.saveTOCSource(bookId: bookId, tocUrl: url)
+        do { try repository.saveTOCSource(bookId: bookId, tocUrl: url) }
+        catch { lastError = error.localizedDescription }
     }
 
     private static func tocSource(for extraction: NovelExtraction) -> String {
