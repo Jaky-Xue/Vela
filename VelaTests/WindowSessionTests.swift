@@ -12,6 +12,15 @@ import XCTest
 
 @MainActor
 final class WindowSessionTests: XCTestCase {
+    func testSessionSaveFailureIsReportedWithoutDeletingTabs() throws {
+        let harness = try BrowserHarness()
+        let original = harness.tabManager.tabs.map(\.id)
+        harness.database.close()
+        harness.tabManager.persistSession()
+        XCTAssertNotNil(harness.tabManager.sessionSaveError)
+        XCTAssertEqual(harness.tabManager.tabs.map(\.id), original)
+    }
+
     func testWindowsKeepSeparateSessions() throws {
         let database = try SQLiteDatabase(path: ":memory:")
         for statement in BrowserSchema.creationStatements {

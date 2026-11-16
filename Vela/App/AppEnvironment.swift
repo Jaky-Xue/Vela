@@ -285,6 +285,7 @@ public final class AppEnvironment {
     /// but a device with no passcode, or a failed evaluation, would otherwise
     /// make the switch look dead.
     public var privateAccessNotice: String?
+    public var persistenceNotice: String?
 
     /// Whether a private surface must ask for the system check before it can
     /// be shown.

@@ -438,12 +438,10 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
             }
         }
 
-        for index in manifest.segments.indices {
-            try? fm.removeItem(at: partURL(index))
-        }
-        ManifestStore.remove(guid: guid)
         do {
             try publishFile(at: outputURL, to: finalURL)
+            for index in manifest.segments.indices { try? fm.removeItem(at: partURL(index)) }
+            ManifestStore.remove(guid: guid)
             finish(.success(finalURL))
         } catch { finish(.failure(error)) }
     }

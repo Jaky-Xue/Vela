@@ -206,9 +206,19 @@ extension BrowserShellView {
         .animation(BrowserMotion.novelEnter(reduceMotion), value: shell.surface)
     }
 
+    private var shellPersistenceNotice: some View {
+        shellOverlays.alert("无法保存浏览数据", isPresented: Binding(
+            get: { env.persistenceNotice != nil },
+            set: { if !$0 { env.persistenceNotice = nil } }
+        )) {
+            Button("好", role: .cancel) { env.persistenceNotice = nil }
+        } message: { Text(env.persistenceNotice ?? "") }
+    }
+
     /// The shell's own alerts, split from the layers they cover.
     var shellNotices: some View {
-        shellOverlays
+        shellPersistenceNotice
+
         .alert(
             "无法进入小说模式",
             isPresented: Binding(

@@ -55,10 +55,10 @@ public final class DownloadService: NSObject {
     }
 
     public func visibleTasks(privacyMode: BrowserSessionPrivacyMode, windowId: String, sessionId: String) -> [DownloadTask] {
-        tasks.filter { task in
+        Array(tasks.lazy.filter { task in
             task.privacyMode == privacyMode && (privacyMode == .regular ||
                 (task.windowId == windowId && task.privateSessionId == sessionId))
-        }
+        }.prefix(300))
     }
 
     public func pendingPrompt(windowId: String) -> DownloadTask? { prompts[windowId]?.task }
