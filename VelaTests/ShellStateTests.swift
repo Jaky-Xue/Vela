@@ -17,7 +17,7 @@ final class ShellStateTests: XCTestCase {
         let shell = ShellState()
         shell.present(.settings(.appearance))
         XCTAssertTrue(shell.isPresented(kind: .settings))
-        XCTAssertEqual(shell.settingsDestination, .appearance)
+        XCTAssertEqual(shell.settingsDestination, SettingsDestination.appearance)
 
         // Opening the root again must not stack a second settings sheet, and
         // the payload follows the newest presentation.
@@ -45,7 +45,7 @@ final class ShellStateTests: XCTestCase {
         // While the menu is still up, its destination is only a request: the
         // second sheet must not be presented in the same update.
         XCTAssertFalse(shell.isPresented(kind: .bookmarks))
-        XCTAssertEqual(shell.pendingMenuPresentation, .bookmarks)
+        XCTAssertEqual(shell.pendingMenuPresentation, MenuPresentation.bookmarks)
 
         shell.dismiss(.menu)
         shell.performPendingMenuPresentation()
