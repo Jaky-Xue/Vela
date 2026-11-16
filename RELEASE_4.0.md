@@ -1,4 +1,6 @@
-# Vela 4.0 — Build 62
+# Vela 4.0 — Build 62（技术记录）
+
+面向用户的发布说明见 [RELEASE_4.0.62.md](RELEASE_4.0.62.md)。
 
 保留 4.0 产品版本，Build 61 → 62，最低 iOS 17，Xcode 16 为工程格式最低要求；交付 CI 使用 macos-26/Xcode 26 系列。
 
@@ -7,7 +9,7 @@
 
 NavigationLog 仅为默认关闭的事件记录器，没有实际卡顿/崩溃自动采集，不宣称 MetricKit 或 MainThreadHangMonitor 已实现。普通与私密标签现有恢复偏好保持原样；私密下载重启后不恢复。
 
-构建必须经过 iPhone 和 iPad 完整测试门禁，不发布 GitHub Release，不推送 main。最终 CI 结果、产物 SHA-256、未验证项目见 G:\Vela-4.0-62-ReleaseReport.md。
+构建必须经过 iPhone 和 iPad 完整测试门禁。最终 CI 结果以该提交的 Actions 运行为准；发布包附在 GitHub Release v4.0.62 中。
 真机、Stage Manager、后台杀进程/expiration、UI 全流程和 Instruments 数据尚需验证。
 
 CI 最小权限：build/test 使用 contents: read；旧分支证据镜像移到独立 mirror job，仅该 job 拥有 contents: write。迁移、下载入队、标签保存具备错误信号；全项目临时/清理 try? 未机械替换，持久化 UI 全链路仍需真机验证。
