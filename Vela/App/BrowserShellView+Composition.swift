@@ -113,6 +113,31 @@ extension BrowserShellView {
         }
     }
 
+    /// The command bar yielding to the reader: it leaves downward, off the
+    /// edge it lives on, while the reader rises to cover the page.
+    var commandBarYieldTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .opacity.combined(with: .offset(y: BrowserChrome.barHeight + BrowserChrome.barGap))
+    }
+
+    /// The floating tools (find, notices) leave upward when the reader takes
+    /// the screen, and come back from the bar they belong to.
+    var floatingToolsYieldTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .opacity.combined(with: .move(edge: .bottom)),
+            removal: .opacity.combined(with: .move(edge: .top))
+        )
+    }
+
+    /// The tab overview rising from the bottom edge.
+    var overviewEntranceTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .opacity
+            .combined(with: .scale(scale: 0.96, anchor: .bottom))
+            .combined(with: .offset(y: 24))
+    }
+
     /// The full-screen layers that sit over the page: the phone command bar,
     /// the floating tools, the tab overview, the scanner and the novel reader.
     /// Kept apart from the base hierarchy so each expression the type checker
@@ -128,11 +153,7 @@ extension BrowserShellView {
                 commandBar
                     // The bar leaves on the reader's own curve, a beat behind
                     // its arrival, so the two read as one movement.
-                    .transition(
-                        reduceMotion
-                            ? .opacity
-                            : .opacity.combined(with: .offset(y: BrowserChrome.barHeight + BrowserChrome.barGap))
-                    )
+                    .transition(commandBarYieldTransition)
             }
         }
         .overlay(alignment: .bottom) {
@@ -140,14 +161,7 @@ extension BrowserShellView {
                 floatingToolsInGlassContainer
                     // The tools enter from the bar they belong to and leave
                     // upward when the reader takes the screen.
-                    .transition(
-                        reduceMotion
-                            ? .opacity
-                            : .asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .bottom)),
-                                removal: .opacity.combined(with: .move(edge: .top))
-                            )
-                    )
+                    .transition(floatingToolsYieldTransition)
             }
         }
         .overlay {
@@ -169,13 +183,7 @@ extension BrowserShellView {
                         homePreviewTabId = nil
                     }
                 )
-                .transition(
-                    reduceMotion
-                        ? .opacity
-                        : .opacity
-                            .combined(with: .scale(scale: 0.96, anchor: .bottom))
-                            .combined(with: .offset(y: 24))
-                )
+                .transition(overviewEntranceTransition)
                 .zIndex(20)
             }
         }

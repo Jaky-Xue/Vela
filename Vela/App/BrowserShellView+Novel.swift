@@ -3,6 +3,20 @@ import UIKit
 import WebKit
 
 extension BrowserShellView {
+    /// The reader's arrival: the shell's one ceremonial moment. It rises from
+    /// just under the page's own size and fades in, while the command bar
+    /// leaves on the same curve. Reduce Motion keeps the fade alone.
+    var novelLayerTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .opacity
+                .combined(with: .scale(scale: 0.97, anchor: .center))
+                .combined(with: .offset(y: 14)),
+            removal: .opacity
+                .combined(with: .scale(scale: 1.006, anchor: .center))
+        )
+    }
+
     /// The novel reader layer.
     ///
     /// Kept out of the root modifier chain: that chain is already at the type
@@ -27,21 +41,7 @@ extension BrowserShellView {
                     openInBrowser(url, for: session)
                 }
             )
-            // The reader's arrival is the shell's one ceremonial moment: it
-            // rises from just under the page's own size and fades in, while
-            // the command bar leaves on the same curve. Reduce Motion keeps
-            // the fade alone.
-            .transition(
-                reduceMotion
-                    ? .opacity
-                    : .asymmetric(
-                        insertion: .opacity
-                            .combined(with: .scale(scale: 0.97, anchor: .center))
-                            .combined(with: .offset(y: 14)),
-                        removal: .opacity
-                            .combined(with: .scale(scale: 1.006, anchor: .center))
-                    )
-            )
+            .transition(novelLayerTransition)
             .zIndex(40)
         }
     }
