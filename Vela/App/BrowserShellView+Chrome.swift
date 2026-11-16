@@ -3,8 +3,8 @@
 //  Vela
 //
 //  The command bar, floating tools, tab controls and stable palette foreground.
-//  The shell’s state stays in `BrowserShellView`; these are the views
-//  that read it.
+//  The state they read lives in `ShellState`; these are the views that
+//  draw it.
 //
 import SwiftUI
 import UIKit
