@@ -72,6 +72,25 @@ final class CompletionRegressionTests: XCTestCase {
         try await wait("getComputedStyle(document.getElementById('ad')).display!=='none'",web:web)
     }
 
+    func testEmptyManualRulesDoNotBootstrapEveryFrame() async throws {
+        let server = try LocalHTTPServer(routes:[
+            "/parent": .html("<title>Frames</title><iframe src='/child'></iframe>"),
+            "/child": .html("<p>child</p>")
+        ])
+        let base = try await server.start(); defer { server.stop() }
+        let h = try BrowserHarness()
+        let tab = h.open(base.appendingPathComponent("parent"))
+        await waitForSettled(tab, expectingTitle: "Frames")
+        let web = try XCTUnwrap(h.tabManager.webView(for: tab.id))
+        try await wait("document.querySelector('iframe').contentDocument.readyState==='complete'", web: web)
+        let result = try await web.evaluateJavaScript("typeof window.__velaApplyManualCSS === 'function' && typeof document.querySelector('iframe').contentWindow.__velaApplyManualCSS === 'undefined'")
+        XCTAssertEqual(result as? Bool, true)
+        for _ in 0..<100 where h.coordinator.manualHideFrames.isEmpty {
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        XCTAssertEqual(h.coordinator.manualHideFrames.count, 1)
+    }
+
     func testPageModeSeesPageGlobalsWithoutNativeBridge() async throws {
         let server = try LocalHTTPServer(routes:["/page":.html("<title>Page mode</title><script>window.pageFixture=42;</script>")])
         let base=try await server.start(); defer {server.stop()}

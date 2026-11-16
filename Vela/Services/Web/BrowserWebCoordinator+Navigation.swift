@@ -95,14 +95,9 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             if navigationAction.targetFrame?.isMainFrame == true,
                let scheme = navigationAction.request.url?.scheme?.lowercased(),
                scheme == "http" || scheme == "https" {
-                if self.settings.contentBlocker.enabled,
-                   !self.settings.contentBlocker.isExcepted(host: navigationAction.request.url?.host ?? "") {
-                    // Bounded: the wait is for a list that is about to exist, not
-                    // a promise that it will exist before the request can go. A
-                    // list that lands after the deadline is attached to the live
-                    // web views instead of holding the page.
-                    await self.contentBlocker.waitUntilPrepared()
-                }
+                // The first request must not wait for rule compilation. The
+                // compiled list is attached to open views by onChange when it
+                // becomes available, and subsequent navigations use it.
                 self.syncContentBlocker(
                     forHost: navigationAction.request.url?.host,
                     in: webView

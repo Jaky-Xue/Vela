@@ -266,7 +266,7 @@ public final class BrowserWebCoordinator: NSObject {
            ["http", "https"].contains(url.scheme ?? ""), let host = url.host {
             guard manualHideFrames.keys.filter({ $0.hasPrefix(tab.id + "|") }).count < 256 else { return }
             manualHideFrames[tab.id + "|" + token] = message.frameInfo
-            let selectors = manualHideSelectorJSON(for: host) ?? "[]"
+            guard let selectors = manualHideSelectorJSON(for: host) else { return }
             webView.evaluateJavaScript("if(window.__velaManualDocument === \(jsonLiteral(token))) window.__velaApplyManualCSS(\(selectors));", in: message.frameInfo, in: .defaultClient) { _ in }
             return
         }
@@ -747,7 +747,10 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                 forMainFrameOnly: true
             )
         )
-        // Resolve manual rules natively for each HTTP(S) frame; never inject a top-site stylesheet into third-party frames.
+        // The top document keeps the bridge so a newly picked element can be
+        // hidden immediately. Frames only need it when manual rules exist at
+        // all. The default empty rule set otherwise causes a native round trip
+        // and a JavaScript evaluation for every iframe on every page.
         controller.removeScriptMessageHandler(forName: "velaManualStyle", contentWorld: .defaultClient)
         controller.add(MessageBridge(coordinator: self), contentWorld: .defaultClient, name: "velaManualStyle")
         manualHideFrames = manualHideFrames.filter { !$0.key.hasPrefix(tab.id + "|") }
@@ -767,7 +770,12 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
           window.webkit.messageHandlers.velaManualStyle.postMessage({token:window.__velaManualDocument});
         })();
         """
-        controller.addUserScript(WKUserScript(source: manualBootstrap, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .defaultClient))
+        controller.addUserScript(WKUserScript(
+            source: manualBootstrap,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: settings.manualElementHide.sites.allSatisfy { $0.rules.isEmpty },
+            in: .defaultClient
+        ))
 
         if overlays.isElementPickerArmed {
             controller.addUserScript(
