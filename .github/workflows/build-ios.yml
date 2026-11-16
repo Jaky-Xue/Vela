@@ -251,5 +251,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.artifact }}
+      - name: Download legacy UI evidence
+        if: matrix.kind != 'build'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-previews-${{ matrix.kind == 'tests-iPhone' && 'iPhone' || 'iPad' }}
+          path: ui-previews
       - name: Mirror evidence on a generated branch
         run: python3 Scripts/publish_ci_bundle.py '${{ matrix.kind }}'
