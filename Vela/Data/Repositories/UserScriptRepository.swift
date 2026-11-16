@@ -20,6 +20,8 @@ public final class UserScriptRepository: @unchecked Sendable {
     /// the rare background dependency refresh.
     private let cacheLock = NSLock()
     private var enabledCache: [InstalledUserScriptState]?
+    private var scriptCache: [String: InstalledUserScriptState] = [:]
+    private var scriptCacheGeneration = 0
     private var valuesCache: [String: [String: String]] = [:]
     private let valueChangeLock = NSRecursiveLock()
     private var valueRevisions: [String: Int] = [:]
@@ -42,6 +44,8 @@ public final class UserScriptRepository: @unchecked Sendable {
     private func invalidateEnabledCache() {
         cacheLock.lock()
         enabledCache = nil
+        scriptCache.removeAll()
+        scriptCacheGeneration += 1
         cacheLock.unlock()
         NotificationCenter.default.post(name: .velaScriptPolicyChanged, object: self)
     }
@@ -213,11 +217,24 @@ public final class UserScriptRepository: @unchecked Sendable {
     }
 
     public func script(id: String) throws -> InstalledUserScriptState? {
-        try database.query(
+        // Reuse decoded metadata while WebKit delivers frequent GM messages.
+        // Mutations clear this cache so authorization observes current policy.
+        cacheLock.lock()
+        let cached = scriptCache[id]
+        let generation = scriptCacheGeneration
+        cacheLock.unlock()
+        if let cached { return cached }
+        let result = try database.query(
             "SELECT \(Self.columns) FROM \(BrowserSchema.userScriptsTable) WHERE id = ?",
             [.text(id)],
             row: script(from:)
         ).first
+        if let result {
+            cacheLock.lock()
+            if scriptCacheGeneration == generation { scriptCache[id] = result }
+            cacheLock.unlock()
+        }
+        return result
     }
 
     public func setEnabled(_ enabled: Bool, id: String) throws {
@@ -252,6 +269,10 @@ public final class UserScriptRepository: @unchecked Sendable {
             "UPDATE \(BrowserSchema.userScriptsTable) SET last_checked_at = ? WHERE id = ?",
             [.integer(date.milliseconds), .text(id)]
         )
+        cacheLock.lock()
+        scriptCache.removeValue(forKey: id)
+        scriptCacheGeneration += 1
+        cacheLock.unlock()
     }
 
     public func reorder(orderedIds: [String]) throws {
@@ -267,6 +288,7 @@ public final class UserScriptRepository: @unchecked Sendable {
                 )
             }
         }
+        invalidateEnabledCache()
     }
 
     // MARK: - GM_ value store

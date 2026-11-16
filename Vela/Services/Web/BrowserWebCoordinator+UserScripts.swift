@@ -40,9 +40,9 @@ extension BrowserWebCoordinator {
               let scriptId = payload["scriptId"] as? String else { return }
         let contextKey = tab.id + "|" + scriptId
         guard settings.preferences.userScriptsEnabled, tab.privacyMode != .private,
-              (message.frameInfo.isMainFrame || !((try? userScripts.script(id: scriptId))?.noframes ?? true)),
               let world = userScriptWorlds[contextKey], message.world.name == world,
               let script = try? userScripts.script(id: scriptId),
+              (message.frameInfo.isMainFrame || !script.noframes),
               script.updatedAt == userScriptVersions[contextKey],
               let frameURL = message.frameInfo.request.url,
               UserScriptMatcher.matches(script, url: frameURL)

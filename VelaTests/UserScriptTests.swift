@@ -11,6 +11,27 @@ import XCTest
 
 @MainActor
 final class UserScriptTests: XCTestCase {
+    func testCachedScriptMetadataTracksPolicyChanges() throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try BrowserDatabase.migrate(db)
+        let repository = UserScriptRepository(database: db)
+        var script = InstalledUserScriptState(name: "Cached", source: "window.first = true;",
+            matches: ["https://example.com/*"], grants: [.none], runAt: .documentEnd)
+        try repository.upsert(script)
+        XCTAssertEqual(try repository.script(id: script.id)?.source, script.source)
+
+        script.source = "window.second = true;"
+        script.updatedAt = script.updatedAt.addingTimeInterval(1)
+        try repository.upsert(script)
+        XCTAssertEqual(try repository.script(id: script.id)?.source, script.source)
+
+        try repository.setEnabled(false, id: script.id)
+        XCTAssertEqual(try repository.script(id: script.id)?.enabled, false)
+
+        try repository.remove(id: script.id)
+        XCTAssertNil(try repository.script(id: script.id))
+    }
+
     func testDependencyWriteFailureIsReturnedToCaller() async throws {
         let db = try SQLiteDatabase(path: ":memory:")
         try BrowserDatabase.migrate(db)
