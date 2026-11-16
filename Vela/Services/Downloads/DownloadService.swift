@@ -56,7 +56,7 @@ public final class DownloadService: NSObject {
 
     public func visibleTasks(privacyMode: BrowserSessionPrivacyMode, windowId: String, sessionId: String) -> [DownloadTask] {
         Array(tasks.lazy.filter { task in
-            isLive(task) && task.privacyMode == privacyMode && (privacyMode == .regular ||
+            self.isLive(task) && task.privacyMode == privacyMode && (privacyMode == .regular ||
                 (task.windowId == windowId && task.privateSessionId == sessionId))
         }.prefix(300))
     }
