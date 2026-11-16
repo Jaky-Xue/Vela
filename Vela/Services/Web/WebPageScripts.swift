@@ -31,6 +31,56 @@ public enum WebPageScripts {
         case permissionAsk = "velaPermissionAsk"
     }
 
+    // MARK: - Native-looking wrappers
+
+    /// The page-side helper every bridge in this file wraps its replacements
+    /// with.
+    ///
+    /// A bridge replaces a function the page can read back: `history.pushState`,
+    /// `navigator.geolocation.getCurrentPosition`, `navigator.clipboard.readText`,
+    /// `Notification.requestPermission`, and the accessors that carry a spoofed
+    /// identifier. A wrapper's source is visible through `toString()`, and a
+    /// site that finds JavaScript source where the platform's `[native code]`
+    /// belongs reads the browser as tampered with. That is not a theoretical
+    /// concern: it is what the bot check in front of a protected site
+    /// (Cloudflare's challenge on grok.com and chatgpt.com is the case this was
+    /// reported against) does with the answer, and a page that fails it can sit
+    /// on an interstitial that never clears while the same page loads in a
+    /// browser that injects nothing.
+    ///
+    /// Marking a wrapper changes nothing a page can do with the function: the
+    /// call, its arguments and its result are identical. It only keeps Vela's
+    /// own plumbing from being mistaken for interference with the page.
+    /// `velaInstall` places the wrapper the way the platform places its own —
+    /// own, non-enumerable, configurable — so a page checking for an own
+    /// property (`history.hasOwnProperty('pushState')`) reads what the platform
+    /// would have answered.
+    static let markNativeHelper = """
+      function velaNative(fn, name) {
+        try {
+          Object.defineProperty(fn, 'name', { value: name, configurable: true });
+        } catch (_error) {}
+        try {
+          Object.defineProperty(fn, 'toString', {
+            value: function () { return 'function ' + name + '() { [native code] }'; },
+            configurable: true,
+            writable: true
+          });
+        } catch (_error) {}
+        return fn;
+      }
+
+      function velaInstall(owner, name, value) {
+        try {
+          Object.defineProperty(owner, name, {
+            value: value, configurable: true, writable: true, enumerable: false
+          });
+        } catch (_error) {
+          try { owner[name] = value; } catch (_error2) {}
+        }
+      }
+    """
+
     // MARK: - History API bridge
 
     /// Reports `pushState` / `replaceState` / `popstate` / `hashchange` to the
@@ -42,6 +92,8 @@ public enum WebPageScripts {
       if (window.__velaHistoryApiBridgeInstalled === true) { return; }
       window.__velaHistoryApiBridgeInstalled = true;
       window.__velaHistoryApiBridgeLastUrl = String(window.location && window.location.href || '');
+
+    \(WebPageScripts.markNativeHelper)
 
       function notify(kind, oldUrl, newUrl) {
         try {
@@ -62,16 +114,25 @@ public enum WebPageScripts {
         }
       }
 
+      // The hook lives on `History.prototype`, wrapped as the platform's own
+      // function, so the page finds the method where the platform keeps it and
+      // reads the answer the platform would have given (`markNativeHelper`).
       function installHistoryHook(methodName) {
-        var original = history[methodName];
+        var owner = history;
+        try {
+          var proto = Object.getPrototypeOf(history);
+          if (proto && proto !== Object.prototype) { owner = proto; }
+        } catch (_error) {}
+        var original = owner[methodName];
         if (typeof original !== 'function') { return; }
-        history[methodName] = function (state, title, url) {
+        var hook = velaNative(function (state, title, url) {
           var before = String(window.location.href || '');
           var result = original.apply(this, arguments);
           var after = String(window.location.href || '');
           notify(methodName === 'pushState' ? 'pushState' : 'replaceState', before, after);
           return result;
-        };
+        }, methodName);
+        velaInstall(owner, methodName, hook);
       }
 
       installHistoryHook('pushState');
@@ -118,9 +179,10 @@ public enum WebPageScripts {
     /// * A Firefox claim gains Firefox's empty vendor and nothing else —
     ///   Firefox has no `userAgentData` either.
     /// * A desktop Safari claim (a Mac identifier without `Mobile/`) gains
-    ///   `navigator.platform = "MacIntel"`. On an iPad the automatic identity
-    ///   is exactly this claim, and a page that reads the platform rather than
-    ///   the header would otherwise still be told it is a tablet.
+    ///   `navigator.platform = "MacIntel"` — but only when the page does not
+    ///   already read that. On an iPad the automatic identity is exactly this
+    ///   claim, and the desktop content mode WebKit is handed with it already
+    ///   reports MacIntel, so the common case replaces nothing at all.
     /// * Vela's phone default sends no script at all: WebKit already is
     ///   Safari, and its surface is consistent by construction.
     ///
@@ -129,19 +191,25 @@ public enum WebPageScripts {
         let lowered = userAgent.lowercased()
 
         // A desktop Safari claim is a Mac platform claim. WebKit's desktop
-        // content mode reports `MacIntel` by itself on an iPad, so this is
-        // usually a no-op; it is here for the case where only the header was
-        // honoured and the page's platform check still read the tablet.
+        // content mode reports `MacIntel` by itself on an iPad, so the accessor
+        // is only replaced when it does not — this is the branch the automatic
+        // identity takes on every iPad page, and a getter that answers the
+        // right value but is visibly not the platform's is still the evidence a
+        // bot check collects. When it does have to be replaced, it answers as
+        // the platform's own accessor would (`markNativeHelper`).
         if lowered.contains("macintosh"), !lowered.contains("mobile") {
             return """
             (function () {
               if (window.__velaIdentityConsistency === true) { return; }
               window.__velaIdentityConsistency = true;
+            \(WebPageScripts.markNativeHelper)
               try {
-                Object.defineProperty(Navigator.prototype, 'platform', {
-                  get: function () { return 'MacIntel'; },
-                  configurable: true
-                });
+                if (navigator.platform !== 'MacIntel') {
+                  Object.defineProperty(Navigator.prototype, 'platform', {
+                    get: velaNative(function () { return 'MacIntel'; }, 'get platform'),
+                    configurable: true
+                  });
+                }
               } catch (error) {}
             })();
             """
@@ -204,7 +272,7 @@ public enum WebPageScripts {
         let vendorBlock = """
           try {
             Object.defineProperty(Navigator.prototype, 'vendor', {
-              get: function () { return \(Self.jsonString(vendor)); },
+              get: velaNative(function () { return \(Self.jsonString(vendor)); }, 'get vendor'),
               configurable: true
             });
           } catch (error) {}
@@ -219,7 +287,7 @@ public enum WebPageScripts {
                 mobile: \(mobile),
                 platform: '\(platform)'
               };
-              data.getHighEntropyValues = function (hints) {
+              data.getHighEntropyValues = velaNative(function (hints) {
                 return Promise.resolve({
                   brands: brands,
                   mobile: \(mobile),
@@ -231,12 +299,12 @@ public enum WebPageScripts {
                   uaFullVersion: '\(chromiumMajor).0.0.0',
                   fullVersionList: brands
                 });
-              };
-              data.toJSON = function () {
+              }, 'getHighEntropyValues');
+              data.toJSON = velaNative(function () {
                 return { brands: brands, mobile: \(mobile), platform: '\(platform)' };
-              };
+              }, 'toJSON');
               Object.defineProperty(Navigator.prototype, 'userAgentData', {
-                get: function () { return data; },
+                get: velaNative(function () { return data; }, 'get userAgentData'),
                 configurable: true
               });
             }
@@ -247,18 +315,25 @@ public enum WebPageScripts {
           try { if (!window.chrome) { window.chrome = { runtime: {} }; } } catch (error) {}
         """ : ""
 
+        // The two accessors a Chromium or Firefox claim has to correct, each
+        // replaced only when it disagrees with the claim: a getter replaced with
+        // an identical answer is still a replacement a page can see.
         let platformBlock = (claimsChromiumData || claimsFirefox) ? """
           try {
-            Object.defineProperty(Navigator.prototype, 'platform', {
-              get: function () { return \(platformLiteral); },
-              configurable: true
-            });
+            if (navigator.platform !== \(platformLiteral)) {
+              Object.defineProperty(Navigator.prototype, 'platform', {
+                get: velaNative(function () { return \(platformLiteral); }, 'get platform'),
+                configurable: true
+              });
+            }
           } catch (error) {}
           try {
-            Object.defineProperty(Navigator.prototype, 'maxTouchPoints', {
-              get: function () { return \(claimedTouchPoints); },
-              configurable: true
-            });
+            if (navigator.maxTouchPoints !== \(claimedTouchPoints)) {
+              Object.defineProperty(Navigator.prototype, 'maxTouchPoints', {
+                get: velaNative(function () { return \(claimedTouchPoints); }, 'get maxTouchPoints'),
+                configurable: true
+              });
+            }
           } catch (error) {}
         """ : ""
 
@@ -266,6 +341,7 @@ public enum WebPageScripts {
         (function () {
           if (window.__velaIdentityConsistency === true) { return; }
           window.__velaIdentityConsistency = true;
+        \(WebPageScripts.markNativeHelper)
         \(vendorBlock)
         \(userAgentDataBlock)
         \(windowChromeBlock)

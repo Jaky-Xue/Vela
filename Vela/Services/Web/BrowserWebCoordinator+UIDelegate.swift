@@ -53,21 +53,41 @@ extension BrowserWebCoordinator: WKUIDelegate {
 
     /// Puts the window WebKit built into a tab and hands it back.
     ///
-    /// The view is created from the configuration WebKit passed — the store,
-    /// the scripts and the identifier are already the opener page's, and the
-    /// opener link only exists inside it — so nothing here rebuilds it. The
-    /// tab is what makes it visible.
+    /// The view is created from the configuration WebKit passed — the store
+    /// and the scripts are already the opener page's, and the opener link only
+    /// exists inside it — so nothing here rebuilds it. The identifier is the
+    /// one thing that does not travel in the configuration (its override is a
+    /// property of the view), so it is carried across explicitly. The tab is
+    /// what makes the window visible.
     @MainActor
     private func adoptPopupWindow(
         for opener: WKWebView,
         configuration: WKWebViewConfiguration,
         navigationAction: WKNavigationAction
     ) -> WKWebView {
+        let openerTab = tab(for: opener)
+        // The window inherits the page's identity. `customUserAgent` belongs to
+        // the view, not to the configuration WebKit cloned for us, so without
+        // this a popup presents WebKit's own tablet identifier while the page
+        // that opened it claims a desktop one. The windows that matter here are
+        // sign-in windows — the OAuth hop ChatGPT takes and X for Grok — and a
+        // client whose identifier changes between the page and the window it
+        // opened is exactly what a bot check reads as a swapped or automated
+        // browser: the challenge then never clears and the flow hangs. The tail
+        // and the content mode are set on the configuration before the view is
+        // built, because WebKit copies the configuration at that point; the
+        // override string is a property of the view, set just after.
+        let identity = openerTab.map { webIdentity(for: $0, url: navigationAction.request.url) }
+        if let identity {
+            configuration.applicationNameForUserAgent = identity.applicationNameForUserAgent
+            configuration.defaultWebpagePreferences.preferredContentMode =
+                identity.isDesktop ? .desktop : .mobile
+        }
+
         let popup = WKWebView(frame: .zero, configuration: configuration)
+        popup.customUserAgent = identity?.customUserAgent
         popup.navigationDelegate = self
         popup.uiDelegate = self
-
-        let openerTab = tab(for: opener)
         // A private page's popups stay private, and a regular page's follow
         // 无痕模式's routing like every other new page.
         let privacyMode: BrowserSessionPrivacyMode

@@ -36,6 +36,29 @@ enum WebRTCGuard {
           if (typeof Native !== "function") { return; }
           var mode = "\(mode.rawValue)";
 
+          // The guard replaces constructor-shaped objects a page reads back.
+          // A wrapper whose source says JavaScript where the platform's
+          // `[native code]` belongs is what a site's bot check reads as a
+          // tampered browser — and this guard runs in every frame of every
+          // page by default, so it is the first wrapper such a check meets.
+          // The guard's behaviour is unchanged; only its source is answered
+          // the way the platform answers for its own. `markNative` is the
+          // same helper the page bridges use (see `WebPageScripts`), kept
+          // local because this file must not depend on the services layer.
+          function markNative(fn, name) {
+            try {
+              Object.defineProperty(fn, "name", { value: name, configurable: true });
+            } catch (error) {}
+            try {
+              Object.defineProperty(fn, "toString", {
+                value: function () { return "function " + name + "() { [native code] }"; },
+                configurable: true,
+                writable: true
+              });
+            } catch (error) {}
+            return fn;
+          }
+
           function install(Constructor) {
             try {
               Object.defineProperty(window, "RTCPeerConnection", {
@@ -59,7 +82,7 @@ enum WebRTCGuard {
               throw new DOMException("WebRTC is disabled by Vela.", "NotAllowedError");
             }
             BlockedPeerConnection.prototype = Native.prototype;
-            install(BlockedPeerConnection);
+            install(markNative(BlockedPeerConnection, "RTCPeerConnection"));
 
             try {
               var devices = navigator.mediaDevices;
@@ -185,12 +208,12 @@ enum WebRTCGuard {
                 if (typeof handler === "function") { handler.call(peer, event); }
               });
 
-              peer.addEventListener = function (type, listener, options) {
+              peer.addEventListener = markNative(function (type, listener, options) {
                 if (type === "icecandidate") {
                   return originalAdd.call(peer, type, filteredListener(listener), options);
                 }
                 return originalAdd.call(peer, type, listener, options);
-              };
+              }, "addEventListener");
             }
 
             return peer;
@@ -198,7 +221,7 @@ enum WebRTCGuard {
 
           GuardedPeerConnection.prototype = Native.prototype;
           try { Object.setPrototypeOf(GuardedPeerConnection, Native); } catch (error) {}
-          install(GuardedPeerConnection);
+          install(markNative(GuardedPeerConnection, "RTCPeerConnection"));
           window.__velaWebRTCGuard = mode;
         })();
         """

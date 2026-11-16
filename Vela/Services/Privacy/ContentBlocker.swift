@@ -55,10 +55,21 @@ public final class ContentBlocker {
     }
 
     /// Navigation can await this before its first request, including cold start.
-    public func waitUntilPrepared() async {
+    ///
+    /// Bounded on purpose. A compile that has not finished by the deadline is
+    /// not worth holding a page load for: the request goes out unfiltered and
+    /// the list is attached to the live web views the moment it lands
+    /// (`reloadContentBlockerIntoOpenWebViews`), so the only cost is that the
+    /// page's first bytes were fetched before the rules existed. Waiting
+    /// without a limit is how a cold start put every navigation behind a rule
+    /// compile, and a page that has not been asked for yet reads as a browser
+    /// that cannot load it.
+    public func waitUntilPrepared(withinNanoseconds limit: UInt64 = 250_000_000) async {
         if !isReady && !isCompiling { prepare() }
+        let deadline = Date().addingTimeInterval(Double(limit) / 1_000_000_000)
         while isCompiling && !isReady {
             if Task.isCancelled { return }
+            if Date() >= deadline { return }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
     }

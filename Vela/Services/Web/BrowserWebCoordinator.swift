@@ -346,9 +346,11 @@ public final class BrowserWebCoordinator: NSObject {
     }
 
     func handleScrollMessage(_ message: WKScriptMessage, tab: BrowserTabState, webView: WKWebView) {
-        // The reporter runs in every frame. A scrolling iframe reports its own
-        // `window.scrollY`, which has nothing to do with the tab's document and
-        // would overwrite the position the tab is supposed to restore.
+        // The reporter is attached to the top document only, and this guard is
+        // what keeps a page that reports from a frame anyway — an older build's
+        // injected script, a frame the host did not build — from overwriting
+        // the position the tab is supposed to restore: a scrolling iframe's
+        // `window.scrollY` has nothing to do with the tab's document.
         guard message.frameInfo.isMainFrame else { return }
         guard let payload = message.body as? [String: Any],
               let offset = payload["offsetY"] as? Double else { return }
@@ -645,18 +647,37 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         )
 
-        let startScripts: [String] = [
-            WebPageScripts.historyApiBridge,
-            WebPageScripts.fullscreenBridge,
-            WebPageScripts.inlineVideoControlsScript,
-            WebPageScripts.youtubeTapControlsScript,
-            WebPageScripts.youtubeQualityScript
-        ]
-
-        for source in startScripts {
+        // Every script added here is parsed and run by every frame the page
+        // creates, and the sites this scoping exists for — assistant apps and
+        // other heavy single-page products — run dozens of frames each. So each
+        // bridge is attached only where it can do its job:
+        //
+        // * The history bridge writes the tab's address, and a frame's own
+        //   `pushState` is not the page's address: the top document only.
+        // * The video bridges act on the site's player in the top document, so
+        //   they are attached for a video host and nowhere else. Their
+        //   quality watcher is a repeating timer, and running that timer in
+        //   every frame of every page is cost with no possible benefit.
+        // * The fullscreen bridge and tap-to-controls stay in every frame: an
+        //   embedded player is exactly the case they exist for.
+        controller.addUserScript(
+            WKUserScript(
+                source: WebPageScripts.historyApiBridge,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+        for source in [WebPageScripts.fullscreenBridge, WebPageScripts.inlineVideoControlsScript] {
             controller.addUserScript(
                 WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false)
             )
+        }
+        if url?.host.map({ BrowserUserAgent.isVideoSiteHost($0) }) ?? false {
+            for source in [WebPageScripts.youtubeTapControlsScript, WebPageScripts.youtubeQualityScript] {
+                controller.addUserScript(
+                    WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+                )
+            }
         }
 
 
@@ -705,11 +726,15 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                 )
             )
         }
+        // Main frame only: the toolbar reacts to the page scrolling, and a
+        // frame scrolling inside the page is not the page scrolling. The
+        // report also crosses the bridge, so a frame's report was both wrong
+        // and a message the host had to reject.
         controller.addUserScript(
             WKUserScript(
                 source: WebPageScripts.scrollReporter,
                 injectionTime: .atDocumentEnd,
-                forMainFrameOnly: false
+                forMainFrameOnly: true
             )
         )
         // The page ends above the command bar, so the strip the bar sits in is

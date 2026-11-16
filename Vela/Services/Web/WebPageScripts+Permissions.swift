@@ -25,6 +25,8 @@ extension WebPageScripts {
       if (window.__velaPermissionBridgeInstalled === true) { return; }
       window.__velaPermissionBridgeInstalled = true;
 
+    \(WebPageScripts.markNativeHelper)
+
       var pending = {};
       var sequence = 0;
 
@@ -72,17 +74,28 @@ extension WebPageScripts {
       // Location. The wrapper gates the page's call and then defers to the
       // browser's own implementation; a denial supplies the platform's error
       // shape so a site's failure path runs.
+      //
+      // The wrappers are installed where the platform keeps them — on
+      // `Geolocation.prototype`, not as own properties of the instance — and
+      // answer `toString` as the platform's own functions do, so a site's bot
+      // check does not read the permission gate as a tampered browser
+      // (`markNativeHelper` has the reason and the list of APIs involved).
       try {
         var geolocation = navigator.geolocation;
         if (geolocation) {
-          var nativeGet = geolocation.getCurrentPosition;
-          var nativeWatch = geolocation.watchPosition;
-          var nativeClearWatch = geolocation.clearWatch;
+          var geoOwner = geolocation;
+          try {
+            var geoProto = Object.getPrototypeOf(geolocation);
+            if (geoProto && geoProto !== Object.prototype) { geoOwner = geoProto; }
+          } catch (error) {}
+          var nativeGet = geoOwner.getCurrentPosition;
+          var nativeWatch = geoOwner.watchPosition;
+          var nativeClearWatch = geoOwner.clearWatch;
           var watches = {};
           var watchSequence = 0;
 
           if (typeof nativeGet === 'function') {
-            geolocation.getCurrentPosition = function (success, failure, options) {
+            velaInstall(geoOwner, 'getCurrentPosition', velaNative(function (success, failure, options) {
               post('location', function (allowed) {
                 if (allowed) {
                   try { nativeGet.call(geolocation, success, failure, options); } catch (error) {}
@@ -92,11 +105,11 @@ extension WebPageScripts {
                   try { failure(positionError()); } catch (error) {}
                 }
               });
-            };
+            }, 'getCurrentPosition'));
           }
 
           if (typeof nativeWatch === 'function') {
-            geolocation.watchPosition = function (success, failure, options) {
+            velaInstall(geoOwner, 'watchPosition', velaNative(function (success, failure, options) {
               var id = ++watchSequence;
               watches[id] = { alive: true, native: 0 };
               post('location', function (allowed) {
@@ -113,11 +126,11 @@ extension WebPageScripts {
                 } catch (error) {}
               });
               return id;
-            };
+            }, 'watchPosition'));
           }
 
           if (typeof nativeClearWatch === 'function') {
-            geolocation.clearWatch = function (id) {
+            velaInstall(geoOwner, 'clearWatch', velaNative(function (id) {
               var entry = watches[id];
               if (!entry) { return; }
               entry.alive = false;
@@ -125,20 +138,26 @@ extension WebPageScripts {
                 try { nativeClearWatch.call(geolocation, entry.native); } catch (error) {}
               }
               delete watches[id];
-            };
+            }, 'clearWatch'));
           }
         }
       } catch (error) {}
 
       // Clipboard reads. Writes are left alone: putting text on the clipboard
-      // is not the disclosure reading it is.
+      // is not the disclosure reading it is. The wrappers live on
+      // `Clipboard.prototype` and answer as the platform's own.
       try {
         var clipboard = navigator.clipboard;
         if (clipboard) {
-          var nativeReadText = clipboard.readText;
-          var nativeRead = clipboard.read;
+          var clipOwner = clipboard;
+          try {
+            var clipProto = Object.getPrototypeOf(clipboard);
+            if (clipProto && clipProto !== Object.prototype) { clipOwner = clipProto; }
+          } catch (error) {}
+          var nativeReadText = clipOwner.readText;
+          var nativeRead = clipOwner.read;
           if (typeof nativeReadText === 'function') {
-            clipboard.readText = function () {
+            velaInstall(clipOwner, 'readText', velaNative(function () {
               var self = this;
               var args = arguments;
               return new Promise(function (resolve, reject) {
@@ -147,10 +166,10 @@ extension WebPageScripts {
                   try { resolve(nativeReadText.apply(self, args)); } catch (error) { reject(error); }
                 });
               });
-            };
+            }, 'readText'));
           }
           if (typeof nativeRead === 'function') {
-            clipboard.read = function () {
+            velaInstall(clipOwner, 'read', velaNative(function () {
               var self = this;
               var args = arguments;
               return new Promise(function (resolve, reject) {
@@ -159,7 +178,7 @@ extension WebPageScripts {
                   try { resolve(nativeRead.apply(self, args)); } catch (error) { reject(error); }
                 });
               });
-            };
+            }, 'read'));
           }
         }
       } catch (error) {}
@@ -169,7 +188,7 @@ extension WebPageScripts {
       try {
         if (window.Notification && typeof window.Notification.requestPermission === 'function') {
           var nativeRequestPermission = window.Notification.requestPermission;
-          window.Notification.requestPermission = function (callback) {
+          velaInstall(window.Notification, 'requestPermission', velaNative(function (callback) {
             var self = this;
             var args = arguments;
             return new Promise(function (resolve) {
@@ -188,7 +207,7 @@ extension WebPageScripts {
                 }
               });
             });
-          };
+          }, 'requestPermission'));
         }
       } catch (error) {}
     })();

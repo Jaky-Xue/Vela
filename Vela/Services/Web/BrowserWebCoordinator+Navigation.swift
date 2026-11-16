@@ -97,6 +97,10 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                scheme == "http" || scheme == "https" {
                 if self.settings.contentBlocker.enabled,
                    !self.settings.contentBlocker.isExcepted(host: navigationAction.request.url?.host ?? "") {
+                    // Bounded: the wait is for a list that is about to exist, not
+                    // a promise that it will exist before the request can go. A
+                    // list that lands after the deadline is attached to the live
+                    // web views instead of holding the page.
                     await self.contentBlocker.waitUntilPrepared()
                 }
                 self.syncContentBlocker(
@@ -673,7 +677,16 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             // view to ask for a picture. This is the one moment the page is
             // certainly loaded and laid out, so the print is taken here and
             // kept for the overview to find later.
-            self.tabManager?.capturePreview(for: tab.id)
+            //
+            // The tab the user is reading is left out. `takeSnapshot` is a
+            // full repaint readback on the main thread, and on the heaviest
+            // pages — which is where a load already costs the most — taking it
+            // in the moment the document finishes competes with the page's own
+            // boot. That tab's picture is taken by `activateTab` the moment the
+            // user leaves it, which is the moment the overview can need it.
+            if self.tabManager?.activeTabId != tab.id {
+                self.tabManager?.capturePreview(for: tab.id)
+            }
             self.tabManager?.persistSession()
         }
     }
