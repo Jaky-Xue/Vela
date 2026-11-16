@@ -72,23 +72,20 @@ final class CompletionRegressionTests: XCTestCase {
         try await wait("getComputedStyle(document.getElementById('ad')).display!=='none'",web:web)
     }
 
-    func testEmptyManualRulesDoNotBootstrapEveryFrame() async throws {
-        let server = try LocalHTTPServer(routes:[
-            "/parent": .html("<title>Frames</title><iframe src='/child'></iframe>"),
-            "/child": .html("<p>child</p>")
-        ])
-        let base = try await server.start(); defer { server.stop() }
+    func testEmptyManualRulesKeepTheFrameBootstrapOutOfIframes() throws {
         let h = try BrowserHarness()
-        let tab = h.open(base.appendingPathComponent("parent"))
-        await waitForSettled(tab, expectingTitle: "Frames")
-        let web = try XCTUnwrap(h.tabManager.webView(for: tab.id))
-        try await wait("document.querySelector('iframe').contentDocument.readyState==='complete'", web: web)
-        let result = try await web.evaluateJavaScript("typeof window.__velaApplyManualCSS === 'function' && typeof document.querySelector('iframe').contentWindow.__velaApplyManualCSS === 'undefined'")
-        XCTAssertEqual(result as? Bool, true)
-        for _ in 0..<100 where h.coordinator.manualHideFrames.isEmpty {
-            try await Task.sleep(nanoseconds: 25_000_000)
+        let tab = try XCTUnwrap(h.tabManager.activeTab)
+        func manualScript() throws -> WKUserScript {
+            let configuration = h.coordinator.makeConfiguration(for: tab)
+            return try XCTUnwrap(configuration.userContentController.userScripts.first {
+                $0.source.contains("window.__velaManualDocument")
+            })
         }
-        XCTAssertEqual(h.coordinator.manualHideFrames.count, 1)
+        XCTAssertTrue(try manualScript().isForMainFrameOnly)
+        h.settings.updateManualElementHide {
+            $0.sites = [ManualElementHideSiteRules(host: "example.org", rules: [ManualElementHideRule(selector: ".ad")])]
+        }
+        XCTAssertFalse(try manualScript().isForMainFrameOnly)
     }
 
     func testPageModeSeesPageGlobalsWithoutNativeBridge() async throws {
