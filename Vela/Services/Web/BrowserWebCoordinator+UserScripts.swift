@@ -467,7 +467,7 @@ extension BrowserWebCoordinator {
                       liveScript.updatedAt == self.userScriptVersions[tab.id + "|" + scriptId],
                       UserScriptNativePolicy.allows(type: payload["_download"] as? Bool == true ? "download" : "xhr", payload: payload, script: liveScript, origin: origin) else { return }
                     let saved = try await self.downloads.saveScriptFile(data, response: response,
-                        suggestedName: payload["name"] as? String ?? "", boundary: tab.dataBoundary)
+                        suggestedName: payload["name"] as? String ?? "", boundary: self.downloadBoundary(for: tab))
                     result = ["taskId": saved.guid, "finalUrl": saved.finalUrl, "success": true]
                 }
                 self.resolveUserScript(

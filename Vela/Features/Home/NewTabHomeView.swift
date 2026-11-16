@@ -487,6 +487,7 @@ struct NewTabHomeView: View {
     /// in its slot, and the floating copy draws the same view at the finger.
     private func favoriteTileLabel(_ favorite: HomeFavorite, showsTitle: Bool) -> some View {
         HomeFavoriteTile(
+            isPrivate: isPrivate,
             favorite: favorite,
             showsTitle: showsTitle,
             iconSize: tileIconSize,

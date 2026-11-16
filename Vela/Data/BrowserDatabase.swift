@@ -4,11 +4,8 @@
 //
 //  Connection ownership and the schema-version ladder.
 //
-//  The connection opens lazily and the creation script runs on every open, with
-//  the version reconciled afterwards. That order is what makes an interrupted
-//  first launch recoverable: tables first, version row second, so a crash
-//  between the two leaves a database the next open can finish upgrading rather
-//  than one that claims a version it does not have.
+//  Schema creation, additive repair and the version update commit atomically.
+//  An error rolls back every change and leaves the original database intact.
 //
 
 import Foundation
@@ -20,7 +17,35 @@ public final class BrowserDatabase: @unchecked Sendable {
     private let lock = NSLock()
     private var database: SQLiteDatabase?
 
-    private init() {}
+    private let path: String?
+    public init(path: String? = nil) { self.path = path }
+
+    enum MigrationError: Error, LocalizedError {
+        case unsupportedVersion(Int)
+        case invalidVersion(String)
+        var errorDescription: String? {
+            switch self {
+            case .unsupportedVersion(let version): return "数据库版本 \(version) 高于当前支持版本 \(BrowserSchema.velaSchemaVersion)，请更新应用。原始数据未被重置。"
+            case .invalidVersion: return "数据库版本记录无效，迁移已停止。原始数据未被重置。"
+            }
+        }
+    }
+
+    static func migrate(_ database: SQLiteDatabase) throws {
+        try database.transaction {
+            let hasState = try database.scalarInt("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", [.text(BrowserSchema.stateTable)]) > 0
+            if hasState {
+                let value = try database.query("SELECT value FROM \(BrowserSchema.stateTable) WHERE key = 'schema_version'") { $0.string(at: 0) }.first
+                if let value {
+                    guard let version = Int(value), version >= 0 else { throw MigrationError.invalidVersion(value) }
+                    guard version <= BrowserSchema.velaSchemaVersion else { throw MigrationError.unsupportedVersion(version) }
+                }
+            }
+            let migrator = BrowserDatabase()
+            try migrator.createTables(in: database)
+            try migrator.reconcileSchemaVersion(in: database)
+        }
+    }
 
     /// Directory holding the database and its WAL sidecars.
     ///
@@ -51,9 +76,8 @@ public final class BrowserDatabase: @unchecked Sendable {
 
         if let database { return database }
 
-        let opened = try SQLiteDatabase(path: Self.databasePath)
-        try createTables(in: opened)
-        try reconcileSchemaVersion(in: opened)
+        let opened = try SQLiteDatabase(path: path ?? Self.databasePath)
+        try Self.migrate(opened)
         database = opened
         return opened
     }
@@ -72,23 +96,26 @@ public final class BrowserDatabase: @unchecked Sendable {
         for statement in BrowserSchema.creationStatements {
             try database.execute(statement)
         }
+        try ensureColumn("window_id", in: BrowserSchema.downloadsTable, definition: "TEXT", database: database)
+        try ensureColumn("private_session_id", in: BrowserSchema.downloadsTable, definition: "TEXT", database: database)
+        try database.execute("CREATE INDEX IF NOT EXISTS idx_downloads_owner ON \(BrowserSchema.downloadsTable)(window_id, private_session_id, privacy_mode)")
         // `CREATE TABLE IF NOT EXISTS` does not add a column to a table that
         // already exists, so columns introduced after the first release are
         // added here. SQLite has no portable `ADD COLUMN IF NOT EXISTS`, hence
         // the PRAGMA check.
-        ensureColumn(
+        try ensureColumn(
             "last_checked_at",
             in: BrowserSchema.userScriptsTable,
             definition: "INTEGER",
             database: database
         )
-        ensureColumn(
+        try ensureColumn(
             "resource_declarations",
             in: BrowserSchema.userScriptsTable,
             definition: "TEXT NOT NULL DEFAULT '[]'",
             database: database
         )
-        ensureColumn(
+        try ensureColumn(
             "metadata_block",
             in: BrowserSchema.userScriptsTable,
             definition: "TEXT NOT NULL DEFAULT ''",
@@ -101,20 +128,18 @@ public final class BrowserDatabase: @unchecked Sendable {
         in table: String,
         definition: String,
         database: SQLiteDatabase
-    ) {
-        let columns = (try? database.query("PRAGMA table_info(\(table))") {
+    ) throws {
+        let columns = try database.query("PRAGMA table_info(\(table))") {
             $0.string(at: 1)
-        }) ?? []
+        }
         guard !columns.contains(column) else { return }
-        try? database.execute("ALTER TABLE \(table) ADD COLUMN \(column) \(definition)")
+        try database.execute("ALTER TABLE \(table) ADD COLUMN \(column) \(definition)")
     }
 
     /// Reads and updates the version row in `browser_schema_state`.
     ///
-    /// Rows added by a newer build are written forward; a database reporting a
-    /// version newer than this build understands is left alone rather than
-    /// downgraded, because the alternative is destroying data the user has not
-    /// seen yet.
+    /// Called only after the version has been validated and all DDL succeeded,
+    /// inside the migration transaction. Future versions are rejected before DDL.
     private func reconcileSchemaVersion(in database: SQLiteDatabase) throws {
         let key = "schema_version"
         let existing = try database.query(

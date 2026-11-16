@@ -370,6 +370,9 @@ final class BrowserHarness {
 
         let tabManager = TabManager(configurationProvider: coordinator, sessionRepository: sessions)
         self.tabManager = tabManager
+        coordinator.downloadWindowId = tabManager.windowId
+        coordinator.downloadPrivateSessionId = "test-private-session"
+        downloads.beginPrivateSession(windowId: tabManager.windowId, sessionId: "test-private-session")
         coordinator.attach(tabManager: tabManager)
 
         _ = tabManager.createTab()

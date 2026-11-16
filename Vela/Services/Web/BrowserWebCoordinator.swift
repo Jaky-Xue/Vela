@@ -39,6 +39,14 @@ public final class BrowserWebCoordinator: NSObject {
     /// The shared record of permission answers, written on every decision.
     let permissionAudit: PermissionAuditService
     weak var tabManager: TabManager?
+    var downloadWindowId: String?
+    var downloadPrivateSessionId: String?
+
+    func downloadBoundary(for tab: BrowserTabState) -> BrowserDataBoundary {
+        BrowserDataBoundary(profileId: tab.profileId, dataScope: tab.dataScope,
+                            privacyMode: tab.privacyMode, windowId: downloadWindowId,
+                            privateSessionId: tab.privacyMode == .private ? downloadPrivateSessionId : nil)
+    }
 
     /// The structured record of what happened to each navigation. In memory
     /// only; see `NavigationLog`.

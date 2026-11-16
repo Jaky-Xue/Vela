@@ -67,6 +67,8 @@ public struct DownloadFailure: Codable, Equatable, Sendable {
 
 public struct DownloadTask: Codable, Equatable, Sendable, Identifiable {
     public var id: String { guid }
+    public var windowId: String?
+    public var privateSessionId: String?
     public var guid: String
     public var profileId: BrowserProfileId
     public var privacyMode: BrowserSessionPrivacyMode
@@ -88,6 +90,8 @@ public struct DownloadTask: Codable, Equatable, Sendable, Identifiable {
 
     public init(
         guid: String = UUID().uuidString,
+        windowId: String? = nil,
+        privateSessionId: String? = nil,
         profileId: BrowserProfileId = browserMainProfileId,
         privacyMode: BrowserSessionPrivacyMode = .regular,
         dataScope: BrowserDataScope = .profilePersistent,
@@ -106,6 +110,8 @@ public struct DownloadTask: Codable, Equatable, Sendable, Identifiable {
         updatedAt: Date = Date(),
         completedAt: Date? = nil
     ) {
+        self.windowId = windowId
+        self.privateSessionId = privateSessionId
         self.guid = guid
         self.profileId = profileId
         self.privacyMode = privacyMode

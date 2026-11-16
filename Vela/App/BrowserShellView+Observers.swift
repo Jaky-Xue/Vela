@@ -32,6 +32,7 @@ extension BrowserShellView {
             env.commands.register(owner: env.windowId) { command in
                 handleBrowserCommand(command)
             }
+            env.commands.setActive(owner: env.windowId, active: scenePhase == .active)
             // The one deferred destination that needs the environment: the
             // shelf captures the active tab's privacy mode and the current
             // private generation before it fetches a library.
@@ -187,6 +188,7 @@ extension BrowserShellView {
     /// background transition ends the private session whose tabs it shows.
     @MainActor
     func handleScenePhaseChanged(_ phase: ScenePhase) {
+        env.commands.setActive(owner: env.windowId, active: phase == .active)
         guard phase == .background, showTabsOverview else { return }
         homePreview = nil
         homePreviewTabId = nil

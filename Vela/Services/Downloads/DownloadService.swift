@@ -30,7 +30,38 @@ import Observation
 public final class DownloadService: NSObject {
     public private(set) var tasks: [DownloadTask] = []
     public private(set) var activeCount: Int = 0
-    public private(set) var pendingPrompt: DownloadTask?
+    public private(set) var lastError: String?
+    private var privateSessions: [String: String] = [:]
+    private var prompts: [String: QueuedDownload] = [:]
+
+    public func beginPrivateSession(windowId: String, sessionId: String) {
+        privateSessions[windowId] = sessionId
+    }
+
+    private func isLive(_ task: DownloadTask) -> Bool {
+        guard task.privacyMode == .private else { return true }
+        guard let window = task.windowId, let session = task.privateSessionId else { return false }
+        return privateSessions[window] == session
+    }
+
+    private func accepts(_ boundary: BrowserDataBoundary) -> Bool {
+        guard boundary.privacyMode == .private else { return true }
+        guard let window = boundary.windowId, let session = boundary.privateSessionId else { return false }
+        return privateSessions[window] == session
+    }
+
+    public func canControl(_ task: DownloadTask, windowId: String?) -> Bool {
+        isLive(task) && (task.windowId == nil ? task.privacyMode == .regular : task.windowId == windowId)
+    }
+
+    public func visibleTasks(privacyMode: BrowserSessionPrivacyMode, windowId: String, sessionId: String) -> [DownloadTask] {
+        tasks.filter { task in
+            task.privacyMode == privacyMode && (privacyMode == .regular ||
+                (task.windowId == windowId && task.privateSessionId == sessionId))
+        }
+    }
+
+    public func pendingPrompt(windowId: String) -> DownloadTask? { prompts[windowId]?.task }
 
     private let repository: DownloadRepository
     private let settings: SettingsService
@@ -78,7 +109,7 @@ public final class DownloadService: NSObject {
     /// The web view each task came from, kept weakly for the WebKit fallback.
     private var sourceWebViews: [String: WeakWebView] = [:]
     /// The confirmation sheet's payload.
-    private var pendingPromptPayload: QueuedDownload?
+
     /// The enriched request each active transfer is using, for the WebKit fallback.
     private var preparedRequests: [String: URLRequest] = [:]
     /// Progress is written to SQLite at most this often per task.
@@ -95,18 +126,34 @@ public final class DownloadService: NSObject {
         super.init()
     }
 
+    @discardableResult
+    private func persist(_ task: DownloadTask) -> Bool {
+        do { try repository.upsert(task); return true }
+        catch { lastError = error.localizedDescription; return false }
+    }
+
+    private func storeResumeData(_ data: Data?, guid: String) {
+        do { try repository.storeResumeData(data, guid: guid) }
+        catch { lastError = error.localizedDescription }
+    }
+
     // MARK: - Listing
 
     public func reload(privacyMode: BrowserSessionPrivacyMode = .regular) {
-        tasks = (try? repository.tasks(privacyMode: privacyMode)) ?? []
-        activeCount = (try? repository.activeCount(privacyMode: privacyMode)) ?? 0
+        do {
+            tasks = try repository.allTasks()
+        } catch {
+            lastError = error.localizedDescription
+        }
+        refreshActiveCount()
     }
 
     /// Transfers interrupted by an app termination, offered for resume at launch.
     /// terminal records for this purpose.
     @discardableResult
     public func reconcileInterruptedTasks() -> [DownloadTask] {
-        let interrupted = (try? repository.interruptedTasks()) ?? []
+        purgeAbandonedPrivateDownloads()
+        let interrupted = ((try? repository.interruptedTasks()) ?? []).filter { $0.privacyMode == .regular }
         for var task in interrupted where task.status == .running {
             // A segmented transfer may still be running in the system's
             // background daemon, with its identifier recorded in the manifest.
@@ -131,7 +178,7 @@ public final class DownloadService: NSObject {
             } else {
                 task.status = .paused
                 task.updatedAt = Date()
-                try? repository.upsert(task)
+                persist(task)
             }
         }
         reload()
@@ -147,6 +194,7 @@ public final class DownloadService: NSObject {
     /// installing the reconnector drains them, so an event delivered before
     /// the environment was built is not lost.
     public func prepareBackgroundSessionReconnection() {
+        purgeAbandonedPrivateDownloads()
         BackgroundDownloadRegistry.shared.setReconnector { [weak self] identifier in
             Task { @MainActor in
                 self?.reattachBackgroundSession(identifier: identifier)
@@ -163,7 +211,7 @@ public final class DownloadService: NSObject {
     /// applying as soon as the queue is pumped again.
     public func continueQueuedInBackground() {
         guard !queued.isEmpty else { return }
-        let pending = queued.values.filter { $0.task.status == .pending }
+        let pending = queued.values.filter { $0.task.status == .pending && $0.task.privacyMode == .regular }
         for item in pending {
             queued.removeValue(forKey: item.task.guid)
             activeGuids.insert(item.task.guid)
@@ -183,6 +231,13 @@ public final class DownloadService: NSObject {
             return
         }
 
+        guard let record = try? repository.task(guid: guid), isLive(record) else {
+            // Reconnect only to invalidate an orphan daemon session; never restart it.
+            let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
+            URLSession(configuration: configuration).invalidateAndCancel()
+            BackgroundDownloadRegistry.shared.complete(identifier: identifier)
+            return
+        }
         if let existing = segmentedSessions[guid] {
             existing.reattach(identifier: identifier)
             return
@@ -201,7 +256,7 @@ public final class DownloadService: NSObject {
             task.status = .running
             task.failure = nil
             task.updatedAt = Date()
-            try? repository.upsert(task)
+            persist(task)
             updateTaskInMemory(task)
             reload(privacyMode: task.privacyMode)
         }
@@ -289,6 +344,8 @@ public final class DownloadService: NSObject {
             ? (request.url?.lastPathComponent ?? "download")
             : suggestedFileName
         let task = DownloadTask(
+            windowId: boundary.windowId,
+            privateSessionId: boundary.privateSessionId,
             profileId: boundary.profileId,
             privacyMode: boundary.privacyMode,
             dataScope: boundary.dataScope,
@@ -300,9 +357,9 @@ public final class DownloadService: NSObject {
         )
         let item = QueuedDownload(task: task, request: request, webView: webView)
 
+        guard accepts(boundary) else { return }
         if settings.downloadSettings.confirmBeforeDownload {
-            pendingPrompt = task
-            pendingPromptPayload = item
+            prompts[boundary.windowId ?? "legacy"] = item
         } else {
             enqueue(item)
         }
@@ -325,6 +382,8 @@ public final class DownloadService: NSObject {
             ? (url.lastPathComponent.isEmpty ? "download" : url.lastPathComponent)
             : suggestedFileName
         let task = DownloadTask(
+            windowId: boundary.windowId,
+            privateSessionId: boundary.privateSessionId,
             profileId: boundary.profileId,
             privacyMode: boundary.privacyMode,
             dataScope: boundary.dataScope,
@@ -339,6 +398,7 @@ public final class DownloadService: NSObject {
 
     /// Script downloads use a permission-checked foreground transport, then commit file + record.
     public func saveScriptFile(_ data: Data, response: URLResponse, suggestedName: String, boundary: BrowserDataBoundary) async throws -> DownloadTask {
+        guard accepts(boundary) else { throw CancellationError() }
         let name = Self.sanitizeFileName(suggestedName.isEmpty ? (response.suggestedFilename ?? "download") : suggestedName)
         let destination = resolveDestination(suggestedFileName: name)
         reservedScriptDestinations.insert(destination.path)
@@ -349,32 +409,27 @@ public final class DownloadService: NSObject {
             try data.write(to: temp, options: .withoutOverwriting)
             try FileManager.default.moveItem(at: temp, to: destination)
         }.value
-        let task = DownloadTask(profileId: boundary.profileId, privacyMode: boundary.privacyMode, dataScope: boundary.dataScope,
+        let task = DownloadTask(windowId: boundary.windowId, privateSessionId: boundary.privateSessionId, profileId: boundary.profileId, privacyMode: boundary.privacyMode, dataScope: boundary.dataScope,
             requestUrl: response.url?.absoluteString ?? "", finalUrl: response.url?.absoluteString ?? "",
             suggestedFileName: name, resolvedFileName: destination.lastPathComponent, mimeType: response.mimeType ?? "",
             status: .completed, receivedBytes: Int64(data.count), totalBytes: Int64(data.count), writtenBytes: Int64(data.count),
             destinationPath: destination.path, completedAt: Date())
-        do { try Task.checkCancellation(); try repository.upsert(task) } catch { try? FileManager.default.removeItem(at: destination); throw error }
+        do { try Task.checkCancellation(); guard accepts(boundary) else { throw CancellationError() }; try repository.upsert(task) } catch { try? FileManager.default.removeItem(at: destination); throw error }
         reload(privacyMode: boundary.privacyMode)
         return task
     }
 
-    public func confirmPendingPrompt() {
-        guard let item = pendingPromptPayload else {
-            pendingPrompt = nil
-            return
-        }
-        pendingPrompt = nil
-        pendingPromptPayload = nil
+    public func confirmPendingPrompt(windowId: String) {
+        guard let item = prompts.removeValue(forKey: windowId), isLive(item.task) else { return }
         enqueue(item)
     }
 
-    public func dismissPendingPrompt() {
-        pendingPrompt = nil
-        pendingPromptPayload = nil
+    public func dismissPendingPrompt(windowId: String) {
+        prompts.removeValue(forKey: windowId)
     }
 
     private func enqueue(_ item: QueuedDownload) {
+        guard isLive(item.task) else { return }
         var task = item.task
         if task.destinationPath.isEmpty {
             let destination = resolveDestination(suggestedFileName: task.suggestedFileName)
@@ -386,7 +441,7 @@ public final class DownloadService: NSObject {
         task.updatedAt = Date()
         item.task = task
 
-        try? repository.upsert(task)
+        do { try repository.upsert(task) } catch { lastError = error.localizedDescription; return }
         queued[task.guid] = item
         sourceWebViews[task.guid] = WeakWebView(item.webView)
         reload(privacyMode: task.privacyMode)
@@ -430,12 +485,13 @@ public final class DownloadService: NSObject {
         task.failure = nil
         task.updatedAt = Date()
         item.task = task
-        try? repository.upsert(task)
+        guard persist(task) else { activeGuids.remove(guid); refreshActiveCount(); return }
         updateTaskInMemory(task)
         reload(privacyMode: task.privacyMode)
         refreshActiveCount()
 
         let prepared = await preparedRequest(for: item)
+        guard isLive(task), activeGuids.contains(guid), (try? repository.task(guid: guid))?.status == .running else { return }
         preparedRequests[guid] = prepared
 
         // URLSession sits under full ATS while web content is allowed
@@ -453,6 +509,7 @@ public final class DownloadService: NSObject {
             plan = existing
         } else if settings.downloadSettings.usesSegmentedDownloads {
             let probe = await SegmentedDownloadSession.probe(request: prepared)
+            guard isLive(task), activeGuids.contains(guid), (try? repository.task(guid: guid))?.status == .running else { return }
             if probe.supportsRanges {
                 let total = probe.totalBytes > 0 ? probe.totalBytes : task.totalBytes
                 if total > 0 {
@@ -490,14 +547,16 @@ public final class DownloadService: NSObject {
             )
         }
 
-        guard let plan else {
+        guard var plan else {
             activeGuids.remove(guid)
             failSegmented(guid: guid, error: SegmentedDownloadError.missingBody)
             return
         }
 
-        try? repository.upsert(task)
+        persist(task)
         updateTaskInMemory(task)
+        plan.windowId = task.windowId
+        plan.privateSessionId = task.privateSessionId
         ManifestStore.save(plan)
 
         beginSegmented(manifest: plan, request: prepared)
@@ -520,8 +579,12 @@ public final class DownloadService: NSObject {
                     self?.applyProgress(guid: guid, received: received, total: total)
                 }
             },
-            onManifest: { snapshot in
-                ManifestStore.save(snapshot)
+            onManifest: { [weak self] snapshot in
+                Task { @MainActor in
+                    guard let self, let task = try? self.repository.task(guid: snapshot.guid),
+                          self.isLive(task), self.activeGuids.contains(snapshot.guid) else { return }
+                    ManifestStore.save(snapshot)
+                }
             },
             onComplete: { [weak self] result in
                 Task { @MainActor in
@@ -586,6 +649,7 @@ public final class DownloadService: NSObject {
     }
 
     private func applyProgress(guid: String, received: Int64, total: Int64) {
+        guard let live = try? repository.task(guid: guid), isLive(live), live.status == .running else { return }
         var updated: DownloadTask?
         if let index = tasks.firstIndex(where: { $0.guid == guid }) {
             var task = tasks[index]
@@ -606,7 +670,7 @@ public final class DownloadService: NSObject {
         let now = Date()
         if now.timeIntervalSince(lastProgressPersist[guid] ?? .distantPast) > 0.75 {
             lastProgressPersist[guid] = now
-            try? repository.upsert(task)
+            persist(task)
         }
     }
 
@@ -634,7 +698,7 @@ public final class DownloadService: NSObject {
     }
 
     private func failSegmented(guid: String, error: Error) {
-        guard var task = try? repository.task(guid: guid) else { return }
+        guard var task = try? repository.task(guid: guid), isLive(task) else { return }
         activeGuids.remove(guid)
         let manifest = ManifestStore.load(guid: guid)
         let resumable = manifest != nil && !(manifest?.isComplete ?? false)
@@ -644,7 +708,7 @@ public final class DownloadService: NSObject {
             errorCode: (error as NSError).code
         )
         task.updatedAt = Date()
-        try? repository.upsert(task)
+        persist(task)
         updateTaskInMemory(task)
         if !resumable, let manifest {
             SegmentedDownloadSession.removeParts(manifest: manifest)
@@ -683,6 +747,10 @@ public final class DownloadService: NSObject {
     }
 
     private func attachWebKitFallback(download: WKDownload, guid: String) {
+        guard let task = try? repository.task(guid: guid), isLive(task), activeGuids.contains(guid) else {
+            download.cancel(nil)
+            return
+        }
         download.delegate = self
         downloads[guid] = download
         guidByDownload[ObjectIdentifier(download)] = guid
@@ -692,7 +760,7 @@ public final class DownloadService: NSObject {
             task.status = .running
             task.failure = nil
             task.updatedAt = Date()
-            try? repository.upsert(task)
+            persist(task)
             updateTaskInMemory(task)
             reload(privacyMode: task.privacyMode)
         }
@@ -721,6 +789,8 @@ public final class DownloadService: NSObject {
             : suggestedFileName
 
         let task = DownloadTask(
+            windowId: boundary.windowId,
+            privateSessionId: boundary.privateSessionId,
             profileId: boundary.profileId,
             privacyMode: boundary.privacyMode,
             dataScope: boundary.dataScope,
@@ -729,10 +799,11 @@ public final class DownloadService: NSObject {
             status: .running
         )
 
+        guard accepts(boundary) else { download.cancel(nil); return task }
         downloads[task.guid] = download
         guidByDownload[ObjectIdentifier(download)] = task.guid
         activeGuids.insert(task.guid)
-        try? repository.upsert(task)
+        persist(task)
         observeProgress(download: download, guid: task.guid)
         reload(privacyMode: task.privacyMode)
         refreshActiveCount()
@@ -756,13 +827,13 @@ public final class DownloadService: NSObject {
     }
 
     private func updateProgress(guid: String, receivedBytes: Int64, totalBytes: Int64) {
-        guard var task = try? repository.task(guid: guid) else { return }
+        guard var task = try? repository.task(guid: guid), isLive(task) else { return }
         task.receivedBytes = receivedBytes
         // `totalUnitCount` is -1 while the length is unknown, so a chunked
         // response keeps `totalBytes` at zero and the UI stays indeterminate.
         task.totalBytes = totalBytes > 0 ? totalBytes : 0
         task.updatedAt = Date()
-        try? repository.upsert(task)
+        persist(task)
 
         if let index = tasks.firstIndex(where: { $0.guid == guid }) {
             tasks[index] = task
@@ -775,7 +846,7 @@ public final class DownloadService: NSObject {
 
     /// Records a finished transfer.
     public func complete(guid: String, destinationPath: String, resolvedFileName: String) {
-        guard var task = try? repository.task(guid: guid) else { return }
+        guard var task = try? repository.task(guid: guid), isLive(task) else { return }
         task.status = .completed
         task.destinationPath = destinationPath
         task.resolvedFileName = resolvedFileName
@@ -790,7 +861,7 @@ public final class DownloadService: NSObject {
             task.receivedBytes = task.totalBytes
         }
         task.writtenBytes = task.receivedBytes
-        try? repository.upsert(task)
+        persist(task)
         releaseTracking(guid: guid)
         segmentedSessions.removeValue(forKey: guid)
         sourceWebViews.removeValue(forKey: guid)
@@ -814,7 +885,7 @@ public final class DownloadService: NSObject {
     /// `resumeCapability` alongside the error. Here the capability is derived
     /// from whether resume data actually came back.
     public func fail(guid: String, error: Error, resumeData: Data?) {
-        guard var task = try? repository.task(guid: guid) else { return }
+        guard var task = try? repository.task(guid: guid), isLive(task) else { return }
         let nsError = error as NSError
         task.status = resumeData != nil ? .paused : .failed
         task.failure = DownloadFailure(
@@ -822,8 +893,8 @@ public final class DownloadService: NSObject {
             errorCode: nsError.code
         )
         task.updatedAt = Date()
-        try? repository.upsert(task)
-        try? repository.storeResumeData(resumeData, guid: guid)
+        persist(task)
+        storeResumeData(resumeData, guid: guid)
         releaseTracking(guid: guid)
         segmentedSessions.removeValue(forKey: guid)
         sourceWebViews.removeValue(forKey: guid)
@@ -840,7 +911,8 @@ public final class DownloadService: NSObject {
     }
 
     /// Cancels a transfer, storing resume data when the engine supplies it.
-    public func cancel(guid: String) {
+    public func cancel(guid: String, windowId: String? = nil) {
+        guard let owned = try? repository.task(guid: guid), canControl(owned, windowId: windowId) else { return }
         if let session = segmentedSessions.removeValue(forKey: guid) {
             session.pause()
             stopSegmented(guid: guid, status: .cancelled)
@@ -855,7 +927,7 @@ public final class DownloadService: NSObject {
             var task = item.task
             task.status = .cancelled
             task.updatedAt = Date()
-            try? repository.upsert(task)
+            persist(task)
             sourceWebViews.removeValue(forKey: guid)
             activeGuids.remove(guid)
             refreshActiveCount()
@@ -870,7 +942,7 @@ public final class DownloadService: NSObject {
             if var task = try? repository.task(guid: guid) {
                 task.status = .cancelled
                 task.updatedAt = Date()
-                try? repository.upsert(task)
+                persist(task)
                 activeGuids.remove(guid)
                 refreshActiveCount()
                 reload(privacyMode: task.privacyMode)
@@ -884,8 +956,8 @@ public final class DownloadService: NSObject {
                 guard var task = try? self.repository.task(guid: guid) else { return }
                 task.status = .cancelled
                 task.updatedAt = Date()
-                try? self.repository.upsert(task)
-                try? self.repository.storeResumeData(resumeData, guid: guid)
+                self.persist(task)
+                self.storeResumeData(resumeData, guid: guid)
                 self.releaseTracking(guid: guid)
                 self.activeGuids.remove(guid)
                 self.refreshActiveCount()
@@ -900,7 +972,8 @@ public final class DownloadService: NSObject {
     /// A segmented download keeps its completed parts and manifest; a paused
     /// WebKit transfer keeps its resume blob; a queued task simply leaves the
     /// queue. All three can be resumed later.
-    public func pause(guid: String) {
+    public func pause(guid: String, windowId: String? = nil) {
+        guard let owned = try? repository.task(guid: guid), canControl(owned, windowId: windowId) else { return }
         if let session = segmentedSessions.removeValue(forKey: guid) {
             session.pause()
             stopSegmented(guid: guid, status: .paused)
@@ -911,7 +984,7 @@ public final class DownloadService: NSObject {
             var task = item.task
             task.status = .paused
             task.updatedAt = Date()
-            try? repository.upsert(task)
+            persist(task)
             sourceWebViews.removeValue(forKey: guid)
             activeGuids.remove(guid)
             refreshActiveCount()
@@ -924,7 +997,7 @@ public final class DownloadService: NSObject {
             if var task = try? repository.task(guid: guid) {
                 task.status = .paused
                 task.updatedAt = Date()
-                try? repository.upsert(task)
+                persist(task)
                 activeGuids.remove(guid)
                 refreshActiveCount()
                 reload(privacyMode: task.privacyMode)
@@ -939,8 +1012,8 @@ public final class DownloadService: NSObject {
                 task.status = .paused
                 task.updatedAt = Date()
                 task.failure = DownloadFailure(reason: "已暂停，可继续。")
-                try? self.repository.upsert(task)
-                try? self.repository.storeResumeData(resumeData, guid: guid)
+                self.persist(task)
+                self.storeResumeData(resumeData, guid: guid)
                 self.releaseTracking(guid: guid)
                 self.activeGuids.remove(guid)
                 self.refreshActiveCount()
@@ -955,7 +1028,7 @@ public final class DownloadService: NSObject {
         if var task = try? repository.task(guid: guid) {
             task.status = status
             task.updatedAt = Date()
-            try? repository.upsert(task)
+            persist(task)
             reload(privacyMode: task.privacyMode)
         }
         segmentedSessions.removeValue(forKey: guid)
@@ -973,8 +1046,9 @@ public final class DownloadService: NSObject {
     /// back to the web view; anything else is re-queued from its URL. The web
     /// view is optional because a segmented resume can continue without one —
     /// the manifest already has the URL and the parts.
-    public func resume(guid: String, in webView: WKWebView?) async {
-        guard var task = try? repository.task(guid: guid) else { return }
+    public func resume(guid: String, in webView: WKWebView?, windowId: String? = nil) async {
+        guard let owned = try? repository.task(guid: guid), canControl(owned, windowId: windowId) else { return }
+        guard var task = try? repository.task(guid: guid), isLive(task) else { return }
 
         let manifest = ManifestStore.load(guid: guid)
         if manifest != nil || (try? repository.resumeData(guid: guid)) == nil {
@@ -991,7 +1065,7 @@ public final class DownloadService: NSObject {
             task.status = .pending
             task.failure = nil
             task.updatedAt = Date()
-            try? repository.upsert(task)
+            persist(task)
             let item = QueuedDownload(
                 task: task,
                 request: URLRequest(url: url),
@@ -1011,11 +1085,12 @@ public final class DownloadService: NSObject {
         // Swift imports as async. The download it hands back is non-optional —
         // a resume that cannot be started reports through the delegate instead.
         let download = await webView.resumeDownload(fromResumeData: data)
+        guard isLive(task), (try? repository.task(guid: guid)) != nil else { download.cancel(nil); return }
         download.delegate = self
         task.status = .running
         task.failure = nil
         task.updatedAt = Date()
-        try? repository.upsert(task)
+        persist(task)
 
         downloads[guid] = download
         guidByDownload[ObjectIdentifier(download)] = guid
@@ -1035,7 +1110,8 @@ public final class DownloadService: NSObject {
 
     // MARK: - Deleting
 
-    public func remove(guid: String, deleteFile: Bool) {
+    public func remove(guid: String, deleteFile: Bool, windowId: String? = nil) {
+        guard let owned = try? repository.task(guid: guid), canControl(owned, windowId: windowId) else { return }
         if let session = segmentedSessions.removeValue(forKey: guid) {
             session.pause()
         }
@@ -1065,8 +1141,21 @@ public final class DownloadService: NSObject {
     }
 
     /// Clears private download records at the end of a private session.
-    public func clearPrivateRecords() {
-        let privateTasks = (try? repository.tasks(privacyMode: .private)) ?? []
+    public func clearPrivateRecords(windowId: String, sessionId: String) {
+        if privateSessions[windowId] == sessionId { privateSessions.removeValue(forKey: windowId) }
+        if prompts[windowId]?.task.privateSessionId == sessionId { prompts.removeValue(forKey: windowId) }
+        let privateTasks: [DownloadTask]
+        do { privateTasks = try repository.privateTasks(windowId: windowId, sessionId: sessionId) }
+        catch { lastError = error.localizedDescription; return }
+        discardPrivateTasks(privateTasks)
+        do { try repository.clearPrivateRecords(windowId: windowId, sessionId: sessionId) }
+        catch { lastError = error.localizedDescription }
+        refreshActiveCount()
+        reload()
+        pumpQueue()
+    }
+
+    private func discardPrivateTasks(_ privateTasks: [DownloadTask]) {
 
         for task in privateTasks {
             if let session = segmentedSessions.removeValue(forKey: task.guid) {
@@ -1081,16 +1170,24 @@ public final class DownloadService: NSObject {
             preparedRequests.removeValue(forKey: task.guid)
             lastProgressPersist.removeValue(forKey: task.guid)
             activeGuids.remove(task.guid)
+            if let url = task.destinationUrl, FileManager.default.fileExists(atPath: url.path) {
+                do { try FileManager.default.removeItem(at: url) }
+                catch { lastError = error.localizedDescription }
+            }
             SegmentedDownloadSession.discardArtifacts(
                 guid: task.guid,
                 destinationPath: task.destinationPath
             )
         }
 
-        try? repository.clearPrivateRecords()
-        refreshActiveCount()
-        reload()
-        pumpQueue()
+    }
+
+    private func purgeAbandonedPrivateDownloads() {
+        do {
+            let abandoned = try repository.allTasks().filter { $0.privacyMode == .private && !isLive($0) }
+            discardPrivateTasks(abandoned)
+            for task in abandoned { try repository.remove(guid: task.guid, deleteFile: true) }
+        } catch { lastError = error.localizedDescription }
     }
 
     func guid(for download: WKDownload) -> String? {
@@ -1133,7 +1230,7 @@ extension DownloadService: WKDownloadDelegate {
             task.finalUrl = finalUrl
             task.totalBytes = expectedLength > 0 ? expectedLength : 0
             task.updatedAt = Date()
-            try? self.repository.upsert(task)
+            self.persist(task)
 
             if let index = self.tasks.firstIndex(where: { $0.guid == guid }) {
                 self.tasks[index] = task
@@ -1175,7 +1272,7 @@ extension DownloadService: WKDownloadDelegate {
                let url = request.url?.absoluteString {
                 task.finalUrl = url
                 task.updatedAt = Date()
-                try? self.repository.upsert(task)
+                self.persist(task)
             }
             decisionHandler(.allow)
         }

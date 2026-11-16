@@ -56,13 +56,19 @@ public enum SyncState: String, Codable, Sendable, CaseIterable {
 public struct BrowserDataBoundary: Equatable, Sendable {
     public let profileId: BrowserProfileId
     public let dataScope: BrowserDataScope
+    public let windowId: String?
+    public let privateSessionId: String?
     public let privacyMode: BrowserSessionPrivacyMode
 
     public init(
         profileId: BrowserProfileId = browserMainProfileId,
         dataScope: BrowserDataScope,
-        privacyMode: BrowserSessionPrivacyMode
+        privacyMode: BrowserSessionPrivacyMode,
+        windowId: String? = nil,
+        privateSessionId: String? = nil
     ) {
+        self.windowId = windowId
+        self.privateSessionId = privateSessionId
         self.profileId = profileId
         self.dataScope = dataScope
         self.privacyMode = privacyMode
@@ -83,12 +89,14 @@ public struct BrowserDataBoundary: Equatable, Sendable {
 
     public static func resolve(
         profileId: BrowserProfileId,
-        privacyMode: BrowserSessionPrivacyMode
+        privacyMode: BrowserSessionPrivacyMode,
+        windowId: String? = nil,
+        privateSessionId: String? = nil
     ) -> BrowserDataBoundary {
         BrowserDataBoundary(
             profileId: normalizeBrowserProfileId(profileId),
             dataScope: privacyMode == .private ? .sessionEphemeral : .profilePersistent,
-            privacyMode: privacyMode
+            privacyMode: privacyMode, windowId: windowId, privateSessionId: privateSessionId
         )
     }
 }

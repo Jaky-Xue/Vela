@@ -46,7 +46,7 @@ jobs:
     name: Build Vela
     needs: test
     permissions:
-      contents: write
+      contents: ${{ (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries' || github.ref == 'refs/heads/feature/phase2-theme-materials') && 'write' || 'read' }}
     # Xcode 16 is the floor: the project uses the file-system-synchronized group
     # format (objectVersion 77) that Xcode 16 introduced.
     #
@@ -98,11 +98,12 @@ jobs:
 
           python3 Scripts/validate_release_version.py "$APP_PATH/Info.plist"
 
-          mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
-          # Zip the Payload directory. The .ipa format is exactly this.
-          zip -qry Vela-unsigned.ipa Payload
-          rm -rf Payload
+          PACKAGE_DIR=$(mktemp -d)
+          trap 'rm -rf "$PACKAGE_DIR"' EXIT
+          mkdir "$PACKAGE_DIR/Payload"
+          cp -R "$APP_PATH" "$PACKAGE_DIR/Payload/"
+          OUTPUT="$PWD/Vela-unsigned.ipa"
+          (cd "$PACKAGE_DIR" && zip -qry "$OUTPUT" Payload)
 
           ls -lh Vela-unsigned.ipa
 
@@ -140,7 +141,7 @@ jobs:
   test:
     name: Run the unit tests (${{ matrix.device }})
     permissions:
-      contents: write
+      contents: ${{ (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries' || github.ref == 'refs/heads/feature/phase2-theme-materials') && 'write' || 'read' }}
     strategy:
       fail-fast: false
       matrix:

@@ -87,7 +87,7 @@ struct SiteIconView: View {
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         }
         .frame(width: size, height: size)
-        .task(id: "\(host)|\(faviconUrl ?? "")") {
+        .task(id: "\(host)|\(faviconUrl ?? "")|\(allowsThirdPartyLookup)") {
             await loadIcon()
         }
     }
@@ -132,7 +132,16 @@ struct SiteIconView: View {
         image = nil
         hasOpaqueCanvas = false
         var fallback: UIImage?
-        for candidate in Self.candidates(host: host, faviconUrl: faviconUrl, allowsThirdParty: allowsThirdPartyLookup) {
+        let candidates = Self.candidates(host: host, faviconUrl: faviconUrl, allowsThirdParty: allowsThirdPartyLookup)
+        // Consult every permitted local decode before initiating a request.
+        for url in candidates.compactMap({ $0 }) {
+            if let cached = Self.iconCache.object(forKey: url.absoluteString as NSString) {
+                present(cached)
+                return
+            }
+        }
+        for candidate in candidates {
+            guard !Task.isCancelled else { return }
             guard let url = candidate else { continue }
             if let cached = Self.iconCache.object(forKey: url.absoluteString as NSString) {
                 if max(cached.size.width, cached.size.height) >= Self.sharpIconEdge {
@@ -146,6 +155,7 @@ struct SiteIconView: View {
                 for: url,
                 prepare: Self.preparedArtwork
             ) else { continue }
+            guard !Task.isCancelled else { return }
             Self.iconCache.setObject(prepared, forKey: url.absoluteString as NSString)
             if max(prepared.size.width, prepared.size.height) >= Self.sharpIconEdge {
                 present(prepared)

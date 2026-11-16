@@ -1131,6 +1131,8 @@ public final class TabManager {
 
     /// The write is
     /// fire-and-forget: a session save must never block a navigation.
+    public private(set) var sessionSaveError: String?
+
     public func persistSession() {
         guard persistsSession, let sessionRepository else { return }
         let snapshot = BrowserSessionSnapshot(
@@ -1138,7 +1140,10 @@ public final class TabManager {
             activeTabId: activeTabId,
             tabSequence: tabs.count
         )
-        try? sessionRepository.saveSession(snapshot, windowId: windowId)
+        do {
+            try sessionRepository.saveSession(snapshot, windowId: windowId)
+            sessionSaveError = nil
+        } catch { sessionSaveError = error.localizedDescription }
     }
 
     /// Enters 无痕模式's browsing surface: the private home tab, created when

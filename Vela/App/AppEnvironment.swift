@@ -27,6 +27,7 @@ public final class AppEnvironment {
     /// The process-wide services every window reads from.
     public let services: AppServices
     /// The `window_id` this window's tab session is stored under.
+    public private(set) var privateDownloadSessionId = UUID().uuidString
     public let windowId: String
 
     /// The page overlays this window renders: dialogs, prompts, the file
@@ -83,6 +84,9 @@ public final class AppEnvironment {
             sessionRepository: services.tabSessions,
             windowId: windowId
         )
+        coordinator.downloadWindowId = windowId
+        coordinator.downloadPrivateSessionId = privateDownloadSessionId
+        services.downloads.beginPrivateSession(windowId: windowId, sessionId: privateDownloadSessionId)
         coordinator.attach(tabManager: tabManager)
         // The rule list may finish compiling after the session's web views
         // exist; this is what puts it on those pages too.
@@ -160,10 +164,6 @@ public final class AppEnvironment {
         // download records and files have no business surviving that, so a
         // launch with no private session clears them before any window reads
         // the shared download service.
-        if tabManager.privateTabs.isEmpty,
-           !(settings.preferences.privateBrowsingMode ?? false) {
-            downloads.clearPrivateRecords()
-        }
         if tabManager.persistsSession {
             var records = (try? tabSessions.recentlyClosed(privacyMode: .regular)) ?? []
             let privateSessionIsOpen = !tabManager.privateTabs.isEmpty
@@ -417,6 +417,10 @@ public final class AppEnvironment {
     /// store is retired. The next private page creates a fresh store and an
     /// empty in-memory shelf.
     private func beginPrivateSession() {
+        downloads.clearPrivateRecords(windowId: windowId, sessionId: privateDownloadSessionId)
+        privateDownloadSessionId = UUID().uuidString
+        downloads.beginPrivateSession(windowId: windowId, sessionId: privateDownloadSessionId)
+        webCoordinator.downloadPrivateSessionId = privateDownloadSessionId
         privateNovelSessionGeneration &+= 1
         let retiring = privateNovelService
         privateNovelService = nil
@@ -479,11 +483,12 @@ public final class AppEnvironment {
             expectedGeneration: expectedGeneration,
             currentGeneration: privateNovelSessionGeneration,
             perform: {
+                privateAccessUnlocked = false
                 // Cancels both novel loaders and drops the reader's weak shelf
                 // reference before tabs or the store are touched.
                 onPrivateSessionWillEnd?()
                 tabManager.endPrivateSession()
-                downloads.clearPrivateRecords()
+                downloads.clearPrivateRecords(windowId: windowId, sessionId: privateDownloadSessionId)
                 retiredStore = webCoordinator.takePrivateWebsiteDataStoreForCleanup()
                 let retiring = privateNovelService
                 privateNovelService = nil

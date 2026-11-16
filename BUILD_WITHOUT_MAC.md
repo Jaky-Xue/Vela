@@ -126,3 +126,11 @@ GitHub Actions 的 macOS 机器        →   编译出未签名的 IPA
 **不要指望这条路**。带用户脚本的浏览器基本过不了审核——App Store 审核指南 2.5.2 禁止应用下载并执行会改变应用功能的代码，用户脚本正好是这件事。这也是为什么 iOS 上所有带用户脚本的浏览器（Stay、Userscripts）都只能在 App Store 上以受限形式存在，完整功能版本走侧载。
 
 再加上 GPL-3.0 与 App Store 的条款本身就有冲突（GPL 要求用户能自由重新分发，App Store 的 DRM 和签名限制与之矛盾），这个移植本质上就是一个自用项目。
+
+## 4.0 (62) 实现状态（2026-11-16）
+
+当前源码版本为 4.0 / Build 62，schema 14，最低 iOS 17；工程最低 Xcode 16，本轮 CI 请求 macos-26。详见 PROJECT_REVIEW.md 和 RELEASE_4.0.md。
+下载仍由进程 DownloadService 调度，任务与确认提示记录窗口归属；私密下载还记录会话 UUID。每窗口派生自身私密列表，结束会话仅撤销本窗口本会话，启动时清理旧私密下载。
+数据库建表/补字段/版本更新在同一事务内；迁移失败回滚、未来版本拒绝，不重置原数据。普通/私密标签持久化偏好保留现有行为，不声称私密标签从不落盘。
+NavigationLog 默认关闭，仅记录调用方事件；recordHang 不提供实际检测，没有 MetricKit/MainThreadHangMonitor 或系统崩溃采集。无自动上传。
+既有 CI 的 build 保持 needs: test，iPhone 与 iPad 都成功才打包。工作分支构建，禁止把历史基线或静态检查当作本轮测试通过。以最终 ReleaseReport 为实际结果；UI/真机/Instruments 未验证。

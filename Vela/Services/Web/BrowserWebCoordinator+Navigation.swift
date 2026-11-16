@@ -332,7 +332,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             url: url,
             title: tab.title,
             tabId: tab.id,
-            boundary: tab.dataBoundary,
+            boundary: self.downloadBoundary(for: tab),
             transition: Self.transition(for: navigationAction.navigationType)
         )
         return .allow
@@ -400,7 +400,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
                 }
                 self.downloads.handleWebDownload(
                     request: URLRequest(url: url),
-                    boundary: tab.dataBoundary,
+                    boundary: self.downloadBoundary(for: tab),
                     webView: webView,
                     suggestedFileName: navigationResponse.response.suggestedFilename ?? "download",
                     mimeType: navigationResponse.response.mimeType ?? "",
@@ -446,7 +446,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             self.downloads.register(
                 download: download,
                 request: URLRequest(url: navigationResponse.response.url ?? URL(string: "about:blank")!),
-                boundary: tab.dataBoundary,
+                boundary: self.downloadBoundary(for: tab),
                 suggestedFileName: navigationResponse.response.suggestedFilename ?? "download"
             )
         }
@@ -463,7 +463,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             self.downloads.register(
                 download: download,
                 request: navigationAction.request,
-                boundary: tab.dataBoundary,
+                boundary: self.downloadBoundary(for: tab),
                 suggestedFileName: ""
             )
         }
@@ -705,7 +705,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             url: url,
             title: title,
             tabId: tab.id,
-            boundary: tab.dataBoundary
+            boundary: self.downloadBoundary(for: tab)
         )
     }
 

@@ -236,13 +236,13 @@ extension BrowserShellView {
         .alert(
             "下载文件？",
             isPresented: Binding(
-                get: { env.downloads.pendingPrompt != nil },
-                set: { if !$0 { env.downloads.dismissPendingPrompt() } }
+                get: { env.downloads.pendingPrompt(windowId: env.windowId) != nil },
+                set: { if !$0 { env.downloads.dismissPendingPrompt(windowId: env.windowId) } }
             ),
-            presenting: env.downloads.pendingPrompt
+            presenting: env.downloads.pendingPrompt(windowId: env.windowId)
         ) { _ in
-            Button("下载") { env.downloads.confirmPendingPrompt() }
-            Button("取消", role: .cancel) { env.downloads.dismissPendingPrompt() }
+            Button("下载") { env.downloads.confirmPendingPrompt(windowId: env.windowId) }
+            Button("取消", role: .cancel) { env.downloads.dismissPendingPrompt(windowId: env.windowId) }
         } message: { task in
             Text("\(task.displayName)\n\(task.displaySize)")
         }

@@ -752,3 +752,11 @@ F-06/F-08 已处理或改写测试。
 | 帧率 | 保持 | `scrollTracker` 仍是引用盒：滚动时字段写入不触碰可观察属性，只有 `chromeHidden` 阈值变化才刷新视图树 |
 | 运动 | 已统一 | `BrowserMotion` 是所有动画入口并处理 Reduce Motion；主页↔网页、总览、阅读器、背景、菜单/二级 sheet、命令栏均使用命名曲线 |
 | 待验证 | 真机手感 | 新的 `surface`（约 0.46/0.92）与 `novelEnter`（约 0.44/0.9）曲线只在模拟器/CI 通过编译，尚未在真机上评估节奏；如偏慢，只调 `BrowserMotion` 一处 |
+
+## 4.0 (62) 实现状态（2026-11-16）
+
+当前源码版本为 4.0 / Build 62，schema 14，最低 iOS 17；工程最低 Xcode 16，本轮 CI 请求 macos-26。详见 PROJECT_REVIEW.md 和 RELEASE_4.0.md。
+下载仍由进程 DownloadService 调度，任务与确认提示记录窗口归属；私密下载还记录会话 UUID。每窗口派生自身私密列表，结束会话仅撤销本窗口本会话，启动时清理旧私密下载。
+数据库建表/补字段/版本更新在同一事务内；迁移失败回滚、未来版本拒绝，不重置原数据。普通/私密标签持久化偏好保留现有行为，不声称私密标签从不落盘。
+NavigationLog 默认关闭，仅记录调用方事件；recordHang 不提供实际检测，没有 MetricKit/MainThreadHangMonitor 或系统崩溃采集。无自动上传。
+既有 CI 的 build 保持 needs: test，iPhone 与 iPad 都成功才打包。工作分支构建，禁止把历史基线或静态检查当作本轮测试通过。以最终 ReleaseReport 为实际结果；UI/真机/Instruments 未验证。

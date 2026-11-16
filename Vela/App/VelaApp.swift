@@ -163,7 +163,13 @@ private struct BrowserWindowRoot: View {
                     if !environment.tabManager.privateTabs.isEmpty {
                         let env = environment
                         let expectedGeneration = environment.privateNovelSessionGeneration
-                        Task { await env.endPrivateSession(expectedGeneration: expectedGeneration) }
+                        if let token = env.beginEndPrivateSession(expectedGeneration: expectedGeneration) {
+                            let lease = PrivateCleanupBackgroundLease()
+                            Task { @MainActor in
+                                defer { lease.finish() }
+                                await env.finishEndPrivateSession(token)
+                            }
+                        }
                     }
                     // Queued transfers start now so they ride the background
                     // session instead of waiting for a foreground the user may
@@ -293,5 +299,22 @@ private final class WindowEnvironmentStore: ObservableObject {
         )
         created = environment
         return environment
+    }
+}
+
+/// A bounded opportunity to clear the retired store; expiration ends the lease only.
+@MainActor
+private final class PrivateCleanupBackgroundLease {
+    private var identifier: UIBackgroundTaskIdentifier = .invalid
+    init() {
+        identifier = UIApplication.shared.beginBackgroundTask(withName: "Private store cleanup") { [weak self] in
+            Task { @MainActor in self?.finish() }
+        }
+    }
+    func finish() {
+        guard identifier != .invalid else { return }
+        let retired = identifier
+        identifier = .invalid
+        UIApplication.shared.endBackgroundTask(retired)
     }
 }

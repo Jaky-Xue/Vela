@@ -31,7 +31,7 @@ public enum BrowserSchema {
 
     /// The first revision above the derived baseline. Introduces the iOS-native
     /// tables.
-    public static let velaSchemaVersion = 13
+    public static let velaSchemaVersion = 14
 
     public static let stateTable = "browser_schema_state"
     public static let bookmarksTable = "bookmarks"
@@ -330,6 +330,8 @@ public enum BrowserSchema {
         """
         CREATE TABLE IF NOT EXISTS \(downloadsTable) (
           guid TEXT PRIMARY KEY,
+          window_id TEXT,
+          private_session_id TEXT,
           profile_id TEXT NOT NULL DEFAULT 'profile-main',
           privacy_mode TEXT NOT NULL DEFAULT 'regular',
           data_scope TEXT NOT NULL DEFAULT 'profile_persistent',

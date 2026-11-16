@@ -12,6 +12,7 @@
 import SwiftUI
 
 struct HomeFavoriteTile: View {
+    var isPrivate: Bool = false
     var favorite: HomeFavorite
     var showsTitle: Bool
     var iconSize: CGFloat
@@ -29,6 +30,7 @@ struct HomeFavoriteTile: View {
             SiteIconView(
                 host: favorite.displayHost,
                 size: iconSize,
+                allowsThirdPartyLookup: !isPrivate,
                 cornerRadius: cornerRadius
             )
 

@@ -51,6 +51,8 @@ struct SegmentedDownloadManifest: Codable, Equatable, Sendable {
     /// app has to reconnect to exactly that session. A pause/resume gets a new
     /// identifier (and overwrites this), so a stale one is never reused.
     var backgroundIdentifier: String? = nil
+    var windowId: String? = nil
+    var privateSessionId: String? = nil
 
     var completedBytes: Int64 {
         segments.reduce(into: 0) { total, segment in
@@ -103,6 +105,7 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
     private var completedBytes: Int64 = 0
     private var finished = false
     private var paused = false
+    private var cancelledByOwner = false
     private var wholeFileReceived = false
     /// True when this object was attached to a session created by an earlier
     /// process. Those sessions may still be delivering callbacks for ranges
@@ -314,6 +317,7 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
     /// Stops the transfer but keeps completed parts and the manifest.
     func pause() {
         lock.lock()
+        cancelledByOwner = true
         paused = true
         let session = self.session
         self.session = nil
@@ -381,11 +385,14 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
 
     private func mergeAndFinish() {
         lock.lock()
+        guard !paused, !finished else { lock.unlock(); return }
         let manifest = self.manifest
         lock.unlock()
 
         let fm = FileManager.default
-        let outputURL = URL(fileURLWithPath: manifest.destinationPath)
+        let finalURL = URL(fileURLWithPath: manifest.destinationPath)
+        let outputURL = finalURL.deletingLastPathComponent().appendingPathComponent(".vela-\(guid)-merge-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: outputURL) }
         let directory = outputURL.deletingLastPathComponent()
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
 
@@ -435,7 +442,20 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
             try? fm.removeItem(at: partURL(index))
         }
         ManifestStore.remove(guid: guid)
-        finish(.success(outputURL))
+        do {
+            try publishFile(at: outputURL, to: finalURL)
+            finish(.success(finalURL))
+        } catch { finish(.failure(error)) }
+    }
+
+    private func publishFile(at source: URL, to destination: URL) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !cancelledByOwner else { throw CancellationError() }
+        let fm = FileManager.default
+        try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
+        try fm.moveItem(at: source, to: destination)
     }
 
     /// A server that ignores Range answers 200 with the whole file. That single
@@ -460,9 +480,8 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try? fm.removeItem(at: destination)
         do {
-            try fm.moveItem(at: location, to: destination)
+            try publishFile(at: location, to: destination)
             ManifestStore.remove(guid: guid)
             finish(.success(destination))
         } catch {
@@ -563,8 +582,7 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
                     at: destination.deletingLastPathComponent(),
                     withIntermediateDirectories: true
                 )
-                try? fm.removeItem(at: destination)
-                try fm.moveItem(at: location, to: destination)
+                try publishFile(at: location, to: destination)
                 ManifestStore.remove(guid: guid)
                 finish(.success(destination))
             } catch {
@@ -586,8 +604,7 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
         let part = partURL(index)
         let fm = FileManager.default
         do {
-            try? fm.removeItem(at: part)
-            try fm.moveItem(at: location, to: part)
+            try publishFile(at: location, to: part)
             let size = (try? fm.attributesOfItem(atPath: part.path)[.size] as? Int64) ?? 0
             guard size == segment.length else {
                 throw SegmentedDownloadError.incompleteFile
@@ -695,7 +712,7 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
     /// briefly first.
     private func scheduleMerge() {
         lock.lock()
-        if mergeScheduled || finished {
+        if mergeScheduled || finished || paused {
             lock.unlock()
             return
         }
@@ -706,7 +723,7 @@ final class SegmentedDownloadSession: NSObject, URLSessionDownloadDelegate, @unc
         DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
             self.lock.lock()
-            let stillFinished = self.finished
+            let stillFinished = self.finished || self.paused
             self.lock.unlock()
             guard !stillFinished else { return }
             self.mergeAndFinish()

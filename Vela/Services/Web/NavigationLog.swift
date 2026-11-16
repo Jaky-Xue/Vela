@@ -217,8 +217,8 @@ public final class NavigationLog {
         }
     }
 
-    /// Records a main-thread stall. Kept separate from `record` so the
-    /// watchdog cannot be mistaken for a navigation event at the call site.
+    /// Stores a caller-reported stall. This method does not detect hangs.
+    /// Production diagnostics are disabled; no MetricKit subscriber or watchdog is installed.
     public func recordHang(
         durationMs: Int,
         tabId: String,

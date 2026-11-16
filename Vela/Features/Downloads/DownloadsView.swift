@@ -27,11 +27,14 @@ struct DownloadsView: View {
     private var downloads: DownloadService { env.downloads }
 
     private var visibleTasks: [DownloadTask] {
-        downloads.tasks.filter { $0.privacyMode == (showPrivate ? .private : .regular) }
+        downloads.visibleTasks(privacyMode: showPrivate ? .private : .regular, windowId: env.windowId, sessionId: env.privateDownloadSessionId)
     }
 
     var body: some View {
         List {
+            if let error = downloads.lastError {
+                Text(error).foregroundStyle(.red).accessibilityLabel("下载操作失败：" + error)
+            }
             if visibleTasks.isEmpty {
                 EmptyState(
                     systemImage: "arrow.down.circle",
@@ -81,11 +84,11 @@ struct DownloadsView: View {
         ) {
             Button("取消", role: .cancel) { entryToDelete = nil }
             Button("只删除记录") {
-                if let task = entryToDelete { downloads.remove(guid: task.guid, deleteFile: false) }
+                if let task = entryToDelete { downloads.remove(guid: task.guid, deleteFile: false, windowId: env.windowId) }
                 entryToDelete = nil
             }
             Button("同时删除文件", role: .destructive) {
-                if let task = entryToDelete { downloads.remove(guid: task.guid, deleteFile: true) }
+                if let task = entryToDelete { downloads.remove(guid: task.guid, deleteFile: true, windowId: env.windowId) }
                 entryToDelete = nil
             }
         }
@@ -174,11 +177,11 @@ struct DownloadsView: View {
             if task.status == .paused || task.status == .failed || task.status == .pending {
                 Button("继续下载", systemImage: "arrow.clockwise") {
                     let webView = env.tabManager.webView(for: env.tabManager.activeTabId)
-                    Task { await downloads.resume(guid: task.guid, in: webView) }
+                    Task { await downloads.resume(guid: task.guid, in: webView, windowId: env.windowId) }
                 }
             }
             if task.status == .running {
-                Button("暂停", systemImage: "pause") { downloads.pause(guid: task.guid) }
+                Button("暂停", systemImage: "pause") { downloads.pause(guid: task.guid, windowId: env.windowId) }
             }
             Button("拷贝下载地址", systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = task.requestUrl
@@ -196,7 +199,7 @@ struct DownloadsView: View {
         switch task.status {
         case .running:
             Button {
-                downloads.pause(guid: task.guid)
+                downloads.pause(guid: task.guid, windowId: env.windowId)
             } label: {
                 Image(systemName: "pause.circle.fill")
                     .font(.system(size: 20))
@@ -207,7 +210,7 @@ struct DownloadsView: View {
         case .paused, .failed:
             Button {
                 let webView = env.tabManager.webView(for: env.tabManager.activeTabId)
-                Task { await downloads.resume(guid: task.guid, in: webView) }
+                Task { await downloads.resume(guid: task.guid, in: webView, windowId: env.windowId) }
             } label: {
                 Image(systemName: "arrow.clockwise.circle.fill")
                     .font(.system(size: 20))
@@ -230,7 +233,7 @@ struct DownloadsView: View {
         case .pending:
             Button {
                 let webView = env.tabManager.webView(for: env.tabManager.activeTabId)
-                Task { await downloads.resume(guid: task.guid, in: webView) }
+                Task { await downloads.resume(guid: task.guid, in: webView, windowId: env.windowId) }
             } label: {
                 Image(systemName: "play.circle.fill")
                     .font(.system(size: 20))

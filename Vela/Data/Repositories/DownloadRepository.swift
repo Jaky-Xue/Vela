@@ -22,13 +22,15 @@ public final class DownloadRepository: @unchecked Sendable {
     private static let columns = """
     guid, profile_id, privacy_mode, data_scope, request_url, final_url, suggested_file_name, \
     resolved_file_name, mime_type, status, received_bytes, total_bytes, written_bytes, \
-    destination_path, failure_reason, created_at, updated_at, completed_at
+    destination_path, failure_reason, created_at, updated_at, completed_at, window_id, private_session_id
     """
 
     private func task(from statement: SQLiteStatement) -> DownloadTask {
         let failureReason = statement.string(at: 14)
         return DownloadTask(
             guid: statement.string(at: 0),
+            windowId: statement.optionalString(at: 18),
+            privateSessionId: statement.optionalString(at: 19),
             profileId: statement.string(at: 1),
             privacyMode: BrowserSessionPrivacyMode(rawValue: statement.string(at: 2)) ?? .regular,
             dataScope: BrowserDataScope(rawValue: statement.string(at: 3)) ?? .profilePersistent,
@@ -55,8 +57,18 @@ public final class DownloadRepository: @unchecked Sendable {
     public func upsert(_ task: DownloadTask) throws {
         try database.execute(
             """
-            INSERT OR REPLACE INTO \(BrowserSchema.downloadsTable) (\(Self.columns))
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO \(BrowserSchema.downloadsTable) (\(Self.columns))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(guid) DO UPDATE SET
+            profile_id = excluded.profile_id, privacy_mode = excluded.privacy_mode,
+            data_scope = excluded.data_scope, request_url = excluded.request_url,
+            final_url = excluded.final_url, suggested_file_name = excluded.suggested_file_name,
+            resolved_file_name = excluded.resolved_file_name, mime_type = excluded.mime_type,
+            status = excluded.status, received_bytes = excluded.received_bytes,
+            total_bytes = excluded.total_bytes, written_bytes = excluded.written_bytes,
+            destination_path = excluded.destination_path, failure_reason = excluded.failure_reason,
+            updated_at = excluded.updated_at, completed_at = excluded.completed_at,
+            window_id = excluded.window_id, private_session_id = excluded.private_session_id
             """,
             [
                 .text(task.guid),
@@ -76,7 +88,9 @@ public final class DownloadRepository: @unchecked Sendable {
                 .text(task.failure?.reason ?? ""),
                 .integer(task.createdAt.milliseconds),
                 .integer(task.updatedAt.milliseconds),
-                task.completedAt.map { SQLiteValue.integer($0.milliseconds) } ?? .null
+                task.completedAt.map { SQLiteValue.integer($0.milliseconds) } ?? .null,
+                task.windowId.map(SQLiteValue.text) ?? .null,
+                task.privateSessionId.map(SQLiteValue.text) ?? .null
             ]
         )
     }
@@ -117,6 +131,15 @@ public final class DownloadRepository: @unchecked Sendable {
 
     public func destinationBookmark() -> Data? {
         UserDefaults.standard.data(forKey: "org.vela.browser.download-destination-bookmark")
+    }
+
+    public func allTasks() throws -> [DownloadTask] {
+        try database.query("SELECT \(Self.columns) FROM \(BrowserSchema.downloadsTable) ORDER BY created_at DESC", row: task(from:))
+    }
+
+    public func privateTasks(windowId: String, sessionId: String) throws -> [DownloadTask] {
+        try database.query("SELECT \(Self.columns) FROM \(BrowserSchema.downloadsTable) WHERE privacy_mode = 'private' AND window_id = ? AND private_session_id = ?",
+                           [.text(windowId), .text(sessionId)], row: task(from:))
     }
 
     // MARK: - Reading
@@ -193,9 +216,10 @@ public final class DownloadRepository: @unchecked Sendable {
 
     /// Deletes every private-mode record. Called when a private session ends,
     /// alongside the rest of the private surface.
-    public func clearPrivateRecords() throws {
+    public func clearPrivateRecords(windowId: String, sessionId: String) throws {
         try database.execute(
-            "DELETE FROM \(BrowserSchema.downloadsTable) WHERE privacy_mode = 'private'"
+            "DELETE FROM \(BrowserSchema.downloadsTable) WHERE privacy_mode = 'private' AND window_id = ? AND private_session_id = ?",
+            [.text(windowId), .text(sessionId)]
         )
     }
 }
