@@ -46,7 +46,7 @@ jobs:
     name: Build Vela
     needs: test
     permissions:
-      contents: ${{ (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries' || github.ref == 'refs/heads/feature/phase2-theme-materials') && 'write' || 'read' }}
+      contents: write # Required by the existing legacy-branch evidence mirror; permissions do not accept expressions.
     # Xcode 16 is the floor: the project uses the file-system-synchronized group
     # format (objectVersion 77) that Xcode 16 introduced.
     #
@@ -141,7 +141,7 @@ jobs:
   test:
     name: Run the unit tests (${{ matrix.device }})
     permissions:
-      contents: ${{ (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries' || github.ref == 'refs/heads/feature/phase2-theme-materials') && 'write' || 'read' }}
+      contents: write # Required by the existing legacy-branch evidence mirror; permissions do not accept expressions.
     strategy:
       fail-fast: false
       matrix:
