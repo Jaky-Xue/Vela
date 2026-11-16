@@ -75,7 +75,7 @@ extension BrowserShellView {
         let shouldComplete = translation > width * 0.18 || velocity > 450
 
         guard shouldComplete else {
-            withAnimation(Self.swipeBackSettle) {
+            withAnimation(BrowserMotion.settle(reduceMotion)) {
                 swipeBackTranslation = 0
             }
             return
@@ -113,7 +113,7 @@ extension BrowserShellView {
         guard isSwipeBackTracking else { return }
         isSwipeBackTracking = false
         swipeBackArmed = false
-        withAnimation(Self.swipeBackSettle) {
+        withAnimation(BrowserMotion.settle(reduceMotion)) {
             swipeBackTranslation = 0
         }
     }

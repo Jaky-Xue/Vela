@@ -54,8 +54,12 @@ extension BrowserShellView {
             padChromeDragHint
                 .padding(.top, chromeHidden ? 0 : padBarsHeight + 4)
         }
-        .animation(Self.chromeAnimation, value: chromeHidden)
-        .animation(Self.sidebarAnimation, value: showPadSidebar)
+        .animation(BrowserMotion.chrome(reduceMotion), value: chromeHidden)
+        .animation(BrowserMotion.sidebar(reduceMotion), value: showPadSidebar)
+        // The reader takes the top bar with it on the same curve as the phone
+        // layout's command bar, so entering 小说模式 reads as one movement on
+        // either layout.
+        .animation(BrowserMotion.novelEnter(reduceMotion), value: shell.surface)
     }
 
     /// How much of the window the floating iPad chrome covers, measured from
@@ -171,7 +175,7 @@ extension BrowserShellView {
                 }
                 .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
                 .allowsHitTesting(false)
-                .animation(.easeOut(duration: 0.15), value: armed)
+                .animation(BrowserMotion.hint(reduceMotion), value: armed)
         }
     }
 
@@ -352,14 +356,14 @@ extension BrowserShellView {
     /// button rather than to the animation clock.
     func togglePadSidebar() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-        withAnimation(Self.sidebarAnimation) {
+        withAnimation(BrowserMotion.sidebar(reduceMotion)) {
             showPadSidebar.toggle()
         }
     }
 
     func closePadSidebar() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-        withAnimation(Self.sidebarAnimation) {
+        withAnimation(BrowserMotion.sidebar(reduceMotion)) {
             showPadSidebar = false
         }
     }

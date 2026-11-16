@@ -19,6 +19,7 @@ struct EdgeSwipeBackIndicator: View {
     var isCompleting: Bool
 
     @Environment(\.browserPalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let diameter = 46 + 12 * intensity
@@ -38,7 +39,7 @@ struct EdgeSwipeBackIndicator: View {
             .scaleEffect(armed ? 1.06 : 1)
             .offset(x: 4 + 24 * intensity)
             .opacity(isCompleting ? 0 : min(1, intensity * 2.6))
-            .animation(.spring(response: 0.24, dampingFraction: 0.72), value: armed)
-            .animation(.easeOut(duration: 0.16), value: isCompleting)
+            .animation(BrowserMotion.press(reduceMotion), value: armed)
+            .animation(BrowserMotion.hint(reduceMotion), value: isCompleting)
     }
 }

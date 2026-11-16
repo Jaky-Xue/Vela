@@ -15,7 +15,13 @@ extension BrowserShellView {
         // one. Without it the web view is torn down and replaced in a single
         // frame, which reads as a flash of the shell's blank surface between
         // two pages.
-        .animation(.easeInOut(duration: 0.18), value: activeTab?.id)
+        .animation(BrowserMotion.tabSwitch(reduceMotion), value: activeTab?.id)
+        // The main surface changing — home to page, page to error, the page
+        // yielding to the reader — is the largest movement in the shell. The
+        // transition is asymmetric: the incoming surface fades up from just
+        // below its resting size, the outgoing one simply fades, so the eye
+        // follows what is arriving rather than watching both at once.
+        .animation(BrowserMotion.surface(reduceMotion), value: displayedSurface)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -83,13 +89,32 @@ extension BrowserShellView {
         return min(max(120, available), BrowserMetrics.omniboxCardMaxHeight)
     }
 
+    /// How one main surface replaces another.
+    ///
+    /// Asymmetric on purpose: the incoming surface fades up from just below its
+    /// resting size, while the outgoing one only fades. Two surfaces growing at
+    /// once is what makes a swap read as a cross-dissolve; one arriving and one
+    /// leaving reads as a change of place. Reduce Motion keeps the fade and
+    /// drops the movement.
+    var surfaceTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .opacity
+                .combined(with: .scale(scale: 0.986, anchor: .bottom))
+                .combined(with: .offset(y: 10)),
+            removal: .opacity
+                .combined(with: .scale(scale: 1.008, anchor: .bottom))
+        )
+    }
+
     @ViewBuilder
     var mainSurface: some View {
         if let tab = activeTab {
             // A stable identity per tab keeps SwiftUI from rebuilding the
             // representable when the tab strip changes.
             Group {
-                if tab.isHome {
+                switch baseSurface {
+                case .home:
                     NewTabHomeView(
                         settings: env.settings,
                         favoritesService: env.homeFavorites,
@@ -112,110 +137,121 @@ extension BrowserShellView {
                         // spacer keeps the last tiles scrollable above it.
                         Color.clear.frame(height: bottomChromeClearance)
                     }
-                } else if let failure = tab.lastFailure, tab.loadState.isFailure {
+                    .transition(surfaceTransition)
+                case .error:
                     // A failed navigation shows the error surface *instead of*
                     // the web view, but the web view is kept: it is what the
                     // retry re-uses, and it holds whatever the process still has.
-                    WebPageErrorView(
-                        failure: failure,
-                        canGoBack: tabManager.webView(for: tab.id)?.canGoBack ?? false,
-                        onReload: { retry(tab) },
-                        onGoBack: {
-                            env.webCoordinator.goBack()
-                        },
-                        onCopyAddress: {},
-                        onHome: { goHome(tab) }
-                    )
-                    .id("error-\(tab.id)-\(tab.navigationSerial)")
-                    .safeAreaInset(edge: .top) { padTopClearance }
-                    .safeAreaInset(edge: .bottom) {
-                        Color.clear.frame(height: bottomChromeClearance)
+                    if let failure = tab.lastFailure {
+                        WebPageErrorView(
+                            failure: failure,
+                            canGoBack: tabManager.webView(for: tab.id)?.canGoBack ?? false,
+                            onReload: { retry(tab) },
+                            onGoBack: {
+                                env.webCoordinator.goBack()
+                            },
+                            onCopyAddress: {},
+                            onHome: { goHome(tab) }
+                        )
+                        .id("error-\(tab.id)-\(tab.navigationSerial)")
+                        .safeAreaInset(edge: .top) { padTopClearance }
+                        .safeAreaInset(edge: .bottom) {
+                            Color.clear.frame(height: bottomChromeClearance)
+                        }
+                        .transition(surfaceTransition)
                     }
-                } else if let webView = tabManager.webView(for: tab.id) {
-                    // 全局顶部保护 decides how the status bar strip is kept.
-                    // Off, the page scrolls under the clock with an inset
-                    // holding its first line clear — Safari's arrangement. On,
-                    // the web view's frame is held below the strip and the
-                    // strip shows the surface colour, so the page never paints
-                    // there at all.
-                    let protectsTop = env.settings.preferences.topProtectionEnabled
-                    WebViewHost(
-                        webView: webView,
-                        // Where the page's content should start, measured from
-                        // the window's top edge. The host subtracts its own
-                        // position and reserves the uncovered status-bar strip
-                        // when protection is on, so this value is absolute
-                        // rather than a scroll inset.
-                        //
-                        // On the iPad layout the page normally runs under the
-                        // floating top bar; 顶部保护 adds the status-bar strip
-                        // on top of that. The bar itself still floats over the
-                        // page, so the content offset always includes its
-                        // height.
-                        topContentOffset: usesPadLayout
-                            ? padTopChromeHeight
-                            : safeTop,
-                        protectsStatusBar: protectsTop,
-                        statusBarStrip: safeTop,
-                        // The page stays full bleed and keeps painting under
-                        // the glass. The host adds the home-indicator inset
-                        // and tells WebKit which part the bar covers, so fixed
-                        // footers, sticky bars and `100vh` layouts end above
-                        // it; the scroll inset keeps the document's own last
-                        // lines reachable.
-                        //
-                        // The inset deliberately does *not* follow
-                        // `chromeHidden`. Reserving it only while the bar is up
-                        // made hiding the bar change the document's scrollable
-                        // range, and a scroll view resting at the end of a
-                        // document clamps to the new range the instant the
-                        // inset shrinks: the page jumped up, that jump arrived
-                        // as an upward scroll, the shell read it as "the user
-                        // wants the controls" and put the bar straight back.
-                        // On a long page scrolled to its end — exactly where
-                        // people hide the bar — the two fed each other and the
-                        // bar flickered. A constant inset keeps the page still
-                        // when the bar leaves, at the cost of a little extra
-                        // scroll range past the last line.
-                        bottomChromeHeight: usesPadLayout
-                            ? 0
-                            : BrowserChrome.barHeight + BrowserChrome.barGap,
-                        // Behind the page while it bounces. Chrome keeps its
-                        // own palette surface rather than sampling this color.
-                        pageColor: Color(cssColor: tab.pageBackground) ?? palette.surface,
-                        // Applied when the view is actually attached: an
-                        // off-screen web view has no zoomable geometry.
-                        allowsGestureZoom: env.settings.preferences.forcedZoomEnabled ?? false,
-                        onScroll: { offset in
-                            handleScroll(offset: offset)
-                        },
-                        onProgress: { progress in
-                            env.tabManager.updateProgress(progress, id: tab.id)
+                case .page, .novel:
+                    // `.novel` keeps rendering the page underneath: the reader
+                    // is a layer over it, and closing the reader reveals this
+                    // exact page rather than a rebuilt one.
+                    if let webView = tabManager.webView(for: tab.id) {
+                        // 全局顶部保护 decides how the status bar strip is kept.
+                        // Off, the page scrolls under the clock with an inset
+                        // holding its first line clear — Safari's arrangement. On,
+                        // the web view's frame is held below the strip and the
+                        // strip shows the surface colour, so the page never paints
+                        // there at all.
+                        let protectsTop = env.settings.preferences.topProtectionEnabled
+                        WebViewHost(
+                            webView: webView,
+                            // Where the page's content should start, measured from
+                            // the window's top edge. The host subtracts its own
+                            // position and reserves the uncovered status-bar strip
+                            // when protection is on, so this value is absolute
+                            // rather than a scroll inset.
+                            //
+                            // On the iPad layout the page normally runs under the
+                            // floating top bar; 顶部保护 adds the status-bar strip
+                            // on top of that. The bar itself still floats over the
+                            // page, so the content offset always includes its
+                            // height.
+                            topContentOffset: usesPadLayout
+                                ? padTopChromeHeight
+                                : safeTop,
+                            protectsStatusBar: protectsTop,
+                            statusBarStrip: safeTop,
+                            // The page stays full bleed and keeps painting under
+                            // the glass. The host adds the home-indicator inset
+                            // and tells WebKit which part the bar covers, so fixed
+                            // footers, sticky bars and `100vh` layouts end above
+                            // it; the scroll inset keeps the document's own last
+                            // lines reachable.
+                            //
+                            // The inset deliberately does *not* follow
+                            // `chromeHidden`. Reserving it only while the bar is up
+                            // made hiding the bar change the document's scrollable
+                            // range, and a scroll view resting at the end of a
+                            // document clamps to the new range the instant the
+                            // inset shrinks: the page jumped up, that jump arrived
+                            // as an upward scroll, the shell read it as "the user
+                            // wants the controls" and put the bar straight back.
+                            // On a long page scrolled to its end — exactly where
+                            // people hide the bar — the two fed each other and the
+                            // bar flickered. A constant inset keeps the page still
+                            // when the bar leaves, at the cost of a little extra
+                            // scroll range past the last line.
+                            bottomChromeHeight: usesPadLayout
+                                ? 0
+                                : BrowserChrome.barHeight + BrowserChrome.barGap,
+                            // Behind the page while it bounces. Chrome keeps its
+                            // own palette surface rather than sampling this color.
+                            pageColor: Color(cssColor: tab.pageBackground) ?? palette.surface,
+                            // Applied when the view is actually attached: an
+                            // off-screen web view has no zoomable geometry.
+                            allowsGestureZoom: env.settings.preferences.forcedZoomEnabled ?? false,
+                            onScroll: { offset in
+                                handleScroll(offset: offset)
+                            },
+                            onProgress: { progress in
+                                env.tabManager.updateProgress(progress, id: tab.id)
+                            }
+                        )
+                        .id("web-\(tab.id)")
+                        // 顶部保护 on: let SwiftUI end the host at the top safe
+                        // area, so the page cannot paint under the clock
+                        // regardless of what the window's inset reports say. Off:
+                        // the page runs edge to edge under the status bar too, and
+                        // the scroll inset keeps its first line clear. The bottom
+                        // is always full bleed; the bar's obstruction is told to
+                        // WebKit rather than carved out of the frame, so the
+                        // document still reaches the screen's bottom edge.
+                        .ignoresSafeArea(edges: protectsTop ? [.bottom, .horizontal] : .all)
+                        .transition(surfaceTransition)
+                    } else {
+                        // A cold tab with no web view at all. Materialising happens
+                        // in `onAppear` rather than here: creating a web view during
+                        // view evaluation would mutate published state mid-update.
+                        Color.clear
+                            .onAppear {
+                                tabManager.activateTab(id: tab.id)
+                            }
+                            .ignoresSafeArea(edges: .top)
+                            .transition(surfaceTransition)
                         }
-                    )
-                    .id("web-\(tab.id)")
-                    // 顶部保护 on: let SwiftUI end the host at the top safe
-                    // area, so the page cannot paint under the clock
-                    // regardless of what the window's inset reports say. Off:
-                    // the page runs edge to edge under the status bar too, and
-                    // the scroll inset keeps its first line clear. The bottom
-                    // is always full bleed; the bar's obstruction is told to
-                    // WebKit rather than carved out of the frame, so the
-                    // document still reaches the screen's bottom edge.
-                    .ignoresSafeArea(edges: protectsTop ? [.bottom, .horizontal] : .all)
-                } else {
-                    // A cold tab with no web view at all. Materialising happens
-                    // in `onAppear` rather than here: creating a web view during
-                    // view evaluation would mutate published state mid-update.
-                    Color.clear
-                        .onAppear {
-                            tabManager.activateTab(id: tab.id)
-                        }
-                        .ignoresSafeArea(edges: .top)
                 }
             }
             .id("content-\(tab.id)")
-            .transition(.opacity)
+            .transition(surfaceTransition)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             EmptyState(

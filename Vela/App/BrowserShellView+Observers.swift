@@ -23,7 +23,7 @@ extension BrowserShellView {
         // the search page ends at its top edge, and the find bar lifts above
         // it by the same measurement.
         .ignoresSafeArea(.keyboard)
-        .animation(Self.chromeAnimation, value: omnibox.isEditing)
+        .animation(BrowserMotion.chrome(reduceMotion), value: omnibox.isEditing)
         .onAppear {
             wireOmnibox()
             syncAddressText()
@@ -32,6 +32,11 @@ extension BrowserShellView {
             env.commands.register(owner: env.windowId) { command in
                 handleBrowserCommand(command)
             }
+            // The one deferred destination that needs the environment: the
+            // shelf captures the active tab's privacy mode and the current
+            // private generation before it fetches a library.
+            shell.onBookshelfRequested = { openBookshelf() }
+            syncSurface()
             // The environment ends a private session from the app's background
             // hook as well as from this view. Taking the reader down here,
             // synchronously before the tabs close, is what makes the reader's
@@ -41,15 +46,14 @@ extension BrowserShellView {
                     closeNovelSession()
                 }
                 if bookshelfIsPrivate {
-                    showBookshelf = false
-                    bookshelfLibrary = nil
-                    bookshelfIsPrivate = false
+                    shell.dismiss(kind: .bookshelf)
                 }
             }
         }
         .onDisappear {
             env.commands.unregister(owner: env.windowId)
             env.onPrivateSessionWillEnd = nil
+            shell.onBookshelfRequested = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.keyboardWillChangeFrameNotification)) { note in
             handleKeyboardFrameChange(note)
@@ -71,6 +75,15 @@ extension BrowserShellView {
         .onChange(of: activeTab?.pendingUrl) { _, _ in
             syncAddressText()
         }
+        // The surface is derived from the tab as well as stored; these two
+        // observers keep the stored value honest for anything that animates on
+        // it or asks it a question outside `body`.
+        .onChange(of: activeTab?.isHome) { _, _ in
+            syncSurface()
+        }
+        .onChange(of: activeTab?.loadState) { _, _ in
+            syncSurface()
+        }
     }
 
     /// The observers that follow appearance and scene state rather than the
@@ -81,7 +94,7 @@ extension BrowserShellView {
             // The iPad top bar yields to the search page, and an open tab
             // drawer must not sit over that page.
             if editing {
-                withAnimation(Self.sidebarAnimation) {
+                withAnimation(BrowserMotion.sidebar(reduceMotion)) {
                     showPadSidebar = false
                 }
             }
@@ -95,7 +108,7 @@ extension BrowserShellView {
             guard !enabled, !isSwipeBackCompleting else { return }
             isSwipeBackTracking = false
             swipeBackArmed = false
-            withAnimation(Self.swipeBackSettle) {
+            withAnimation(BrowserMotion.settle(reduceMotion)) {
                 swipeBackTranslation = 0
             }
         }
@@ -107,7 +120,7 @@ extension BrowserShellView {
             // The search page has an opacity transition; without an animation
             // tied to the editing state it was inserted and removed in one
             // frame while the command bar below faded.
-            .animation(.snappy(duration: 0.22), value: omnibox.isEditing)
+            .animation(BrowserMotion.chrome(reduceMotion), value: omnibox.isEditing)
     }
 
     // MARK: - Shell observers
@@ -157,6 +170,7 @@ extension BrowserShellView {
         omnibox.endEditing()
         env.webCoordinator.refreshNavigationAvailability()
         syncAddressText()
+        syncSurface()
     }
 
     func handleActiveTabUrlChanged() {
@@ -166,6 +180,7 @@ extension BrowserShellView {
         scrollTracker.accumulation = 0
         scrollTracker.upwardTravel = 0
         syncAddressText()
+        syncSurface()
     }
 
     /// Yields the iPad sidebar's page and dismisses the overview before a

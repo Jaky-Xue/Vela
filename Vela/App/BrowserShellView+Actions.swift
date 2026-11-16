@@ -226,9 +226,7 @@ extension BrowserShellView {
                 closeNovelSession()
             }
             if bookshelfIsPrivate {
-                showBookshelf = false
-                bookshelfLibrary = nil
-                bookshelfIsPrivate = false
+                shell.dismiss(kind: .bookshelf)
             }
             Task { await env.endPrivateSession(expectedGeneration: expectedGeneration) }
         case .reload:
@@ -239,26 +237,13 @@ extension BrowserShellView {
     }
 
     /// Queues a destination behind the menu sheet's dismissal.
+    ///
+    /// The request is recorded on the state machine and opened by
+    /// `ShellState.performPendingMenuPresentation` from the menu sheet's
+    /// `onDismiss`. Nothing here may present a sheet: the menu is still on
+    /// screen at this point.
     func queueMenuPresentation(_ presentation: MenuPresentation) {
-        pendingMenuPresentation = presentation
-    }
-
-    /// Opens the screen a menu tile asked for, now that the menu is gone.
-    func performPendingMenuPresentation() {
-        guard let presentation = pendingMenuPresentation else { return }
-        pendingMenuPresentation = nil
-        switch presentation {
-        case .addBookmark: showAddBookmarkChoice = true
-        case .share: showShareSheet = true
-        case .bookmarks: showBookmarks = true
-        case .history: showHistory = true
-        case .downloads: showDownloads = true
-        case .offlinePages: showOfflinePages = true
-        case .settings: openSettings()
-        case .bookshelf: openBookshelf()
-        case .passwords: showPasswords = true
-        case .qrScanner: showQRScanner = true
-        }
+        shell.queueMenu(presentation)
     }
 
     /// Searches the page as the find field is typed.

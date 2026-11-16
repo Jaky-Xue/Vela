@@ -27,7 +27,21 @@ extension BrowserShellView {
                     openInBrowser(url, for: session)
                 }
             )
-            .transition(.opacity)
+            // The reader's arrival is the shell's one ceremonial moment: it
+            // rises from just under the page's own size and fades in, while
+            // the command bar leaves on the same curve. Reduce Motion keeps
+            // the fade alone.
+            .transition(
+                reduceMotion
+                    ? .opacity
+                    : .asymmetric(
+                        insertion: .opacity
+                            .combined(with: .scale(scale: 0.97, anchor: .center))
+                            .combined(with: .offset(y: 14)),
+                        removal: .opacity
+                            .combined(with: .scale(scale: 1.006, anchor: .center))
+                    )
+            )
             .zIndex(40)
         }
     }
@@ -38,9 +52,7 @@ extension BrowserShellView {
     /// never dismisses it.
     func handlePrivateNovelGeneration(_ generation: Int) {
         if bookshelfIsPrivate, bookshelfGeneration != generation {
-            showBookshelf = false
-            bookshelfLibrary = nil
-            bookshelfIsPrivate = false
+            shell.dismiss(kind: .bookshelf)
         }
         guard let session = novelSession, session.shouldClose(for: generation) else { return }
         session.runtime.cancel()
@@ -144,11 +156,12 @@ extension BrowserShellView {
                 return
             }
             guard !isPrivate || generation == env.privateNovelSessionGeneration else { return }
-            bookshelfIsPrivate = isPrivate
-            bookshelfGeneration = generation
-            bookshelfSourceTabId = sourceTabId
-            bookshelfLibrary = library
-            showBookshelf = true
+            shell.present(.bookshelf(BookshelfContext(
+                library: library,
+                isPrivate: isPrivate,
+                generation: generation,
+                sourceTabId: sourceTabId
+            )))
         }
     }
 

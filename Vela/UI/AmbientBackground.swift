@@ -213,7 +213,7 @@ struct AmbientBackgroundView: View {
         // The field's colours are a visual choice made in a settings list;
         // letting one field dissolve into the next reads as the choice being
         // applied rather than as the screen repainting itself.
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: style)
+        .animation(BrowserMotion.backdrop(reduceMotion), value: style)
     }
 
     /// The light field: the mesh, then the glass, sheen and grain that give

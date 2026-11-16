@@ -63,7 +63,7 @@ extension BrowserShellView {
             padChromeHomeArmed = false
             padChromeHideArmed = false
         }
-        withAnimation(Self.chromeAnimation) {
+        withAnimation(BrowserMotion.chrome(reduceMotion)) {
             chromeHidden = hidden
         }
     }

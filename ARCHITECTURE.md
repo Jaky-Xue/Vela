@@ -30,8 +30,12 @@ SwiftUI 环境注入。视图不 new 服务。
 - `UI/BrowserComponents.swift`：行、徽章、空状态、可折叠分组。
 - `UI/SiteIconView.swift`：网站图标的级联加载与裁剪。
 - `UI/ChromeBackdrop.swift`：决定工具栏墨色亮暗的亮度测量。
-- `App/BrowserShellView.swift`：外壳状态、层级与动作接线；独立控件
-  （查找栏、权限提示、分享面板、边缘返回手势、按钮反馈）各自成文件。
+- `App/BrowserShellView.swift`：外壳入口与环境宿主；窗口的呈现、浮层、
+  Chrome 中间态与测量都在 `App/Shell/ShellState.swift`，其余逻辑按职责分在
+  `BrowserShellView+*.swift`。独立控件（查找栏、权限提示、分享面板、边缘
+  返回手势、按钮反馈）各自成文件。
+- `App/Shell/`：外壳状态机（见下节）。`BrowserSurface`、`ShellOverlay`、
+  `BookshelfContext`、`MenuPresentation` 与 `ShellState` 都在这里。
 - `Features/Settings/`：设置入口和每个子页一个文件。
 
 新增功能时，先判断它属于哪一层，再决定文件；不要把新状态塞进
@@ -48,11 +52,77 @@ SwiftUI 环境注入。视图不 new 服务。
 
 这层只依赖页面脚本注入，与浏览器界面层解耦。
 
+## 外壳状态机
+
+`App/Shell/ShellState.swift` 是窗口级呈现与 Chrome 中间态的唯一来源。它用
+`@Observable @MainActor` 持有：
+
+- `surface: BrowserSurface` — 主表面：`home` / `page` / `novel(NovelSession)` /
+  `error`。同一时刻只有一个主表面；小说阅读器是表面而不是选中的布尔值，因此
+  「阅读器覆盖在错误页再覆盖在主页上」这种组合在类型上就写不出来。
+- `overlays: Set<ShellOverlay>` — 覆盖在主表面之上、但不替换它的层：
+  总览、菜单、书签、历史、下载、离线页面、设置、密码、书架、扫码、查找栏、
+  分享、添加书签选择、站点能力。`ShellOverlay` 的 `id` 只取 `Kind`，关联值
+  （设置目标页、`BookshelfContext`）是数据而不是身份，所以
+  `binding(forKind:)` 可以在不知道载荷的情况下回答「这个 sheet 是否打开」。
+- `pendingMenuPresentation` — 菜单唯一的一条延迟呈现请求。
+- Chrome 的瞬时几何（隐藏、拖动、抬升）、键盘与安全区测量、窗口原点、
+  边缘返回手势的在途值、滚动记账，以及一行式提示（小说/离线/地址/扫码）。
+  逐帧写入的 `scrollTracker` 仍是引用盒，字段变化不会让整棵视图树失效。
+
+视图通过 `BrowserShellView+State.swift` 的转发访问器读写它；呈现一律走
+`present(_:)` / `dismiss(_:)` / `binding(forKind:)`，不再散落布尔量。
+`OmniboxViewModel` 不属于这里：那是一个文本框的会话，不是窗口的呈现状态。
+
+### 主表面与浮层的边界
+
+`BrowserSurface` 回答「内容列显示什么」，`ShellOverlay` 回答「什么盖在上面」。
+标签页切换只刷新表面的非小说半边（`syncBaseSurface`）；阅读器打开时，标签页
+的变化不会替换表面，关闭阅读器时才回到当前标签页自己的状态。
+
+### 菜单的延迟呈现（不可破坏）
+
+菜单本身是一个 sheet，「添加书签」「书签」「设置」「书架」等是第二个 sheet。
+在同一个 update 里既 dismiss 菜单又 present 目标，会和 UIKit 的呈现机制竞争；
+早期版本正是因此让 添加书签 与 书签 偶尔表现为点不动或卡住。
+
+现在的顺序是强制的：
+
+1. `handleMenuAction` 只关闭菜单并调用 `shell.queueMenu(_:)`，绝不直接 present。
+2. 菜单 sheet 绑定 `shell.menuBinding`，其 `onDismiss` 调用
+   `shell.performPendingMenuPresentation()`。
+3. 该方法在菜单完全消失后按请求 present 对应浮层；书架是唯一例外，它必须
+   先由外壳捕获活动标签页的隐私模式与当前私密代次，再异步取得对应书库，
+   因此通过 `onBookshelfRequested` 回到外壳的 `openBookshelf()`。
+
+查找、进入小说、桌面版、刷新、无痕切换等非 sheet 动作仍可立即执行。
+
 ## 菜单面板
 
 `Core/Models/MenuModels.swift` 定义 `VelaMenuAction`、`MenuShortcut`、
 `MenuTile` 和 `MenuLayout`。布局以原始字符串保存在偏好文档里（顺序、隐藏项、
 快捷方式），`MenuPanelView` 只负责画传给它的 tiles。设置 ▸ 菜单面板 负责编辑。
+
+## 运动语言
+
+`UI/BrowserMotion.swift` 是唯一的动画入口。它按职责给出曲线而不是让每个调用点
+自己写 `.spring`：
+
+| 入口 | 用在 |
+|---|---|
+| `chrome` | 命令栏、搜索页、查找栏的显隐 |
+| `surface` | 主页 ↔ 网页、错误页、阅读器之下的页面替换 |
+| `overview` | 标签总览自底部升起 |
+| `novelEnter` | 小说阅读器进入（命令栏同曲线退场） |
+| `backdrop` | 背景图片 / 环境场 / 材质切换 |
+| `sheet` | 二级 sheet 内部状态变化 |
+| `notice` | 一行提示、扫码层 |
+| `tileDrag` | 磁贴拖动（Reduce Motion 时为 nil） |
+| `sidebar` / `settle` / `press` / `hint` | 侧栏、手势回弹、按压、拖动提示 |
+
+所有公开入口都接收 `accessibilityReduceMotion`：开启时返回 0.12 秒的短淡出，
+拖动类入口返回 `nil`，调用点不需要自己判断。大面积用较慢曲线（`surface`
+约 0.46），小反馈用较快曲线（`crisp` 约 0.26），同一时刻只突出一个主角。
 
 ## 小说目录与翻页
 

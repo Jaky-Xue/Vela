@@ -13,17 +13,17 @@ import WebKit
 extension BrowserShellView {
     func presentations() -> some View {
         shellRoot
-        .sheet(isPresented: $showSiteCapabilities) {
+        .sheet(isPresented: shell.binding(forKind: .siteCapabilities)) {
             if let tab = activeTab {
                 NavigationStack { SiteCapabilitiesView(tab: tab) }.environment(env).browserAmbientSheet()
             }
         }
-        .sheet(isPresented: $showBookmarks) {
+        .sheet(isPresented: shell.binding(forKind: .bookmarks)) {
             NavigationStack { BookmarksView() }
                 .environment(env)
                 .browserAmbientSheet()
         }
-        .sheet(isPresented: $showHistory) {
+        .sheet(isPresented: shell.binding(forKind: .history)) {
             NavigationStack { HistoryView() }
                 .environment(env)
                 // Applied to the stack rather than to the list so every pushed
@@ -32,21 +32,21 @@ extension BrowserShellView {
                 .browserListSurface()
                 .browserAmbientSheet()
         }
-        .sheet(isPresented: $showDownloads) {
+        .sheet(isPresented: shell.binding(forKind: .downloads)) {
             NavigationStack { DownloadsView() }
                 .environment(env)
                 .browserListSurface()
                 .browserAmbientSheet()
         }
-        .sheet(isPresented: $showSettings, onDismiss: { settingsDestination = nil }) {
+        .sheet(isPresented: shell.binding(forKind: .settings)) {
             NavigationStack {
-                SettingsView(initialDestination: settingsDestination)
+                SettingsView(initialDestination: shell.settingsDestination)
             }
             .environment(env)
             .browserListSurface()
             .browserAmbientSheet()
         }
-        .sheet(isPresented: $showPasswords) {
+        .sheet(isPresented: shell.binding(forKind: .passwords)) {
             NavigationStack {
                 PasswordVaultView()
                     .toolbar {
@@ -58,19 +58,19 @@ extension BrowserShellView {
             .environment(env)
             .browserAmbientSheet()
         }
-        .sheet(isPresented: $showBookshelf) {
-            if let library = bookshelfLibrary {
-                NovelBookshelfView(library: library) { book in
-                    showBookshelf = false
+        .sheet(isPresented: shell.binding(forKind: .bookshelf)) {
+            if let context = shell.bookshelfContext {
+                NovelBookshelfView(library: context.library) { book in
+                    shell.dismiss(kind: .bookshelf)
                     // A resumed book that still has its chapter cached opens
                     // instantly; otherwise the reader loads it itself.
                     openNovel(
                         book,
-                        chapter: library.cachedChapter(book: book),
-                        sourceTabId: bookshelfSourceTabId,
-                        library: library,
-                        isPrivateSession: bookshelfIsPrivate,
-                        sessionGeneration: bookshelfGeneration
+                        chapter: context.library.cachedChapter(book: book),
+                        sourceTabId: context.sourceTabId,
+                        library: context.library,
+                        isPrivateSession: context.isPrivate,
+                        sessionGeneration: context.generation
                     )
                 }
                 .environment(env)
@@ -79,12 +79,12 @@ extension BrowserShellView {
                     .padding()
             }
         }
-        .sheet(isPresented: $showShareSheet) {
+        .sheet(isPresented: shell.binding(forKind: .share)) {
             if let tab = activeTab, let url = URL(string: tab.url) {
                 ShareSheet(items: [url])
             }
         }
-        .sheet(isPresented: $showOfflinePages) {
+        .sheet(isPresented: shell.binding(forKind: .offlinePages)) {
             NavigationStack {
                 OfflinePagesView(onOpen: openOfflinePage)
             }
@@ -95,7 +95,7 @@ extension BrowserShellView {
         // The menu is a sheet, and 添加书签/书签/etc. are second sheets. The
         // destination waits for this dismissal to finish rather than asking
         // UIKit to dismiss and present in the same update.
-        .sheet(isPresented: $showMenu, onDismiss: { performPendingMenuPresentation() }) {
+        .sheet(isPresented: shell.menuBinding, onDismiss: { shell.performPendingMenuPresentation() }) {
             MenuPanelView(
                 settings: env.settings,
                 canActOnPage: canActOnPage,
@@ -111,7 +111,7 @@ extension BrowserShellView {
                 } ?? false,
                 onResetSiteDisplay: {
                     guard let tab = activeTab else { return }
-                    showMenu = false
+                    shell.dismiss(.menu)
                     resetSiteDisplayMode(for: tab)
                 },
                 pageTitle: menuPanelTitle,
@@ -121,7 +121,7 @@ extension BrowserShellView {
             .environment(env)
             .browserAmbientSheet()
         }
-        .sheet(isPresented: $showAddBookmarkChoice) {
+        .sheet(isPresented: shell.binding(forKind: .addBookmarkChoice)) {
             AddBookmarkChoiceSheet(
                 url: activeTab?.url ?? "",
                 title: activeTab?.title ?? ""
@@ -272,6 +272,10 @@ extension BrowserShellView {
                 env.webCoordinator.resolveFileUpload(nil)
             }
         }
+        // A sheet's content changing state (a section opening, a row
+        // arriving) uses the softer sheet curve rather than each screen
+        // picking its own spring.
+        .animation(BrowserMotion.sheet(reduceMotion), value: shell.overlays)
     }
 
 }

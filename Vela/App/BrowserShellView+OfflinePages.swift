@@ -12,11 +12,11 @@ extension BrowserShellView {
     /// Opens settings, optionally on a named screen.
     ///
     /// One entry point so a context that names a screen can open it directly
-    /// rather than the settings root, and so the root itself always clears a
-    /// destination left over from the previous opening.
+    /// rather than the settings root. The destination travels in the overlay
+    /// itself, so opening the root cannot inherit the screen a previous
+    /// opening asked for.
     func openSettings(_ destination: SettingsDestination? = nil) {
-        settingsDestination = destination
-        showSettings = true
+        shell.present(.settings(destination))
     }
 
     /// Saves the active page's archive, then reports the result in one line.

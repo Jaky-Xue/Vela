@@ -57,9 +57,9 @@ extension BrowserShellView {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.28), value: showsBackgroundPictureAtRoot)
-        .animation(.easeInOut(duration: 0.28), value: showsAmbientRootBackground)
-        .animation(.easeInOut(duration: 0.28), value: env.settings.backgroundStyle)
+        .animation(BrowserMotion.backdrop(reduceMotion), value: showsBackgroundPictureAtRoot)
+        .animation(BrowserMotion.backdrop(reduceMotion), value: showsAmbientRootBackground)
+        .animation(BrowserMotion.backdrop(reduceMotion), value: env.settings.backgroundStyle)
     }
 
     var shellBase: some View {
@@ -126,11 +126,28 @@ extension BrowserShellView {
             // drawn there at all.
             if novelSession == nil && !usesPadLayout {
                 commandBar
+                    // The bar leaves on the reader's own curve, a beat behind
+                    // its arrival, so the two read as one movement.
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .opacity.combined(with: .offset(y: BrowserChrome.barHeight + BrowserChrome.barGap))
+                    )
             }
         }
         .overlay(alignment: .bottom) {
             if novelSession == nil {
                 floatingToolsInGlassContainer
+                    // The tools enter from the bar they belong to and leave
+                    // upward when the reader takes the screen.
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                removal: .opacity.combined(with: .move(edge: .top))
+                            )
+                    )
             }
         }
         .overlay {
@@ -152,11 +169,17 @@ extension BrowserShellView {
                         homePreviewTabId = nil
                     }
                 )
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+                .transition(
+                    reduceMotion
+                        ? .opacity
+                        : .opacity
+                            .combined(with: .scale(scale: 0.96, anchor: .bottom))
+                            .combined(with: .offset(y: 24))
+                )
                 .zIndex(20)
             }
         }
-        .animation(BrowserMotion.overview(reduceMotion), value: showTabsOverview)
+        .animation(BrowserMotion.overview(reduceMotion), value: shell.isPresented(.tabsOverview))
         .overlay {
             // The scanner rides the same in-hierarchy rule the overview does:
             // a presented controller's geometry is the thing that wedges on
@@ -170,9 +193,9 @@ extension BrowserShellView {
                 .zIndex(30)
             }
         }
-        .animation(.snappy(duration: 0.2), value: showQRScanner)
+        .animation(BrowserMotion.notice(reduceMotion), value: shell.isPresented(.qrScanner))
         .overlay { novelReaderLayer }
-        .animation(.snappy(duration: 0.24), value: novelSession?.id)
+        .animation(BrowserMotion.novelEnter(reduceMotion), value: shell.surface)
     }
 
     /// The shell's own alerts, split from the layers they cover.

@@ -76,8 +76,8 @@ extension BrowserShellView {
         // rendered pieces — the omnibox and the two button clusters — so a
         // finger that landed between them started a drag the bar never heard.
         .contentShape(Rectangle())
-        .animation(Self.chromeAnimation, value: chromeHidden)
-        .animation(Self.chromeAnimation, value: omnibox.isEditing)
+        .animation(BrowserMotion.chrome(reduceMotion), value: chromeHidden)
+        .animation(BrowserMotion.chrome(reduceMotion), value: omnibox.isEditing)
         // Dragging the bar downward dismisses it, off the bottom edge the way
         // a sheet leaves; dragging it upward returns to the home surface, the
         // same promise the home button makes. The gesture is *simultaneous*
@@ -147,7 +147,7 @@ extension BrowserShellView {
                         }
                     }
                     chromeHomeArmed = false
-                    withAnimation(Self.chromeAnimation) {
+                    withAnimation(BrowserMotion.chrome(reduceMotion)) {
                         chromeDragOffset = 0
                         chromeLiftOffset = 0
                     }
@@ -186,7 +186,7 @@ extension BrowserShellView {
                 .offset(y: -46)
                 .opacity(min(1, travel / 20))
                 .allowsHitTesting(false)
-                .animation(.easeOut(duration: 0.15), value: armed)
+                .animation(BrowserMotion.hint(reduceMotion), value: armed)
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
         }
     }
@@ -480,7 +480,13 @@ extension BrowserShellView {
 
             if showFindBar {
                 FindBar(
-                    query: $findQuery,
+                    // The query lives on the shell state machine, which is a
+                    // reference type, so the field binds through a closure
+                    // rather than a projected value.
+                    query: Binding(
+                        get: { findQuery },
+                        set: { findQuery = $0 }
+                    ),
                     result: env.overlays.findResult,
                     onNext: { env.webCoordinator.findInPage(findQuery, forward: true) },
                     onPrevious: { env.webCoordinator.findInPage(findQuery, forward: false) },
@@ -516,7 +522,7 @@ extension BrowserShellView {
             BrowserChrome.barHeight + BrowserChrome.barGap + 6
                 + (showFindBar ? keyboardHeight : 0)
         )
-        .animation(Self.chromeAnimation, value: showFindBar)
+        .animation(BrowserMotion.chrome(reduceMotion), value: showFindBar)
     }
 
 }

@@ -738,3 +738,17 @@ F-06/F-08 已处理或改写测试。
 | C3 | 部分修复 | back/reload/home 与私密开关已统一；界面展示动作仍在 shell |
 | 顶栏卡顿 | 待验证 | 建议建议列表改为显式高度，去掉 self-sizing ScrollView；真机未复现/验证 |
 | 卡顿诊断 | 已实现 | `MainThreadHangMonitor` 记录 ≥2s 卡顿、页面、持续时间与最后操作；不采样阻塞堆栈 |
+
+---
+
+## 4.0 Shell 状态机与运动体系（2026-11-16）
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| C3 | 部分修复 | 呈现状态统一到 `ShellState`：主表面 `BrowserSurface`、浮层 `ShellOverlay`、菜单唯一延迟请求。导航决策仍在 `BrowserNavigationActions`，界面展示动作仍在 shell 扩展，未把两者合并 |
+| 菜单竞态 | 保持修复 | `handleMenuAction` 只 dismiss 菜单并 `queueMenu`；目标浮层由菜单 sheet 的 `onDismiss` 打开。禁止在同一 update 内 dismiss 菜单又 present 二级 sheet |
+| R-27 / R-28 / R-29 / R-31 | 未改变 | 私密代次、私密书架上下文、`onPrivateSessionWillEnd` 的关闭顺序原样保留；书架上下文现在随 `ShellOverlay.bookshelf` 一起捕获，tab 切换无法替换书库 |
+| 界面状态漂移 | 已收敛 | 标题切换、关闭查找、chrome 拖动/隐藏、键盘与安全区测量、边缘返回在途值只由 `ShellState` 持有；`BrowserShellView` 不再声明这些 `@State` |
+| 帧率 | 保持 | `scrollTracker` 仍是引用盒：滚动时字段写入不触碰可观察属性，只有 `chromeHidden` 阈值变化才刷新视图树 |
+| 运动 | 已统一 | `BrowserMotion` 是所有动画入口并处理 Reduce Motion；主页↔网页、总览、阅读器、背景、菜单/二级 sheet、命令栏均使用命名曲线 |
+| 待验证 | 真机手感 | 新的 `surface`（约 0.46/0.92）与 `novelEnter`（约 0.44/0.9）曲线只在模拟器/CI 通过编译，尚未在真机上评估节奏；如偏慢，只调 `BrowserMotion` 一处 |
