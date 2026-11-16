@@ -1,7 +1,7 @@
 """Mirror this run's evidence onto a separate generated branch when API access is unavailable.
 No source branch is changed. Credentials stay in runner-local Git configuration.
 """
-import hashlib,json,os,plistlib,re,shutil,subprocess,sys,tempfile
+import hashlib,json,os,plistlib,re,shutil,subprocess,sys,tempfile,zipfile
 from pathlib import Path
 
 kind=sys.argv[1]
@@ -34,7 +34,8 @@ if kind.startswith('tests'):
     if Path('ui-previews').exists(): shutil.copytree('ui-previews',folder/'ui-previews')
 else:
     ipa=Path('Vela-unsigned.ipa'); shutil.copy2(ipa,folder/ipa.name)
-    info=plistlib.loads(Path('build/Build/Products/Release-iphoneos/Vela.app/Info.plist').read_bytes())
+    with zipfile.ZipFile(ipa) as archive:
+        info=plistlib.loads(archive.read('Payload/Vela.app/Info.plist'))
     record.update(version=info['CFBundleShortVersionString'],build=info['CFBundleVersion'],sha256=hashlib.sha256(ipa.read_bytes()).hexdigest(),bytes=ipa.stat().st_size,signing='unsigned')
 (folder/'metadata.json').write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
 branch='ci-bundles/'+sha[:12]+'-'+run+'-'+attempt+'-'+kind

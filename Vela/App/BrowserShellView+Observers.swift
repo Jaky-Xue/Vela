@@ -70,6 +70,9 @@ extension BrowserShellView {
         .onChange(of: env.privateNovelSessionGeneration) { _, generation in
             handlePrivateNovelGeneration(generation)
         }
+        .onChange(of: tabManager.sessionSaveError) { _, error in
+            if let error { env.privateAccessNotice = "标签会话保存失败：" + error }
+        }
         .onChange(of: activeTab?.url) { _, _ in
             handleActiveTabUrlChanged()
         }

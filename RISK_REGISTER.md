@@ -760,3 +760,5 @@ F-06/F-08 已处理或改写测试。
 数据库建表/补字段/版本更新在同一事务内；迁移失败回滚、未来版本拒绝，不重置原数据。普通/私密标签持久化偏好保留现有行为，不声称私密标签从不落盘。
 NavigationLog 默认关闭，仅记录调用方事件；recordHang 不提供实际检测，没有 MetricKit/MainThreadHangMonitor 或系统崩溃采集。无自动上传。
 既有 CI 的 build 保持 needs: test，iPhone 与 iPad 都成功才打包。工作分支构建，禁止把历史基线或静态检查当作本轮测试通过。以最终 ReleaseReport 为实际结果；UI/真机/Instruments 未验证。
+
+CI 最小权限：build/test 使用 contents: read；旧分支证据镜像移到独立 mirror job，仅该 job 拥有 contents: write。迁移、下载入队、标签保存具备错误信号；全项目临时/清理 try? 未机械替换，持久化 UI 全链路仍需真机验证。

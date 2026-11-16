@@ -46,7 +46,7 @@ jobs:
     name: Build Vela
     needs: test
     permissions:
-      contents: write # Required by the existing legacy-branch evidence mirror; permissions do not accept expressions.
+      contents: read
     # Xcode 16 is the floor: the project uses the file-system-synchronized group
     # format (objectVersion 77) that Xcode 16 introduced.
     #
@@ -133,15 +133,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Mirror verified IPA for Git transport
-        if: (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries' || github.ref == 'refs/heads/feature/phase2-theme-materials')
-        continue-on-error: true
-        run: python3 Scripts/publish_ci_bundle.py build
 
   test:
     name: Run the unit tests (${{ matrix.device }})
     permissions:
-      contents: write # Required by the existing legacy-branch evidence mirror; permissions do not accept expressions.
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -202,12 +198,19 @@ jobs:
           xcrun xcresulttool get test-results summary \
             --path TestResults.xcresult || true
 
+      - name: Export machine-readable test summary
+        if: always()
+        run: xcrun xcresulttool get test-results summary --path TestResults.xcresult > test-summary.json || true
+
       - name: Upload the test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ matrix.device }}
-          path: TestResults.xcresult
+          path: |
+            TestResults.xcresult
+            test-output.log
+            test-summary.json
           if-no-files-found: ignore
           retention-days: 14
 
@@ -224,7 +227,29 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Mirror test evidence for Git transport
-        if: always() && (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries' || github.ref == 'refs/heads/feature/phase2-theme-materials')
-        continue-on-error: true
-        run: python3 Scripts/publish_ci_bundle.py tests-${{ matrix.device }}
+  mirror:
+    name: Mirror legacy CI evidence (${{ matrix.kind }})
+    needs: [test, build]
+    if: always() && (github.ref == 'refs/heads/feature/complete-runtime-motion-3.9.56' || github.ref == 'refs/heads/feature/phase1-shell-boundaries' || github.ref == 'refs/heads/feature/phase2-theme-materials')
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ${{ inputs.runner || 'macos-26' }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: build
+            artifact: Vela-unsigned-ipa
+          - kind: tests-iPhone
+            artifact: test-results-iPhone
+          - kind: tests-iPad
+            artifact: test-results-iPad
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+      - name: Mirror evidence on a generated branch
+        run: python3 Scripts/publish_ci_bundle.py '${{ matrix.kind }}'

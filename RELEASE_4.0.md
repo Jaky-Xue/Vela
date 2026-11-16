@@ -9,3 +9,5 @@ NavigationLog 仅为默认关闭的事件记录器，没有实际卡顿/崩溃�
 
 构建必须经过 iPhone 和 iPad 完整测试门禁，不发布 GitHub Release，不推送 main。最终 CI 结果、产物 SHA-256、未验证项目见 G:\Vela-4.0-62-ReleaseReport.md。
 真机、Stage Manager、后台杀进程/expiration、UI 全流程和 Instruments 数据尚需验证。
+
+CI 最小权限：build/test 使用 contents: read；旧分支证据镜像移到独立 mirror job，仅该 job 拥有 contents: write。迁移、下载入队、标签保存具备错误信号；全项目临时/清理 try? 未机械替换，持久化 UI 全链路仍需真机验证。

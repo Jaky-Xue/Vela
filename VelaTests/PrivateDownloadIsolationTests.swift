@@ -43,6 +43,21 @@ final class PrivateDownloadIsolationTests: XCTestCase {
         XCTAssertNil(service.pendingPrompt(windowId: "a"))
         XCTAssertEqual(service.pendingPrompt(windowId: "b")?.suggestedFileName, "b")
     }
+    func testOtherWindowCanSaveFileAfterFirstWindowEnds() async throws {
+        let db = try SQLiteDatabase(path: ":memory:")
+        try BrowserDatabase.migrate(db)
+        let repository = DownloadRepository(database: db)
+        let service = DownloadService(repository: repository, settings: SettingsService(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+        service.beginPrivateSession(windowId: "a", sessionId: "one")
+        service.beginPrivateSession(windowId: "b", sessionId: "two")
+        service.clearPrivateRecords(windowId: "a", sessionId: "one")
+        let boundary = BrowserDataBoundary(dataScope: .sessionEphemeral, privacyMode: .private, windowId: "b", privateSessionId: "two")
+        let saved = try await service.saveScriptFile(Data([1,2,3]), response: URLResponse(url: URL(string: "https://example.com")!, mimeType: nil, expectedContentLength: 3, textEncodingName: nil), suggestedName: UUID().uuidString, boundary: boundary)
+        defer { service.clearPrivateRecords(windowId: "b", sessionId: "two") }
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: saved.destinationPath)), Data([1,2,3]))
+        XCTAssertEqual(try repository.task(guid: saved.guid)?.status, .completed)
+    }
+
     func testOldSessionCannotSaveScriptDownloadIntoNewSession() async throws {
         let db = try SQLiteDatabase(path: ":memory:")
         try BrowserDatabase.migrate(db)

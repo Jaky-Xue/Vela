@@ -115,7 +115,7 @@ final class CompletionRegressionTests: XCTestCase {
         let rawID = try await web.evaluateJavaScript("document.documentElement.dataset.download")
         let id=try XCTUnwrap(rawID as? String)
         let saved=try XCTUnwrap(h.downloads.tasks.first{$0.guid==id})
-        defer {h.downloads.remove(guid:id,deleteFile:true)}
+        defer {h.downloads.remove(guid:id,deleteFile:true,windowId:h.tabManager.windowId)}
         XCTAssertEqual(saved.status,.completed)
         XCTAssertEqual(try String(contentsOfFile:saved.destinationPath,encoding:.utf8),"download fixture")
         XCTAssertEqual(server.requestBody(for:"/upload"),Data([0,127,128,255]))

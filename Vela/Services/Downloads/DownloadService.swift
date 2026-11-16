@@ -553,7 +553,7 @@ public final class DownloadService: NSObject {
             return
         }
 
-        persist(task)
+        guard persist(task) else { activeGuids.remove(guid); refreshActiveCount(); return }
         updateTaskInMemory(task)
         plan.windowId = task.windowId
         plan.privateSessionId = task.privateSessionId
@@ -803,7 +803,7 @@ public final class DownloadService: NSObject {
         downloads[task.guid] = download
         guidByDownload[ObjectIdentifier(download)] = task.guid
         activeGuids.insert(task.guid)
-        persist(task)
+        guard persist(task) else { download.cancel(nil); releaseTracking(guid: task.guid); activeGuids.remove(task.guid); refreshActiveCount(); return task }
         observeProgress(download: download, guid: task.guid)
         reload(privacyMode: task.privacyMode)
         refreshActiveCount()
@@ -861,7 +861,7 @@ public final class DownloadService: NSObject {
             task.receivedBytes = task.totalBytes
         }
         task.writtenBytes = task.receivedBytes
-        persist(task)
+        guard persist(task) else { return }
         releaseTracking(guid: guid)
         segmentedSessions.removeValue(forKey: guid)
         sourceWebViews.removeValue(forKey: guid)

@@ -230,3 +230,5 @@ P2：大型 Swift 文件多职责仍在；不为减少行数改 actor/所有权�
 | `Vela/UI/ShareSheet.swift` | 26 | 0 |
 | `Vela/UI/SiteIconView.swift` | 723 | 1 |
 | `Vela/UI/Theme.swift` | 483 | 0 |
+
+CI 最小权限：build/test 使用 contents: read；旧分支证据镜像移到独立 mirror job，仅该 job 拥有 contents: write。迁移、下载入队、标签保存具备错误信号；全项目临时/清理 try? 未机械替换，持久化 UI 全链路仍需真机验证。

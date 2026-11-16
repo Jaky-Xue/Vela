@@ -148,15 +148,17 @@ public final class DownloadRepository: @unchecked Sendable {
     /// session.
     public func tasks(
         privacyMode: BrowserSessionPrivacyMode,
+        windowId: String? = nil,
+        sessionId: String? = nil,
         limit: Int = 300
     ) throws -> [DownloadTask] {
         try database.query(
             """
             SELECT \(Self.columns) FROM \(BrowserSchema.downloadsTable)
-            WHERE privacy_mode = ?
+            WHERE privacy_mode = ? AND (? = 'regular' OR (window_id = ? AND private_session_id = ?))
             ORDER BY created_at DESC LIMIT ?
             """,
-            [.text(privacyMode.rawValue), .integer(Int64(limit))],
+            [.text(privacyMode.rawValue), .text(privacyMode.rawValue), windowId.map(SQLiteValue.text) ?? .null, sessionId.map(SQLiteValue.text) ?? .null, .integer(Int64(max(0, limit)))],
             row: task(from:)
         )
     }
