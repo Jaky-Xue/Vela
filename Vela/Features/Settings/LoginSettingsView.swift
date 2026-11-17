@@ -27,6 +27,9 @@ struct LoginSettingsView: View {
     @State private var addEmail = ""
     @State private var addLabel = ""
     @State private var confirmingSignOut = false
+    /// Addresses are masked until asked for: the list names who the user
+    /// signs in as, and a settings screen is often read over a shoulder.
+    @AppStorage("org.vela.browser.login-reveals-addresses") private var revealsAddresses = false
 
     private var service: WebAccountService { env.services.webAccounts }
 
@@ -105,6 +108,16 @@ struct LoginSettingsView: View {
         .settingsList()
         .navigationTitle("登录")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    revealsAddresses.toggle()
+                } label: {
+                    Image(systemName: revealsAddresses ? "eye.slash" : "eye")
+                }
+                .accessibilityLabel(revealsAddresses ? "隐藏邮箱" : "显示邮箱")
+            }
+        }
         .task {
             await service.refreshSessions()
         }
@@ -163,9 +176,10 @@ struct LoginSettingsView: View {
                     .foregroundStyle(palette.secondaryText)
                     .frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account.email)
+                    Text(displayAddress(account.email))
                         .foregroundStyle(palette.primaryText)
                         .lineLimit(1)
+                        .privacySensitive()
                     Text(accountSubtitle(account))
                         .font(.caption)
                         .foregroundStyle(palette.secondaryText)
@@ -187,6 +201,15 @@ struct LoginSettingsView: View {
                 service.remove(id: account.id)
             }
         }
+    }
+
+    /// The address as the list draws it: masked unless revealed, keeping the
+    /// first character and the domain so two accounts stay tellable apart.
+    private func displayAddress(_ email: String) -> String {
+        guard !revealsAddresses else { return email }
+        let parts = email.split(separator: "@", maxSplits: 1)
+        guard parts.count == 2, let head = parts[0].first else { return "•••" }
+        return "\(head)•••@\(parts[1])"
     }
 
     private func accountSubtitle(_ account: WebAccount) -> String {

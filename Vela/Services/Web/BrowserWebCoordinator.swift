@@ -801,10 +801,14 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         userScriptCommandFrames = userScriptCommandFrames.filter { !$0.key.hasPrefix(tab.id + "|") }
         userScriptFrames = userScriptFrames.filter { !$0.key.hasPrefix(tab.id + "|") }
         // User scripts belong to this page, so the match is recomputed here,
-        // for this URL, on every navigation.
+        // for this URL, on every navigation. The one absolute exception is a
+        // sign-in page: a user script that reads the DOM there reads a
+        // password, and an installed script is the one piece of third-party
+        // code the browser runs.
         if settings.preferences.userScriptsEnabled,
            tab.privacyMode != .private,
-           let pageURL = url {
+           let pageURL = url,
+           !WebAccountProvider.isProtectedSignInHost(pageURL.host ?? "") {
             let installed = (try? userScripts.enabledScripts()) ?? []
             let matching = installed.sorted { $0.createdAt < $1.createdAt }
             if !matching.isEmpty {

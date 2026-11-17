@@ -32,6 +32,11 @@ enum KeychainStoreError: LocalizedError {
 final class KeychainStore {
     let service: String
 
+    /// The service 设置 ▸ 账号 keeps its address list under. A Keychain item
+    /// rather than a plist for the same reason a password is: the list names
+    /// who the user signs in as.
+    static let webAccountsService = "org.vela.browser.web-accounts"
+
     init(service: String) {
         self.service = service
     }

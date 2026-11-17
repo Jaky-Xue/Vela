@@ -96,6 +96,30 @@ public enum WebAccountProvider: String, Codable, Sendable, CaseIterable, Identif
             ]
         }
     }
+
+    /// Pages a user script must never run on.
+    ///
+    /// These hold a password form and the person's own account data. Vela
+    /// refuses to inject an installed user script there whatever its `@match`
+    /// says: a script that reads the DOM on a sign-in page reads a password,
+    /// and a user-installed script is the one piece of third-party code the
+    /// browser runs.
+    public var protectedSignInHosts: [String] {
+        switch self {
+        case .google: return ["accounts.google.com", "myaccount.google.com"]
+        case .apple: return ["appleid.apple.com", "idmsa.apple.com", "account.apple.com"]
+        }
+    }
+
+    /// Whether a host is one of those pages, for any provider.
+    public static func isProtectedSignInHost(_ host: String) -> Bool {
+        let normalized = host.lowercased()
+        return allCases.contains { provider in
+            provider.protectedSignInHosts.contains { root in
+                normalized == root || normalized.hasSuffix("." + root)
+            }
+        }
+    }
 }
 
 public struct WebAccount: Identifiable, Codable, Equatable, Sendable {

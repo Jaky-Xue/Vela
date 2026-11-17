@@ -19,13 +19,20 @@
 - 「登录 Google」「登录 Apple」分别在新标签页打开官方登录页，登录后回到设置，状态行会更新。
 - 「退出所有账号」清除 Google（google.com、accounts.google.com、youtube.com、googleapis.com、gstatic.com 等）与 Apple（apple.com、appleid.apple.com、idmsa.apple.com、account.apple.com、icloud.com）站点的**全部网站数据**（Cookie、本地存储、缓存），并清空本机账号列表。需要确认，不能撤销；不做「只清一个域名」的折中，否则用户会在看不见的地方仍然登录着。
 
+## 安全
+
+- **账号列表存进钥匙串**，不再写进 `UserDefaults`：由系统用设备密钥加密，仅在解锁时可读，且标记为本机专用（备份不会把它带到别的设备）。第一个 4.0.72 构建把列表写在了 `UserDefaults` 里，升级时会一次性搬进钥匙串并删除旧的明文。
+- **邮箱默认打码**（保留首字母与域名，例如 `v•••@gmail.com`），页面右上角的眼睛按钮切换显示；打码状态会记住。账号行同时标记为敏感内容，系统截图与切换器快照会遮挡。
+- **登录页不注入任何用户脚本**：`accounts.google.com`、`myaccount.google.com`、`appleid.apple.com`、`idmsa.apple.com`、`account.apple.com` 上，无论脚本的 `@match` 写了什么，Vela 都不会注入用户安装的脚本——读登录页 DOM 的脚本就是在读密码。这是应用运行第三方代码的唯一入口，因此这一条不提供开关。
+- 「退出所有账号」清除的是 Google 与 Apple 各域名的**全部网站数据**（Cookie、本地存储、缓存），并且先清浏览器数据再清本机列表。
+
 ## 说明与边界
 
 - 没有接入 Google 或 Apple 的登录 SDK，也没有 OAuth 客户端：应用内不会替用户拿令牌，也不接触密码。登录就是浏览器打开服务商的登录页。
-- 账号列表只存在本机的 `UserDefaults`，不参与 iCloud 同步，也不进入「导入与导出」。
+- 账号列表只存在本机钥匙串，不参与 iCloud 同步，也不进入「导入与导出」。
 
 ## 验证
 
-- 新增 `WebAccountServiceTests`：地址归一化、同服务商去重并更新备注、不同服务商的同一地址是两条、非法地址拒绝、重启后保留、删除只影响一条、两个服务商的登录页与域名各自正确。
+- 新增 `WebAccountServiceTests`：地址归一化、同服务商去重并更新备注、不同服务商的同一地址是两条、非法地址拒绝、重启后保留、删除只影响一条、两个服务商的登录页与域名各自正确、列表不写进 `UserDefaults`、旧版 `UserDefaults` 列表一次性搬进钥匙串、登录页对用户脚本的保护名单。
 - CI 仍需在 iPhone 与 iPad 模拟器上跑完整 XCTest 并构建 Release。
 - **真机未验证**：退出后 Google / Apple 站点是否确实显示为未登录、登录后状态行的刷新时机。

@@ -40,23 +40,43 @@ public final class WebAccountService {
     public private(set) var sessions: [WebAccountProvider: BrowserSession] = [:]
     public private(set) var signingOutProvider: WebAccountProvider?
 
+    /// The list used to live in `UserDefaults`; it is a Keychain item now.
     private enum Key {
         static let document = "org.vela.browser.web-accounts"
+        static let legacyDefaultsKey = "org.vela.browser.web-accounts"
     }
 
-    private let defaults: UserDefaults
+    /// The address list is a set of personal identifiers, so it lives in the
+    /// Keychain rather than in a plist any file reader can open: encrypted
+    /// with the device key, readable only while unlocked, and marked
+    /// this-device-only so a backup never carries it elsewhere.
+    private let store: KeychainStore
+    private let legacyDefaults: UserDefaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    public init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+    init(
+        store: KeychainStore = KeychainStore(service: KeychainStore.webAccountsService),
+        legacyDefaults: UserDefaults = .standard
+    ) {
+        self.store = store
+        self.legacyDefaults = legacyDefaults
+        migrateOutOfUserDefaultsIfNeeded()
         reload()
+    }
+
+    /// Carries a list written by the first 4.0.72 build out of `UserDefaults`.
+    private func migrateOutOfUserDefaultsIfNeeded() {
+        guard store.read(account: Key.document) == nil,
+              let legacy = legacyDefaults.data(forKey: Key.legacyDefaultsKey) else { return }
+        try? store.save(account: Key.document, data: legacy)
+        legacyDefaults.removeObject(forKey: Key.legacyDefaultsKey)
     }
 
     // MARK: - The list
 
     public func reload() {
-        guard let data = defaults.data(forKey: Key.document),
+        guard let data = store.read(account: Key.document),
               let decoded = try? decoder.decode([WebAccount].self, from: data) else {
             accounts = []
             return
@@ -119,7 +139,12 @@ public final class WebAccountService {
 
     private func persist() {
         guard let data = try? encoder.encode(accounts) else { return }
-        defaults.set(data, forKey: Key.document)
+        do {
+            try store.save(account: Key.document, data: data)
+        } catch {
+            // The list stays in memory for this launch and the next save tries
+            // again. Nothing is written anywhere less protected instead.
+        }
     }
 
     // MARK: - The browser's own session
