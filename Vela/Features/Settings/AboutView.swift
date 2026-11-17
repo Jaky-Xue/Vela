@@ -13,6 +13,7 @@ import UIKit
 /// The licence line below is the one legal fact this screen carries;
 /// everything else stays out of the way of the icon, the name and the version.
 struct AboutView: View {
+    @State private var showsWelcome = false
     /// Read from the bundle rather than written down: a version typed into a
     /// string is the one fact in this screen guaranteed to drift from the
     /// build it describes.
@@ -51,6 +52,10 @@ struct AboutView: View {
             }
 
             Section {
+                Button("重新查看使用指南", systemImage: "sparkles") { showsWelcome = true }
+            }
+
+            Section {
                 Text("Vela 是专为 iOS 设计的浏览器，以 GNU General Public License v3.0 发布。")
                     .font(.footnote)
                 Text("完整许可与署名说明见源代码中的 LICENSE-NOTICE.md。")
@@ -64,5 +69,9 @@ struct AboutView: View {
         .navigationTitle("关于")
         .navigationBarTitleDisplayMode(.inline)
         .settingsList()
+        .sheet(isPresented: $showsWelcome) {
+            BrowserWelcomeView { showsWelcome = false }
+                .interactiveDismissDisabled()
+        }
     }
 }

@@ -183,6 +183,19 @@ public final class SettingsService {
             }
         }
 
+        // Local navigation suggestions now require an explicit opt-in.
+        // Persist the transition once so subsequent launches preserve choices.
+        if !preferences.searchEngine.searchSuggestions.navigationSuggestionsChosen {
+            var migrated = preferences
+            migrated.searchEngine.searchSuggestions.openTabsEnabled = false
+            migrated.searchEngine.searchSuggestions.bookmarksEnabled = false
+            migrated.searchEngine.searchSuggestions.historyEnabled = false
+            migrated.searchEngine.searchSuggestions.browsingHistoryEnabled = false
+            migrated.searchEngine.searchSuggestions.navigationSuggestionsChosen = true
+            preferences = migrated
+            persistPreferences()
+        }
+
         // The history repository reads this key directly during its prune pass,
         // so the retention window is mirrored where the write path can see it.
         defaults.set(preferences.historyRetentionDays, forKey: "org.vela.browser.history-retention-days")

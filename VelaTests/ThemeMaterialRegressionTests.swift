@@ -4,6 +4,41 @@ import SwiftUI
 
 @MainActor
 final class ThemeMaterialRegressionTests: XCTestCase {
+    func testRenderWelcomePagesOnPhoneAndPad() async throws {
+        let window = UIWindow()
+        window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        defer { window.isHidden = true }
+        let layouts: [(String, CGSize, ColorScheme)] = [
+            ("phone", CGSize(width: 390, height: 844), .light),
+            ("landscape", CGSize(width: 844, height: 390), .light),
+            ("pad-dark", CGSize(width: 768, height: 1024), .dark)
+        ]
+        for (name, size, scheme) in layouts {
+            for step in 0..<5 {
+                let content = BrowserWelcomeView(initialStep: step, onFinish: {})
+                    .environment(\.browserPalette, BrowserPalette.default)
+                    .environment(\.accessibilityReduceMotion, true)
+                    .environment(\.colorScheme, scheme)
+                let controller = UIHostingController(rootView: content)
+                window.overrideUserInterfaceStyle = scheme == .dark ? .dark : .light
+                window.rootViewController = controller
+                window.frame = CGRect(origin: .zero, size: size)
+                window.makeKeyAndVisible()
+                controller.view.frame = window.bounds
+                controller.view.layoutIfNeeded()
+                try await Task.sleep(nanoseconds: 100_000_000)
+                let format = UIGraphicsImageRendererFormat(); format.scale = 1
+                let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                    controller.view.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                }
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "welcome-\(name)-step-\(step + 1)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
+    }
+
     func testLegacyPaletteConstructionKeepsDefaultVisualStyle() throws {
         let original = BrowserPalette.default
         let legacy = BrowserPalette(id: "legacy", displayName: "旧配色", light: original.light, dark: original.dark)

@@ -54,6 +54,34 @@ final class SettingsDefaultsTests: XCTestCase {
         XCTAssertFalse(settings.preferences.restoreTabsOnLaunch)
         XCTAssertFalse(settings.preferences.recentlyClosedKept)
         XCTAssertEqual(settings.preferences.homeTileShowsTitle, false)
+        XCTAssertFalse(settings.preferences.searchEngine.searchSuggestions.openTabsEnabled)
+        XCTAssertFalse(settings.preferences.searchEngine.searchSuggestions.bookmarksEnabled)
+        XCTAssertFalse(settings.preferences.searchEngine.searchSuggestions.historyEnabled)
+        XCTAssertFalse(settings.preferences.searchEngine.searchSuggestions.browsingHistoryEnabled)
+    }
+
+    func testLocalSuggestionOptInSurvivesRelaunch() throws {
+        var legacy = BrowserPreferences.default
+        legacy.searchEngine.searchSuggestions = SearchSuggestionPreferences(
+            openTabsEnabled: true, bookmarksEnabled: true, historyEnabled: true,
+            browsingHistoryEnabled: true, navigationSuggestionsChosen: false)
+        try store(legacy, key: preferencesKey)
+        let settings = SettingsService(defaults: defaults)
+        XCTAssertFalse(settings.preferences.searchEngine.searchSuggestions.openTabsEnabled)
+        XCTAssertFalse(settings.preferences.searchEngine.searchSuggestions.bookmarksEnabled)
+        XCTAssertFalse(settings.preferences.searchEngine.searchSuggestions.historyEnabled)
+        XCTAssertFalse(settings.preferences.searchEngine.searchSuggestions.browsingHistoryEnabled)
+        settings.update {
+            $0.searchEngine.searchSuggestions.openTabsEnabled = true
+            $0.searchEngine.searchSuggestions.bookmarksEnabled = true
+            $0.searchEngine.searchSuggestions.historyEnabled = true
+            $0.searchEngine.searchSuggestions.browsingHistoryEnabled = true
+        }
+        let reloaded = SettingsService(defaults: defaults).preferences.searchEngine.searchSuggestions
+        XCTAssertTrue(reloaded.openTabsEnabled)
+        XCTAssertTrue(reloaded.bookmarksEnabled)
+        XCTAssertTrue(reloaded.historyEnabled)
+        XCTAssertTrue(reloaded.browsingHistoryEnabled)
     }
 
     func testTheTabAndIconNameDefaultsMoveOverOnce() throws {

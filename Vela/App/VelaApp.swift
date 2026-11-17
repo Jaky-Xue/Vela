@@ -61,6 +61,7 @@ struct VelaApp: App {
 /// the same scene, and the expensive half must not run until the scene actually
 /// needs it.
 private struct BrowserWindowRoot: View {
+    @AppStorage(BrowserWelcomeView.completionKey) private var welcomeCompleted = false
     @StateObject private var store: WindowEnvironmentStore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var systemColorScheme
@@ -216,7 +217,13 @@ private struct BrowserWindowRoot: View {
     /// its own presentations: one long chain is a type-checker budget, and the
     /// failure lands on an unrelated modifier at the far end.
     private var windowSurface: some View {
-        BrowserShellView(environment: environment)
+        Group {
+            if welcomeCompleted {
+                BrowserShellView(environment: environment)
+            } else {
+                BrowserWelcomeView { welcomeCompleted = true }
+            }
+        }
             .environment(environment)
             // The palette's accent is a dynamic colour, so it re-resolves
             // in both appearances; that is why the tint is read from the

@@ -94,13 +94,21 @@ struct SearchEngineSettingsView: View {
                 Toggle("历史与书签建议", isOn: Binding(
                     get: { env.settings.preferences.searchEngine.searchSuggestions.browsingHistoryEnabled },
                     set: { value in
-                        env.settings.update { $0.searchEngine.searchSuggestions.browsingHistoryEnabled = value }
+                        env.settings.update {
+                            $0.searchEngine.searchSuggestions.browsingHistoryEnabled = value
+                            $0.searchEngine.searchSuggestions.bookmarksEnabled = value
+                            $0.searchEngine.searchSuggestions.historyEnabled = value
+                            $0.searchEngine.searchSuggestions.navigationSuggestionsChosen = true
+                        }
                     }
                 ))
                 Toggle("已打开标签页建议", isOn: Binding(
                     get: { env.settings.preferences.searchEngine.searchSuggestions.openTabsEnabled },
                     set: { value in
-                        env.settings.update { $0.searchEngine.searchSuggestions.openTabsEnabled = value }
+                        env.settings.update {
+                            $0.searchEngine.searchSuggestions.openTabsEnabled = value
+                            $0.searchEngine.searchSuggestions.navigationSuggestionsChosen = true
+                        }
                     }
                 ))
                 Toggle("联网搜索推荐", isOn: Binding(

@@ -316,10 +316,10 @@ public struct SearchSuggestionPreferences: Codable, Equatable, Sendable {
     public init(
         regularEnabled: Bool = true,
         privateEnabled: Bool = false,
-        openTabsEnabled: Bool = true,
-        bookmarksEnabled: Bool = true,
-        historyEnabled: Bool = true,
-        browsingHistoryEnabled: Bool = true,
+        openTabsEnabled: Bool = false,
+        bookmarksEnabled: Bool = false,
+        historyEnabled: Bool = false,
+        browsingHistoryEnabled: Bool = false,
         navigationSuggestionsChosen: Bool = false,
         remoteEnabled: Bool = true
     ) {
