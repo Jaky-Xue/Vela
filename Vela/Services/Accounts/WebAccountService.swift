@@ -208,14 +208,30 @@ public final class WebAccountService {
         }
     }
 
+    /// Clears every web record whose registrable domain belongs to the
+    /// provider.
+    ///
+    /// WebKit removes data by *record*, not by domain string: the store is
+    /// asked what it holds, the records that belong to the provider are kept,
+    /// and those are removed. Matching a record by suffix is what makes
+    /// `accounts.google.com` data go with `google.com`.
     private static func clearData(domains: Set<String>) async {
+        let store = WKWebsiteDataStore.default()
         let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        let records = await withCheckedContinuation { continuation in
+            store.fetchDataRecords(ofTypes: types) { records in
+                continuation.resume(returning: records)
+            }
+        }
+        let matching = records.filter { record in
+            let name = record.displayName.lowercased()
+            return domains.contains { root in
+                name == root || name.hasSuffix("." + root)
+            }
+        }
+        guard !matching.isEmpty else { return }
         await withCheckedContinuation { continuation in
-            WKWebsiteDataStore.default().removeData(
-                ofTypes: types,
-                for: domains,
-                modifiedSince: .distantPast
-            ) {
+            store.removeData(ofTypes: types, for: matching) {
                 continuation.resume()
             }
         }
