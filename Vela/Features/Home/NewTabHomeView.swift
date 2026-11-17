@@ -137,6 +137,11 @@ struct NewTabHomeView: View {
         .onPreferenceChange(HomeViewportHeightKey.self) { height in
             homeViewportHeight = height
         }
+        // A tile that disappears — removed, or reordered away — must not leave
+        // its menu floating over the shelf.
+        .onChange(of: favorites.count) { _, _ in
+            closeFavoriteMenu()
+        }
         .scrollDismissesKeyboard(.immediately)
         .task(id: settings.preferences.backgroundImageStamp) {
             reloadBackgroundImage()
@@ -609,7 +614,9 @@ struct NewTabHomeView: View {
                 // right-click. Moving turns the same press into a drag: the
                 // menu closes and the tile lifts, so the two never fight over
                 // the gesture and neither one needs a second press.
-                if draggingFavoriteID == nil, menuFavoriteID != favorite.id {
+                if draggingFavoriteID == nil,
+                   menuFavoriteID != favorite.id,
+                   favoriteGridGeometry != nil {
                     withAnimation(BrowserMotion.jelly(reduceMotion)) {
                         menuFavoriteID = favorite.id
                     }
