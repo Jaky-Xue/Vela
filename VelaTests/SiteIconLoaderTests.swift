@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import ImageIO
 import UIKit
 @testable import Vela
 
@@ -54,5 +55,57 @@ final class SiteIconLoaderTests: XCTestCase {
         XCTAssertNotNil(secondImage)
         let count = await counter.count
         XCTAssertEqual(count, 1, "concurrent tiles must share the in-flight fetch")
+    }
+
+    /// A file that carries several renditions hands back its largest one.
+    ///
+    /// `.ico` files routinely hold 16, 32, 48 and 64-pixel pictures, so a
+    /// decoder allowed to answer with "the" image is how a sharp file becomes
+    /// a soft tile.
+    func testAMultiFrameFileKeepsItsLargestFrame() throws {
+        let data = try multiPageTIFF(sizes: [16, 96])
+        let image = try XCTUnwrap(SiteIconLoader.decode(data))
+        XCTAssertEqual(max(image.size.width, image.size.height), 96)
+    }
+
+    func testASingleFrameFileDecodesUnchanged() throws {
+        let data = try multiPageTIFF(sizes: [72])
+        let image = try XCTUnwrap(SiteIconLoader.decode(data))
+        XCTAssertEqual(max(image.size.width, image.size.height), 72)
+    }
+
+    private func multiPageTIFF(sizes: [Int]) throws -> Data {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data,
+            "public.tiff" as CFString,
+            sizes.count,
+            nil
+        ) else {
+            throw XCTSkip("the platform has no TIFF encoder")
+        }
+        for side in sizes {
+            let image = try XCTUnwrap(solidImage(side: side))
+            CGImageDestinationAddImage(destination, image, nil)
+        }
+        guard CGImageDestinationFinalize(destination) else {
+            throw XCTSkip("the TIFF encoder refused the frames")
+        }
+        return data as Data
+    }
+
+    private func solidImage(side: Int) -> CGImage? {
+        guard let context = CGContext(
+            data: nil,
+            width: side,
+            height: side,
+            bitsPerComponent: 8,
+            bytesPerRow: side * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.setFillColor(UIColor.systemBlue.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+        return context.makeImage()
     }
 }

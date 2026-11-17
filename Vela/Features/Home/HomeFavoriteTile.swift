@@ -31,7 +31,10 @@ struct HomeFavoriteTile: View {
                 host: favorite.displayHost,
                 size: iconSize,
                 allowsThirdPartyLookup: !isPrivate,
-                cornerRadius: cornerRadius
+                cornerRadius: cornerRadius,
+                // The shelf draws the largest icons in the app, so it is the
+                // one place a page's declared 512-pixel icon is worth a fetch.
+                allowsPageDiscovery: true
             )
 
             if showsTitle {

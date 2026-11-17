@@ -5,6 +5,7 @@
 //  The favicon tile: a site icon that cascades through its sources and trims its transparent margins.
 //
 
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -28,8 +29,15 @@ struct SiteIconView: View {
     /// in — the home's favourites pass their chosen shape through here. `nil`
     /// keeps the component's own proportion of the size.
     var cornerRadius: CGFloat? = nil
+    /// Whether the site's own markup may be read to find a larger icon than
+    /// the fixed paths offer. The home's tiles turn this on — they are drawn
+    /// at up to 64 points, where a guessed 32-pixel `.ico` is visibly soft —
+    /// and a list of history rows leaves it off, where one page fetch per
+    /// host would be paid by every row for a 15-point picture.
+    var allowsPageDiscovery: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
 
     /// The decoded icon, once one of the candidate sources has answered.
     @State private var image: UIImage?
@@ -114,56 +122,107 @@ struct SiteIconView: View {
         colorScheme == .dark ? Color(white: 0.17) : Color(white: 0.94)
     }
 
-    /// A source is good enough when its long edge covers the tile at 3x.
-    /// Anything smaller is remembered and used only when nothing better
-    /// answers — a 16-pixel favicon is still the site's mark, just a soft
-    /// one, and it beats a letter placeholder.
-    private static let sharpIconEdge: CGFloat = 96
+    /// How many source pixels a tile of this size wants.
+    ///
+    /// The picture is drawn inside the tile's inset, so its on-screen edge is
+    /// `size * (1 - 2 * inset)` points — 29 points on a 40-point tile, 46 on
+    /// the 64-point tile the home offers. At 3x that is 86–138 device pixels,
+    /// and a source smaller than that is upscaled and soft. The fixed
+    /// 96-pixel bar this used to be sat below the largest tiles; the bar
+    /// follows the tile now, with headroom so the same picture stays sharp
+    /// when the tile grows.
+    private static func sharpEdge(for size: CGFloat, displayScale: CGFloat) -> CGFloat {
+        let painted = size * (1 - 2 * iconInset)
+        return max(96, (painted * displayScale * 1.25).rounded(.up))
+    }
 
-    /// Walks the candidate sources in order and keeps the first one that
-    /// decodes at a usable resolution.
+    /// A picture big enough to paint while the search carries on. Below it the
+    /// tile keeps its placeholder rather than flashing a 16-pixel mark that a
+    /// sharper source would replace a moment later.
+    private static let improvableEdge: CGFloat = 64
+
+    /// Walks the candidate sources and keeps the largest picture they offer.
     ///
     /// `/apple-touch-icon.png` comes first because it is the icon the site
-    /// built for a home screen — usually 152-180 pixels, which stays sharp at
+    /// built for a home screen — usually 152–180 pixels, which stays sharp at
     /// 40 points, where a 16-or-32-pixel `.ico` is mush. The favicon service
     /// answers for the sites that publish no touch icon at all. An explicit
     /// URL from the page outranks everything.
+    ///
+    /// The first picture that clears a usable bar is painted at once, so a
+    /// tile is never left a letter placeholder while a better source is still
+    /// loading, and a sharper one replaces it when it arrives. The fallback is
+    /// the largest picture seen, not the first: the candidate list's order is
+    /// the strength of its *guess*, and a site can answer a weak guess with a
+    /// better picture than its next guess returns.
     private func loadIcon() async {
         image = nil
         hasOpaqueCanvas = false
-        var fallback: UIImage?
-        let candidates = Self.candidates(host: host, faviconUrl: faviconUrl, allowsThirdParty: allowsThirdPartyLookup)
-        // Consult every permitted local decode before initiating a request.
+        let target = Self.sharpEdge(for: size, displayScale: displayScale)
+        var best: UIImage?
+        var bestEdge: CGFloat = 0
+
+        /// Takes a decoded candidate and answers whether it is sharp enough
+        /// to stop the search.
+        func accept(_ candidate: UIImage) -> Bool {
+            let edge = max(candidate.size.width, candidate.size.height)
+            if edge > bestEdge {
+                best = candidate
+                bestEdge = edge
+                if image == nil, edge >= Self.improvableEdge {
+                    present(candidate)
+                }
+            }
+            return edge >= target
+        }
+
+        let candidates = Self.candidates(
+            host: host,
+            faviconUrl: faviconUrl,
+            allowsThirdParty: allowsThirdPartyLookup
+        )
         for url in candidates.compactMap({ $0 }) {
-            if let cached = Self.iconCache.object(forKey: url.absoluteString as NSString) {
-                present(cached)
+            guard !Task.isCancelled else { return }
+            guard let candidate = await Self.consume(url) else { continue }
+            guard !Task.isCancelled else { return }
+            if accept(candidate) {
+                present(candidate)
                 return
             }
         }
-        for candidate in candidates {
-            guard !Task.isCancelled else { return }
-            guard let url = candidate else { continue }
-            if let cached = Self.iconCache.object(forKey: url.absoluteString as NSString) {
-                if max(cached.size.width, cached.size.height) >= Self.sharpIconEdge {
-                    present(cached)
+
+        // Nothing a fixed path offers is big enough. The site's own markup
+        // names the renditions it publishes — often a 192- or 512-pixel icon
+        // at a path no guess reaches. Only the large tiles ask for this: a
+        // list of rows would pay one page fetch per host for a picture drawn
+        // at 15 points.
+        if allowsPageDiscovery, allowsThirdPartyLookup {
+            for url in await SiteIconDiscovery.shared.iconUrls(forHost: host) {
+                guard !Task.isCancelled else { return }
+                guard let candidate = await Self.consume(url) else { continue }
+                guard !Task.isCancelled else { return }
+                if accept(candidate) {
+                    present(candidate)
                     return
                 }
-                if fallback == nil { fallback = cached }
-                continue
             }
-            guard let prepared = await SiteIconLoader.shared.image(
-                for: url,
-                prepare: Self.preparedArtwork
-            ) else { continue }
-            guard !Task.isCancelled else { return }
-            Self.iconCache.setObject(prepared, forKey: url.absoluteString as NSString)
-            if max(prepared.size.width, prepared.size.height) >= Self.sharpIconEdge {
-                present(prepared)
-                return
-            }
-            if fallback == nil { fallback = prepared }
         }
-        if let fallback { present(fallback) }
+
+        if let best { present(best) }
+    }
+
+    /// One candidate, from the decode cache when this process already has it.
+    /// The cache answers the decode rather than the bytes, so a tile that
+    /// scrolls back into view shows without another decode.
+    private static func consume(_ url: URL) async -> UIImage? {
+        let key = url.absoluteString as NSString
+        if let cached = iconCache.object(forKey: key) { return cached }
+        guard let prepared = await SiteIconLoader.shared.image(
+            for: url,
+            prepare: preparedArtwork
+        ) else { return nil }
+        iconCache.setObject(prepared, forKey: key)
+        return prepared
     }
 
     /// Puts an icon on the tile together with the property the tile draws it
@@ -566,10 +625,12 @@ struct SiteIconView: View {
     /// rendition it holds — 128-256 pixels for the sites that matter — and
     /// the site's own `.ico` is kept as the last resort for a network where
     /// the service cannot be reached.
+    ///
     /// The candidate sources, in order. The third-party favicon service is
     /// included only when the caller allows it; an explicit page icon is kept
     /// only when it is local to the page's host or third-party lookups are
-    /// allowed.
+    /// allowed. These are guesses at fixed paths: when none of them is sharp
+    /// enough, `SiteIconDiscovery` reads the renditions the site declares.
     static func candidates(
         host: String,
         faviconUrl: String?,
@@ -590,6 +651,10 @@ struct SiteIconView: View {
         if !trimmed.isEmpty, trimmed.contains(".") {
             urls.append(URL(string: "https://\(trimmed)/apple-touch-icon.png"))
             urls.append(URL(string: "https://\(trimmed)/apple-touch-icon-precomposed.png"))
+            // The sized names Apple's convention puts in front of the generic
+            // file; WordPress and most site builders ship these by default.
+            urls.append(URL(string: "https://\(trimmed)/apple-touch-icon-180x180.png"))
+            urls.append(URL(string: "https://\(trimmed)/apple-touch-icon-152x152.png"))
             if allowsThirdParty {
                 urls.append(URL(string: "https://www.google.com/s2/favicons?sz=256&domain=\(trimmed)"))
             }
@@ -651,10 +716,46 @@ actor SiteIconLoader {
     }
 
     private static func defaultFetch(_ url: URL) async -> UIImage? {
-        guard let (data, _) = try? await URLSession.shared.data(from: url) else {
-            return nil
+        var request = URLRequest(url: url)
+        // An icon is small; a request that hangs is a tile that stays a
+        // placeholder. A host that times out is in the loader's failure cache,
+        // so the next tile does not wait on it again.
+        request.timeoutInterval = 10
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else { return nil }
+        return decode(data)
+    }
+
+    /// Decodes the largest rendition a file carries.
+    ///
+    /// An icon file can hold several sizes at once — a `.ico` routinely
+    /// carries 16, 32, 48 and 64-pixel renditions — so a decoder that answers
+    /// with one of them at random is what turns a sharp file into a soft tile.
+    /// The largest frame costs the same to decode and is the only one that
+    /// holds up in a 40-point tile at 3x.
+    nonisolated static func decode(_ data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return UIImage(data: data)
         }
-        return UIImage(data: data)
+        var bestIndex = 0
+        if CGImageSourceGetCount(source) > 1 {
+            var bestEdge = 0
+            for index in 0..<CGImageSourceGetCount(source) {
+                let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
+                let width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+                let height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+                let edge = max(width, height)
+                if edge > bestEdge {
+                    bestEdge = edge
+                    bestIndex = index
+                }
+            }
+        }
+        guard let image = CGImageSourceCreateImageAtIndex(source, bestIndex, nil) else {
+            return UIImage(data: data)
+        }
+        return UIImage(cgImage: image)
     }
 
     func image(
