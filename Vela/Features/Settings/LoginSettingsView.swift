@@ -4,9 +4,10 @@
 //
 //  设置 ▸ 账号 ▸ 登录.
 //
-//  One screen for every provider, because a person signs in to Google and
-//  Apple for the same reason and should not have to remember which settings
-//  page holds which.
+//  One page for every provider, drawn as an account page rather than a list of
+//  switches: the state of the browser's sign-in is the subject, so it gets the
+//  top of the screen — an avatar, the account it belongs to, and which
+//  providers are signed in — and the actions follow underneath.
 //
 //  Two facts live side by side and are kept apart: whether the *browser* is
 //  signed in to a provider (read from its own cookie jar), and the list of
@@ -35,20 +36,30 @@ struct LoginSettingsView: View {
 
     private var service: WebAccountService { env.services.webAccounts }
 
-    /// Google first, Apple second — the order the session rows and the logged
-    /// out buttons are listed in.
+    /// Google first, Apple second — the order the page is laid out in.
     private var accounts: [WebAccount] {
         WebAccountProvider.allCases.flatMap { service.accounts(for: $0) }
+    }
+
+    private var signedInProviders: [WebAccountProvider] {
+        WebAccountProvider.allCases.filter { service.session(for: $0) == .signedIn }
     }
 
     var body: some View {
         List {
             Section {
+                hero
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 14, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+
+            Section {
                 ForEach(WebAccountProvider.allCases) { provider in
-                    sessionRow(provider)
+                    providerCard(provider)
                 }
             } header: {
-                Text("浏览器中的登录")
+                Text("服务商")
             } footer: {
                 Text("登录在服务商自己的页面完成，Vela 不保存密码，也不上传下面的账号。")
             }
@@ -66,7 +77,7 @@ struct LoginSettingsView: View {
                     Label("添加账号", systemImage: "plus.circle")
                 }
             } header: {
-                Text("已添加的账号")
+                Text("账号")
             } footer: {
                 if accounts.isEmpty {
                     Text("添加只是在本机记下一个地址和备注，方便以后一键打开，不是登录。")
@@ -74,33 +85,19 @@ struct LoginSettingsView: View {
             }
 
             Section {
-                ForEach(WebAccountProvider.allCases) { provider in
-                    Button {
-                        openSignIn(provider)
-                    } label: {
-                        Label(
-                            "登录 \(provider.displayName)",
-                            systemImage: provider == .google ? "g.circle" : "apple.logo"
-                        )
-                    }
-                }
-            } header: {
-                Text("登录")
-            } footer: {
-                Text("会打开服务商的登录页。登录后回到这里，上面的状态会更新。")
-            }
-
-            Section {
                 Button(role: .destructive) {
                     confirmingSignOut = true
                 } label: {
                     HStack {
-                        Label("退出所有账号", systemImage: "rectangle.portrait.and.arrow.right")
+                        Spacer(minLength: 0)
                         if service.signingOutProvider != nil {
-                            Spacer()
                             ProgressView().controlSize(.small)
                         }
+                        Text("退出所有账号")
+                            .font(.body.weight(.semibold))
+                        Spacer(minLength: 0)
                     }
+                    .frame(height: 26)
                 }
                 .disabled(service.signingOutProvider != nil)
             } footer: {
@@ -124,7 +121,7 @@ struct LoginSettingsView: View {
             await service.refreshSessions()
         }
         .onAppear {
-            // Coming back from a sign-in tab: the cookie jar has changed.
+            // Coming back from a sign-in window: the cookie jar has changed.
             Task { await service.refreshSessions() }
         }
         .sheet(isPresented: $showingAddAccount) {
@@ -152,42 +149,183 @@ struct LoginSettingsView: View {
         }
     }
 
-    // MARK: - Rows
+    // MARK: - Hero
 
-    private func sessionRow(_ provider: WebAccountProvider) -> some View {
-        let session = service.session(for: provider)
-        return HStack(spacing: 10) {
-            Image(systemName: provider == .google ? "g.circle" : "apple.logo")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(palette.primaryText)
-                .frame(width: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(provider.displayName)
+    /// The page's subject: the account the browser is known by, and which
+    /// providers that covers. When nothing is signed in it is still the
+    /// subject — 「登录」 — rather than a blank space above a list.
+    private var hero: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: heroTint,
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 76, height: 76)
+                    .shadow(color: heroTint[0].opacity(0.35), radius: 16, y: 7)
+
+                Image(systemName: "person.fill")
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.94))
+            }
+            .padding(.top, 10)
+
+            HStack(spacing: 6) {
+                Text(heroTitle)
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(palette.primaryText)
-                Text(sessionDetail(session, provider: provider))
-                    .font(.caption)
-                    .foregroundStyle(palette.secondaryText)
+                    .lineLimit(1)
+
+                if !signedInProviders.isEmpty {
+                    Text("在线")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(signedInGreen)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(signedInGreen.opacity(0.55), lineWidth: 1)
+                        }
+                }
             }
-            Spacer(minLength: 0)
-            if session == .unknown {
-                ProgressView().controlSize(.small)
-            } else {
-                Text(session == .signedIn ? "已登录" : "未登录")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(session == .signedIn ? signedInTint : palette.secondaryText)
+
+            Text(heroSubtitle)
+                .font(.footnote)
+                .foregroundStyle(palette.secondaryText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+    }
+
+    private var heroTitle: String {
+        if let first = accounts.first {
+            return first.label.isEmpty ? displayAddress(first.email) : first.label
+        }
+        return "登录"
+    }
+
+    private var heroSubtitle: String {
+        let signed = signedInProviders.map(\.displayName)
+        if signed.count == WebAccountProvider.allCases.count {
+            return "Google 与 Apple 均已登录"
+        }
+        if signed.count == 1 {
+            return "\(signed[0]) 已登录 · 另一个服务商未登录"
+        }
+        return "尚未登录任何服务商"
+    }
+
+    /// The avatar's colour follows the state: blue when something is signed
+    /// in, quiet graphite when nothing is.
+    private var heroTint: [Color] {
+        guard !signedInProviders.isEmpty else {
+            return [Color(white: 0.42), Color(white: 0.28)]
+        }
+        return [
+            Color(red: 0.36, green: 0.58, blue: 0.98),
+            Color(red: 0.20, green: 0.40, blue: 0.94)
+        ]
+    }
+
+    private var signedInGreen: Color {
+        Color(red: 0.20, green: 0.62, blue: 0.35)
+    }
+
+    // MARK: - Provider cards
+
+    private func providerCard(_ provider: WebAccountProvider) -> some View {
+        let session = service.session(for: provider)
+        return Button {
+            signInProvider = provider
+        } label: {
+            HStack(spacing: 12) {
+                providerMark(provider)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(provider.displayName)
+                        .foregroundStyle(palette.primaryText)
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(sessionColor(session))
+                            .frame(width: 6, height: 6)
+                        Text(sessionLabel(session))
+                            .font(.caption)
+                            .foregroundStyle(palette.secondaryText)
+                    }
+                }
+                Spacer(minLength: 0)
+                if session == .unknown {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text(session == .signedIn ? "重新登录" : "登录")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(palette.accent)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(palette.secondaryText.opacity(0.5))
             }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(provider.displayName)，\(sessionLabel(session))")
+    }
+
+    /// The provider's own mark: a rounded tile in the brand's colour with its
+    /// glyph, the way a sign-in list names its services.
+    private func providerMark(_ provider: WebAccountProvider) -> some View {
+        let colors: [Color] = provider == .google
+            ? [Color(red: 0.26, green: 0.52, blue: 0.96), Color(red: 0.10, green: 0.45, blue: 0.91)]
+            : [Color(white: 0.30), Color(white: 0.12)]
+        return RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
+            .frame(width: 36, height: 36)
+            .overlay {
+                Image(systemName: provider == .google ? "g.circle" : "apple.logo")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.5)
+            }
+    }
+
+    private func sessionLabel(_ session: WebAccountService.BrowserSession) -> String {
+        switch session {
+        case .unknown: return "正在检查登录状态"
+        case .signedIn: return "已登录"
+        case .signedOut: return "未登录"
         }
     }
+
+    private func sessionColor(_ session: WebAccountService.BrowserSession) -> Color {
+        switch session {
+        case .signedIn: return signedInGreen
+        case .unknown, .signedOut: return palette.secondaryText.opacity(0.4)
+        }
+    }
+
+    // MARK: - Accounts
 
     private func accountRow(_ account: WebAccount) -> some View {
         Button {
             openAccountPage(account.provider)
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: account.provider == .google ? "g.circle" : "apple.logo")
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(palette.secondaryText)
-                    .frame(width: 24)
+                ZStack {
+                    Circle()
+                        .fill(palette.accent.opacity(0.16))
+                        .frame(width: 36, height: 36)
+                    Text(initial(of: account.email))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(palette.accent)
+                }
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(displayAddress(account.email))
                         .foregroundStyle(palette.primaryText)
@@ -198,10 +336,11 @@ struct LoginSettingsView: View {
                         .foregroundStyle(palette.secondaryText)
                         .lineLimit(1)
                 }
+
                 Spacer(minLength: 0)
-                Image(systemName: "arrow.up.forward")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(palette.secondaryText.opacity(0.7))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(palette.secondaryText.opacity(0.5))
             }
             .contentShape(Rectangle())
         }
@@ -216,6 +355,16 @@ struct LoginSettingsView: View {
         }
     }
 
+    private func initial(of email: String) -> String {
+        String(email.first.map(String.init) ?? "?").uppercased()
+    }
+
+    private func accountSubtitle(_ account: WebAccount) -> String {
+        account.label.isEmpty
+            ? account.provider.displayName
+            : "\(account.provider.displayName) · \(account.label)"
+    }
+
     /// The address as the list draws it: masked unless revealed, keeping the
     /// first character and the domain so two accounts stay tellable apart.
     private func displayAddress(_ email: String) -> String {
@@ -225,11 +374,7 @@ struct LoginSettingsView: View {
         return "\(head)•••@\(parts[1])"
     }
 
-    private func accountSubtitle(_ account: WebAccount) -> String {
-        account.label.isEmpty
-            ? account.provider.displayName
-            : "\(account.provider.displayName) · \(account.label)"
-    }
+    // MARK: - Add sheet
 
     private var addAccountSheet: some View {
         NavigationStack {
@@ -268,28 +413,7 @@ struct LoginSettingsView: View {
         }
     }
 
-    // MARK: - Session copy
-
-    private func sessionDetail(
-        _ session: WebAccountService.BrowserSession,
-        provider: WebAccountProvider
-    ) -> String {
-        switch session {
-        case .unknown: return "正在读取浏览器自己的 Cookie。"
-        case .signedIn: return "具体地址不写在 Cookie 里，无法在这里显示。"
-        case .signedOut: return "在下面登录 \(provider.displayName) 后会自动更新。"
-        }
-    }
-
-    private var signedInTint: Color {
-        Color(red: 0.20, green: 0.62, blue: 0.35)
-    }
-
     // MARK: - Actions
-
-    private func openSignIn(_ provider: WebAccountProvider) {
-        signInProvider = provider
-    }
 
     private func openAccountPage(_ provider: WebAccountProvider) {
         guard let url = provider.accountPageURL else { return }

@@ -241,6 +241,26 @@ struct SettingsView: View {
         return "\(paletteName) · \(env.settings.appearanceMode.displayName)"
     }
 
+    /// The account row's avatar: a person on the sign-in blue when something
+    /// is signed in, quiet graphite when nothing is.
+    private var loginAvatar: some View {
+        let signedIn = WebAccountProvider.allCases.contains {
+            env.services.webAccounts.session(for: $0) == .signedIn
+        }
+        let colors: [Color] = signedIn
+            ? [Color(red: 0.36, green: 0.58, blue: 0.98), Color(red: 0.20, green: 0.40, blue: 0.94)]
+            : [Color(white: 0.42), Color(white: 0.28)]
+        return ZStack {
+            Circle()
+                .fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
+                .frame(width: 36, height: 36)
+            Image(systemName: "person.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.94))
+        }
+        .accessibilityHidden(true)
+    }
+
     /// What the 登录 row says: how many addresses are listed and which
     /// providers the browser is actually signed in to.
     private var loginDetail: String {
@@ -285,12 +305,18 @@ struct SettingsView: View {
     /// scope becomes known.
     private func settingsRow(_ row: SettingsRowSpec) -> some View {
         HStack(spacing: 12) {
-            SettingsRowIcon(
-                symbolName: row.destination.symbolName,
-                topHex: row.destination.iconTopHex,
-                bottomHex: row.destination.iconBottomHex,
-                filled: palette.visualStyle.icons == .filled
-            )
+            if row.destination == .login {
+                // The account row leads with who is signed in, the way the
+                // sign-in page does, instead of a tinted icon tile.
+                loginAvatar
+            } else {
+                SettingsRowIcon(
+                    symbolName: row.destination.symbolName,
+                    topHex: row.destination.iconTopHex,
+                    bottomHex: row.destination.iconBottomHex,
+                    filled: palette.visualStyle.icons == .filled
+                )
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(row.title)
