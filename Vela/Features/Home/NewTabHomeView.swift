@@ -63,15 +63,9 @@ struct NewTabHomeView: View {
     /// vertical travel is not a chrome swipe either.
     @State private var suppressFavoriteTap = false
     @State private var suppressChromeSwipe = false
-    /// Whether the carried tile actually changed place. A long press that was
-    /// held and released without moving is the tile's actions, not a reorder.
-    @State private var favoriteDragMoved = false
-    /// Whether the finger has held a tile long enough for the long press.
-    /// Kept apart from the lift: the actions must stay reachable even if the
-    /// grid has not measured its slots yet and the lift cannot start.
-    @State private var favoritePressEngaged = false
-    /// The tile whose actions are offered after a lift ended where it began.
-    @State private var actionsFavorite: HomeFavorite?
+    /// The tile whose edit menu is open. A held press opens it; moving the
+    /// same press turns it into a drag and closes the menu.
+    @State private var menuFavoriteID: String?
     /// The page's own height, so the blank-page add door can fill it.
     @State private var homeViewportHeight: CGFloat = 0
     /// The custom background, reloaded whenever the settings document's stamp
@@ -115,8 +109,14 @@ struct NewTabHomeView: View {
         .ignoresSafeArea(edges: .bottom)
         .coordinateSpace(.named(Self.favoriteDragSpace))
         // The carried tile is a sibling of the scroll view rather than a child
-        // of it, so the shelf's own clip cannot cut it off at the edge.
-        .overlay(alignment: .topLeading) { floatingFavoriteLayer }
+        // of it, so the shelf's own clip cannot cut it off at the edge. The
+        // edit menu is drawn in the same layer, above it.
+        .overlay(alignment: .topLeading) {
+            ZStack(alignment: .topLeading) {
+                favoriteMenuLayer
+                floatingFavoriteLayer
+            }
+        }
         // The carried tile owns the finger; a scroll underneath it would move
         // every slot the tile is being aimed at.
         .scrollDisabled(draggingFavoriteID != nil)
@@ -155,41 +155,6 @@ struct NewTabHomeView: View {
                 favoritesService.add(url: url, title: title, showsTitle: showsTitle)
             }
             .browserAmbientSheet()
-        }
-        // The actions a long press used to open in a context menu. They are
-        // offered when a lift ends where it began, so the same long press both
-        // picks a tile up and, held and released in place, asks what to do
-        // with it.
-        .confirmationDialog(
-            actionsFavorite?.displayTitle ?? "",
-            isPresented: Binding(
-                get: { actionsFavorite != nil },
-                set: { presented in
-                    if !presented { actionsFavorite = nil }
-                }
-            ),
-            titleVisibility: .visible,
-            presenting: actionsFavorite
-        ) { favorite in
-            Button("在新标签页打开") {
-                guard let url = BrowserUrlResolver.storedUrl(favorite.url) else { return }
-                tabManager.openTab(
-                    url: url,
-                    openSource: .shortcut,
-                    activate: false
-                )
-            }
-            Button("编辑") {
-                editingFavorite = favorite
-            }
-            Button(showsTitle(for: favorite) ? "隐藏名称" : "显示名称") {
-                favoritesService.setShowsTitle(id: favorite.id, value: !showsTitle(for: favorite))
-            }
-            // Removing a tile removes the tile and nothing else. The store is
-            // the home's; the bookmark list is a different inventory.
-            Button("从主页移除", role: .destructive) {
-                favoritesService.remove(id: favorite.id)
-            }
         }
     }
 
@@ -467,6 +432,85 @@ struct NewTabHomeView: View {
         .contentShape(Rectangle())
     }
 
+    // MARK: - Edit menu
+
+    /// The held press's menu: a small glass panel over the tile, the way a
+    /// desktop shows a context menu. It closes on any of its own actions, on a
+    /// tap outside, and the moment the press turns into a drag.
+    @ViewBuilder
+    private var favoriteMenuLayer: some View {
+        if let anchor = favoriteMenuAnchor {
+            // Everything outside the panel dismisses it, including the page.
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { closeFavoriteMenu() }
+
+            FavoriteActionMenu(
+                favorite: anchor.favorite,
+                showsTitle: showsTitle(for: anchor.favorite),
+                onOpenInNewTab: {
+                    closeFavoriteMenu()
+                    guard let url = BrowserUrlResolver.storedUrl(anchor.favorite.url) else { return }
+                    tabManager.openTab(
+                        url: url,
+                        openSource: .shortcut,
+                        activate: false
+                    )
+                },
+                onEdit: {
+                    closeFavoriteMenu()
+                    editingFavorite = anchor.favorite
+                },
+                onToggleTitle: {
+                    let visible = showsTitle(for: anchor.favorite)
+                    closeFavoriteMenu()
+                    favoritesService.setShowsTitle(id: anchor.favorite.id, value: !visible)
+                },
+                onRemove: {
+                    closeFavoriteMenu()
+                    favoritesService.remove(id: anchor.favorite.id)
+                }
+            )
+            .position(x: anchor.position.x, y: anchor.position.y)
+            .transition(.scale(scale: 0.88).combined(with: .opacity))
+        }
+    }
+
+    /// Where the panel sits: centred on the tile's column, above it when there
+    /// is room and below it when there is not, kept inside the page.
+    private var favoriteMenuAnchor: (favorite: HomeFavorite, position: CGPoint)? {
+        guard let id = menuFavoriteID,
+              let favorite = favorites.first(where: { $0.id == id }),
+              let index = favorites.firstIndex(where: { $0.id == id }),
+              let geometry = favoriteGridGeometry,
+              let center = favoriteSlotCenter(at: index) else { return nil }
+
+        let halfRow = geometry.rowHeights[index / geometry.columns] / 2
+        let gap: CGFloat = 10
+        let halfMenu = Self.menuSize.height / 2
+        let above = center.y - halfRow - halfMenu - gap
+        let below = center.y + halfRow + halfMenu + gap
+        let top = halfMenu + 8
+        let bottom = homeViewportHeight - halfMenu - 8
+        let y = above >= top ? above : min(below, max(bottom, top))
+
+        let halfWidth = Self.menuSize.width / 2
+        let left = favoriteGridFrame.minX + halfWidth
+        let right = max(favoriteGridFrame.maxX - halfWidth, left)
+        let x = min(max(center.x, left), right)
+        return (favorite, CGPoint(x: x, y: y))
+    }
+
+    /// The panel's size: four 40-point rows and three hairlines.
+    private static let menuSize = CGSize(width: 186, height: 162)
+
+    private func closeFavoriteMenu() {
+        guard menuFavoriteID != nil else { return }
+        withAnimation(BrowserMotion.jelly(reduceMotion)) {
+            menuFavoriteID = nil
+        }
+    }
+
     // MARK: - Carrying a favourite
 
     /// The tile the finger is carrying, drawn at the finger rather than in its
@@ -559,35 +603,36 @@ struct NewTabHomeView: View {
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.favoriteDragSpace)))
             .onChanged { value in
                 guard !isPrivate, case .second(true, let drag?) = value else { return }
-                // The press has been held for long enough: the tile lifts now,
-                // with the haptic, before the finger has to move. Movement
-                // then decides the slot; releasing without moving opens the
-                // tile's actions instead.
-                favoritePressEngaged = true
-                if draggingFavoriteID == nil {
-                    beginFavoriteDrag(favorite)
-                    favoriteDragMoved = false
+                // A press that is held is the tile's edit menu — the desktop's
+                // right-click. Moving turns the same press into a drag: the
+                // menu closes and the tile lifts, so the two never fight over
+                // the gesture and neither one needs a second press.
+                if draggingFavoriteID == nil, menuFavoriteID != favorite.id {
+                    withAnimation(BrowserMotion.jelly(reduceMotion)) {
+                        menuFavoriteID = favorite.id
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    suppressFavoriteTap = true
                 }
-                guard draggingFavoriteID == favorite.id else { return }
-                favoriteDragTranslation = drag.translation
                 let dx = drag.translation.width
                 let dy = drag.translation.height
                 guard dx * dx + dy * dy > 36 else { return }
-                favoriteDragMoved = true
+                closeFavoriteMenu()
+                if draggingFavoriteID == nil {
+                    beginFavoriteDrag(favorite)
+                }
+                guard draggingFavoriteID == favorite.id else { return }
+                favoriteDragTranslation = drag.translation
                 moveFavorite(favorite, translation: drag.translation, at: drag.location)
             }
             .onEnded { _ in
-                // Only a press that reached the long press owns this release:
-                // a quick tap must not open the actions.
-                let engaged = favoritePressEngaged
-                let moved = favoriteDragMoved
-                favoritePressEngaged = false
-                endFavoriteDrag()
-                // A lift that never moved is not a reorder: the tile goes back
-                // and the actions it used to answer a long press with are
-                // offered now.
-                if engaged, !moved, !isPrivate {
-                    actionsFavorite = favorite
+                if draggingFavoriteID != nil {
+                    endFavoriteDrag()
+                }
+                // The menu stays open when the finger lifts without a drag;
+                // this release must not also open the page behind it.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    suppressFavoriteTap = false
                 }
             }
     }
@@ -735,6 +780,77 @@ private struct HomeViewportHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+/// The actions a held press offers, drawn as a small glass panel over the
+/// shelf rather than a system context menu.
+///
+/// A system context menu takes the long press for itself, which is why the
+/// tile could not be carried: once the menu was up, the same press could no
+/// longer move anything. This panel is ours, so the press that opened it can
+/// just as well turn into a drag, and the panel simply closes.
+private struct FavoriteActionMenu: View {
+    @Environment(\.browserPalette) private var palette
+
+    var favorite: HomeFavorite
+    var showsTitle: Bool
+    var onOpenInNewTab: () -> Void
+    var onEdit: () -> Void
+    var onToggleTitle: () -> Void
+    var onRemove: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            row("在新标签页打开", "plus.square.on.square", action: onOpenInNewTab)
+            hairline
+            row("编辑", "pencil", action: onEdit)
+            hairline
+            row(
+                showsTitle ? "隐藏名称" : "显示名称",
+                showsTitle ? "eye.slash" : "eye",
+                action: onToggleTitle
+            )
+            hairline
+            // Removing a tile removes the tile and nothing else: the store is
+            // the home's, and the bookmark list is a different inventory.
+            row("从主页移除", "minus.square", tint: .red, action: onRemove)
+        }
+        .frame(width: 186)
+        .browserCard(radius: 14, elevation: .floating)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(favorite.displayTitle)
+    }
+
+    private var hairline: some View {
+        Rectangle()
+            .fill(palette.separator)
+            .frame(height: 0.5)
+            .padding(.leading, 38)
+    }
+
+    private func row(
+        _ title: String,
+        _ symbol: String,
+        tint: Color? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: symbol)
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(width: 18)
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(tint ?? palette.primaryText)
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(JellyPressButtonStyle(pressedScale: 0.98, pressedOpacity: 0.7))
     }
 }
 
