@@ -98,7 +98,7 @@ extension BrowserShellView {
             // The iPad top bar yields to the search page, and an open tab
             // drawer must not sit over that page.
             if editing {
-                withAnimation(BrowserMotion.sidebar(reduceMotion)) {
+                withAnimation(BrowserMotion.jelly(reduceMotion)) {
                     showPadSidebar = false
                 }
             }

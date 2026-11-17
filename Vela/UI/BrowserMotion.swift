@@ -50,10 +50,6 @@ enum BrowserMotion {
     /// into its slot. Softer than `standard`, because nothing is leaving.
     static let gentle = Animation.spring(response: 0.38, dampingFraction: 0.92)
 
-    /// Panels with physical weight: the iPad sidebar drawer, the menu's grid.
-    /// A little overshoot is the point; it is what makes them read as objects.
-    static let expressive = Animation.spring(response: 0.44, dampingFraction: 0.72)
-
     /// The jelly. The drawer arriving, a floating bar settling, a chip pressed:
     /// an object lifted off the page gives visibly under its own weight, and
     /// the oven-fresh bounce is what makes it read as an object rather than as
@@ -133,9 +129,6 @@ enum BrowserMotion {
     /// Layout changes inside a surface (shelf reflow, list insertion). Kept
     /// optional to match the call sites that switch animation off entirely.
     static func layout(_ reduced: Bool) -> Animation? { reduced ? nil : gentle }
-
-    /// The iPad sidebar drawer: weight, a little overshoot.
-    static func sidebar(_ reduced: Bool) -> Animation { reduced ? quiet : expressive }
 
     /// The jelly: the drawer arriving, a floating bar settling.
     static func jelly(_ reduced: Bool) -> Animation { reduced ? quiet : jellyCurve }
