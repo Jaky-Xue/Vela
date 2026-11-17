@@ -128,13 +128,43 @@ struct SettingsListStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .listStyle(.insetGrouped)
-            .browserListSurface()
+            .scrollContentBackground(.hidden)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
+            .foregroundStyle(palette.primaryText)
             .tint(palette.accent)
-            .listSectionSpacing(20)
+            .listSectionSpacing(24)
+            .listRowInsets(EdgeInsets(top: 12, leading: 18, bottom: 12, trailing: 18))
             .listRowSeparatorTint(palette.separator)
-            .environment(\.defaultMinListRowHeight, 48)
+            .environment(\.defaultMinListRowHeight, 54)
             .textFieldStyle(.roundedBorder)
     }
+}
+
+/// Search controls need a visible body even over a bright page or wallpaper.
+struct BrowserSearchFieldStyle: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.browserPalette) private var palette
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
+        content
+            .background {
+                shape.fill(scheme == .light ? Color(white: 0.94) : palette.card)
+            }
+            .overlay {
+                shape.strokeBorder(scheme == .light ? Color.black.opacity(0.17) : palette.cardStroke, lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+            .clipShape(shape)
+            .shadow(color: .black.opacity(scheme == .light ? 0.09 : 0.18), radius: 8, y: 3)
+    }
+}
+
+extension View {
+    func browserSearchField() -> some View { modifier(BrowserSearchFieldStyle()) }
 }
 
 extension View {

@@ -88,7 +88,7 @@ struct SettingsView: View {
                 .padding(.bottom, 10)
                 // Rows scroll under the bar; the fill keeps them from reading
                 // through it.
-                .background { AmbientSurfaceFill(opacity: 0.58) }
+                .background(Color(uiColor: .systemGroupedBackground))
         }
         .navigationDestination(item: $pushedDestination) { destination in
             destination.view

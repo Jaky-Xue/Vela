@@ -119,14 +119,8 @@ struct OmniboxSearchPageView: View {
             .padding(.trailing, 14)
         }
         .frame(height: BrowserChrome.barHeight)
+        .browserSearchField()
         .padding(.horizontal, BrowserChrome.sideInset)
-        .browserFloatingChrome(
-            radius: BrowserRadius.omnibox,
-            material: .ultraThinMaterial,
-            tintStrength: 0.35,
-            elevation: .floating,
-            interactive: false
-        )
         .animation(.easeOut(duration: 0.15), value: viewModel.text.isEmpty)
     }
 

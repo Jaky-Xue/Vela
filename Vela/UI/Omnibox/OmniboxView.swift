@@ -45,6 +45,7 @@ struct OmniboxView: View {
     /// a second glass pill inside it is what made the field look doubled and
     /// crowded; there the field is text on the bar's own glass.
     var usesOwnChrome: Bool = true
+    private var resolvedForeground: Color? { usesOwnChrome ? nil : foregroundOverride }
 
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
@@ -60,15 +61,7 @@ struct OmniboxView: View {
     private var chrome: some View {
         if usesOwnChrome {
             fieldContent
-                .browserFloatingChrome(
-                    radius: BrowserRadius.omnibox,
-                    material: .ultraThinMaterial,
-                    tintStrength: 0.32,
-                    elevation: .card
-                )
-                .luminousSheen(
-                    shape: RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
-                )
+                .browserSearchField()
                 .overlay {
                     RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
                         .strokeBorder(fieldStroke, lineWidth: fieldStrokeWidth)
@@ -93,7 +86,7 @@ struct OmniboxView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 16))
-                        .foregroundStyle(foregroundOverride ?? palette.secondaryText)
+                        .foregroundStyle(resolvedForeground ?? palette.secondaryText)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("清除")
@@ -165,7 +158,7 @@ struct OmniboxView: View {
                 grabsFocus: false,
                 palette: palette,
                 colorScheme: colorScheme,
-                foregroundOverride: foregroundOverride
+                foregroundOverride: resolvedForeground
             )
 
             // Opening the session through a programmatic focus is what lets the
@@ -210,8 +203,8 @@ struct OmniboxView: View {
     }
 
     private var securityTint: Color {
-        guard !viewModel.currentPageUrl.isEmpty else { return foregroundOverride ?? palette.secondaryText }
-        return isSecure ? .green : foregroundOverride ?? palette.secondaryText
+        guard !viewModel.currentPageUrl.isEmpty else { return resolvedForeground ?? palette.secondaryText }
+        return isSecure ? .green : resolvedForeground ?? palette.secondaryText
     }
 
     @ViewBuilder
@@ -220,7 +213,7 @@ struct OmniboxView: View {
             Button(action: isLoading ? onStop : onReload) {
                 Image(systemName: isLoading ? "xmark" : "arrow.clockwise")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(foregroundOverride ?? palette.secondaryText)
+                    .foregroundStyle(resolvedForeground ?? palette.secondaryText)
                     // The glyph is small but the target is not: a 22 pt square
                     // is half of what a finger lands on reliably, and a miss
                     // here reads as the button doing nothing.
