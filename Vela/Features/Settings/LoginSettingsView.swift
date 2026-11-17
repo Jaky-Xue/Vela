@@ -27,6 +27,8 @@ struct LoginSettingsView: View {
     @State private var addEmail = ""
     @State private var addLabel = ""
     @State private var confirmingSignOut = false
+    /// The provider whose sign-in page is open in a small window.
+    @State private var signInProvider: WebAccountProvider?
     /// Addresses are masked until asked for: the list names who the user
     /// signs in as, and a settings screen is often read over a shoulder.
     @AppStorage("org.vela.browser.login-reveals-addresses") private var revealsAddresses = false
@@ -128,6 +130,17 @@ struct LoginSettingsView: View {
         .sheet(isPresented: $showingAddAccount) {
             addAccountSheet
                 .browserAmbientSheet()
+        }
+        // The sign-in page opens in front of the settings, in a small window,
+        // and shares the browser's cookie jar: what is signed in there is
+        // signed in for the browser.
+        .sheet(item: $signInProvider) { provider in
+            LoginWebSheet(
+                provider: provider,
+                userAgent: env.settings.preferences.customUserAgent
+            ) {
+                Task { await service.refreshSessions() }
+            }
         }
         .alert("退出所有账号？", isPresented: $confirmingSignOut) {
             Button("取消", role: .cancel) {}
@@ -275,8 +288,7 @@ struct LoginSettingsView: View {
     // MARK: - Actions
 
     private func openSignIn(_ provider: WebAccountProvider) {
-        guard let url = provider.signInURL else { return }
-        _ = env.tabManager.openTab(url: url, openSource: .shortcut, activate: true)
+        signInProvider = provider
     }
 
     private func openAccountPage(_ provider: WebAccountProvider) {
