@@ -66,6 +66,10 @@ struct NewTabHomeView: View {
     /// Whether the carried tile actually changed place. A long press that was
     /// held and released without moving is the tile's actions, not a reorder.
     @State private var favoriteDragMoved = false
+    /// Whether the finger has held a tile long enough for the long press.
+    /// Kept apart from the lift: the actions must stay reachable even if the
+    /// grid has not measured its slots yet and the lift cannot start.
+    @State private var favoritePressEngaged = false
     /// The tile whose actions are offered after a lift ended where it began.
     @State private var actionsFavorite: HomeFavorite?
     /// The page's own height, so the blank-page add door can fill it.
@@ -559,6 +563,7 @@ struct NewTabHomeView: View {
                 // with the haptic, before the finger has to move. Movement
                 // then decides the slot; releasing without moving opens the
                 // tile's actions instead.
+                favoritePressEngaged = true
                 if draggingFavoriteID == nil {
                     beginFavoriteDrag(favorite)
                     favoriteDragMoved = false
@@ -572,15 +577,16 @@ struct NewTabHomeView: View {
                 moveFavorite(favorite, translation: drag.translation, at: drag.location)
             }
             .onEnded { _ in
-                // Only a tile that actually lifted owns this release: a tap
-                // that never reached the long press must not open the actions.
-                let wasLifted = draggingFavoriteID == favorite.id
+                // Only a press that reached the long press owns this release:
+                // a quick tap must not open the actions.
+                let engaged = favoritePressEngaged
                 let moved = favoriteDragMoved
+                favoritePressEngaged = false
                 endFavoriteDrag()
                 // A lift that never moved is not a reorder: the tile goes back
                 // and the actions it used to answer a long press with are
                 // offered now.
-                if wasLifted, !moved, !isPrivate {
+                if engaged, !moved, !isPrivate {
                     actionsFavorite = favorite
                 }
             }
