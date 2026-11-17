@@ -63,6 +63,11 @@ struct NewTabHomeView: View {
     /// vertical travel is not a chrome swipe either.
     @State private var suppressFavoriteTap = false
     @State private var suppressChromeSwipe = false
+    /// Whether the carried tile actually changed place. A long press that was
+    /// held and released without moving is the tile's actions, not a reorder.
+    @State private var favoriteDragMoved = false
+    /// The tile whose actions are offered after a lift ended where it began.
+    @State private var actionsFavorite: HomeFavorite?
     /// The page's own height, so the blank-page add door can fill it.
     @State private var homeViewportHeight: CGFloat = 0
     /// The custom background, reloaded whenever the settings document's stamp
@@ -127,21 +132,6 @@ struct NewTabHomeView: View {
             homeViewportHeight = height
         }
         .scrollDismissesKeyboard(.immediately)
-        // The bar hides on a drag the way it hides on a page's scroll: up
-        // moves the page out of the way, down brings it back. The flick's
-        // predicted distance joins in so a short throw still carries.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 24)
-                .onEnded { value in
-                    // Carrying a tile up or down the shelf is a reorder, not a
-                    // request to push the command bar away.
-                    guard !suppressChromeSwipe else { return }
-                    let vertical = value.translation.height
-                    guard abs(vertical) > abs(value.translation.width) else { return }
-                    let predicted = value.predictedEndTranslation.height
-                    onChromeSwipe?(abs(predicted) > abs(vertical) ? predicted : vertical)
-                }
-        )
         .task(id: settings.preferences.backgroundImageStamp) {
             reloadBackgroundImage()
         }
@@ -161,6 +151,41 @@ struct NewTabHomeView: View {
                 favoritesService.add(url: url, title: title, showsTitle: showsTitle)
             }
             .browserAmbientSheet()
+        }
+        // The actions a long press used to open in a context menu. They are
+        // offered when a lift ends where it began, so the same long press both
+        // picks a tile up and, held and released in place, asks what to do
+        // with it.
+        .confirmationDialog(
+            actionsFavorite?.displayTitle ?? "",
+            isPresented: Binding(
+                get: { actionsFavorite != nil },
+                set: { presented in
+                    if !presented { actionsFavorite = nil }
+                }
+            ),
+            titleVisibility: .visible,
+            presenting: actionsFavorite
+        ) { favorite in
+            Button("在新标签页打开") {
+                guard let url = BrowserUrlResolver.storedUrl(favorite.url) else { return }
+                tabManager.openTab(
+                    url: url,
+                    openSource: .shortcut,
+                    activate: false
+                )
+            }
+            Button("编辑") {
+                editingFavorite = favorite
+            }
+            Button(showsTitle(for: favorite) ? "隐藏名称" : "显示名称") {
+                favoritesService.setShowsTitle(id: favorite.id, value: !showsTitle(for: favorite))
+            }
+            // Removing a tile removes the tile and nothing else. The store is
+            // the home's; the bookmark list is a different inventory.
+            Button("从主页移除", role: .destructive) {
+                favoritesService.remove(id: favorite.id)
+            }
         }
     }
 
@@ -203,6 +228,7 @@ struct NewTabHomeView: View {
         }
         .shadow(color: homeTextShadow, radius: 8, y: 1)
         .frame(maxWidth: .infinity)
+        .simultaneousGesture(chromeSwipeGesture)
         .padding(.top, 28)
         .padding(.bottom, 40)
     }
@@ -224,12 +250,36 @@ struct NewTabHomeView: View {
             Color.clear
                 .frame(maxWidth: .infinity, minHeight: homeViewportHeight)
                 .contentShape(Rectangle())
+                .simultaneousGesture(chromeSwipeGesture)
                 .contextMenu {
                     Button("添加图标", systemImage: "plus") {
                         showingNewFavorite = true
                     }
                 }
         }
+    }
+
+    // MARK: - Command bar
+
+    /// The bar hides on a drag the way it hides on a page's scroll: up moves
+    /// the page out of the way, down brings it back. The flick's predicted
+    /// distance joins in so a short throw still carries.
+    ///
+    /// It hangs off the blank page rather than the scroll view. A drag
+    /// attached to the scroll view is an ancestor of every tile, and an
+    /// ancestor drag competes with the one that carries a tile; the blank
+    /// page has no tile on it to carry.
+    private var chromeSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                // Carrying a tile up or down the shelf is a reorder, not a
+                // request to push the command bar away.
+                guard !suppressChromeSwipe else { return }
+                let vertical = value.translation.height
+                guard abs(vertical) > abs(value.translation.width) else { return }
+                let predicted = value.predictedEndTranslation.height
+                onChromeSwipe?(abs(predicted) > abs(vertical) ? predicted : vertical)
+            }
     }
 
     // MARK: - Background
@@ -390,33 +440,12 @@ struct NewTabHomeView: View {
                 )
             }
         }
-        .contextMenu {
-            Button("在新标签页打开", systemImage: "plus.square.on.square") {
-                guard let url = BrowserUrlResolver.storedUrl(favorite.url) else { return }
-                tabManager.openTab(
-                    url: url,
-                    openSource: .shortcut,
-                    activate: false
-                )
-            }
-            Button("编辑", systemImage: "pencil") {
-                editingFavorite = favorite
-            }
-            Button(
-                titleVisible ? "隐藏名称" : "显示名称",
-                systemImage: titleVisible ? "eye.slash" : "eye"
-            ) {
-                favoritesService.setShowsTitle(id: favorite.id, value: !titleVisible)
-            }
-            Divider()
-            // Removing a tile removes the tile and nothing else. The store is
-            // the home's; the bookmark list is a different inventory.
-            Button("从主页移除", systemImage: "minus.square", role: .destructive) {
-                favoritesService.remove(id: favorite.id)
-            }
-        }
+        // No context menu on the tile: a context menu's long press is exactly
+        // the gesture that lifts a tile, and whichever of the two wins the
+        // press, the other one is lost. The long press here is the lift; a
+        // lift that ends where it began offers the same actions.
         .accessibilityLabel(favorite.displayTitle)
-        .accessibilityHint(draggingFavoriteID == nil ? "长按并拖动可排序" : "")
+        .accessibilityHint(draggingFavoriteID == nil ? "长按可拖动排序，松开可编辑" : "")
     }
 
     /// The tile itself, without the button or the gesture: the shelf draws it
@@ -526,16 +555,34 @@ struct NewTabHomeView: View {
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.favoriteDragSpace)))
             .onChanged { value in
                 guard !isPrivate, case .second(true, let drag?) = value else { return }
-                // A long press that stays where it started is the tile's
-                // context menu; picking the tile up waits for real movement.
+                // The press has been held for long enough: the tile lifts now,
+                // with the haptic, before the finger has to move. Movement
+                // then decides the slot; releasing without moving opens the
+                // tile's actions instead.
+                if draggingFavoriteID == nil {
+                    beginFavoriteDrag(favorite)
+                    favoriteDragMoved = false
+                }
+                guard draggingFavoriteID == favorite.id else { return }
+                favoriteDragTranslation = drag.translation
                 let dx = drag.translation.width
                 let dy = drag.translation.height
                 guard dx * dx + dy * dy > 36 else { return }
-                beginFavoriteDrag(favorite)
+                favoriteDragMoved = true
                 moveFavorite(favorite, translation: drag.translation, at: drag.location)
             }
             .onEnded { _ in
+                // Only a tile that actually lifted owns this release: a tap
+                // that never reached the long press must not open the actions.
+                let wasLifted = draggingFavoriteID == favorite.id
+                let moved = favoriteDragMoved
                 endFavoriteDrag()
+                // A lift that never moved is not a reorder: the tile goes back
+                // and the actions it used to answer a long press with are
+                // offered now.
+                if wasLifted, !moved, !isPrivate {
+                    actionsFavorite = favorite
+                }
             }
     }
 

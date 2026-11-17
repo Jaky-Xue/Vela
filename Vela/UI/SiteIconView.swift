@@ -164,7 +164,6 @@ struct SiteIconView: View {
     private func loadIcon() async {
         image = nil
         hasOpaqueCanvas = false
-        let needed = Self.neededEdge(for: size, displayScale: displayScale)
         let target = Self.sharpEdge(for: size, displayScale: displayScale)
         var best: UIImage?
         var bestEdge: CGFloat = 0
@@ -183,10 +182,24 @@ struct SiteIconView: View {
             return edge >= target
         }
 
+        // A home tile asks the site what it publishes before it guesses. The
+        // declared renditions are the site's own artwork; the fixed paths and
+        // the favicon service can answer with a small picture — the service
+        // in particular returns a 16-pixel favicon upscaled to 256, which
+        // measures as sharp and looks like mush. One request per host per
+        // process, answered from its own cache afterwards.
+        let declared: [URL]
+        if allowsPageDiscovery, allowsThirdPartyLookup {
+            declared = await SiteIconDiscovery.shared.iconUrls(forHost: host)
+        } else {
+            declared = []
+        }
+
         let candidates = Self.candidates(
             host: host,
             faviconUrl: faviconUrl,
-            allowsThirdParty: allowsThirdPartyLookup
+            allowsThirdParty: allowsThirdPartyLookup,
+            declaredIcons: declared
         )
         for url in candidates.compactMap({ $0 }) {
             guard !Task.isCancelled else { return }
@@ -195,25 +208,6 @@ struct SiteIconView: View {
             if accept(candidate) {
                 present(candidate)
                 return
-            }
-        }
-
-        // Nothing a fixed path offers is big enough. The site's own markup
-        // names the renditions it publishes — often a 192- or 512-pixel icon
-        // at a path no guess reaches. Two conditions keep the page fetch
-        // rare: only the large tiles ask (a list of rows would pay one fetch
-        // per host for a picture drawn at 15 points), and only when what was
-        // found would actually be upscaled — a 180-pixel touch icon already
-        // covers a 64-point tile, so there is nothing to discover.
-        if allowsPageDiscovery, allowsThirdPartyLookup, bestEdge < needed {
-            for url in await SiteIconDiscovery.shared.iconUrls(forHost: host) {
-                guard !Task.isCancelled else { return }
-                guard let candidate = await Self.consume(url) else { continue }
-                guard !Task.isCancelled else { return }
-                if accept(candidate) {
-                    present(candidate)
-                    return
-                }
             }
         }
 
@@ -643,7 +637,8 @@ struct SiteIconView: View {
     static func candidates(
         host: String,
         faviconUrl: String?,
-        allowsThirdParty: Bool
+        allowsThirdParty: Bool,
+        declaredIcons: [URL] = []
     ) -> [URL?] {
         var urls: [URL?] = []
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -656,6 +651,10 @@ struct SiteIconView: View {
                 urls.append(url)
             }
         }
+
+        // What the page itself declares, largest first — already the site's
+        // own artwork at the size it chose to publish.
+        urls.append(contentsOf: declaredIcons.map { Optional($0) })
 
         if !trimmed.isEmpty, trimmed.contains(".") {
             urls.append(URL(string: "https://\(trimmed)/apple-touch-icon.png"))

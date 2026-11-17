@@ -41,6 +41,34 @@ final class SiteIconCandidateTests: XCTestCase {
         XCTAssertTrue(candidates.contains("https://example.com/favicon.ico"))
     }
 
+    /// A page's declared icons outrank the fixed-path guesses, and the
+    /// favicon service stays behind them: it answers with a small favicon
+    /// upscaled to whatever size was asked for, which reads as sharp and
+    /// looks like mush.
+    func testDeclaredIconsComeAfterThePageIconAndBeforeTheGuesses() {
+        let declared = [
+            URL(string: "https://example.com/icon-512.png")!,
+            URL(string: "https://example.com/icon-192.png")!
+        ]
+        let urls = SiteIconView.candidates(
+            host: "example.com",
+            faviconUrl: "https://example.com/page-icon.png",
+            allowsThirdParty: true,
+            declaredIcons: declared
+        ).compactMap { $0?.absoluteString }
+
+        XCTAssertEqual(Array(urls.prefix(3)), [
+            "https://example.com/page-icon.png",
+            "https://example.com/icon-512.png",
+            "https://example.com/icon-192.png"
+        ])
+        let service = urls.firstIndex(of: "https://www.google.com/s2/favicons?sz=256&domain=example.com")
+        let touch = urls.firstIndex(of: "https://example.com/apple-touch-icon.png")
+        XCTAssertNotNil(service)
+        XCTAssertNotNil(touch)
+        XCTAssertGreaterThan(service ?? 0, touch ?? 0)
+    }
+
     func testPrivateIconsKeepOnlySameHostExplicitIcons() {
         let sameHost = strings(
             SiteIconView.candidates(
