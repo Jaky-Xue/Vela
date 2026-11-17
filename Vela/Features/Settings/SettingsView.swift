@@ -154,6 +154,9 @@ struct SettingsView: View {
     /// in force and are read from the environment at body time.
     private var allSections: [SettingsSectionSpec] {
         [
+            SettingsSectionSpec(title: "账号", rows: [
+                SettingsRowSpec(destination: .googleAccounts, detail: googleAccountsDetail)
+            ]),
             SettingsSectionSpec(title: "浏览器", rows: [
                 SettingsRowSpec(destination: .general),
                 SettingsRowSpec(destination: .appearance, detail: appearanceDetail),
@@ -236,6 +239,19 @@ struct SettingsView: View {
             .first { $0.id == env.settings.preferences.themePaletteId }?
             .displayName ?? BrowserPalette.default.displayName
         return "\(paletteName) · \(env.settings.appearanceMode.displayName)"
+    }
+
+    /// What the Google 账号 row says: how many addresses are listed, and
+    /// whether the browser itself is signed in.
+    private var googleAccountsDetail: String {
+        let count = env.services.googleAccounts.accounts.count
+        let listed = count == 0 ? "" : "\(count) 个账号"
+        switch env.services.googleAccounts.browserSession {
+        case .signedIn:
+            return listed.isEmpty ? "已登录" : "\(listed) · 已登录"
+        case .signedOut, .unknown:
+            return listed
+        }
     }
 
     /// What the 广告拦截 row says is in force.
@@ -330,6 +346,7 @@ private struct SettingsSectionSpec: Identifiable {
 /// row in `SettingsView`, so a deep link and the list cannot describe
 /// different screens.
 enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
+    case googleAccounts
     case general
     case appearance
     case toolbar
@@ -355,6 +372,7 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
     @ViewBuilder
     var view: some View {
         switch self {
+        case .googleAccounts: GoogleAccountsSettingsView()
         case .general: GeneralSettingsView()
         case .appearance: AppearanceSettingsView()
         case .toolbar: ToolbarSettingsView()

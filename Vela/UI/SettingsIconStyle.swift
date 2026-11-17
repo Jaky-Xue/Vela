@@ -56,6 +56,7 @@ extension SettingsDestination {
     /// label all read it from here rather than restating it per row.
     var title: String {
         switch self {
+        case .googleAccounts: return "Google 账号"
         case .general: return "通用"
         case .appearance: return "外观"
         case .toolbar: return "工具栏"
@@ -79,6 +80,7 @@ extension SettingsDestination {
 
     var symbolName: String {
         switch self {
+        case .googleAccounts: return "person.crop.circle"
         case .general: return "gearshape"
         case .appearance: return "paintpalette"
         case .toolbar: return "dock.rectangle"
@@ -103,6 +105,7 @@ extension SettingsDestination {
     /// The lighter and darker ends of the icon's gradient.
     var iconTopHex: UInt32 {
         switch self {
+        case .googleAccounts: return 0x4285F4
         case .general: return 0x8E8E93
         case .appearance: return 0xC936F0
         case .toolbar: return 0x21C7E8
@@ -126,6 +129,7 @@ extension SettingsDestination {
 
     var iconBottomHex: UInt32 {
         switch self {
+        case .googleAccounts: return 0x1A73E8
         case .general: return 0x6C6C72
         case .appearance: return 0xA21CD6
         case .toolbar: return 0x0FA8CC
@@ -151,6 +155,8 @@ extension SettingsDestination {
     /// called elsewhere in the app, and the English name of the feature.
     var searchKeywords: String {
         switch self {
+        case .googleAccounts:
+            return "google 谷歌 账号 账户 登录 登陆 account login gmail"
         case .general:
             return "通用 基础 启动 默认 general startup basic"
         case .appearance:
