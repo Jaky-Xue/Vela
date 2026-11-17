@@ -369,7 +369,7 @@ public struct SearchEngineSettings: Codable, Equatable, Sendable {
     /// port below, because an initialiser default argument cannot refer to a
     /// global that shares its name with the property being initialised — the
     /// property wins the name lookup.
-    public static let defaultEngineId: SearchEngineId = "bing"
+    public static let defaultEngineId: SearchEngineId = "google"
 
     public init(
         defaultSearchEngineId: SearchEngineId = SearchEngineSettings.defaultEngineId,

@@ -658,6 +658,13 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// The resolved switch: 最近关闭 is recorded unless explicitly turned off.
     public var recentlyClosedKept: Bool { keepsRecentlyClosedTabs ?? true }
 
+    /// The resolved switch: 允许双指缩放 is on unless explicitly turned off.
+    ///
+    /// Every other iOS browser lets a page be pinched, including one that
+    /// declares `user-scalable=no`; shipping this off made Vela the browser
+    /// where zoom simply did not work, which reads as a broken page.
+    public var allowsPinchZoom: Bool { forcedZoomEnabled ?? true }
+
     /// The most specific stored answer for a site and permission kind.
     ///
     /// A rule stored for `example.com` applies to `www.example.com` as well;

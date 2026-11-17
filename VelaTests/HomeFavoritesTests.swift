@@ -90,6 +90,35 @@ final class HomeFavoritesTests: XCTestCase {
         XCTAssertEqual(service.favorites.map(\.id), [second!.id])
     }
 
+    /// What a carried tile asks the store for: the shelf's live reorder uses
+    /// SwiftUI's move semantics, so a tile dragged over a later slot lands
+    /// after it and one dragged over an earlier slot lands on it.
+    func testDraggingATileReordersTheShelf() {
+        let service = HomeFavoritesService(defaults: defaults)
+        for (index, host) in ["one.test", "two.test", "three.test"].enumerated() {
+            service.add(url: "https://\(host)", title: "\(index)")
+        }
+
+        XCTAssertTrue(service.move(fromOffsets: IndexSet(integer: 0), toOffset: 3))
+        XCTAssertEqual(service.favorites.map(\.displayHost), ["two.test", "three.test", "one.test"])
+
+        XCTAssertTrue(service.move(fromOffsets: IndexSet(integer: 2), toOffset: 0))
+        XCTAssertEqual(service.favorites.map(\.displayHost), ["one.test", "two.test", "three.test"])
+    }
+
+    /// The order is the shelf's own document, so a drag has to survive the
+    /// next launch the same way a rename does.
+    func testAReorderSurvivesAReload() {
+        let service = HomeFavoritesService(defaults: defaults)
+        for host in ["one.test", "two.test", "three.test"] {
+            service.add(url: "https://\(host)", title: host)
+        }
+        XCTAssertTrue(service.move(fromOffsets: IndexSet(integer: 2), toOffset: 0))
+
+        let reloaded = HomeFavoritesService(defaults: defaults)
+        XCTAssertEqual(reloaded.favorites.map(\.displayHost), ["three.test", "one.test", "two.test"])
+    }
+
     func testLegacySelectionMigratesOnlyTheChosenIds() {
         defaults.set(true, forKey: "org.vela.browser.home-bookmarks-seeded")
         defaults.set(["b2"], forKey: "org.vela.browser.home-bookmark-ids")

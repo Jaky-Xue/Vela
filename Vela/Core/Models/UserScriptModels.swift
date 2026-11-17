@@ -450,7 +450,7 @@ public struct UserScriptSettings: Codable, Equatable, Sendable {
 
     public init(
         scripts: [InstalledUserScriptState] = [],
-        autoUpdateEnabled: Bool = false,
+        autoUpdateEnabled: Bool = true,
         updatedAt: Date = Date()
     ) {
         self.scripts = scripts

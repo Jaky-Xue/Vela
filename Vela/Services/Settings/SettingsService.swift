@@ -123,6 +123,40 @@ public final class SettingsService {
             }
         }
 
+        // 4.0.65's shipped defaults. Each stored value that still equals the
+        // old shipped default moves over once; anything the user has since
+        // chosen is left alone. One marker covers all three, so a later launch
+        // cannot undo a deliberate change back to an old value.
+        let shippedDefaultsKey = "org.vela.browser.shipped-defaults-4.0.65"
+        if !defaults.bool(forKey: shippedDefaultsKey) {
+            defaults.set(true, forKey: shippedDefaultsKey)
+
+            var migrated = preferences
+            // Bing was the engine selected on first launch before 4.0.65.
+            if migrated.searchEngine.defaultSearchEngineId == "bing" {
+                migrated.searchEngine.defaultSearchEngineId = SearchEngineSettings.defaultEngineId
+                migrated.searchEngine.updatedAt = Date()
+            }
+            // 允许双指缩放 shipped off; it is on from 4.0.65.
+            if migrated.forcedZoomEnabled != true {
+                migrated.forcedZoomEnabled = true
+            }
+            if migrated != preferences {
+                preferences = migrated
+                // Property observers do not run for an assignment made in an
+                // initializer, so the migration writes its result explicitly.
+                persistPreferences()
+            }
+
+            // 自动检查脚本更新 shipped off; it is on from 4.0.65.
+            if !userScriptSettings.autoUpdateEnabled {
+                var updatedScripts = userScriptSettings
+                updatedScripts.autoUpdateEnabled = true
+                userScriptSettings = updatedScripts
+                persist(updatedScripts, key: Key.userScripts)
+            }
+        }
+
         // The history repository reads this key directly during its prune pass,
         // so the retention window is mirrored where the write path can see it.
         defaults.set(preferences.historyRetentionDays, forKey: "org.vela.browser.history-retention-days")

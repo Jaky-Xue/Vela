@@ -63,6 +63,8 @@ struct NewTabHomeView: View {
     /// vertical travel is not a chrome swipe either.
     @State private var suppressFavoriteTap = false
     @State private var suppressChromeSwipe = false
+    /// The page's own height, so the blank-page add door can fill it.
+    @State private var homeViewportHeight: CGFloat = 0
     /// The custom background, reloaded whenever the settings document's stamp
     /// moves — which happens the moment a picture is saved or cleared behind
     /// the settings sheet, so the change is live without leaving the screen.
@@ -72,21 +74,31 @@ struct NewTabHomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: BrowserSpacing.loose) {
-                // Icons, and nothing else, once there is a tile. The one
-                // place the home carries words is the empty state.
-                if favorites.isEmpty {
-                    emptyHome
-                } else {
-                    favoritesShelf
+            ZStack(alignment: .topLeading) {
+                // The blank page's long press is a sibling of the shelf, never
+                // an ancestor of it. A context menu attached to the whole
+                // surface competes with the long press that lifts a tile —
+                // the tile stays down and the shelf cannot be rearranged —
+                // so the add door fills the viewport behind the tiles, where
+                // it only answers presses that no tile took.
+                homeAddSurface
+
+                VStack(alignment: .leading, spacing: BrowserSpacing.loose) {
+                    // Icons, and nothing else, once there is a tile. The one
+                    // place the home carries words is the empty state.
+                    if favorites.isEmpty {
+                        emptyHome
+                    } else {
+                        favoritesShelf
+                    }
                 }
+                .padding(.horizontal, BrowserSpacing.regular)
+                .padding(.top, BrowserSpacing.regular)
+                // The extra run of bottom padding is what lets the last block
+                // sit clear of the home indicator even though the surface
+                // itself runs edge to edge below the safe area.
+                .padding(.bottom, BrowserSpacing.loose + 12)
             }
-            .padding(.horizontal, BrowserSpacing.regular)
-            .padding(.top, BrowserSpacing.regular)
-            // The extra run of bottom padding is what lets the last block sit
-            // clear of the home indicator even though the surface itself runs
-            // edge to edge below the safe area.
-            .padding(.bottom, BrowserSpacing.loose + 12)
         }
         // The surface reaches the bottom edge of the screen: a strip of dead
         // background above the home indicator reads as something sitting on
@@ -100,11 +112,21 @@ struct NewTabHomeView: View {
         // every slot the tile is being aimed at.
         .scrollDisabled(draggingFavoriteID != nil)
         .background { homeBackground }
+        // The blank-page add door is as tall as the page it sits behind, and
+        // the scroll content is only as tall as the tiles it holds, so the
+        // page's own height is measured rather than guessed.
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: HomeViewportHeightKey.self,
+                    value: proxy.size.height
+                )
+            }
+        }
+        .onPreferenceChange(HomeViewportHeightKey.self) { height in
+            homeViewportHeight = height
+        }
         .scrollDismissesKeyboard(.immediately)
-        // With no header there is no visible plus once the shelf has tiles.
-        // A long press on the page — outside a tile, which has its own menu —
-        // is the door to add another; 无痕模式 writes nothing, so it gets none.
-        .modifier(HomeAddMenu(enabled: !isPrivate) { showingNewFavorite = true })
         // The bar hides on a drag the way it hides on a page's scroll: up
         // moves the page out of the way, down brings it back. The flick's
         // predicted distance joins in so a short throw still carries.
@@ -183,6 +205,31 @@ struct NewTabHomeView: View {
         .frame(maxWidth: .infinity)
         .padding(.top, 28)
         .padding(.bottom, 40)
+    }
+
+    // MARK: - Add door
+
+    /// The blank page's long press: the only 添加图标 door once the shelf has
+    /// tiles. It sits behind the shelf rather than around it, so pressing a
+    /// tile reaches the tile's own long press and pressing the space beside
+    /// the tiles reaches this one.
+    ///
+    /// 无痕模式 writes nothing, so it gets no menu at all; the clear fill is
+    /// still drawn so the stack keeps the page's width.
+    @ViewBuilder
+    private var homeAddSurface: some View {
+        if isPrivate {
+            Color.clear
+        } else {
+            Color.clear
+                .frame(maxWidth: .infinity, minHeight: homeViewportHeight)
+                .contentShape(Rectangle())
+                .contextMenu {
+                    Button("添加图标", systemImage: "plus") {
+                        showingNewFavorite = true
+                    }
+                }
+        }
     }
 
     // MARK: - Background
@@ -628,20 +675,13 @@ private struct HomeFavoriteGridFrameKey: PreferenceKey {
     }
 }
 
-/// The home's add door once it has tiles: a context menu on the page itself.
-/// 无痕模式 must not write a shared favourite, so it gets no menu at all.
-private struct HomeAddMenu: ViewModifier {
-    var enabled: Bool
-    var action: () -> Void
-
-    func body(content: Content) -> some View {
-        if enabled {
-            content.contextMenu {
-                Button("添加图标", systemImage: "plus", action: action)
-            }
-        } else {
-            content
-        }
+/// How tall the page itself is. The add door behind the shelf fills that
+/// height, so the blank part of the page stays the place a tile is added from
+/// without the door becoming an ancestor of the tiles.
+private struct HomeViewportHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

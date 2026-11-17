@@ -106,7 +106,7 @@ struct GeneralSettingsView: View {
                 }
 
                 Toggle(isOn: Binding(
-                    get: { env.settings.preferences.forcedZoomEnabled ?? false },
+                    get: { env.settings.preferences.allowsPinchZoom },
                     set: { value in
                         env.settings.update { $0.forcedZoomEnabled = value }
                         env.tabManager.applyGestureZoomToAllWebViews()

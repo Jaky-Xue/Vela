@@ -695,7 +695,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
-        if settings.preferences.forcedZoomEnabled ?? false {
+        if settings.preferences.allowsPinchZoom {
             // Remove the page's own zoom lock before and after its markup is
             // parsed: the viewport meta usually arrives with the document.
             for time in [WKUserScriptInjectionTime.atDocumentStart, .atDocumentEnd] {
@@ -1057,7 +1057,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // re-establishes them when the page changes.
         webView.evaluateJavaScript(
             WebPageScripts.gestureZoomViewportScript(
-                enabled: settings.preferences.forcedZoomEnabled ?? false
+                enabled: settings.preferences.allowsPinchZoom
             ),
             completionHandler: nil
         )

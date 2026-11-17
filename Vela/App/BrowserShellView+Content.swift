@@ -218,7 +218,7 @@ extension BrowserShellView {
                             pageColor: Color(cssColor: tab.pageBackground) ?? palette.surface,
                             // Applied when the view is actually attached: an
                             // off-screen web view has no zoomable geometry.
-                            allowsGestureZoom: env.settings.preferences.forcedZoomEnabled ?? false,
+                            allowsGestureZoom: env.settings.preferences.allowsPinchZoom,
                             onScroll: { offset in
                                 handleScroll(offset: offset)
                             },
