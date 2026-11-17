@@ -122,18 +122,24 @@ struct SiteIconView: View {
         colorScheme == .dark ? Color(white: 0.17) : Color(white: 0.94)
     }
 
+    /// The source pixels the picture needs to fill the tile without being
+    /// upscaled. The picture is drawn inside the tile's inset, so its
+    /// on-screen edge is `size * (1 - 2 * inset)` points — 29 points on a
+    /// 40-point tile, 46 on the 64-point tile the home offers.
+    private static func neededEdge(for size: CGFloat, displayScale: CGFloat) -> CGFloat {
+        max(48, (size * (1 - 2 * iconInset) * displayScale).rounded(.up))
+    }
+
     /// How many source pixels a tile of this size wants.
     ///
-    /// The picture is drawn inside the tile's inset, so its on-screen edge is
-    /// `size * (1 - 2 * inset)` points — 29 points on a 40-point tile, 46 on
-    /// the 64-point tile the home offers. At 3x that is 86–138 device pixels,
+    /// At 3x a 40-point tile needs 86 device pixels and a 64-point one 138,
     /// and a source smaller than that is upscaled and soft. The fixed
     /// 96-pixel bar this used to be sat below the largest tiles; the bar
-    /// follows the tile now, with headroom so the same picture stays sharp
-    /// when the tile grows.
+    /// follows the tile now, with a quarter more than it needs so the same
+    /// picture stays sharp when the tile grows.
     private static func sharpEdge(for size: CGFloat, displayScale: CGFloat) -> CGFloat {
-        let painted = size * (1 - 2 * iconInset)
-        return max(96, (painted * displayScale * 1.25).rounded(.up))
+        let needed = neededEdge(for: size, displayScale: displayScale)
+        return max(96, (needed * 1.25).rounded(.up))
     }
 
     /// A picture big enough to paint while the search carries on. Below it the
@@ -158,6 +164,7 @@ struct SiteIconView: View {
     private func loadIcon() async {
         image = nil
         hasOpaqueCanvas = false
+        let needed = Self.neededEdge(for: size, displayScale: displayScale)
         let target = Self.sharpEdge(for: size, displayScale: displayScale)
         var best: UIImage?
         var bestEdge: CGFloat = 0
@@ -193,10 +200,12 @@ struct SiteIconView: View {
 
         // Nothing a fixed path offers is big enough. The site's own markup
         // names the renditions it publishes — often a 192- or 512-pixel icon
-        // at a path no guess reaches. Only the large tiles ask for this: a
-        // list of rows would pay one page fetch per host for a picture drawn
-        // at 15 points.
-        if allowsPageDiscovery, allowsThirdPartyLookup {
+        // at a path no guess reaches. Two conditions keep the page fetch
+        // rare: only the large tiles ask (a list of rows would pay one fetch
+        // per host for a picture drawn at 15 points), and only when what was
+        // found would actually be upscaled — a 180-pixel touch icon already
+        // covers a 64-point tile, so there is nothing to discover.
+        if allowsPageDiscovery, allowsThirdPartyLookup, bestEdge < needed {
             for url in await SiteIconDiscovery.shared.iconUrls(forHost: host) {
                 guard !Task.isCancelled else { return }
                 guard let candidate = await Self.consume(url) else { continue }
