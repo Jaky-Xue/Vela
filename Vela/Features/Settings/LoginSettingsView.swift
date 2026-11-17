@@ -54,6 +54,10 @@ struct LoginSettingsView: View {
                     .listRowSeparator(.hidden)
             }
 
+            Section("活跃") {
+                BrowserActivityGrid()
+            }
+
             Section {
                 ForEach(WebAccountProvider.allCases) { provider in
                     providerCard(provider)

@@ -152,6 +152,7 @@ private struct BrowserWindowRoot: View {
                 }
             }
             .onAppear {
+                BrowserActivity.record()
                 applyAppearance()
             }
             .onChange(of: scenePhase) { _, phase in
@@ -185,6 +186,7 @@ private struct BrowserWindowRoot: View {
                 case .inactive:
                     environment.tabManager.persistSession()
                 case .active:
+                    BrowserActivity.record()
                     // The system can change while the app is in the background;
                     // re-pin on return so a page that missed the broadcast
                     // still matches the chrome.

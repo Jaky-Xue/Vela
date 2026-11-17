@@ -40,14 +40,14 @@ struct BrowserCardStyle: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: resolvedRadius, style: .continuous)
         content
             .background {
-                if reduceTransparency || style.surface == .paper {
+                if colorScheme == .light || reduceTransparency || style.surface == .paper {
                     shape.fill(palette.card)
                 } else {
                     shape.fill(tint ?? palette.card.opacity(style.cardOpacity(reduceTransparency: false)))
                     shape.fill(material ?? style.cardMaterial)
                 }
             }
-            .overlay(shape.strokeBorder(palette.cardStroke, lineWidth: 0.5))
+            .overlay(shape.strokeBorder(palette.cardStroke, lineWidth: 1))
             .clipShape(shape)
             .shadow(
                 color: resolvedElevation.shadowColor(for: colorScheme),
@@ -78,6 +78,7 @@ extension View {
 /// settings screen and the browser chrome look like two different products. The
 /// rows keep a card fill so the grouped rhythm survives the change of surface.
 struct BrowserListSurface: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.browserPalette) private var palette
     @Environment(\.browserReduceTransparency) private var reduceTransparency
 
@@ -92,11 +93,15 @@ struct BrowserListSurface: ViewModifier {
             // The field shows through the list's veil; `solid` resolves to the
             // opaque palette surface this screen always had.
             .background {
-                AmbientSurfaceFill(opacity: 0.58)
+                if colorScheme == .light {
+                    Color(uiColor: .systemGroupedBackground)
+                } else {
+                    AmbientSurfaceFill(opacity: 0.92)
+                }
             }
             .toolbarBackground(palette.chromeBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            .listRowBackground(rowsAreCards ? palette.card.opacity(palette.visualStyle.rowOpacity(reduceTransparency: reduceTransparency)) : Color.clear)
+            .listRowBackground(rowsAreCards ? palette.card : Color.clear)
     }
 }
 
