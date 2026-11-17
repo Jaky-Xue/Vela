@@ -26,79 +26,148 @@ struct BrowserWelcomeView: View {
     private let symbols = ["magnifyingglass", "square.on.square", "bookmark", "hand.raised", "slider.horizontal.3"]
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Vela · 使用指南")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(palette.secondaryText)
-                Spacer()
-                Button("跳过", action: onFinish)
-                    .frame(minWidth: 44, minHeight: 44)
+        GeometryReader { proxy in
+            // A phone in landscape has far less height than the vertical tour
+            // needs; switch to a two-column tour instead of letting the
+            // scrollable column disappear behind the pager.
+            let compact = proxy.size.height < 520 && proxy.size.width > proxy.size.height
+            Group {
+                if compact {
+                    compactLayout
+                } else {
+                    regularLayout
+                }
             }
-            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background { AmbientBackgroundView() }
+        .foregroundStyle(palette.primaryText)
+        .tint(palette.accent)
+    }
+
+    private var regularLayout: some View {
+        VStack(spacing: 0) {
+            header
 
             ScrollView {
                 VStack(spacing: 28) {
-                    illustration
+                    illustration(compact: false)
                         .frame(maxWidth: 340)
                         .padding(.top, 28)
                         .accessibilityHidden(true)
 
-                    VStack(spacing: 14) {
-                        Text(titles[step])
-                            .font(.largeTitle.bold())
-                            .accessibilityAddTraits(.isHeader)
-                        Text(descriptions[step])
-                            .font(.body)
-                            .foregroundStyle(palette.secondaryText)
-                            .lineSpacing(5)
-                    }
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 440)
-                    .id(step)
-                    .transition(.opacity)
+                    copy(compact: false)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 28)
                 .padding(.bottom, 28)
             }
 
-            VStack(spacing: 18) {
-                HStack(spacing: 8) {
-                    ForEach(0..<titles.count, id: \.self) { index in
-                        Capsule()
-                            .fill(index == step ? palette.accent : palette.secondaryText.opacity(0.2))
-                            .frame(width: index == step ? 24 : 6, height: 6)
-                    }
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("第 \(step + 1) 步，共 \(titles.count) 步")
-
-                Button {
-                    if step == titles.count - 1 { onFinish() }
-                    else { changeStep(by: 1) }
-                } label: {
-                    Text(step == titles.count - 1 ? "开始浏览" : "下一步")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                }
-                .buttonStyle(.borderedProminent)
-                .clipShape(Capsule())
-
-                Button("上一步") { changeStep(by: -1) }
-                    .frame(minHeight: 44)
-                    .disabled(step == 0)
-                    .opacity(step == 0 ? 0 : 1)
-                    .accessibilityHidden(step == 0)
-            }
-            .frame(maxWidth: 360)
-            .padding(.horizontal, 28)
-            .padding(.bottom, 12)
+            footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background { AmbientBackgroundView() }
-        .foregroundStyle(palette.primaryText)
-        .tint(palette.accent)
+    }
+
+    private var compactLayout: some View {
+        VStack(spacing: 0) {
+            header
+
+            HStack(alignment: .center, spacing: 24) {
+                ScrollView {
+                    illustration(compact: true)
+                        .padding(.vertical, 8)
+                        .accessibilityHidden(true)
+                }
+                .scrollIndicators(.hidden)
+                .frame(maxWidth: 300)
+
+                VStack(spacing: 12) {
+                    Spacer(minLength: 0)
+                    copy(compact: true)
+                    Spacer(minLength: 8)
+                    pager
+                    primaryButton(minHeight: 46)
+                    backButton
+                }
+                .frame(maxWidth: 400)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 6)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Vela · 使用指南")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(palette.secondaryText)
+            Spacer()
+            Button("跳过", action: onFinish)
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .padding(.horizontal, 24)
+    }
+
+    private func copy(compact: Bool) -> some View {
+        VStack(spacing: compact ? 10 : 14) {
+            Text(titles[step])
+                .font(compact ? .title2.bold() : .largeTitle.bold())
+                .accessibilityAddTraits(.isHeader)
+            Text(descriptions[step])
+                .font(compact ? .footnote : .body)
+                .foregroundStyle(palette.secondaryText)
+                .lineSpacing(compact ? 3 : 5)
+        }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: compact ? 400 : 440)
+        .id(step)
+        .transition(.opacity)
+    }
+
+    private var footer: some View {
+        VStack(spacing: 18) {
+            pager
+            primaryButton(minHeight: 52)
+            backButton
+        }
+        .frame(maxWidth: 360)
+        .padding(.horizontal, 28)
+        .padding(.bottom, 12)
+    }
+
+    private var pager: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<titles.count, id: \.self) { index in
+                Capsule()
+                    .fill(index == step ? palette.accent : palette.secondaryText.opacity(0.2))
+                    .frame(width: index == step ? 24 : 6, height: 6)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("第 \(step + 1) 步，共 \(titles.count) 步")
+    }
+
+    private func primaryButton(minHeight: CGFloat) -> some View {
+        Button {
+            if step == titles.count - 1 { onFinish() }
+            else { changeStep(by: 1) }
+        } label: {
+            Text(step == titles.count - 1 ? "开始浏览" : "下一步")
+                .font(.headline)
+                .frame(maxWidth: .infinity, minHeight: minHeight)
+        }
+        .buttonStyle(.borderedProminent)
+        .clipShape(Capsule())
+    }
+
+    private var backButton: some View {
+        Button("上一步") { changeStep(by: -1) }
+            .frame(minHeight: 36)
+            .disabled(step == 0)
+            .opacity(step == 0 ? 0 : 1)
+            .accessibilityHidden(step == 0)
     }
 
     private func changeStep(by delta: Int) {
@@ -107,32 +176,32 @@ struct BrowserWelcomeView: View {
         }
     }
 
-    private var illustration: some View {
-        VStack(spacing: 24) {
+    private func illustration(compact: Bool) -> some View {
+        VStack(spacing: compact ? 16 : 24) {
             if !reduceMotion && scenePhase == .active {
-                heroGlyph
+                heroGlyph(compact: compact)
                     .phaseAnimator([false, true]) { glyph, raised in
                         glyph.offset(y: raised ? -5 : 0)
                             .scaleEffect(raised ? 1.03 : 1)
                     } animation: { _ in .easeInOut(duration: 2.4) }
             } else {
-                heroGlyph
+                heroGlyph(compact: compact)
             }
             demonstration
-                .padding(18)
-                .frame(maxWidth: .infinity, minHeight: 100)
+                .padding(compact ? 14 : 18)
+                .frame(maxWidth: .infinity, minHeight: compact ? 84 : 100)
                 .browserCard()
         }
         .id(step)
         .transition(.opacity)
     }
 
-    private var heroGlyph: some View {
+    private func heroGlyph(compact: Bool) -> some View {
         Image(systemName: symbols[step])
-            .font(.system(size: 38, weight: .medium))
+            .font(.system(size: compact ? 30 : 38, weight: .medium))
             .foregroundStyle(palette.accent)
-            .frame(width: 88, height: 88)
-            .background(palette.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 28))
+            .frame(width: compact ? 64 : 88, height: compact ? 64 : 88)
+            .background(palette.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: compact ? 20 : 28))
     }
 
     @ViewBuilder private var demonstration: some View {
