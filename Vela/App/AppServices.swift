@@ -23,10 +23,10 @@ public final class AppServices {
     /// favourite is a copy of a name and address, so bookmark edits and
     /// deletions cannot reach it.
     public let homeFavorites: HomeFavoritesService
-    /// The accounts listed in 设置 ▸ Google 账号, and the browser's own Google
-    /// session state. Labels on this device; signing in happens in the
-    /// browser's cookie jar, never here.
-    public let googleAccounts: GoogleAccountService
+    /// The accounts listed in 设置 ▸ 账号 ▸ 登录, for every provider, and the
+    /// browser's own sign-in state. Labels on this device; signing in happens
+    /// in the browser's cookie jar, never here.
+    public let webAccounts: WebAccountService
     public let history: HistoryService
     public let downloads: DownloadService
     /// The process-wide record of site-permission answers.
@@ -64,7 +64,7 @@ public final class AppServices {
         let settings = SettingsService()
         self.settings = settings
         self.homeFavorites = HomeFavoritesService()
-        self.googleAccounts = GoogleAccountService()
+        self.webAccounts = WebAccountService()
         self.commands = BrowserCommandCenter()
         self.contentBlocker = ContentBlocker(settings: settings)
         self.permissionAudit = PermissionAuditService()

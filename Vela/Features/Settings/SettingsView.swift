@@ -155,7 +155,7 @@ struct SettingsView: View {
     private var allSections: [SettingsSectionSpec] {
         [
             SettingsSectionSpec(title: "账号", rows: [
-                SettingsRowSpec(destination: .googleAccounts, detail: googleAccountsDetail)
+                SettingsRowSpec(destination: .login, detail: loginDetail)
             ]),
             SettingsSectionSpec(title: "浏览器", rows: [
                 SettingsRowSpec(destination: .general),
@@ -241,17 +241,18 @@ struct SettingsView: View {
         return "\(paletteName) · \(env.settings.appearanceMode.displayName)"
     }
 
-    /// What the Google 账号 row says: how many addresses are listed, and
-    /// whether the browser itself is signed in.
-    private var googleAccountsDetail: String {
-        let count = env.services.googleAccounts.accounts.count
+    /// What the 登录 row says: how many addresses are listed and which
+    /// providers the browser is actually signed in to.
+    private var loginDetail: String {
+        let accounts = env.services.webAccounts.accounts
+        let count = accounts.count
+        let providers = WebAccountProvider.allCases
+            .filter { env.services.webAccounts.session(for: $0) == .signedIn }
+            .map(\.displayName)
         let listed = count == 0 ? "" : "\(count) 个账号"
-        switch env.services.googleAccounts.browserSession {
-        case .signedIn:
-            return listed.isEmpty ? "已登录" : "\(listed) · 已登录"
-        case .signedOut, .unknown:
-            return listed
-        }
+        guard !providers.isEmpty else { return listed }
+        let signedIn = "已登录 " + providers.joined(separator: " / ")
+        return listed.isEmpty ? signedIn : "\(listed) · \(signedIn)"
     }
 
     /// What the 广告拦截 row says is in force.
@@ -346,7 +347,7 @@ private struct SettingsSectionSpec: Identifiable {
 /// row in `SettingsView`, so a deep link and the list cannot describe
 /// different screens.
 enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
-    case googleAccounts
+    case login
     case general
     case appearance
     case toolbar
@@ -372,7 +373,7 @@ enum SettingsDestination: String, Identifiable, Hashable, CaseIterable {
     @ViewBuilder
     var view: some View {
         switch self {
-        case .googleAccounts: GoogleAccountsSettingsView()
+        case .login: LoginSettingsView()
         case .general: GeneralSettingsView()
         case .appearance: AppearanceSettingsView()
         case .toolbar: ToolbarSettingsView()
