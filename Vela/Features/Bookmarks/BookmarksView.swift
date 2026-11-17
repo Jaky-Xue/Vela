@@ -83,11 +83,9 @@ struct BookmarksView: View {
                 }
             }
         }
-        .listStyle(.plain)
-        // A plain list rather than grouped, so the rows are cards at the root of
-        // the screen and the folder hierarchy shows as indentation-free depth
-        // rather than as a stack of nested panels.
-        .browserListSurface(rowsAreCards: false)
+        .listStyle(.insetGrouped)
+        // Match the grouped content surfaces used throughout the browser.
+        .browserListSurface()
         .searchable(text: $searchText, prompt: "搜索书签")
         .navigationTitle(isSearching ? "搜索结果" : currentTitle)
         .navigationBarTitleDisplayMode(.inline)

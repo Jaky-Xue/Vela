@@ -143,23 +143,11 @@ struct SettingsListStyle: ViewModifier {
     }
 }
 
-/// Search controls need a visible body even over a bright page or wallpaper.
+/// Search and surrounding controls share one glass recipe.
 struct BrowserSearchFieldStyle: ViewModifier {
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.browserPalette) private var palette
-
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
         content
-            .background {
-                shape.fill(scheme == .light ? Color(white: 0.94) : palette.card)
-            }
-            .overlay {
-                shape.strokeBorder(scheme == .light ? Color.black.opacity(0.17) : palette.cardStroke, lineWidth: 1)
-                    .allowsHitTesting(false)
-            }
-            .clipShape(shape)
-            .shadow(color: .black.opacity(scheme == .light ? 0.09 : 0.18), radius: 8, y: 3)
+            .browserFloatingChrome(radius: BrowserRadius.omnibox, elevation: .card, interactive: false)
     }
 }
 
@@ -203,9 +191,13 @@ struct BrowserFloatingChrome: ViewModifier {
         if #available(iOS 26.0, *), !reduceTransparency {
             content
                 .glassEffect(
-                    interactive ? Glass.regular.interactive() : Glass.regular,
+                    interactive ? Glass.regular.tint(palette.chromeBackground.opacity(0.16)).interactive() : Glass.regular.tint(palette.chromeBackground.opacity(0.16)),
                     in: shape
                 )
+                .overlay {
+                    shape.strokeBorder(palette.cardStroke, lineWidth: 0.75)
+                        .allowsHitTesting(false)
+                }
                 .shadow(
                     color: palette.visualStyle.resolvedElevation(elevation).shadowColor(for: colorScheme),
                     radius: palette.visualStyle.resolvedElevation(elevation).radius,
@@ -227,12 +219,11 @@ struct BrowserFloatingChrome: ViewModifier {
                 if reduceTransparency {
                     shape.fill(palette.chromeBackground)
                 } else {
-                    shape.fill(palette.chromeBackground.opacity(palette.visualStyle.chromeTint))
-                    shape.fill(palette.controlFill.opacity(tintStrength * 0.16))
                     shape.fill(material)
+                    shape.fill(palette.chromeBackground.opacity(colorScheme == .light ? 0.45 : 0.25))
                 }
             }
-            .overlay(shape.strokeBorder(palette.cardStroke, lineWidth: 0.5))
+            .overlay(shape.strokeBorder(palette.cardStroke, lineWidth: 1))
             .clipShape(shape)
             .shadow(
                 color: palette.visualStyle.resolvedElevation(elevation).shadowColor(for: colorScheme),

@@ -47,7 +47,7 @@ struct AddBookmarkChoiceSheet: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(palette.primaryText)
                         .frame(width: 40, height: 40)
-                        .background(palette.controlFill.opacity(0.7), in: Circle())
+                        .browserFloatingChrome(radius: 20, elevation: .card)
                 }
                 .accessibilityLabel("关闭")
 
@@ -77,8 +77,7 @@ struct AddBookmarkChoiceSheet: View {
 
                         homeOnlyRow
                     }
-                    .background(palette.controlFill.opacity(0.4))
-                    .clipShape(RoundedRectangle(cornerRadius: BrowserRadius.card, style: .continuous))
+                    .browserCard()
                     .padding(.horizontal, BrowserSpacing.regular)
                     .padding(.top, BrowserSpacing.loose)
 
@@ -87,7 +86,7 @@ struct AddBookmarkChoiceSheet: View {
                             Image(systemName: "house")
                                 .font(.system(size: 14, weight: .medium))
                                 .frame(width: 36, height: 36)
-                                .background(palette.controlFill.opacity(0.7), in: Circle())
+                                .browserFloatingChrome(radius: 18, elevation: .card)
 
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("同时添加到主页收藏")

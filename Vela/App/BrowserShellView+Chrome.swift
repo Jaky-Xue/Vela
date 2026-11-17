@@ -260,12 +260,9 @@ extension BrowserShellView {
         .frame(height: BrowserChrome.barHeight)
         .browserFloatingChrome(
             radius: BrowserRadius.omnibox,
-            material: .thinMaterial,
+            material: .regularMaterial,
             tintStrength: 0.32,
             elevation: .card
-        )
-        .luminousSheen(
-            shape: RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
         )
     }
 

@@ -36,6 +36,8 @@ struct HomeFavoriteTile: View {
                 // one place a page's declared 512-pixel icon is worth a fetch.
                 allowsPageDiscovery: true
             )
+            .padding(5)
+            .browserFloatingChrome(radius: (cornerRadius ?? iconSize * 0.22) + 5, elevation: .card)
 
             if showsTitle {
                 Text(favorite.displayTitle)

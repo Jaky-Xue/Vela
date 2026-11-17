@@ -127,6 +127,9 @@ private struct ThemeCharacterFixture: View {
                 }
                 .padding(24).frame(maxWidth: .infinity, alignment: .leading)
                 .browserCard()
+                BrowserActivityGrid()
+                    .padding(12)
+                    .browserCard()
                 Spacer()
             }
             .padding(24).padding(.top, 52).padding(.bottom, 140)
