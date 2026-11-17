@@ -204,6 +204,7 @@ struct NewTabHomeView: View {
         }
         .shadow(color: homeTextShadow, radius: 8, y: 1)
         .frame(maxWidth: .infinity)
+        .onTapGesture { onChromeSwipe?(60) }
         .simultaneousGesture(chromeSwipeGesture)
         .padding(.top, 28)
         .padding(.bottom, 40)
@@ -226,6 +227,11 @@ struct NewTabHomeView: View {
             Color.clear
                 .frame(maxWidth: .infinity, minHeight: homeViewportHeight)
                 .contentShape(Rectangle())
+                // A tap anywhere on the blank page brings the command bar
+                // back. A page's scroll does that job everywhere else, and
+                // the home has no document to scroll, so a bar dragged away
+                // here used to have no way home.
+                .onTapGesture { onChromeSwipe?(60) }
                 .simultaneousGesture(chromeSwipeGesture)
                 .contextMenu {
                     Button("添加图标", systemImage: "plus") {
@@ -316,7 +322,7 @@ struct NewTabHomeView: View {
     /// follows the 外观 ▸ 主页图标 default; once it has an opinion of its own,
     /// that wins.
     private func showsTitle(for favorite: HomeFavorite) -> Bool {
-        favorite.showsTitle ?? (settings.preferences.homeTileShowsTitle ?? true)
+        favorite.showsTitle ?? (settings.preferences.homeTileShowsTitle ?? false)
     }
 
     /// The width the grid gives one tile.
@@ -606,7 +612,10 @@ struct NewTabHomeView: View {
     }
 
     private func favoriteDragGesture(_ favorite: HomeFavorite) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.32)
+        // A short hold: the menu is meant to be the first thing a press says,
+        // and the drag follows only if the finger keeps moving. Waiting the
+        // half second a system context menu takes made the menu feel late.
+        LongPressGesture(minimumDuration: 0.22)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.favoriteDragSpace)))
             .onChanged { value in
                 guard !isPrivate, case .second(true, let drag?) = value else { return }

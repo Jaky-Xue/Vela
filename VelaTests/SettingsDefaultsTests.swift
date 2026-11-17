@@ -50,6 +50,29 @@ final class SettingsDefaultsTests: XCTestCase {
         XCTAssertEqual(settings.preferences.searchEngine.activeEngine.name, "Google")
         XCTAssertTrue(settings.preferences.allowsPinchZoom)
         XCTAssertTrue(settings.userScriptSettings.autoUpdateEnabled)
+        // 4.0.71: fresh tabs, no recently-closed list, no names under the icons.
+        XCTAssertFalse(settings.preferences.restoreTabsOnLaunch)
+        XCTAssertFalse(settings.preferences.recentlyClosedKept)
+        XCTAssertEqual(settings.preferences.homeTileShowsTitle, false)
+    }
+
+    func testTheTabAndIconNameDefaultsMoveOverOnce() throws {
+        // A document from before 4.0.71: the old shipped values, all three.
+        var legacy = BrowserPreferences.default
+        legacy.restoreTabsOnLaunch = true
+        legacy.keepsRecentlyClosedTabs = true
+        legacy.homeTileShowsTitle = true
+        try store(legacy, key: preferencesKey)
+
+        let migrated = SettingsService(defaults: defaults)
+        XCTAssertFalse(migrated.preferences.restoreTabsOnLaunch)
+        XCTAssertFalse(migrated.preferences.recentlyClosedKept)
+        XCTAssertEqual(migrated.preferences.homeTileShowsTitle, false)
+
+        let reloaded = SettingsService(defaults: defaults)
+        XCTAssertFalse(reloaded.preferences.restoreTabsOnLaunch)
+        XCTAssertFalse(reloaded.preferences.recentlyClosedKept)
+        XCTAssertEqual(reloaded.preferences.homeTileShowsTitle, false)
     }
 
     func testTheOldShippedDefaultsMoveOverOnce() throws {
@@ -82,12 +105,18 @@ final class SettingsDefaultsTests: XCTestCase {
         chosen.update { preferences in
             preferences.searchEngine.defaultSearchEngineId = "bing"
             preferences.forcedZoomEnabled = false
+            preferences.restoreTabsOnLaunch = true
+            preferences.keepsRecentlyClosedTabs = true
+            preferences.homeTileShowsTitle = true
         }
         chosen.updateUserScriptSettings { $0.autoUpdateEnabled = false }
 
         let next = SettingsService(defaults: defaults)
         XCTAssertEqual(next.preferences.searchEngine.defaultSearchEngineId, "bing")
         XCTAssertFalse(next.preferences.allowsPinchZoom)
+        XCTAssertTrue(next.preferences.restoreTabsOnLaunch)
+        XCTAssertTrue(next.preferences.recentlyClosedKept)
+        XCTAssertEqual(next.preferences.homeTileShowsTitle, true)
         XCTAssertFalse(next.userScriptSettings.autoUpdateEnabled)
     }
 }

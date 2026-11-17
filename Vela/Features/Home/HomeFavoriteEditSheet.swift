@@ -43,7 +43,7 @@ struct HomeFavoriteEditSheet: View {
     }
 
     private var defaultShowsTitle: Bool {
-        settings.preferences.homeTileShowsTitle ?? true
+        settings.preferences.homeTileShowsTitle ?? false
     }
 
     var body: some View {

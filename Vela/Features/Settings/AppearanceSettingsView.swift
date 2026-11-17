@@ -17,6 +17,24 @@ struct AppearanceSettingsView: View {
     @Environment(\.browserPalette) private var palette
 
     @State private var showPhotoPicker = false
+    /// 配色 and 背景 are long lists that push everything below them off the
+    /// screen; they stay folded to one row each until asked for. The choice is
+    /// remembered, because whoever opened one wants it still open next time.
+    @AppStorage("org.vela.browser.appearance-palette-expanded") private var paletteExpanded = false
+    @AppStorage("org.vela.browser.appearance-background-expanded") private var backgroundExpanded = false
+
+    /// One folded section's row: its name and the choice in force, so the
+    /// current setting is readable without opening the list.
+    private func foldingLabel(_ title: String, value: String) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .foregroundStyle(palette.primaryText)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.footnote)
+                .foregroundStyle(palette.secondaryText)
+        }
+    }
 
     private var backgroundImageStamp: Double? {
         env.settings.preferences.backgroundImageStamp
@@ -46,85 +64,94 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
-                ForEach(BrowserPalette.all) { candidate in
-                    Button {
-                        env.settings.update { $0.themePaletteId = candidate.id }
-                    } label: {
-                        HStack(spacing: 12) {
-                            PaletteCharacterSwatch(palette: candidate)
-                            Text(candidate.displayName)
-                                .foregroundStyle(palette.primaryText)
-                            Spacer()
-                            if env.settings.preferences.themePaletteId == candidate.id {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(palette.accent)
+                DisclosureGroup(isExpanded: $paletteExpanded) {
+                    ForEach(BrowserPalette.all) { candidate in
+                        Button {
+                            env.settings.update { $0.themePaletteId = candidate.id }
+                        } label: {
+                            HStack(spacing: 12) {
+                                PaletteCharacterSwatch(palette: candidate)
+                                Text(candidate.displayName)
+                                    .foregroundStyle(palette.primaryText)
+                                Spacer()
+                                if env.settings.preferences.themePaletteId == candidate.id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(palette.accent)
+                                }
                             }
                         }
                     }
+                } label: {
+                    foldingLabel("配色", value: palette.displayName)
                 }
-            } header: {
-                Text("配色")
             }
 
             Section {
-                if let image = BackgroundImageStore.load(stamp: backgroundImageStamp) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(height: 140)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                }
-
-                Button {
-                    showPhotoPicker = true
-                } label: {
-                    Label(
-                        backgroundImageStamp == nil ? "从相册选择图片" : "更换图片",
-                        systemImage: "photo"
-                    )
-                }
-
-                if backgroundImageStamp != nil {
-                    Button(role: .destructive) {
-                        BackgroundImageStore.clear()
-                        env.settings.update { $0.backgroundImageStamp = nil }
-                    } label: {
-                        Label("移除图片", systemImage: "trash")
+                DisclosureGroup(isExpanded: $backgroundExpanded) {
+                    if let image = BackgroundImageStore.load(stamp: backgroundImageStamp) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(height: 140)
+                            .frame(maxWidth: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     }
-                }
-                if backgroundImageStamp == nil && env.settings.backgroundStyle != palette.visualStyle.recommendedBackground {
+
                     Button {
-                        env.settings.backgroundStyle = palette.visualStyle.recommendedBackground
+                        showPhotoPicker = true
                     } label: {
-                        HStack {
-                            Label("配套背景", systemImage: "sparkles")
-                            Spacer()
-                            Text(palette.visualStyle.recommendedBackground.displayName)
-                                .font(.footnote)
-                                .foregroundStyle(palette.secondaryText)
+                        Label(
+                            backgroundImageStamp == nil ? "从相册选择图片" : "更换图片",
+                            systemImage: "photo"
+                        )
+                    }
+
+                    if backgroundImageStamp != nil {
+                        Button(role: .destructive) {
+                            BackgroundImageStore.clear()
+                            env.settings.update { $0.backgroundImageStamp = nil }
+                        } label: {
+                            Label("移除图片", systemImage: "trash")
                         }
                     }
-                }
-                ForEach(BrowserBackgroundStyle.allCases) { style in
-                    Button {
-                        env.settings.backgroundStyle = style
-                    } label: {
-                        HStack(spacing: 12) {
-                            BackgroundStyleSwatch(style: style)
-                            Text(style.displayName)
-                                .foregroundStyle(palette.primaryText)
-                            Spacer()
-                            if env.settings.backgroundStyle == style {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(palette.accent)
+                    if backgroundImageStamp == nil && env.settings.backgroundStyle != palette.visualStyle.recommendedBackground {
+                        Button {
+                            env.settings.backgroundStyle = palette.visualStyle.recommendedBackground
+                        } label: {
+                            HStack {
+                                Label("配套背景", systemImage: "sparkles")
+                                Spacer()
+                                Text(palette.visualStyle.recommendedBackground.displayName)
+                                    .font(.footnote)
+                                    .foregroundStyle(palette.secondaryText)
                             }
                         }
                     }
+                    ForEach(BrowserBackgroundStyle.allCases) { style in
+                        Button {
+                            env.settings.backgroundStyle = style
+                        } label: {
+                            HStack(spacing: 12) {
+                                BackgroundStyleSwatch(style: style)
+                                Text(style.displayName)
+                                    .foregroundStyle(palette.primaryText)
+                                Spacer()
+                                if env.settings.backgroundStyle == style {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(palette.accent)
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    foldingLabel(
+                        "背景",
+                        value: backgroundImageStamp != nil
+                            ? "自定义图片"
+                            : env.settings.backgroundStyle.displayName
+                    )
                 }
-            } header: {
-                Text("背景")
             }
 
             Section {
@@ -132,7 +159,7 @@ struct AppearanceSettingsView: View {
                     .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
 
                 Toggle("显示图标名称", isOn: Binding(
-                    get: { env.settings.preferences.homeTileShowsTitle ?? true },
+                    get: { env.settings.preferences.homeTileShowsTitle ?? false },
                     set: { value in
                         env.settings.update { $0.homeTileShowsTitle = value }
                     }
@@ -510,7 +537,7 @@ private struct HomeIconDesignPreview: View {
             shape: preferences.homeTileShape,
             iconSize: iconSize
         )
-        let showsTitleByDefault = preferences.homeTileShowsTitle ?? true
+        let showsTitleByDefault = preferences.homeTileShowsTitle ?? false
         // Every favourite, not the first four: the row is the home's own first
         // row, and a fifth tile that the home draws has to be in it. How many
         // are shown is the measured column count below, exactly as on the home.

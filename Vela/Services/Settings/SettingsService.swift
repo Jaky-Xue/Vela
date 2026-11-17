@@ -157,6 +157,32 @@ public final class SettingsService {
             }
         }
 
+        // 4.0.71's shipped defaults: the browser starts on a fresh tab, keeps
+        // no recently-closed list and draws no names under home icons. Same
+        // rule as above — a stored value that still equals the old shipped
+        // default moves over once, and a value chosen since is left alone.
+        let tabDefaultsKey = "org.vela.browser.shipped-defaults-4.0.71"
+        if !defaults.bool(forKey: tabDefaultsKey) {
+            defaults.set(true, forKey: tabDefaultsKey)
+
+            var migrated = preferences
+            if migrated.restoreTabsOnLaunch {
+                migrated.restoreTabsOnLaunch = false
+            }
+            if migrated.recentlyClosedKept {
+                migrated.keepsRecentlyClosedTabs = false
+            }
+            if migrated.homeTileShowsTitle != false {
+                migrated.homeTileShowsTitle = false
+            }
+            if migrated != preferences {
+                preferences = migrated
+                // Property observers do not run for an assignment made in an
+                // initializer, so the migration writes its result explicitly.
+                persistPreferences()
+            }
+        }
+
         // The history repository reads this key directly during its prune pass,
         // so the retention window is mirrored where the write path can see it.
         defaults.set(preferences.historyRetentionDays, forKey: "org.vela.browser.history-retention-days")

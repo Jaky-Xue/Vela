@@ -564,7 +564,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         sitePermissionRules: [SitePermissionSiteRule]? = nil,
         externalNavigationDefault: ExternalNavigationAppOpenPolicy = .ask,
         externalNavigationRules: [ExternalNavigationSiteRule] = [],
-        restoreTabsOnLaunch: Bool = true,
+        restoreTabsOnLaunch: Bool = false,
         openNewTabsInBackground: Bool = false,
         historyRetentionDays: Int = 90,
         lockPrivateTabs: Bool = false,
@@ -656,7 +656,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     public var topProtectionEnabled: Bool { topProtection ?? true }
 
     /// The resolved switch: 最近关闭 is recorded unless explicitly turned off.
-    public var recentlyClosedKept: Bool { keepsRecentlyClosedTabs ?? true }
+    public var recentlyClosedKept: Bool { keepsRecentlyClosedTabs ?? false }
 
     /// The resolved switch: 允许双指缩放 is on unless explicitly turned off.
     ///
