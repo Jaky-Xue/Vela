@@ -17,7 +17,7 @@ final class ThemeMaterialRegressionTests: XCTestCase {
             for step in 0..<5 {
                 let content = BrowserWelcomeView(initialStep: step, onFinish: {})
                     .environment(\.browserPalette, BrowserPalette.default)
-                    .environment(\.accessibilityReduceMotion, true)
+                    .transaction { $0.disablesAnimations = true }
                     .environment(\.colorScheme, scheme)
                 let controller = UIHostingController(rootView: content)
                 window.overrideUserInterfaceStyle = scheme == .dark ? .dark : .light
