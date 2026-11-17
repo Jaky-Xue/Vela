@@ -24,10 +24,14 @@ extension BrowserShellView {
         // The geometry inside the safe area reports zero insets; a non-zero
         // answer (a view that was deliberately placed edge to edge) is taken
         // as authoritative, and the window probe fills in the rest.
-        safeTop = max(safeTop, geo.safeAreaInsets.top)
-        safeBottom = max(safeBottom, geo.safeAreaInsets.bottom)
-        safeRectHeight = geo.size.height
-        safeRectWidth = geo.size.width
+        let top = max(safeTop, geo.safeAreaInsets.top)
+        let bottom = max(safeBottom, geo.safeAreaInsets.bottom)
+        // Geometry can report on every layout pass. Avoid publishing identical
+        // values back into the shell, which would schedule another pass.
+        if abs(safeTop - top) > 0.5 { safeTop = top }
+        if abs(safeBottom - bottom) > 0.5 { safeBottom = bottom }
+        if abs(safeRectHeight - geo.size.height) > 0.5 { safeRectHeight = geo.size.height }
+        if abs(safeRectWidth - geo.size.width) > 0.5 { safeRectWidth = geo.size.width }
     }
 
     /// Records the window metrics the shell cannot read from its own geometry:

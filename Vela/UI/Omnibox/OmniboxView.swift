@@ -48,11 +48,12 @@ struct OmniboxView: View {
 
     @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         chrome
-            .animation(.easeOut(duration: 0.18), value: viewModel.isEditing)
-            .animation(.easeOut(duration: 0.15), value: viewModel.text.isEmpty)
+            .animation(BrowserMotion.press(reduceMotion), value: viewModel.isEditing)
+            .animation(BrowserMotion.hint(reduceMotion), value: viewModel.text.isEmpty)
     }
 
     @ViewBuilder
@@ -249,6 +250,7 @@ struct AddressProgressLine: View {
     var tint: Color
 
     @State private var sweeping = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isIndeterminate: Bool { isLoading && progress < 0.03 }
 
@@ -259,16 +261,16 @@ struct AddressProgressLine: View {
                     Capsule()
                         .fill(tint.opacity(0.9))
                         .frame(width: max(24, geometry.size.width * 0.28))
-                        .offset(x: sweeping ? geometry.size.width : -geometry.size.width * 0.3)
+                        .offset(x: reduceMotion ? 0 : (sweeping ? geometry.size.width : -geometry.size.width * 0.3))
                         .animation(
-                            .easeInOut(duration: 1.1).repeatForever(autoreverses: false),
+                            reduceMotion ? nil : .easeInOut(duration: 1.1).repeatForever(autoreverses: false),
                             value: sweeping
                         )
                 } else if isLoading || progress > 0 {
                     Capsule()
                         .fill(tint)
                         .frame(width: max(0, geometry.size.width * min(1, progress)))
-                        .animation(.easeOut(duration: 0.2), value: progress)
+                        .animation(BrowserMotion.hint(reduceMotion), value: progress)
                 }
             }
         }
