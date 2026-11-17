@@ -4,6 +4,24 @@ import WebKit
 
 @MainActor
 final class ScriptStorageIntegrationTests: XCTestCase {
+    func testGlobalGMDiscoveryWorksInsideIsolatedScriptWorld() async throws {
+        let server = try LocalHTTPServer(routes: ["/": .html(TestPages.titled("GM discovery"))])
+        let base = try await server.start()
+        defer { server.stop() }
+        let harness = try BrowserHarness()
+        harness.settings.update { $0.userScriptsEnabled = true }
+        let script = InstalledUserScriptState(name: "Global GM", source: "globalThis.GM.setValue('discovered', true).then(function() { window.globalGMReady = true; });", matches: ["*://*/*"], grants: [.gmSetValue], runAt: .documentStart)
+        try harness.coordinator.userScripts.upsert(script)
+        let tab = harness.open(base)
+        await waitForSettled(tab, expectingTitle: "GM discovery")
+        let web = try XCTUnwrap(harness.tabManager.webView(for: tab.id))
+        let world = try XCTUnwrap(harness.coordinator.userScriptWorlds[tab.id + "|" + script.id])
+        try await waitJS("window.globalGMReady === true", web: web, world: world)
+        XCTAssertEqual(try harness.coordinator.userScripts.value(key: "discovered", scriptId: script.id), "true")
+        let denied = try await eval("typeof globalThis.GM.xmlHttpRequest === 'undefined'", web: web, world: world)
+        XCTAssertEqual(denied as? Bool, true)
+    }
+
     private func eval(_ source: String, web: WKWebView, world: String) async throws -> Any {
         try await withCheckedThrowingContinuation { continuation in
             web.evaluateJavaScript("with (window.__velaUserScriptBridge.api) { \(source) }", in: nil, in: .world(name: world)) { continuation.resume(with: $0) }

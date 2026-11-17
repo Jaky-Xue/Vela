@@ -1061,6 +1061,15 @@ public enum UserScriptInjector {
           });
           bridge.api = exposedApi;
 
+          // Each installed script has its own WKContentWorld. Bundled modules
+          // also discover GM through globalThis, outside lexical `with` scope.
+          // Publish only granted APIs in this isolated world, never in .page.
+          Object.keys(exposedApi).forEach(function(name) {
+            Object.defineProperty(globalThis, name, {
+              value: exposedApi[name], configurable: true, writable: true
+            });
+          });
+
           // The GM globals are scoped with `with (api)` below instead of
           // being written to `window`. Each script's API closures carry its
           // own SCRIPT_ID, and two scripts on one page must not overwrite each
@@ -1165,8 +1174,17 @@ public enum UserScriptInjector {
           var GM_addElement = function(parent,tag,attrs) { if(typeof parent==='string'){attrs=tag;tag=parent;parent=document.body||document.documentElement;}var el=document.createElement(tag);Object.keys(attrs||{}).forEach(function(k){if(k==='textContent')el.textContent=attrs[k];else el.setAttribute(k,attrs[k]);});parent.appendChild(el);return el; };
           var GM = {info:GM_info,log:GM_log,addStyle:GM_addStyle,addElement:GM_addElement};
           var run = function() { try { \(body) } catch(error) { console.error(error); } };
-          if (\(jsonString(script.runAt.rawValue)) === 'document-idle' && document.readyState !== 'complete') window.addEventListener('load',run,{once:true});
-          else run();
+          if (\(jsonString(script.runAt.rawValue)) === 'document-idle' && document.readyState !== 'complete') {
+            var started = false;
+            var runOnce = function() {
+              if (started) return;
+              started = true;
+              window.removeEventListener('load', runOnce);
+              run();
+            };
+            window.addEventListener('load',runOnce,{once:true});
+            window.setTimeout(runOnce,5000);
+          } else run();
         })();
         """
     }
