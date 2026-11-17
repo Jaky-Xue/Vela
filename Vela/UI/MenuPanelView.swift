@@ -698,6 +698,6 @@ private struct MenuTileButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed && enabled && !reduceMotion ? 0.92 : 1)
             .opacity(configuration.isPressed && enabled ? 0.7 : 1)
-            .animation(BrowserMotion.press(reduceMotion), value: configuration.isPressed)
+            .animation(BrowserMotion.jellyPress(reduceMotion), value: configuration.isPressed)
     }
 }

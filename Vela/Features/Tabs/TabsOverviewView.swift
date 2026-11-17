@@ -581,7 +581,8 @@ private struct TabCard: View {
     var body: some View {
         VStack(spacing: BrowserSpacing.tight) {
             ZStack(alignment: .topTrailing) {
-                Button(action: onSelect) { cardFace }.buttonStyle(.plain)
+                Button(action: onSelect) { cardFace }
+                    .buttonStyle(JellyPressButtonStyle(pressedScale: 0.97, pressedOpacity: 0.92))
 
                 closeButton
             }

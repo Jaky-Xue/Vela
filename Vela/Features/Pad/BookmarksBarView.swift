@@ -99,69 +99,43 @@ struct BookmarksBarView: View {
 
     private var bar: some View {
         HStack(spacing: 6) {
-            Button(action: onOpenManager) {
-                Image(systemName: "book")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(palette.secondaryText)
-                    .frame(width: 26, height: 26)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(BookmarkBarButtonStyle())
-            .accessibilityLabel("书签管理")
-
-            Rectangle()
-                .fill(palette.separator)
-                .frame(width: 0.5, height: 16)
+            moduleButton(symbol: "book", label: "书签管理", action: onOpenManager)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 2) {
-                    if bookmarks.isEmpty {
-                        Text("书签栏")
-                            .font(.system(size: 11))
-                            .foregroundStyle(palette.secondaryText)
-                            .padding(.horizontal, 6)
-                    } else {
-                        ForEach(bookmarks) { node in
-                            bookmarkButton(node)
-                        }
+                HStack(spacing: 6) {
+                    ForEach(bookmarks) { node in
+                        bookmarkButton(node)
                     }
                 }
+                .padding(.vertical, 4)
             }
 
             Spacer(minLength: 0)
 
-            Button(action: onOpenManager) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(palette.secondaryText.opacity(0.7))
-                    .frame(width: 24, height: 26)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(BookmarkBarButtonStyle())
-            .accessibilityLabel("更多书签")
+            moduleButton(symbol: "chevron.right", label: "更多书签", action: onOpenManager)
         }
-        .padding(.horizontal, 8)
-        .frame(height: 30)
-        // The strip is a floating glass capsule, in the same material and with
-        // the same light as the toolbar's pills above it. The page scrolls
-        // under it, so it reads as an object laid over the document rather
-        // than as a band cut out of the top of it.
-        .browserFloatingChrome(
-            radius: Self.pillRadius,
-            material: .thinMaterial,
-            tintStrength: 0.22,
-            elevation: .card,
-            interactive: false
-        )
-        .luminousSheen(shape: RoundedRectangle(cornerRadius: Self.pillRadius, style: .continuous))
         .padding(.horizontal, 12)
-        .padding(.bottom, 6)
-        .frame(height: 36, alignment: .bottom)
+        .frame(height: 36)
     }
 
-    /// The pill's radius: half of its 30-point height, so the two ends are
-    /// true capsules under the light the sheen lays over them.
-    private static let pillRadius: CGFloat = 15
+    /// A fixed control as its own glass module, the shape every bookmark in
+    /// the row wears.
+    private func moduleButton(
+        symbol: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: symbol == "book" ? 12 : 10, weight: .semibold))
+                .foregroundStyle(palette.secondaryText)
+                .frame(width: 30, height: 28)
+                .contentShape(Rectangle())
+                .bookmarkGlassModule()
+        }
+        .buttonStyle(BookmarkBarButtonStyle())
+        .accessibilityLabel(label)
+    }
 
     private func bookmarkButton(_ node: BookmarkNode) -> some View {
         Button {
@@ -175,9 +149,10 @@ struct BookmarksBarView: View {
                     .foregroundStyle(palette.primaryText)
                     .lineLimit(1)
             }
-            .padding(.horizontal, 6)
-            .frame(height: 26)
+            .padding(.horizontal, 8)
+            .frame(height: 28)
             .contentShape(Rectangle())
+            .bookmarkGlassModule()
         }
         .buttonStyle(BookmarkBarButtonStyle())
         .contextMenu {
@@ -200,23 +175,42 @@ struct BookmarksBarView: View {
     }
 }
 
-/// The press feedback for a bookmark chip: the chip gives under the finger and
-/// springs back, with a capsule of highlight under it the way a Safari bookmark
-/// lights up. A tap that only navigates afterwards leaves the row feeling dead
-/// until the page arrives; the jelly is what says the chip was hit.
+/// The press feedback for a bookmark module: the jelly gives under the finger
+/// and springs back, with a highlight laid over its glass the way a Safari
+/// bookmark lights up. A tap that only navigates afterwards leaves the row
+/// feeling dead until the page arrives; the jelly is what says it was hit.
 private struct BookmarkBarButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.browserPalette) private var palette
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(
-                Capsule().fill(
-                    palette.controlFill.opacity(configuration.isPressed ? 0.75 : 0)
-                )
-            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(palette.controlFill.opacity(configuration.isPressed ? 0.45 : 0))
+                    .allowsHitTesting(false)
+            }
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.9 : 1)
-            .opacity(configuration.isPressed ? 0.72 : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
             .animation(BrowserMotion.jellyPress(reduceMotion), value: configuration.isPressed)
+    }
+}
+
+private extension View {
+    /// One bookmark's own piece of glass.
+    ///
+    /// The row is a shelf of separate jelly modules rather than one continuous
+    /// strip: each bookmark carries the same material, the same light and the
+    /// same shadow as the toolbar's pills above it, and the page shows through
+    /// the gaps between them.
+    func bookmarkGlassModule() -> some View {
+        browserFloatingChrome(
+            radius: 14,
+            material: .thinMaterial,
+            tintStrength: 0.2,
+            elevation: BrowserElevation(radius: 10, y: 4, opacity: 0.08),
+            interactive: false
+        )
+        .luminousSheen(shape: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
