@@ -118,8 +118,10 @@ struct NewTabHomeView: View {
             }
         }
         // The carried tile owns the finger; a scroll underneath it would move
-        // every slot the tile is being aimed at.
-        .scrollDisabled(draggingFavoriteID != nil)
+        // every slot the tile is being aimed at. An open edit menu owns it
+        // too: the page must not start scrolling out from under a press that
+        // is about to become a drag.
+        .scrollDisabled(draggingFavoriteID != nil || menuFavoriteID != nil)
         .background { homeBackground }
         // The blank-page add door is as tall as the page it sits behind, and
         // the scroll content is only as tall as the tiles it holds, so the
