@@ -19,6 +19,14 @@
 - 「登录 Google」「登录 Apple」分别在新标签页打开官方登录页，登录后回到设置，状态行会更新。
 - 「退出所有账号」清除 Google（google.com、accounts.google.com、youtube.com、googleapis.com、gstatic.com 等）与 Apple（apple.com、appleid.apple.com、idmsa.apple.com、account.apple.com、icloud.com）站点的**全部网站数据**（Cookie、本地存储、缓存），并清空本机账号列表。需要确认，不能撤销；不做「只清一个域名」的折中，否则用户会在看不见的地方仍然登录着。
 
+## 预装「沉浸式翻译」用户脚本
+
+- 应用内置 `ImmersiveTranslate.user.js`（1.35.2），首次启动时安装到用户脚本表：`@match *://*/*`，之后就是一个普通脚本——可以停用、更新或删除。删除后不会自动装回。
+- 安装使用内置文件，不依赖下载；脚本声明的 `@require` 依赖仍会在安装时抓取，离线失败则下次启动重试。
+- 「自动检查用户脚本更新」现在默认开启，脚本通过它自己的 `@updateURL` 保持最新。
+- 影响：脚本约 6 MB，每个匹配的页面都会注入，IPA 体积随之增加约 6 MB。
+- 第三方署名与许可已写入 `LICENSE-NOTICE.md`。
+
 ## 安全
 
 - **账号列表存进钥匙串**，不再写进 `UserDefaults`：由系统用设备密钥加密，仅在解锁时可读，且标记为本机专用（备份不会把它带到别的设备）。第一个 4.0.72 构建把列表写在了 `UserDefaults` 里，升级时会一次性搬进钥匙串并删除旧的明文。
@@ -34,5 +42,6 @@
 ## 验证
 
 - 新增 `WebAccountServiceTests`：地址归一化、同服务商去重并更新备注、不同服务商的同一地址是两条、非法地址拒绝、重启后保留、删除只影响一条、两个服务商的登录页与域名各自正确、列表不写进 `UserDefaults`、旧版 `UserDefaults` 列表一次性搬进钥匙串、登录页对用户脚本的保护名单。
+- 新增 `BundledUserScriptTests`：预装脚本确实在应用包里，且元数据可被安装器解析（名称、`*://*/*`、`@updateURL`）。
 - CI 仍需在 iPhone 与 iPad 模拟器上跑完整 XCTest 并构建 Release。
 - **真机未验证**：退出后 Google / Apple 站点是否确实显示为未登录、登录后状态行的刷新时机。

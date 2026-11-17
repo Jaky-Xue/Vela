@@ -163,6 +163,7 @@ public final class AppServices {
         downloads.prepareBackgroundSessionReconnection()
         downloads.reconcileInterruptedTasks()
         userScripts.reload()
+        seedBundledUserScriptIfNeeded()
         if settings.userScriptSettings.autoUpdateEnabled {
             // Off the launch path: the first window must not wait on the
             // network, and a failed check is only a status line.
@@ -183,6 +184,39 @@ public final class AppServices {
         // be built before it is ready, and the environment re-attaches it when
         // `onChange` fires.
         contentBlocker.prepare()
+    }
+
+    /// The one user script Vela ships with.
+    ///
+    /// Immersive Translate (`@match *://*/*`) is installed once, on the first
+    /// launch after the build that carries it, and from then on is an ordinary
+    /// installed script: it can be disabled, updated or deleted. The marker is
+    /// written only when the install succeeded, and a user who deletes the
+    /// script does not get it back — that is what deleting means.
+    private func seedBundledUserScriptIfNeeded() {
+        // Not in a test run: the script is six megabytes, and no test wants it
+        // in the shared script table.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+
+        let marker = "org.vela.browser.seeded-immersive-translate"
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: marker) else { return }
+        guard let url = Bundle(for: AppServices.self).url(
+            forResource: "ImmersiveTranslate.user",
+            withExtension: "js"
+        ), let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+
+        let service = userScripts
+        Task { @MainActor in
+            let result = await service.install(
+                text: text,
+                source: .file,
+                sourceUrl: "https://download.immersivetranslate.com/immersive-translate.user.js"
+            )
+            if case .success = result {
+                defaults.set(true, forKey: marker)
+            }
+        }
     }
 
     /// Removes WebKit's browsing data, after the caller has already cleared

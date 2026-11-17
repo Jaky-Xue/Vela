@@ -51,6 +51,15 @@ GPL-3.0 第 11 条授予专利许可。Vela 没有添加任何 GPL-3.0 第 7 条
 
 **Vela 的实际依赖只有系统框架**：SwiftUI、WebKit、SQLite3、LocalAuthentication、QuickLook、UniformTypeIdentifiers。没有引入任何第三方 Swift 包，没有 `Package.swift`，没有 CocoaPods，没有 Carthage。
 
+### 预装的用户脚本：沉浸式翻译
+
+`Vela/Resources/ImmersiveTranslate.user.js` 随应用一起分发，首次启动时作为普通用户脚本安装（可停用、更新、删除；Vela 不修改它的内容）。
+
+- 来源：<https://download.immersivetranslate.com/immersive-translate.user.js>（随包版本 1.35.2）
+- 项目：<https://github.com/immersive-translate/immersive-translate/>
+- 许可：GPL-3.0
+- 更新：由脚本自己的 `@updateURL` / `@downloadURL` 指向同一地址，经 Vela 的用户脚本更新流程执行
+
 `third_party/mozilla-readability` 在上游树里**只有 `LICENSE.md` 和 `README.md`，没有脚本文件**——这是 Vela 自己重新实现正文提取的原因（见 `PORTING.md`）。
 
 ---
