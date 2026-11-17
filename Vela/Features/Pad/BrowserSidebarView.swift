@@ -23,6 +23,7 @@ import SwiftUI
 struct BrowserSidebarView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var onClose: (() -> Void)? = nil
 
@@ -65,7 +66,7 @@ struct BrowserSidebarView: View {
 
             tabList
         }
-        .animation(.snappy(duration: 0.22), value: isSearching)
+        .animation(BrowserMotion.layout(reduceMotion), value: isSearching)
         .onAppear {
             mode = env.tabManager.activeTab?.privacyMode ?? .regular
         }
@@ -302,7 +303,7 @@ struct BrowserSidebarView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SidebarRowButtonStyle())
 
             Button {
                 env.tabManager.closeTab(id: tab.id)
@@ -379,11 +380,17 @@ struct BrowserSidebarView: View {
     private func selectMode(_ target: BrowserSessionPrivacyMode) {
         guard target != mode else { return }
         guard target == .private, env.requiresPrivateAuthentication else {
-            mode = target
+            // The two halves are a place, not a setting: the selected capsule
+            // travels to the other half with the drawer's own give.
+            withAnimation(BrowserMotion.jelly(reduceMotion)) {
+                mode = target
+            }
             return
         }
         authenticate {
-            mode = .private
+            withAnimation(BrowserMotion.jelly(reduceMotion)) {
+                mode = .private
+            }
         }
     }
 
@@ -415,5 +422,21 @@ struct BrowserSidebarView: View {
                 env.privateAccessNotice = "验证未通过。"
             }
         }
+    }
+}
+
+/// The press feedback for a tab row.
+///
+/// The row dims and gives a hair, so a tap on the drawer's list answers before
+/// the tab has actually switched. The selected row's own tint and edge stay
+/// where they are — only the label moves.
+private struct SidebarRowButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.68 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1, anchor: .leading)
+            .animation(BrowserMotion.press(reduceMotion), value: configuration.isPressed)
     }
 }

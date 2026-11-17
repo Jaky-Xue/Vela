@@ -15,6 +15,7 @@ import SwiftUI
 struct BookmarksBarView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var onNavigate: (URL) -> Void
     var onOpenManager: () -> Void
@@ -65,8 +66,9 @@ struct BookmarksBarView: View {
                 .opacity(isHidden ? 0 : 1)
                 .allowsHitTesting(!isHidden)
                 // Bookmarks added, removed or reordered while the bar is on
-                // screen settle into their new places instead of snapping.
-                .animation(.snappy(duration: 0.24), value: bookmarks.map(\.id))
+                // screen settle into their new places with the same give the
+                // bar itself has.
+                .animation(BrowserMotion.jelly(reduceMotion), value: bookmarks.map(\.id))
                 .sheet(item: $editingNode) { node in
                     BookmarkEditSheet(node: node) { title, url in
                         env.bookmarks.rename(id: node.id, title: title)
@@ -138,24 +140,28 @@ struct BookmarksBarView: View {
             .buttonStyle(BookmarkBarButtonStyle())
             .accessibilityLabel("更多书签")
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
-        // Thin material, not an opaque palette fill: the page scrolls under
-        // this strip, and a fill would make it a solid band of colour across
-        // the top of the document. The tint is only enough to keep the text
-        // legible over a bright page.
-        .background {
-            ZStack {
-                Rectangle().fill(.thinMaterial)
-                palette.chromeBackground.opacity(0.10)
-            }
-        }
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(palette.separator.opacity(0.55))
-                .frame(height: 0.5)
-        }
+        .padding(.horizontal, 8)
+        .frame(height: 30)
+        // The strip is a floating glass capsule, in the same material and with
+        // the same light as the toolbar's pills above it. The page scrolls
+        // under it, so it reads as an object laid over the document rather
+        // than as a band cut out of the top of it.
+        .browserFloatingChrome(
+            radius: Self.pillRadius,
+            material: .thinMaterial,
+            tintStrength: 0.22,
+            elevation: .card,
+            interactive: false
+        )
+        .luminousSheen(shape: RoundedRectangle(cornerRadius: Self.pillRadius, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
+        .frame(height: 36, alignment: .bottom)
     }
+
+    /// The pill's radius: half of its 30-point height, so the two ends are
+    /// true capsules under the light the sheen lays over them.
+    private static let pillRadius: CGFloat = 15
 
     private func bookmarkButton(_ node: BookmarkNode) -> some View {
         Button {
@@ -194,17 +200,23 @@ struct BookmarksBarView: View {
     }
 }
 
-/// The press feedback for a bookmark chip: a short scale and fade under the
-/// finger, the same weight the chrome buttons use. A tap that only navigates
-/// afterwards leaves the row feeling dead until the page arrives.
+/// The press feedback for a bookmark chip: the chip gives under the finger and
+/// springs back, with a capsule of highlight under it the way a Safari bookmark
+/// lights up. A tap that only navigates afterwards leaves the row feeling dead
+/// until the page arrives; the jelly is what says the chip was hit.
 private struct BookmarkBarButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.browserPalette) private var palette
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
-            .opacity(configuration.isPressed ? 0.65 : 1)
-            .animation(
-                .spring(response: 0.22, dampingFraction: 0.75),
-                value: configuration.isPressed
+            .background(
+                Capsule().fill(
+                    palette.controlFill.opacity(configuration.isPressed ? 0.75 : 0)
+                )
             )
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.9 : 1)
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .animation(BrowserMotion.jellyPress(reduceMotion), value: configuration.isPressed)
     }
 }

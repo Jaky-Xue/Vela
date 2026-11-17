@@ -55,7 +55,7 @@ extension BrowserShellView {
                 .padding(.top, chromeHidden ? 0 : padBarsHeight + 4)
         }
         .animation(BrowserMotion.chrome(reduceMotion), value: chromeHidden)
-        .animation(BrowserMotion.sidebar(reduceMotion), value: showPadSidebar)
+        .animation(BrowserMotion.jelly(reduceMotion), value: showPadSidebar)
         // The reader takes the top bar with it on the same curve as the phone
         // layout's command bar, so entering 小说模式 reads as one movement on
         // either layout.
@@ -225,6 +225,9 @@ extension BrowserShellView {
                     tintStrength: 0.32,
                     elevation: .card
                 )
+                .luminousSheen(
+                    shape: RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
+                )
 
                 OmniboxView(
                     viewModel: omnibox,
@@ -258,6 +261,9 @@ extension BrowserShellView {
                     material: .thinMaterial,
                     tintStrength: 0.32,
                     elevation: .card
+                )
+                .luminousSheen(
+                    shape: RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
                 )
             }
             .padding(.horizontal, 12)
@@ -338,6 +344,9 @@ extension BrowserShellView {
                         elevation: .floating,
                         interactive: false
                     )
+                    .luminousSheen(
+                        shape: RoundedRectangle(cornerRadius: BrowserRadius.floating, style: .continuous)
+                    )
                     .padding(.top, 8)
                     .padding(.bottom, 8)
                     .padding(.leading, 8)
@@ -351,19 +360,19 @@ extension BrowserShellView {
         }
     }
 
-    /// Opens or closes the drawer with the shared spring and a soft tap of
+    /// Opens or closes the drawer with the shared jelly and a soft tap of
     /// feedback. The haptic is what makes the panel feel attached to the
     /// button rather than to the animation clock.
     func togglePadSidebar() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-        withAnimation(BrowserMotion.sidebar(reduceMotion)) {
+        withAnimation(BrowserMotion.jelly(reduceMotion)) {
             showPadSidebar.toggle()
         }
     }
 
     func closePadSidebar() {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-        withAnimation(BrowserMotion.sidebar(reduceMotion)) {
+        withAnimation(BrowserMotion.jelly(reduceMotion)) {
             showPadSidebar = false
         }
     }
@@ -374,16 +383,21 @@ extension BrowserShellView {
 
 // MARK: - Sidebar entrance
 
-/// How the drawer arrives: a touch smaller and a touch to the leading side,
-/// settling into place under the spring. The scale is what gives the panel its
-/// jelly weight; the offset keeps it from appearing out of thin air.
+/// How the drawer arrives: narrower and a touch taller than it settles, so the
+/// spring has something to give back — squash and stretch, the jelly the panel
+/// is supposed to have. The offset keeps it from appearing out of thin air and
+/// the scale is anchored to the leading edge the drawer is hinged on.
 private struct SidebarEntrance: ViewModifier {
     var isPresented: Bool
 
     func body(content: Content) -> some View {
         content
             .opacity(isPresented ? 1 : 0)
-            .scaleEffect(isPresented ? 1 : 0.94, anchor: .leading)
-            .offset(x: isPresented ? 0 : -22)
+            .scaleEffect(
+                x: isPresented ? 1 : 0.84,
+                y: isPresented ? 1 : 1.04,
+                anchor: .leading
+            )
+            .offset(x: isPresented ? 0 : -30)
     }
 }

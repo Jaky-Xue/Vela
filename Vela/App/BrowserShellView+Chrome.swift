@@ -264,6 +264,9 @@ extension BrowserShellView {
             tintStrength: 0.32,
             elevation: .card
         )
+        .luminousSheen(
+            shape: RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
+        )
     }
 
     /// One control in the bar. Back keeps its long-press history, and the tab

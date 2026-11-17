@@ -66,6 +66,9 @@ struct FindBar: View {
             tintStrength: 0.55,
             elevation: .card
         )
+        .luminousSheen(
+            shape: RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
+        )
         .onAppear { isFocused = true }
     }
 

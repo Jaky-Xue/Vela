@@ -65,6 +65,9 @@ struct OmniboxView: View {
                     tintStrength: 0.32,
                     elevation: .card
                 )
+                .luminousSheen(
+                    shape: RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
+                )
                 .overlay {
                     RoundedRectangle(cornerRadius: BrowserRadius.omnibox, style: .continuous)
                         .strokeBorder(fieldStroke, lineWidth: fieldStrokeWidth)

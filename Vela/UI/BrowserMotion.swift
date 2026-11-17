@@ -11,8 +11,11 @@
 //
 //  The rules, in order:
 //
-//    1. Restraint over bounce. Nothing here overshoots by more than a couple of
-//       points; a browser that boings reads as a toy.
+//    1. Restraint over bounce — for text and page surfaces. A paragraph never
+//       overshoots and the document never wobbles. The chrome is a different
+//       kind of thing: the drawer, the floating bars and a pressed chip are
+//       objects being lifted off the page, and they are allowed their jelly.
+//       A browser where everything boings still reads as a toy.
 //    2. Large surfaces move slowly, small feedback moves quickly. An overview
 //       rising from the bottom edge earns a longer curve than a press.
 //    3. One protagonist at a time. When two things animate together — the
@@ -50,6 +53,13 @@ enum BrowserMotion {
     /// Panels with physical weight: the iPad sidebar drawer, the menu's grid.
     /// A little overshoot is the point; it is what makes them read as objects.
     static let expressive = Animation.spring(response: 0.44, dampingFraction: 0.72)
+
+    /// The jelly. The drawer arriving, a floating bar settling, a chip pressed:
+    /// an object lifted off the page gives visibly under its own weight, and
+    /// the oven-fresh bounce is what makes it read as an object rather than as
+    /// a layer of paint. The bounciest curve in the set, and deliberately never
+    /// used for text or a page surface.
+    private static let jellyCurve = Animation.spring(response: 0.5, dampingFraction: 0.6)
 
     /// A released gesture returning home: the edge swipe's settle, the drag of
     /// a tile that did not move. Quick enough that the completed action never
@@ -126,6 +136,15 @@ enum BrowserMotion {
 
     /// The iPad sidebar drawer: weight, a little overshoot.
     static func sidebar(_ reduced: Bool) -> Animation { reduced ? quiet : expressive }
+
+    /// The jelly: the drawer arriving, a floating bar settling.
+    static func jelly(_ reduced: Bool) -> Animation { reduced ? quiet : jellyCurve }
+
+    /// A press that gives under the finger and springs back: a bookmark chip,
+    /// a floating control.
+    static func jellyPress(_ reduced: Bool) -> Animation? {
+        reduced ? nil : .spring(response: 0.3, dampingFraction: 0.55)
+    }
 
     /// A released edge-swipe returning to rest.
     static func settle(_ reduced: Bool) -> Animation { reduced ? quiet : tracking }
