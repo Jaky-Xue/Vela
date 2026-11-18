@@ -685,6 +685,11 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                 )
             }
         }
+        // The layout this page is about to be given. The desktop viewport
+        // rewrite below has to agree with it, and the identity is now decided
+        // by WebKit's content mode rather than by a string this file writes.
+        let pageIdentity = webIdentity(for: tab, url: url)
+
         // 桌面版: a `width=device-width` page is laid out at 1200 CSS pixels
         // and scaled to fit, so a 768–1024-wide iPad enters the site's desktop
         // breakpoints instead of its tablet ones. Added after the forced-zoom
