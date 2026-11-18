@@ -4,6 +4,10 @@ import SwiftUI
 enum BrowserActivity {
     static let key = "org.vela.browser.activity.days"
 
+    /// Posted after a day's count changes, so a grid on screen can redraw the
+    /// cell that moved instead of waiting for the next appearance.
+    static let recordedNotification = Notification.Name("org.vela.browser.activity.recorded")
+
     static func record() {
         let defaults = UserDefaults.standard
         let calendar = Calendar.current
@@ -14,6 +18,7 @@ enum BrowserActivity {
         let cutoff = calendar.date(byAdding: .day, value: -90, to: today)!.timeIntervalSince1970
         days = days.filter { (Double($0.key) ?? 0) >= cutoff }
         defaults.set(days, forKey: key)
+        NotificationCenter.default.post(name: recordedNotification, object: nil)
     }
 }
 
@@ -52,22 +57,22 @@ struct BrowserActivityGrid: View {
 
     /// The heat map is a grid of rounded squares, the way every contribution
     /// graph is read: a square says "one day, one cell", and a rectangle lying
-    /// on its side reads as a bar chart instead. The side is capped so a wide
-    /// settings column does not turn the card into a wall of 45-point blocks —
-    /// the grid stays a compact square graph in the middle of the row.
+    /// on its side reads as a bar chart instead. The side follows the row's
+    /// width so the grid fills it — a capped grid left grown-up columns with
+    /// empty margins on both sides.
     private static let spacing: CGFloat = 5
     private static let columns = 12
     private static let rows = 7
-    private static let maximumSide: CGFloat = 26
     private static let minimumSide: CGFloat = 10
 
     @State private var measuredWidth: CGFloat = 0
+    @State private var hasLoaded = false
 
     private var side: CGFloat {
         let fit = (measuredWidth - Self.spacing * CGFloat(Self.columns - 1))
             / CGFloat(Self.columns)
-        guard measuredWidth > 0 else { return Self.maximumSide }
-        return min(Self.maximumSide, max(Self.minimumSide, fit))
+        guard measuredWidth > 0 else { return Self.minimumSide * 2 }
+        return max(Self.minimumSide, fit)
     }
 
     private var gridHeight: CGFloat {
@@ -110,9 +115,27 @@ struct BrowserActivityGrid: View {
             }
         }
         .onPreferenceChange(ActivityGridWidthKey.self) { measuredWidth = $0 }
+        // A sign-in records a day. The cell moves from its empty tone towards
+        // the blue over the animation, so the tap is answered where it
+        // happened rather than only after the next visit to this screen.
+        .onReceive(NotificationCenter.default.publisher(for: BrowserActivity.recordedNotification)) { _ in
+            let updated = UserDefaults.standard.dictionary(forKey: BrowserActivity.key) as? [String: Int] ?? [:]
+            withAnimation(.easeInOut(duration: 0.9)) {
+                days = updated
+            }
+        }
         .onAppear {
+            let loaded = UserDefaults.standard.dictionary(forKey: BrowserActivity.key) as? [String: Int] ?? [:]
+            if hasLoaded {
+                // Back from a sign-in window: the day gained a level while
+                // this screen was behind it, and the cell should be seen
+                // arriving rather than appear already bright.
+                withAnimation(.easeInOut(duration: 0.9)) { days = loaded }
+            } else {
+                days = loaded
+                hasLoaded = true
+            }
             visible = true
-            days = UserDefaults.standard.dictionary(forKey: BrowserActivity.key) as? [String: Int] ?? [:]
         }
         .onDisappear { visible = false; glowing = false }
         .task(id: animates) {

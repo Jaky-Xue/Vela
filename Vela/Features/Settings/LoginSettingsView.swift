@@ -140,7 +140,10 @@ struct LoginSettingsView: View {
         // The sign-in page opens in front of the settings, in a small window,
         // and shares the browser's cookie jar: what is signed in there is
         // signed in for the browser.
-        .sheet(item: $signInProvider) { provider in
+        // A full-screen cover rather than a sheet: the sign-in page draws its
+        // own window, because a system sheet is moved by UIKit when the
+        // keyboard comes up and the page inside jumps with it.
+        .fullScreenCover(item: $signInProvider) { provider in
             LoginWebSheet(provider: provider) {
                 Task { await service.refreshSessions() }
             }
@@ -247,6 +250,10 @@ struct LoginSettingsView: View {
     private func providerCard(_ provider: WebAccountProvider) -> some View {
         let session = service.session(for: provider)
         return Button {
+            // The activity grid sits above these cards: a sign-in is a sign the
+            // browser was used today, and the cell answering the tap is the
+            // point of recording it here rather than at launch.
+            BrowserActivity.record()
             signInProvider = provider
         } label: {
             HStack(spacing: 12) {

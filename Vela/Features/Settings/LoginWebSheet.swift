@@ -21,6 +21,7 @@ import WebKit
 struct LoginWebSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     let provider: WebAccountProvider
     var onFinish: () -> Void
@@ -28,7 +29,43 @@ struct LoginWebSheet: View {
     @State private var isLoading = true
     @State private var keyboardVisible = false
 
+    /// A full-screen cover that *draws* the small window on iPad.
+    ///
+    /// It used to be a system sheet. UIKit moves a presented sheet up when a
+    /// docked keyboard would cover its first responder, and with a web page
+    /// inside that means the whole window jumps — the top slides under the
+    /// status bar and the bottom disappears behind the keyboard. A cover has
+    /// nothing to move: the card stays centred, the keyboard overlays it, and
+    /// the page scrolls inside its own viewport.
     var body: some View {
+        Group {
+            if sizeClass == .regular {
+                ZStack {
+                    Color.black.opacity(0.4).ignoresSafeArea()
+                    signInPage
+                        .frame(maxWidth: 640, maxHeight: 760)
+                        .background(Color(uiColor: .systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                        .shadow(color: .black.opacity(0.4), radius: 34, y: 16)
+                        .padding(44)
+                }
+            } else {
+                signInPage
+            }
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+            keyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+            keyboardVisible = false
+        }
+        // The window is drawn over the screen it was opened from, as the
+        // system sheet did — a cover's own background would black it out.
+        .presentationBackground(.clear)
+    }
+
+    private var signInPage: some View {
         NavigationStack {
             Group {
                 if let url = provider.signInURL {
@@ -75,15 +112,6 @@ struct LoginWebSheet: View {
                 }
             }
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
-            keyboardVisible = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
-            keyboardVisible = false
-        }
-        .presentationDetents([.large])
-        .presentationCompactAdaptation(.fullScreenCover)
     }
 }
 
