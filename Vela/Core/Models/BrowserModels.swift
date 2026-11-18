@@ -490,7 +490,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
     /// 打开。Optional for the same decode reason as the two fields above —
     /// an absent key decodes to the default, which is off.
     public var privateBrowsingMode: Bool?
-    public var autoClosePrivateTabs: Bool?
+    public var burnTabsOnBackground: Bool?
     /// 主页收藏的自定义：图标大小、磁贴形状、磁贴间距。三者都 optional，
     /// 缺省时走代码里的原值 — 解码原因同上，老安装的文档里没有这些键。
     public var homeTileIconSize: Double?
@@ -580,7 +580,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         backgroundImageStamp: Double? = nil,
         topProtection: Bool? = true,
         privateBrowsingMode: Bool? = false,
-        autoClosePrivateTabs: Bool? = true,
+        burnTabsOnBackground: Bool? = false,
         homeTileIconSize: Double? = nil,
         homeTileShape: String? = nil,
         homeTileSpacing: Double? = nil,
@@ -628,7 +628,7 @@ public struct BrowserPreferences: Codable, Equatable, Sendable {
         self.backgroundImageStamp = backgroundImageStamp
         self.topProtection = topProtection
         self.privateBrowsingMode = privateBrowsingMode
-        self.autoClosePrivateTabs = autoClosePrivateTabs
+        self.burnTabsOnBackground = burnTabsOnBackground
         self.homeTileIconSize = homeTileIconSize
         self.homeTileShape = homeTileShape
         self.homeTileSpacing = homeTileSpacing

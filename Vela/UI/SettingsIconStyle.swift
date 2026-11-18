@@ -158,7 +158,7 @@ extension SettingsDestination {
         case .login:
             return "登录 账号 账户 谷歌 苹果 google apple account login sign in gmail icloud"
         case .general:
-            return "通用 基础 启动 默认 general startup basic"
+            return "通用 基础 启动 默认 阅后即焚 自动关闭标签页 general startup basic"
         case .appearance:
             return "外观 主题 配色 颜色 深浅色 夜间 背景 图标 字体 theme appearance palette color"
         case .toolbar:

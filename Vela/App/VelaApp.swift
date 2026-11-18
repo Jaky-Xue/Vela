@@ -159,15 +159,17 @@ private struct BrowserWindowRoot: View {
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .background:
-                    environment.tabManager.persistSession()
                     // The vault does not stay open behind a backgrounded app:
                     // unlocking again is the whole point of the lock. The same
                     // rule covers 无痕 content, which is verified per foreground
                     // session rather than once per launch.
                     environment.passwords.lock()
                     environment.lockPrivateAccess()
-                    if environment.settings.preferences.autoClosePrivateTabs ?? true {
+                    if environment.settings.preferences.burnTabsOnBackground ?? false {
                         let env = environment
+                        if !env.tabManager.regularTabs.isEmpty {
+                            env.tabManager.closeAllTabs(privacyMode: .regular)
+                        }
                         let expectedGeneration = environment.privateNovelSessionGeneration
                         if let token = env.beginEndPrivateSession(expectedGeneration: expectedGeneration) {
                             let lease = PrivateCleanupBackgroundLease()
@@ -177,6 +179,7 @@ private struct BrowserWindowRoot: View {
                             }
                         }
                     }
+                    environment.tabManager.persistSession()
                     // Queued transfers start now so they ride the background
                     // session instead of waiting for a foreground the user may
                     // not return to before the file is wanted.

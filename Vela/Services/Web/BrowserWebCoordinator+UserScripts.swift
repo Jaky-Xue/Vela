@@ -51,7 +51,8 @@ extension BrowserWebCoordinator {
         let frame = message.frameInfo
         let frameKey = contextKey + "|" + token
         if type == "authorize" {
-            guard userScriptFrames.keys.filter({ $0.hasPrefix(tab.id + "|") }).count < 256 else { return }
+            guard userScriptFrames[frameKey] == nil,
+                  userScriptFrames.keys.lazy.filter({ $0.hasPrefix(tab.id + "|") }).prefix(256).count < 256 else { return }
             userScriptFrames[frameKey] = frame
             if UserScriptService.permitsPageWorld(script), settings.userScriptSettings.pageWorldApprovals?[script.id] == script.updatedAt {
                 webView.evaluateJavaScript(UserScriptInjector.pageWorldSource(for: script), in: frame, in: .page) { _ in }

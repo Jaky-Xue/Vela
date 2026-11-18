@@ -82,28 +82,17 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             // `100vh`, so a site that reads the document rather than the
             // header saw a phone and laid out a phone. This is the same switch
             // Safari's 请求桌面网站 flips.
-            preferences.preferredContentMode = self.preferredContentMode(
-                for: navigationAction.request.url,
-                in: webView
-            )
-            // The rule list belongs to the page, not to the web view that was
-            // born showing another site. A tab that navigates from a blocked
-            // site to an excepted one otherwise keeps the old site's list, so
-            // 白名单 appears to do nothing until a new tab is opened. Only a
-            // main-frame navigation changes the page; an iframe must not speak
-            // for the tab.
-            if navigationAction.targetFrame?.isMainFrame == true,
-               let scheme = navigationAction.request.url?.scheme?.lowercased(),
-               scheme == "http" || scheme == "https" {
-                // The first request must not wait for rule compilation. The
-                // compiled list is attached to open views by onChange when it
-                // becomes available, and subsequent navigations use it.
-                self.syncContentBlocker(
-                    forHost: navigationAction.request.url?.host,
-                    in: webView
-                )
+            let targetsMainFrame = navigationAction.targetFrame?.isMainFrame == true
+            let url = navigationAction.request.url
+            if targetsMainFrame || navigationAction.targetFrame == nil {
+                preferences.preferredContentMode = self.preferredContentMode(for: url, in: webView)
             }
-            decisionHandler(self.resolvePolicy(for: navigationAction, in: webView), preferences)
+            let policy = self.resolvePolicy(for: navigationAction, in: webView)
+            if policy == .allow, targetsMainFrame,
+               let scheme = url?.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+                self.syncContentBlocker(forHost: url?.host, in: webView)
+            }
+            decisionHandler(policy, preferences)
         }
     }
 
@@ -246,42 +235,19 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             return .allow
         }
 
-        // The scripts belong to this page, so they are chosen here, for this
-        // URL, before WebKit starts the document.
-        refreshUserScripts(webView: webView, tab: tab, url: url)
-
-        // 4. The identifier can depend on the host, and a link tap reaches
-        //    this point after the request was built with the previous page's
-        //    identifier. A YouTube link opened from another page therefore
-        //    carried the iPad identifier and was served the desktop site — the
-        //    player this engine cannot caption. The same gap ran the other way:
-        //    leaving a video site kept the phone identifier on the next host,
-        //    while the layout came from the new host. The load is cancelled and
-        //    re-issued once, the way the app-link rewrite below does it, under
-        //    the identity the destination needs.
-        if !tab.isOfflinePage,
-           navigationAction.navigationType == .linkActivated
-            || navigationAction.navigationType == .other,
-           pendingIdentityReloads.remove(url.absoluteString) == nil {
-            let identity = webIdentity(for: tab, url: url)
-            // `customUserAgent` reads back as the empty string after an
-            // assignment of nil, so the two spellings of "no override" are
-            // compared as one.
-            if (webView.customUserAgent ?? "") != (identity.customUserAgent ?? "") {
-                if pendingIdentityReloads.count > 16 {
-                    pendingIdentityReloads.removeAll()
-                }
-                pendingIdentityReloads.insert(url.absoluteString)
-                webView.customUserAgent = identity.customUserAgent
-                let target = tab
-                // Off the policy callback's own turn: the cancel has to be
-                // delivered before a new load starts on the same web view.
-                Task { @MainActor in
-                    _ = self.tabManager?.load(url: url, in: target)
-                }
-                return .cancel
-            }
+        // Apply the destination identity before either rewrite can issue a request.
+        let isWebNavigation = !tab.isOfflinePage && (scheme == "http" || scheme == "https")
+        let identity = webIdentity(for: tab, url: url)
+        let identityChanged = isWebNavigation
+            && (webView.customUserAgent ?? "") != (identity.customUserAgent ?? "")
+        if identityChanged {
+            webView.customUserAgent = identity.customUserAgent
         }
+        let canReplayLink = isWebNavigation
+            && (navigationAction.navigationType == .linkActivated || navigationAction.navigationType == .other)
+            && navigationAction.request.httpMethod == "GET"
+            && navigationAction.request.httpBody == nil
+            && navigationAction.request.httpBodyStream == nil
 
         // 5. A tapped universal link on a registered app-link domain is
         //    rewritten onto the web page instead of into the installed app —
@@ -298,13 +264,27 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         //    is sent twice by it. Form posts keep their bodies and
         //    back-forward and reload re-display what is already loaded, so
         //    neither is rewritten.
-        if navigationAction.navigationType == .linkActivated
-            || navigationAction.navigationType == .other,
+        if canReplayLink,
            Self.isRegisteredAppLinkHost(url.host),
-           pendingAppLinkReloads.remove(url.absoluteString) == nil {
+           pendingAppLinkReloads.removeValue(forKey: tab.id) != url.absoluteString {
             rewriteAppLink(url, in: webView, tab: tab, type: typeName)
             return .cancel
         }
+
+        if identityChanged, canReplayLink {
+            let request = navigationAction.request
+            Task { @MainActor [weak self, weak webView] in
+                guard let webView, self?.tab(for: webView)?.id == tab.id else { return }
+                var updated = request
+                updated.setValue(nil, forHTTPHeaderField: "User-Agent")
+                webView.load(updated)
+            }
+            return .cancel
+        }
+
+        // Install the destination's scripts once the request has the final
+        // page identity and any app-link rewrite has come back through policy.
+        refreshUserScripts(webView: webView, tab: tab, url: url)
 
         // 6. A user-typed or link navigation updates the pending URL so the
         //    address bar shows it immediately, before the page commits. iOS
@@ -485,7 +465,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
             // `pendingAppLinkReloads` exactly once.
             if let url = webView.url,
                Self.isRegisteredAppLinkHost(url.host) {
-                if self.pendingAppLinkReloads.remove(url.absoluteString) == nil {
+                if self.pendingAppLinkReloads[tab.id] != url.absoluteString {
                     self.rewriteAppLink(url, in: webView, tab: tab, type: "redirect")
                     return
                 }

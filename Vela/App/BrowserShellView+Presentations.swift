@@ -291,6 +291,8 @@ extension BrowserShellView {
             .sheet(isPresented: bookmarksSheetBinding) {
                 NavigationStack { BookmarksView(onClose: { showBookmarks = false }) }
                     .environment(env)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
                     .presentationBackground(.thinMaterial)
             }
     }

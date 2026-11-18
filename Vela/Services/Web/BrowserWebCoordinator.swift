@@ -117,14 +117,10 @@ public final class BrowserWebCoordinator: NSObject {
     /// permission.
     ///
     /// A navigation the web view starts itself carries no app-link permission;
-    /// the set is how the re-issued load is recognised on its way back through
+    /// the per-tab URL is how the re-issued load is recognised on its way back through
     /// the policy callback and allowed as the plain web navigation it is,
     /// rather than being rewritten again — which would loop forever.
-    var pendingAppLinkReloads: Set<String> = []
-    /// A navigation cancelled to re-issue it under the identifier its host
-    /// needs (the video-site rule). One entry per navigation, so the
-    /// re-issued load is allowed through.
-    var pendingIdentityReloads: Set<String> = []
+    var pendingAppLinkReloads: [String: String] = [:]
 
     /// Answers the user gave without choosing "以后对这个网站都这样".
     ///
@@ -183,6 +179,7 @@ public final class BrowserWebCoordinator: NSObject {
     /// timeout; the GM tab state and menu commands belong to the document and
     /// are meaningless without it.
     func cleanupClosedTab(_ tab: BrowserTabState) {
+        pendingAppLinkReloads.removeValue(forKey: tab.id)
         let prefix = "\(tab.id)|"
         for key in Array(userScriptXHRTasks.keys) where key.hasPrefix(prefix) {
             userScriptXHRTasks.removeValue(forKey: key)?.cancel()
@@ -519,13 +516,7 @@ public final class BrowserWebCoordinator: NSObject {
     /// The cancellation happens before any request goes out, so the rewrite
     /// costs no second fetch.
     func rewriteAppLink(_ url: URL, in webView: WKWebView, tab: BrowserTabState, type: String) {
-        if pendingAppLinkReloads.count > 16 {
-            // The re-issued load normally removes its own entry within one
-            // policy round. A web view torn down between the two leaves the
-            // string behind, and this is what stops them accumulating.
-            pendingAppLinkReloads.removeAll()
-        }
-        pendingAppLinkReloads.insert(url.absoluteString)
+        pendingAppLinkReloads[tab.id] = url.absoluteString
         log(
             tab: tab,
             event: .appLink,
@@ -810,7 +801,10 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
            let pageURL = url,
            !WebAccountProvider.isProtectedSignInHost(pageURL.host ?? "") {
             let installed = (try? userScripts.enabledScripts()) ?? []
-            let matching = installed.sorted { $0.createdAt < $1.createdAt }
+            let matching = installed.sorted { lhs, rhs in
+                if lhs.createdAt == rhs.createdAt { return lhs.id < rhs.id }
+                return lhs.createdAt < rhs.createdAt
+            }
             if !matching.isEmpty {
                 var worlds: [String: String] = [:]
                 for script in matching {

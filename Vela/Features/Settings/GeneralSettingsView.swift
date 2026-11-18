@@ -45,6 +45,15 @@ struct GeneralSettingsView: View {
             }
 
             Section {
+                Toggle("阅后即焚", isOn: Binding(
+                    get: { env.settings.preferences.burnTabsOnBackground ?? false },
+                    set: { value in env.settings.update { $0.burnTabsOnBackground = value } }
+                ))
+            } footer: {
+                Text("退到后台时自动关闭普通和无痕标签页，并清除该次无痕会话的网页数据。")
+            }
+
+            Section {
                 Toggle("不保留标签页", isOn: Binding(
                     get: { env.settings.preferences.tabsNotRetained ?? false },
                     set: { value in env.setTabsNotRetained(value) }

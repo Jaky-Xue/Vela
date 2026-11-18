@@ -64,7 +64,7 @@ struct NewTabHomeView: View {
     /// vertical travel is not a chrome swipe either.
     @State private var suppressFavoriteTap = false
     @State private var suppressChromeSwipe = false
-    /// The tile whose edit menu opened after a stationary hold.
+    /// The tile whose edit menu appeared during a stationary hold.
     @State private var menuFavoriteID: String?
     /// The page's own height, so the blank-page add door can fill it.
     @State private var homeViewportHeight: CGFloat = 0
@@ -114,14 +114,13 @@ struct NewTabHomeView: View {
         .overlay(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
                 favoriteMenuLayer
+                    .allowsHitTesting(heldFavoriteID == nil)
                 floatingFavoriteLayer
             }
         }
         // The carried tile owns the finger; a scroll underneath it would move
-        // every slot the tile is being aimed at. An open edit menu owns it
-        // too: the page must not start scrolling out from under a press that
-        // is about to become a drag.
-        .scrollDisabled(draggingFavoriteID != nil || menuFavoriteID != nil)
+        // every slot the tile is being aimed at.
+        .scrollDisabled(draggingFavoriteID != nil)
         .background { homeBackground }
         // The blank-page add door is as tall as the page it sits behind, and
         // the scroll content is only as tall as the tiles it holds, so the
@@ -138,8 +137,15 @@ struct NewTabHomeView: View {
             homeViewportHeight = height
         }
         .onChange(of: heldFavoriteID) { previous, current in
-            guard current == nil, let previous else { return }
-            finishFavoriteHold(id: previous)
+            if let current, draggingFavoriteID == nil {
+                showFavoriteMenu(id: current)
+            } else if current == nil, let previous {
+                if draggingFavoriteID == previous {
+                    endFavoriteDrag()
+                } else {
+                    DispatchQueue.main.async { suppressFavoriteTap = false }
+                }
+            }
         }
         // A tile that disappears — removed, or reordered away — must not leave
         // its menu floating over the shelf.
@@ -413,7 +419,7 @@ struct NewTabHomeView: View {
         // press, the other one is lost. The long press here is the lift; a
         // lift that ends where it began offers the same actions.
         .accessibilityLabel(favorite.displayTitle)
-        .accessibilityHint("长按后松手打开菜单，长按后移动可排序")
+        .accessibilityHint("长按显示编辑菜单，继续移动可排序")
         .accessibilityAction(named: Text("编辑图标")) { editingFavorite = favorite }
     }
 
@@ -492,7 +498,8 @@ struct NewTabHomeView: View {
         let below = center.y + halfRow + halfMenu + gap
         let top = halfMenu + 8
         let bottom = homeViewportHeight - halfMenu - 8
-        let y = above >= top ? above : min(below, max(bottom, top))
+        let preferredY = below <= bottom ? below : above
+        let y = min(max(preferredY, top), max(bottom, top))
 
         let halfWidth = Self.menuSize.width / 2
         let left = favoriteGridFrame.minX + halfWidth
@@ -501,8 +508,8 @@ struct NewTabHomeView: View {
         return (favorite, CGPoint(x: x, y: y))
     }
 
-    /// The panel's size: four 40-point rows and three hairlines.
-    private static let menuSize = CGSize(width: 186, height: 162)
+    /// The panel's size: four 44-point rows and three hairlines.
+    private static let menuSize = CGSize(width: 186, height: 178)
 
     private func closeFavoriteMenu() {
         guard menuFavoriteID != nil else { return }
@@ -614,18 +621,17 @@ struct NewTabHomeView: View {
                 if draggingFavoriteID == nil {
                     guard hypot(drag.translation.width, drag.translation.height) >= 12 else { return }
                     beginFavoriteDrag(favorite)
+                    if draggingFavoriteID == favorite.id {
+                        closeFavoriteMenu()
+                    }
                 }
                 moveFavorite(favorite, translation: drag.translation, at: drag.location)
             }
     }
 
-    private func finishFavoriteHold(id: String) {
-        if draggingFavoriteID == id {
-            endFavoriteDrag()
-            return
-        }
-        DispatchQueue.main.async { suppressFavoriteTap = false }
+    private func showFavoriteMenu(id: String) {
         guard favorites.contains(where: { $0.id == id }) else { return }
+        suppressFavoriteTap = true
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(BrowserMotion.jelly(reduceMotion)) {
             menuFavoriteID = id
@@ -838,7 +844,7 @@ private struct FavoriteActionMenu: View {
             }
             .foregroundStyle(tint ?? palette.primaryText)
             .padding(.horizontal, 12)
-            .frame(height: 40)
+            .frame(height: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(JellyPressButtonStyle(pressedScale: 0.98, pressedOpacity: 0.7))
