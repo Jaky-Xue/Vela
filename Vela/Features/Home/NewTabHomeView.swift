@@ -51,6 +51,7 @@ struct NewTabHomeView: View {
     private static let favoriteDragSpace = "vela.home.favorites"
     /// The tile under the finger, once a long press has lifted it.
     @State private var draggingFavoriteID: String?
+    @GestureState private var heldFavoriteID: String?
     @State private var favoriteDragTranslation: CGSize = .zero
     @State private var favoriteDragStartCenter: CGPoint = .zero
     @State private var favoriteDragStartSize: CGSize = .zero
@@ -63,8 +64,7 @@ struct NewTabHomeView: View {
     /// vertical travel is not a chrome swipe either.
     @State private var suppressFavoriteTap = false
     @State private var suppressChromeSwipe = false
-    /// The tile whose edit menu is open. A held press opens it; moving the
-    /// same press turns it into a drag and closes the menu.
+    /// The tile whose edit menu opened after a stationary hold.
     @State private var menuFavoriteID: String?
     /// The page's own height, so the blank-page add door can fill it.
     @State private var homeViewportHeight: CGFloat = 0
@@ -137,6 +137,10 @@ struct NewTabHomeView: View {
         .onPreferenceChange(HomeViewportHeightKey.self) { height in
             homeViewportHeight = height
         }
+        .onChange(of: heldFavoriteID) { previous, current in
+            guard current == nil, let previous else { return }
+            finishFavoriteHold(id: previous)
+        }
         // A tile that disappears — removed, or reordered away — must not leave
         // its menu floating over the shelf.
         .onChange(of: favorites.count) { _, _ in
@@ -167,9 +171,7 @@ struct NewTabHomeView: View {
 
     // MARK: - Start page
 
-    /// The only state with words on it: the home has no tiles yet, or it is
-    /// 无痕模式, whose shelf is read-only and therefore always empty. One
-    /// quiet line is what keeps a bare field from reading as a failed page.
+    /// The empty shelf offers the first shortcut.
     private var emptyHome: some View {
         VStack(spacing: 14) {
             AccentGlyphBadge(
@@ -185,22 +187,18 @@ struct NewTabHomeView: View {
                 .foregroundStyle(homeSecondaryText)
                 .multilineTextAlignment(.center)
 
-            // 无痕模式 keeps the shelf read-only: adding here would write a
-            // shared favourite from a private session.
-            if !isPrivate {
-                Button {
-                    showingNewFavorite = true
-                } label: {
-                    Label("添加图标", systemImage: "plus")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(homePrimaryText)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(palette.controlFill.opacity(0.7), in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 2)
+            Button {
+                showingNewFavorite = true
+            } label: {
+                Label("添加图标", systemImage: "plus")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(homePrimaryText)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(palette.controlFill.opacity(0.7), in: Capsule())
             }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
         }
         .shadow(color: homeTextShadow, radius: 8, y: 1)
         .frame(maxWidth: .infinity)
@@ -216,29 +214,17 @@ struct NewTabHomeView: View {
     /// tiles. It sits behind the shelf rather than around it, so pressing a
     /// tile reaches the tile's own long press and pressing the space beside
     /// the tiles reaches this one.
-    ///
-    /// 无痕模式 writes nothing, so it gets no menu at all; the clear fill is
-    /// still drawn so the stack keeps the page's width.
-    @ViewBuilder
     private var homeAddSurface: some View {
-        if isPrivate {
-            Color.clear
-        } else {
-            Color.clear
-                .frame(maxWidth: .infinity, minHeight: homeViewportHeight)
-                .contentShape(Rectangle())
-                // A tap anywhere on the blank page brings the command bar
-                // back. A page's scroll does that job everywhere else, and
-                // the home has no document to scroll, so a bar dragged away
-                // here used to have no way home.
-                .onTapGesture { onChromeSwipe?(60) }
-                .simultaneousGesture(chromeSwipeGesture)
-                .contextMenu {
-                    Button("添加图标", systemImage: "plus") {
-                        showingNewFavorite = true
-                    }
+        Color.clear
+            .frame(maxWidth: .infinity, minHeight: homeViewportHeight)
+            .contentShape(Rectangle())
+            .onTapGesture { onChromeSwipe?(60) }
+            .simultaneousGesture(chromeSwipeGesture)
+            .contextMenu {
+                Button("添加图标", systemImage: "plus") {
+                    showingNewFavorite = true
                 }
-        }
+            }
     }
 
     // MARK: - Command bar
@@ -315,7 +301,7 @@ struct NewTabHomeView: View {
     /// rename, a name-visibility flip or a removal repaint the grid without a
     /// reload call at the call site.
     private var favorites: [HomeFavorite] {
-        isPrivate ? [] : favoritesService.favorites
+        favoritesService.favorites
     }
 
     /// Whether one tile draws its name. A tile that has never been edited
@@ -402,7 +388,7 @@ struct NewTabHomeView: View {
                 suppressFavoriteTap = false
                 return
             }
-            guard draggingFavoriteID == nil else { return }
+            guard draggingFavoriteID == nil, heldFavoriteID == nil, menuFavoriteID == nil else { return }
             guard let url = BrowserUrlResolver.storedUrl(favorite.url) else { return }
             onNavigate(url)
         } label: {
@@ -427,7 +413,8 @@ struct NewTabHomeView: View {
         // press, the other one is lost. The long press here is the lift; a
         // lift that ends where it began offers the same actions.
         .accessibilityLabel(favorite.displayTitle)
-        .accessibilityHint(draggingFavoriteID == nil ? "长按可拖动排序，松开可编辑" : "")
+        .accessibilityHint("长按后松手打开菜单，长按后移动可排序")
+        .accessibilityAction(named: Text("编辑图标")) { editingFavorite = favorite }
     }
 
     /// The tile itself, without the button or the gesture: the shelf draws it
@@ -448,8 +435,7 @@ struct NewTabHomeView: View {
     // MARK: - Edit menu
 
     /// The held press's menu: a small glass panel over the tile, the way a
-    /// desktop shows a context menu. It closes on any of its own actions, on a
-    /// tap outside, and the moment the press turns into a drag.
+    /// desktop shows a context menu. Tap an action or the page to close it.
     @ViewBuilder
     private var favoriteMenuLayer: some View {
         if let anchor = favoriteMenuAnchor {
@@ -466,6 +452,7 @@ struct NewTabHomeView: View {
                     guard let url = BrowserUrlResolver.storedUrl(anchor.favorite.url) else { return }
                     tabManager.openTab(
                         url: url,
+                        privacyMode: isPrivate ? .private : .regular,
                         openSource: .shortcut,
                         activate: false
                     )
@@ -612,47 +599,37 @@ struct NewTabHomeView: View {
     }
 
     private func favoriteDragGesture(_ favorite: HomeFavorite) -> some Gesture {
-        // A short hold: the menu is meant to be the first thing a press says,
-        // and the drag follows only if the finger keeps moving. Waiting the
-        // half second a system context menu takes made the menu feel late.
-        LongPressGesture(minimumDuration: 0.22)
+        LongPressGesture(minimumDuration: 0.22, maximumDistance: 12)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.favoriteDragSpace)))
-            .onChanged { value in
-                guard !isPrivate, case .second(true, let drag?) = value else { return }
-                // A press that is held is the tile's edit menu — the desktop's
-                // right-click. Moving turns the same press into a drag: the
-                // menu closes and the tile lifts, so the two never fight over
-                // the gesture and neither one needs a second press.
-                if draggingFavoriteID == nil,
-                   menuFavoriteID != favorite.id,
-                   favoriteGridGeometry != nil {
-                    withAnimation(BrowserMotion.jelly(reduceMotion)) {
-                        menuFavoriteID = favorite.id
-                    }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    suppressFavoriteTap = true
+            .updating($heldFavoriteID) { value, held, _ in
+                switch value {
+                case .first(true), .second(true, _): held = favorite.id
+                default: break
                 }
-                let dx = drag.translation.width
-                let dy = drag.translation.height
-                guard dx * dx + dy * dy > 36 else { return }
-                closeFavoriteMenu()
+            }
+            .onChanged { value in
+                guard case .second(true, let drag) = value else { return }
+                suppressFavoriteTap = true
+                guard let drag else { return }
                 if draggingFavoriteID == nil {
+                    guard hypot(drag.translation.width, drag.translation.height) >= 12 else { return }
                     beginFavoriteDrag(favorite)
                 }
-                guard draggingFavoriteID == favorite.id else { return }
-                favoriteDragTranslation = drag.translation
                 moveFavorite(favorite, translation: drag.translation, at: drag.location)
             }
-            .onEnded { _ in
-                if draggingFavoriteID != nil {
-                    endFavoriteDrag()
-                }
-                // The menu stays open when the finger lifts without a drag;
-                // this release must not also open the page behind it.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    suppressFavoriteTap = false
-                }
-            }
+    }
+
+    private func finishFavoriteHold(id: String) {
+        if draggingFavoriteID == id {
+            endFavoriteDrag()
+            return
+        }
+        DispatchQueue.main.async { suppressFavoriteTap = false }
+        guard favorites.contains(where: { $0.id == id }) else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(BrowserMotion.jelly(reduceMotion)) {
+            menuFavoriteID = id
+        }
     }
 
     private func beginFavoriteDrag(_ favorite: HomeFavorite) {
@@ -804,10 +781,6 @@ private struct HomeViewportHeightKey: PreferenceKey {
 /// The actions a held press offers, drawn as a small glass panel over the
 /// shelf rather than a system context menu.
 ///
-/// A system context menu takes the long press for itself, which is why the
-/// tile could not be carried: once the menu was up, the same press could no
-/// longer move anything. This panel is ours, so the press that opened it can
-/// just as well turn into a drag, and the panel simply closes.
 private struct FavoriteActionMenu: View {
     @Environment(\.browserPalette) private var palette
 

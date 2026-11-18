@@ -49,6 +49,9 @@ extension BrowserShellView {
                 if bookshelfIsPrivate {
                     shell.dismiss(kind: .bookshelf)
                 }
+                if env.currentPrivacyMode == .private {
+                    shell.dismiss(kind: .addBookmarkChoice)
+                }
             }
         }
         .onDisappear {

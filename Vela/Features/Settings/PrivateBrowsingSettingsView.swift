@@ -83,12 +83,19 @@ struct PrivateBrowsingSettingsView: View {
             }
 
             Section {
+                Toggle("阅后即焚", isOn: Binding(
+                    get: { env.settings.preferences.autoClosePrivateTabs ?? true },
+                    set: { value in env.settings.update { $0.autoClosePrivateTabs = value } }
+                ))
+            } footer: {
+                Text("退到后台时自动关闭无痕标签页并清除该次会话的网页数据。")
+            }
+
+            Section {
                 LabeledContent("无痕模式", value: (env.settings.preferences.privateBrowsingMode ?? false) ? "已开启" : "已关闭")
                 LabeledContent("当前", value: env.requiresPrivateAuthentication ? "已锁定" : "已验证")
             } header: {
                 Text("当前状态")
-            } footer: {
-                Text("退到后台或离开无痕模式时，标签页与网页数据会被清除。")
             }
         }
         .navigationTitle("无痕模式")

@@ -360,6 +360,33 @@ extension BrowserShellView {
         }
     }
 
+    var bookmarksSidebarLayer: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                Color.black.opacity(colorScheme == .dark ? 0.30 : 0.14)
+                    .ignoresSafeArea()
+                    .onTapGesture { showBookmarks = false }
+                    .accessibilityHidden(true)
+
+                NavigationStack {
+                    BookmarksView(onClose: { showBookmarks = false })
+                }
+                .environment(env)
+                .frame(width: min(Self.padSidebarWidth, max(0, geometry.size.width - 16)))
+                .frame(maxHeight: .infinity)
+                .clipShape(.rect(cornerRadius: BrowserRadius.floating))
+                .browserFloatingChrome(material: .thinMaterial, tintStrength: 0.22, interactive: false)
+                .luminousSheen(shape: RoundedRectangle(cornerRadius: BrowserRadius.floating))
+                .padding(8)
+                .transition(reduceMotion ? .opacity : .modifier(
+                    active: SidebarEntrance(isPresented: false),
+                    identity: SidebarEntrance(isPresented: true)
+                ))
+                .accessibilityAddTraits(.isModal)
+            }
+        }
+    }
+
     /// Opens or closes the drawer with the shared jelly and a soft tap of
     /// feedback. The haptic is what makes the panel feel attached to the
     /// button rather than to the animation clock.

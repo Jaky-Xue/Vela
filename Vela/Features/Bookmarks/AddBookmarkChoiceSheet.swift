@@ -22,8 +22,19 @@ struct AddBookmarkChoiceSheet: View {
     @Environment(\.browserPalette) private var palette
     @Environment(\.dismiss) private var dismiss
 
-    var url: String
-    var title: String
+    private struct Page {
+        let url: String
+        let title: String
+        let isPrivate: Bool
+    }
+
+    @State private var page: Page
+
+    private var isPrivate: Bool { page.isPrivate }
+
+    private var favorites: HomeFavoritesService {
+        isPrivate ? env.services.privateHomeFavorites : env.homeFavorites
+    }
 
     /// What 添加 creates. The bookmark roots carry an optional home copy; the
     /// third choice creates only the home tile.
@@ -32,10 +43,15 @@ struct AddBookmarkChoiceSheet: View {
         case homeOnly
     }
 
-    @State private var target: SaveTarget = .bookmark(.toolbar)
+    @State private var target: SaveTarget
     // A bookmark saved to a root is carried to the home by default: the home
     // is where the user starts, so the shelf is the useful default.
     @State private var addToHome = true
+
+    init(url: String, title: String, isPrivate: Bool) {
+        self._page = State(initialValue: Page(url: url, title: title, isPrivate: isPrivate))
+        self._target = State(initialValue: isPrivate ? .homeOnly : .bookmark(.toolbar))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -89,7 +105,7 @@ struct AddBookmarkChoiceSheet: View {
                                 .browserFloatingChrome(radius: 18, elevation: .card)
 
                             VStack(alignment: .leading, spacing: 1) {
-                                Text("同时添加到主页收藏")
+                                Text(isPrivate ? "同时添加到无痕主页收藏" : "同时添加到主页收藏")
                                     .font(.system(size: 15, weight: .medium))
                                 Text("主页收藏与书签分开保存")
                                     .font(.caption)
@@ -147,7 +163,7 @@ struct AddBookmarkChoiceSheet: View {
                     Text(role == .toolbar ? "书签栏" : "其他书签")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(palette.primaryText)
-                    Text("\(bookmarkCount(in: role)) 个书签")
+                    Text(isPrivate ? "保存到共享书签" : "\(bookmarkCount(in: role)) 个书签")
                         .font(.caption)
                         .foregroundStyle(palette.secondaryText)
                 }
@@ -179,7 +195,7 @@ struct AddBookmarkChoiceSheet: View {
                     .frame(width: 34)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("仅添加到主页收藏")
+                    Text(isPrivate ? "仅添加到无痕主页收藏" : "仅添加到主页收藏")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(palette.primaryText)
                     Text("不创建书签")
@@ -219,6 +235,8 @@ struct AddBookmarkChoiceSheet: View {
     }
 
     private func onAdd() {
+        let url = page.url
+        let title = page.title
         switch target {
         case let .bookmark(role):
             let parentNodeId = env.bookmarks.rootNodeId(for: role)
@@ -226,7 +244,7 @@ struct AddBookmarkChoiceSheet: View {
             if addToHome, let saved = node ?? env.bookmarks.bookmark(for: url) {
                 // The tile gets a copy of the name and address. Editing it later
                 // is a home affair; the bookmark stays the bookmark list's.
-                env.homeFavorites.add(
+                favorites.add(
                     url: saved.url ?? url,
                     title: saved.title
                 )
@@ -234,7 +252,7 @@ struct AddBookmarkChoiceSheet: View {
         case .homeOnly:
             // The shelf is its own inventory: this creates exactly one tile and
             // leaves the bookmark tree untouched.
-            env.homeFavorites.add(url: url, title: title)
+            favorites.add(url: url, title: title)
         }
         dismiss()
     }

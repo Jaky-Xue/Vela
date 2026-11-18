@@ -34,7 +34,7 @@ struct HomeFavoriteTile: View {
                 cornerRadius: cornerRadius,
                 // The shelf draws the largest icons in the app, so it is the
                 // one place a page's declared 512-pixel icon is worth a fetch.
-                allowsPageDiscovery: true
+                allowsPageDiscovery: !isPrivate
             )
             .padding(5)
             .browserFloatingChrome(radius: (cornerRadius ?? iconSize * 0.22) + 5, elevation: .card)

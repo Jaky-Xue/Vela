@@ -18,10 +18,19 @@ extension BrowserShellView {
                 NavigationStack { SiteCapabilitiesView(tab: tab) }.environment(env).browserAmbientSheet()
             }
         }
-        .sheet(isPresented: shell.binding(forKind: .bookmarks)) {
-            NavigationStack { BookmarksView() }
+        .overlay {
+            if usesPadLayout && showBookmarks {
+                bookmarksSidebarLayer
+            }
+        }
+        .animation(reduceMotion ? nil : BrowserMotion.jelly(false), value: showBookmarks)
+        .sheet(isPresented: Binding(
+            get: { !usesPadLayout && showBookmarks },
+            set: { if !$0 && !usesPadLayout { showBookmarks = false } }
+        )) {
+            NavigationStack { BookmarksView(onClose: { showBookmarks = false }) }
                 .environment(env)
-                .browserAmbientSheet()
+                .presentationBackground(.thinMaterial)
         }
         .sheet(isPresented: shell.binding(forKind: .history)) {
             NavigationStack { HistoryView() }
@@ -124,7 +133,8 @@ extension BrowserShellView {
         .sheet(isPresented: shell.binding(forKind: .addBookmarkChoice)) {
             AddBookmarkChoiceSheet(
                 url: activeTab?.url ?? "",
-                title: activeTab?.title ?? ""
+                title: activeTab?.title ?? "",
+                isPrivate: env.currentPrivacyMode == .private
             )
             .environment(env)
             .browserAmbientSheet()

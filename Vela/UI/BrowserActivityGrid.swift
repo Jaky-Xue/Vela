@@ -18,7 +18,6 @@ enum BrowserActivity {
 }
 
 struct BrowserActivityGrid: View {
-    @Environment(\.browserPalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -52,59 +51,32 @@ struct BrowserActivityGrid: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("最近 12 周")
-                Spacer()
-                Text("本机记录")
-            }
-            .font(.caption)
-            .foregroundStyle(palette.secondaryText)
-
-            HStack(spacing: 7) {
-                ForEach(0..<12, id: \.self) { week in
-                    VStack(spacing: 7) {
-                        ForEach(0..<7, id: \.self) { day in
-                            let date = calendar.date(byAdding: .day, value: week * 7 + day - 83,
-                                                     to: calendar.startOfDay(for: Date()))!
-                            let count = days[String(Int(date.timeIntervalSince1970))] ?? 0
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(color(level(count)))
-                                .aspectRatio(1, contentMode: .fit)
-                                .opacity(count > 0 && glowing ? 0.82 : 1)
-                                .animation(animates ? .easeInOut(duration: 4).repeatForever(autoreverses: true).delay(Double((week + day) % 5) * 0.35) : nil, value: glowing)
-                                .overlay {
-                                    if week == 11 && day == 6 {
-                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                            .strokeBorder(blue.opacity(0.9), lineWidth: 1.5)
-                                            .padding(-2.5)
-                                    }
+        HStack(spacing: 5) {
+            ForEach(0..<12, id: \.self) { week in
+                VStack(spacing: 5) {
+                    ForEach(0..<7, id: \.self) { day in
+                        let date = calendar.date(byAdding: .day, value: week * 7 + day - 83,
+                                                 to: calendar.startOfDay(for: Date()))!
+                        let count = days[String(Int(date.timeIntervalSince1970))] ?? 0
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(color(level(count)))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 16)
+                            .opacity(count > 0 && glowing ? 0.82 : 1)
+                            .animation(animates ? .easeInOut(duration: 4).repeatForever(autoreverses: true).delay(Double((week + day) % 5) * 0.35) : nil, value: glowing)
+                            .overlay {
+                                if week == 11 && day == 6 {
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .strokeBorder(blue.opacity(0.9), lineWidth: 1.5)
+                                        .padding(-2.5)
                                 }
-                                .accessibilityLabel("\(date.formatted(date: .abbreviated, time: .omitted))，活跃 \(count) 次")
-                        }
+                            }
+                            .accessibilityLabel("\(date.formatted(date: .abbreviated, time: .omitted))，活跃 \(count) 次")
                     }
                 }
             }
-            .frame(maxWidth: 280)
-            .frame(maxWidth: .infinity)
-
-            HStack(spacing: 5) {
-                Text("活跃程度")
-                Spacer()
-                Text("少")
-                ForEach(0..<5, id: \.self) { value in
-                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                        .fill(color(value))
-                        .frame(width: 9, height: 9)
-                        .accessibilityHidden(true)
-                }
-                Text("多")
-            }
-            .font(.caption2)
-            .foregroundStyle(palette.secondaryText)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 2)
+        .frame(maxWidth: .infinity)
         .onAppear {
             visible = true
             days = UserDefaults.standard.dictionary(forKey: BrowserActivity.key) as? [String: Int] ?? [:]

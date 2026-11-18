@@ -33,18 +33,20 @@ public final class HomeFavoritesService {
     }
 
     private let defaults: UserDefaults
+    private let documentKey: String
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    public init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard, isPrivate: Bool = false) {
         self.defaults = defaults
+        self.documentKey = isPrivate ? Key.document + ".private" : Key.document
         reload()
     }
 
     // MARK: - Reading
 
     public func reload() {
-        guard let data = defaults.data(forKey: Key.document),
+        guard let data = defaults.data(forKey: documentKey),
               let decoded = try? decoder.decode([HomeFavorite].self, from: data) else {
             favorites = []
             return
@@ -59,7 +61,7 @@ public final class HomeFavoritesService {
     /// filter that. Each id is resolved exactly once — from here on the tile is
     /// a copy and the bookmark may change or disappear without touching it.
     public func migrateFromLegacyHomeStoreIfNeeded(bookmarks: [BookmarkNode]) {
-        guard !defaults.bool(forKey: Key.migrated) else { return }
+        guard documentKey == Key.document, !defaults.bool(forKey: Key.migrated) else { return }
 
         // A document created before the marker was written is already the
         // user's own shelf; migrating over it would duplicate or overwrite.
@@ -230,6 +232,6 @@ public final class HomeFavoritesService {
 
     private func persist() {
         guard let data = try? encoder.encode(favorites) else { return }
-        defaults.set(data, forKey: Key.document)
+        defaults.set(data, forKey: documentKey)
     }
 }

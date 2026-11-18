@@ -133,7 +133,7 @@ struct BookmarksBarView: View {
                 .contentShape(Rectangle())
                 .bookmarkGlassModule()
         }
-        .buttonStyle(BookmarkBarButtonStyle())
+        .buttonStyle(BookmarkGlassButtonStyle())
         .accessibilityLabel(label)
     }
 
@@ -154,7 +154,7 @@ struct BookmarksBarView: View {
             .contentShape(Rectangle())
             .bookmarkGlassModule()
         }
-        .buttonStyle(BookmarkBarButtonStyle())
+        .buttonStyle(BookmarkGlassButtonStyle())
         .contextMenu {
             Button("编辑书签", systemImage: "pencil") {
                 editingNode = node
@@ -179,7 +179,7 @@ struct BookmarksBarView: View {
 /// and springs back, with a highlight laid over its glass the way a Safari
 /// bookmark lights up. A tap that only navigates afterwards leaves the row
 /// feeling dead until the page arrives; the jelly is what says it was hit.
-private struct BookmarkBarButtonStyle: ButtonStyle {
+struct BookmarkGlassButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.browserPalette) private var palette
 
@@ -190,7 +190,7 @@ private struct BookmarkBarButtonStyle: ButtonStyle {
                     .fill(palette.controlFill.opacity(configuration.isPressed ? 0.45 : 0))
                     .allowsHitTesting(false)
             }
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.9 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 1.06 : 1)
             .opacity(configuration.isPressed ? 0.82 : 1)
             .animation(BrowserMotion.jellyPress(reduceMotion), value: configuration.isPressed)
     }

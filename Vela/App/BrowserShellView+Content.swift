@@ -117,7 +117,8 @@ extension BrowserShellView {
                 case .home:
                     NewTabHomeView(
                         settings: env.settings,
-                        favoritesService: env.homeFavorites,
+                        favoritesService: tab.privacyMode == .private
+                            ? env.services.privateHomeFavorites : env.homeFavorites,
                         tabManager: tabManager,
                         isPrivate: tab.privacyMode == .private,
                         onNavigate: { url in navigate(to: url, in: tab) },

@@ -166,10 +166,7 @@ private struct BrowserWindowRoot: View {
                     // session rather than once per launch.
                     environment.passwords.lock()
                     environment.lockPrivateAccess()
-                    // Downloads and the reader can outlive the last private tab.
-                    // End the scope even when no private tab remains;
-                    // the ephemeral store must not survive backgrounding.
-                    do {
+                    if environment.settings.preferences.autoClosePrivateTabs ?? true {
                         let env = environment
                         let expectedGeneration = environment.privateNovelSessionGeneration
                         if let token = env.beginEndPrivateSession(expectedGeneration: expectedGeneration) {

@@ -14,7 +14,7 @@ import UIKit
 struct BookmarksView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
-    @Environment(\.dismiss) private var dismiss
+    var onClose: () -> Void
 
     @State private var path: [String] = []
     @State private var searchText = ""
@@ -84,8 +84,9 @@ struct BookmarksView: View {
             }
         }
         .listStyle(.insetGrouped)
-        // Match the grouped content surfaces used throughout the browser.
-        .browserListSurface()
+        .listSectionSeparator(.hidden)
+        .scrollContentBackground(.hidden)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .searchable(text: $searchText, prompt: "搜索书签")
         .navigationTitle(isSearching ? "搜索结果" : currentTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -98,7 +99,7 @@ struct BookmarksView: View {
                         Image(systemName: "chevron.left")
                     }
                 } else {
-                    Button("完成") { dismiss() }
+                    Button("完成", action: onClose)
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -238,9 +239,14 @@ struct BookmarksView: View {
                         .foregroundStyle(palette.secondaryText.opacity(0.6))
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
             .contentShape(Rectangle())
+            .browserFloatingChrome(radius: 14, material: .thinMaterial, tintStrength: 0.2, elevation: .card, interactive: false)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BookmarkGlassButtonStyle())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 nodeToDelete = node
@@ -279,7 +285,7 @@ struct BookmarksView: View {
     private func openInBrowser(_ url: URL) {
         guard let tab = env.tabManager.activeTab else { return }
         env.tabManager.load(url: url, in: tab)
-        dismiss()
+        onClose()
     }
 
     /// The address a stored bookmark opens, repaired when it does not parse

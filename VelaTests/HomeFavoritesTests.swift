@@ -36,6 +36,19 @@ final class HomeFavoritesTests: XCTestCase {
         XCTAssertEqual(service.favorites.map(\.title), ["示例"])
     }
 
+    func testPrivateFavoritesStayOnTheirOwnShelfAfterReload() {
+        let regular = HomeFavoritesService(defaults: defaults)
+        let privateShelf = HomeFavoritesService(defaults: defaults, isPrivate: true)
+        let regularTile = regular.add(url: "example.com", title: "Regular")
+        let privateTile = privateShelf.add(url: "example.com", title: "Private")
+
+        XCTAssertNotEqual(regularTile?.id, privateTile?.id)
+        regular.reload()
+        privateShelf.reload()
+        XCTAssertEqual(regular.favorites.map(\.title), ["Regular"])
+        XCTAssertEqual(privateShelf.favorites.map(\.title), ["Private"])
+    }
+
     func testAddingTheSameUrlTwiceKeepsOneTile() {
         let service = HomeFavoritesService(defaults: defaults)
         let first = service.add(url: "https://example.com", title: "示例")

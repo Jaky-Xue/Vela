@@ -23,6 +23,7 @@ public final class AppServices {
     /// favourite is a copy of a name and address, so bookmark edits and
     /// deletions cannot reach it.
     public let homeFavorites: HomeFavoritesService
+    public let privateHomeFavorites: HomeFavoritesService
     /// The accounts listed in 设置 ▸ 账号 ▸ 登录, for every provider, and the
     /// browser's own sign-in state. Labels on this device; signing in happens
     /// in the browser's cookie jar, never here.
@@ -64,6 +65,7 @@ public final class AppServices {
         let settings = SettingsService()
         self.settings = settings
         self.homeFavorites = HomeFavoritesService()
+        self.privateHomeFavorites = HomeFavoritesService(isPrivate: true)
         self.webAccounts = WebAccountService()
         self.commands = BrowserCommandCenter()
         self.contentBlocker = ContentBlocker(settings: settings)
@@ -152,6 +154,7 @@ public final class AppServices {
         // The home's shelf used to be bookmark ids; carry the grid an existing
         // install already had into the independent store exactly once.
         homeFavorites.reload()
+        privateHomeFavorites.reload()
         homeFavorites.migrateFromLegacyHomeStoreIfNeeded(
             bookmarks: bookmarks.bookmarkNodesInTreeOrder()
         )

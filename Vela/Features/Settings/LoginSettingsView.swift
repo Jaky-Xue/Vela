@@ -56,11 +56,9 @@ struct LoginSettingsView: View {
 
             Section {
                 BrowserActivityGrid()
-                    .listRowInsets(EdgeInsets(top: 14, leading: 20, bottom: 14, trailing: 20))
+                    .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
             } header: {
                 Text("活跃")
-            } footer: {
-                Text("记录打开浏览器的次数，仅保存在本机。描边标记今天。")
             }
 
             Section {
