@@ -59,6 +59,10 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
     let userAgent: String?
     let isDesktop: Bool
 
+    var usesWebKitIdentity: Bool {
+        id == "auto" || id.hasPrefix("safari-")
+    }
+
     /// A one-line description of what the identifier claims — the device it
     /// pretends to be and the browser it says it is, read out of the string
     /// itself rather than written down beside it. A hand-written line can
@@ -69,6 +73,10 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
     var claimedSummary: String {
         guard let ua = userAgent, !ua.isEmpty else {
             return "按当前设备自动决定：iPhone 手机版，iPad 与 Mac 桌面版"
+        }
+
+        if usesWebKitIdentity {
+            return isDesktop ? "由当前系统生成桌面版标识" : "由当前系统生成手机版标识"
         }
 
         var device = ""
@@ -129,12 +137,12 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
             isDesktop: false
         ),
         BrowserUserAgentPreset(
-            id: "safari-iphone", title: "Safari iPhone",
+            id: "safari-iphone", title: "系统手机版",
             userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",
             isDesktop: false
         ),
         BrowserUserAgentPreset(
-            id: "safari-ipad", title: "Safari iPad",
+            id: "safari-ipad", title: "系统手机版",
             userAgent: BrowserUserAgent.padIdentifier,
             isDesktop: false
         ),
@@ -154,7 +162,7 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
             isDesktop: true
         ),
         BrowserUserAgentPreset(
-            id: "safari-macos", title: "Safari macOS",
+            id: "safari-macos", title: "系统桌面版",
             userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
             isDesktop: true
         ),
@@ -165,66 +173,14 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
         )
     ]
 
-    /// Whether a stored identifier is one of the presets above.
-    static func isPreset(_ userAgent: String) -> Bool {
-        all.contains { $0.userAgent == userAgent }
-    }
 }
 
-/// The User-Agent values presented to pages.
-///
-/// The identifier presented is Safari's, built from the running system's version
-/// numbers, and the previous implementation got this wrong in two separate ways
-/// that both produced the same complaint from sites — 「浏览器版本太低」:
-///
-/// * It hardcoded `Version/17.0`, so on any later iOS every site was told the
-///   browser was Safari 17. The engine was current; only the label was stale, and
-///   the label is the entire basis of the site's judgement.
-/// * It wrote the whole string, including `AppleWebKit/605.1.15`. That token is
-///   WebKit's, and writing it down is the same mistake one layer down — it would
-///   go stale the day the engine's version token moves.
-///
-/// So only the tail is written here, and it is handed to WebKit through
-/// `applicationNameForUserAgent`, which appends it to the identifier WebKit
-/// builds for itself. On iOS 27 the platform token says `CPU iPhone OS 27_…` and
-/// the WebKit token is whatever iOS 27 ships, without Vela knowing either.
-///
-/// Two tokens in the tail are fixed rather than derived, and both are
-/// observations of what the system itself sends rather than version guesses:
-/// `Mobile/15E148` appears verbatim in the identifier a bare `WKWebView` reports
-/// on this platform (measured), and `Safari/604.1` is the token iOS Safari
-/// appends. Neither is compared against a version by sites; `Version/` is, and
-/// that one is derived.
-///
-/// A bare `WKWebView` sends neither `Version/` nor `Safari/` — they are tokens
-/// Safari adds for itself — and a site that looks for them treats their absence
-/// as an embedded browser and tells the user to go and open Safari. That is why
-/// the tail cannot simply be omitted.
-
+/// Resolves native WebKit display modes and explicit User-Agent overrides.
 public enum BrowserUserAgent {
-    /// The tail WebKit should append to its own identifier.
-    ///
-    /// Held as a constant: the system's version numbers cannot change while
-    /// the app is running, and this string is read on every navigation and
-    /// every settings redraw. Rebuilding it each time was measurable churn in
-    /// exactly the hot path — the identity is asked for before each request.
+    /// Suffix retained for legacy and compatibility identifiers.
     public static let safariTail = "Version/\(operatingSystemVersion) Mobile/15E148 Safari/604.1"
 
-    /// How a tab should identify itself, given the user's settings — and the
-    /// host it is about to open, which one family of sites branches on.
-    ///
-    /// The identifier is the one choice: 网页标识 decides both the string the
-    /// site reads and how the document is laid out. A desktop string is a
-    /// desktop page, a mobile string is a mobile page, and the automatic
-    /// preset follows the device. There is no second layout switch to get out
-    /// of step with the string.
-    ///
-    /// A per-site choice (`siteMode`) is a whole-page request and outranks
-    /// everything else: a site that only works in one layout needs the
-    /// identifier and the content mode to agree.
-    ///
-    /// `device` is explicit so a test can ask what a particular device would
-    /// present.
+    /// Resolves WebKit's content mode and any explicitly chosen User-Agent.
     public static func identity(
         custom: String,
         prefersDesktop: Bool,
@@ -232,76 +188,23 @@ public enum BrowserUserAgent {
         device: BrowserDeviceClass = .current,
         siteMode: BrowserSiteDisplayMode? = nil
     ) -> BrowserWebIdentity {
-        let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // A site's own choice is the most specific answer there is, and it
-        // outranks the global default, the device and the video-site
-        // exception.
         if let siteMode {
-            switch siteMode {
-            case .desktop:
-                return BrowserWebIdentity(
-                    applicationNameForUserAgent: safariTail,
-                    customUserAgent: desktopIdentifier,
-                    isDesktop: true
-                )
-            case .mobile:
-                return BrowserWebIdentity(
-                    applicationNameForUserAgent: safariTail,
-                    customUserAgent: mobileIdentifier,
-                    isDesktop: false
-                )
-            }
+            return BrowserWebIdentity(isDesktop: siteMode == .desktop)
         }
 
-        // The layout is a consequence of the identifier. A stored string is
-        // either one of the presets, which knows whether it claims a desktop,
-        // or a hand-typed one, which is read from its platform token. With no
-        // stored string, the automatic identity follows the device.
-        let layoutDesktop: Bool
-        if trimmed.isEmpty {
-            layoutDesktop = prefersDesktop || device.prefersDesktopIdentity
-        } else if let preset = BrowserUserAgentPreset.all.first(where: { $0.userAgent == trimmed }) {
-            layoutDesktop = preset.isDesktop
-        } else {
-            layoutDesktop = isDesktopIdentifier(trimmed, device: device)
+        let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return BrowserWebIdentity(isDesktop: prefersDesktop || device.prefersDesktopIdentity)
         }
 
-        // Video sites get the mobile identifier on a phone unless the page was
-        // asked to be a desktop one. Only a hand-typed string outranks the
-        // exception; a preset is a choice of identity, not a typed one.
-        if let host, isVideoSiteHost(host),
-           !layoutDesktop,
-           !device.prefersDesktopIdentity,
-           trimmed.isEmpty || BrowserUserAgentPreset.isPreset(trimmed) {
-            return BrowserWebIdentity(
-                applicationNameForUserAgent: safariTail,
-                customUserAgent: mobileIdentifier,
-                isDesktop: false
-            )
+        let preset = BrowserUserAgentPreset.all.first { $0.userAgent == trimmed }
+        if let preset, preset.usesWebKitIdentity {
+            return BrowserWebIdentity(isDesktop: preset.isDesktop)
         }
-
-        // Someone who typed a string asked for that exact value, and the
-        // layout follows the platform that string claims.
-        if !trimmed.isEmpty {
-            return BrowserWebIdentity(
-                applicationNameForUserAgent: safariTail,
-                customUserAgent: trimmed,
-                isDesktop: layoutDesktop
-            )
-        }
-
-        // No typed string: the generated identifier follows the layout.
-        if layoutDesktop {
-            return BrowserWebIdentity(
-                applicationNameForUserAgent: safariTail,
-                customUserAgent: desktopIdentifier,
-                isDesktop: true
-            )
-        }
-        // No override: WebKit appends the tail to its own prefix and the
-        // result is what Safari would have sent on this device.
-        return BrowserWebIdentity(applicationNameForUserAgent: safariTail)
+        return BrowserWebIdentity(
+            customUserAgent: trimmed,
+            isDesktop: preset?.isDesktop ?? isDesktopIdentifier(trimmed, device: device)
+        )
     }
 
     /// Whether a hand-typed identifier describes a desktop browser.

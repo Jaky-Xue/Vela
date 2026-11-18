@@ -50,6 +50,9 @@ extension BrowserShellView {
         if abs(shellOriginY - metrics.originY) > 0.5 {
             shellOriginY = metrics.originY
         }
+        if shell.windowFrameOnScreen != metrics.windowFrameOnScreen {
+            shell.windowFrameOnScreen = metrics.windowFrameOnScreen
+        }
         if abs(windowHeight - metrics.windowHeight) > 0.5 {
             windowHeight = metrics.windowHeight
         }

@@ -13,6 +13,7 @@
 
 import SwiftUI
 import UIKit
+import WebKit
 
 // MARK: - User agent
 
@@ -23,6 +24,7 @@ struct UserAgentSettingsView: View {
     /// Flips on when the copy button is pressed, off again shortly after —
     /// the button's own confirmation.
     @State private var didCopyIdentity = false
+    @State private var observedIdentifier: String?
 
     /// The preset currently in force: the match for the stored custom string,
     /// or the default when none is stored. A stored string that matches no
@@ -30,36 +32,30 @@ struct UserAgentSettingsView: View {
     private var selectedPreset: BrowserUserAgentPreset? {
         let stored = env.settings.preferences.customUserAgent
         guard !stored.isEmpty else { return BrowserUserAgentPreset.all[0] }
-        return BrowserUserAgentPreset.all.first { $0.userAgent == stored }
+        let preset = BrowserUserAgentPreset.all.first { $0.userAgent == stored }
+        if preset?.id == "safari-ipad" {
+            return BrowserUserAgentPreset.all.first { $0.id == "safari-iphone" }
+        }
+        return preset
     }
 
-    /// The string the next request will actually carry, computed the way the
-    /// web view computes it — through `BrowserUserAgent.identity`, which is
-    /// the one place that answers the question. Reading the stored fields
-    /// directly instead is what let this row show the mobile identifier while
-    /// pages were receiving the desktop one.
-    private var effectiveOutgoingIdentity: BrowserWebIdentity {
-        BrowserUserAgent.identity(
+    private var currentIdentity: BrowserWebIdentity {
+        if let tab = env.tabManager.activeTab {
+            return env.webCoordinator.webIdentity(for: tab)
+        }
+        return BrowserUserAgent.identity(
             custom: env.settings.preferences.customUserAgent,
             prefersDesktop: false
         )
     }
 
-    private var effectiveOutgoingIdentifier: String {
-        if let custom = effectiveOutgoingIdentity.customUserAgent {
-            return custom
-        }
-        // WebKit builds its own identifier when there is no override. Show the
-        // one for the layout the identity chose rather than always the
-        // device's form: a mobile preset on an iPad asks for the phone page.
-        if effectiveOutgoingIdentity.isDesktop {
-            return BrowserUserAgent.desktopIdentifier
-        }
-        switch BrowserDeviceClass.current {
-        case .phone: return BrowserUserAgent.mobileIdentifier
-        case .pad: return BrowserUserAgent.padIdentifier
-        case .mac: return BrowserUserAgent.desktopIdentifier
-        }
+    private var identifierReadKey: String {
+        let tab = env.tabManager.activeTab
+        return "\(tab?.id ?? "")|\(tab?.url ?? "")|\(tab?.isLoading ?? false)|\(currentIdentity.isDesktop)|\(currentIdentity.customUserAgent ?? "")"
+    }
+
+    private var effectiveOutgoingIdentifier: String? {
+        currentIdentity.customUserAgent ?? observedIdentifier
     }
 
     var body: some View {
@@ -69,12 +65,12 @@ struct UserAgentSettingsView: View {
             } header: {
                 Text("自动")
             } footer: {
-                Text("标识决定网站看到的浏览器字符串，也决定页面按桌面版还是手机版排版。自动模式跟随设备：iPhone 为手机版，iPad 与 Mac 为桌面版；选了桌面端标识就按桌面版排版。")
+                Text("自动模式由系统 WebKit 生成标识。iPhone 优先手机版，iPad 与 Mac 优先桌面版。兼容预设只替换 User-Agent。")
             }
 
             Section("移动端网页") {
                 ForEach(BrowserUserAgentPreset.all.filter {
-                    !$0.isDesktop && $0.id != BrowserUserAgentPreset.all[0].id
+                    !$0.isDesktop && $0.id != BrowserUserAgentPreset.all[0].id && $0.id != "safari-ipad"
                 }) { preset in
                     presetRow(preset)
                 }
@@ -166,13 +162,14 @@ struct UserAgentSettingsView: View {
             }
 
             Section {
-                Text(effectiveOutgoingIdentifier)
+                Text(effectiveOutgoingIdentifier ?? (currentIdentity.isDesktop ? "系统桌面版" : "系统手机版"))
                     .font(.system(size: 12, design: .monospaced))
                     .textSelection(.enabled)
                     .foregroundStyle(palette.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Button {
+                    guard let effectiveOutgoingIdentifier else { return }
                     UIPasteboard.general.string = effectiveOutgoingIdentifier
                     // The button is what confirms the copy; without a state
                     // change the tap reads as having done nothing.
@@ -187,10 +184,20 @@ struct UserAgentSettingsView: View {
                         systemImage: didCopyIdentity ? "checkmark" : "doc.on.doc"
                     )
                 }
+                .disabled(effectiveOutgoingIdentifier == nil)
             } header: {
                 Text("当前标识")
             }
 
+        }
+        .task(id: identifierReadKey) {
+            observedIdentifier = nil
+            guard currentIdentity.customUserAgent == nil,
+                  let tab = env.tabManager.activeTab, !tab.isHome, !tab.isLoading,
+                  let webView = env.tabManager.webView(for: tab.id) else { return }
+            let value = try? await webView.evaluateJavaScript("navigator.userAgent")
+            guard !Task.isCancelled else { return }
+            observedIdentifier = value as? String
         }
         .navigationTitle("网页标识")
         .navigationBarTitleDisplayMode(.inline)

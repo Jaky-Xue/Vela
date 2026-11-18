@@ -139,10 +139,7 @@ struct LoginSettingsView: View {
         // and shares the browser's cookie jar: what is signed in there is
         // signed in for the browser.
         .sheet(item: $signInProvider) { provider in
-            LoginWebSheet(
-                provider: provider,
-                userAgent: env.settings.preferences.customUserAgent
-            ) {
+            LoginWebSheet(provider: provider) {
                 Task { await service.refreshSessions() }
             }
         }

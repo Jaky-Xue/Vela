@@ -151,6 +151,7 @@ final class ShellState {
     /// The window's height, which is the only height an overlay-origin offset
     /// and a keyboard occlusion can be compared against.
     var windowHeight: CGFloat = 0
+    var windowFrameOnScreen: CGRect = .zero
 
     // MARK: - Edge swipe back
 

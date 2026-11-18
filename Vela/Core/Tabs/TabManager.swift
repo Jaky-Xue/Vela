@@ -1195,20 +1195,9 @@ public final class TabManager {
 /// split is the point: it is what makes the identifier adapt to a new iOS without
 /// a code change, which the previous implementation did not.
 public struct BrowserWebIdentity: Equatable, Sendable {
-    /// Appended to the identifier WebKit builds for itself.
-    ///
-    /// WebKit's own template is
-    /// `Mozilla/5.0 (<platform>) AppleWebKit/<version> (KHTML, like Gecko) <this>`,
-    /// so supplying the tail is enough to present a complete Safari identifier
-    /// while the platform token and the WebKit version token come from the
-    /// system that is actually running.
-    public var applicationNameForUserAgent: String
+    public var applicationNameForUserAgent: String?
 
-    /// A complete identifier to present instead of WebKit's, or nil to let
-    /// WebKit build the rest.
-    ///
-    /// Set when the tab has to claim something WebKit will not claim on its own:
-    /// a desktop platform, or a string the user typed.
+    /// An explicitly chosen User-Agent, or nil to use the WebKit identity.
     public var customUserAgent: String?
 
     /// Whether the page should be laid out as a desktop document.
@@ -1223,7 +1212,7 @@ public struct BrowserWebIdentity: Equatable, Sendable {
     public var isDesktop: Bool
 
     public init(
-        applicationNameForUserAgent: String,
+        applicationNameForUserAgent: String? = nil,
         customUserAgent: String? = nil,
         isDesktop: Bool = false
     ) {

@@ -519,8 +519,10 @@ extension BrowserShellView {
         // inset as well.
         .padding(
             .bottom,
-            BrowserChrome.barHeight + BrowserChrome.barGap + 6
-                + (showFindBar ? keyboardHeight : 0)
+            max(
+                BrowserChrome.barHeight + BrowserChrome.barGap,
+                showFindBar ? keyboardHeight - safeBottom : 0
+            ) + 6
         )
         .animation(BrowserMotion.chrome(reduceMotion), value: showFindBar)
     }

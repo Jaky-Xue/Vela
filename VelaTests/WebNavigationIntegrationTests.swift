@@ -614,26 +614,18 @@ final class WebNavigationIntegrationTests: XCTestCase {
             BrowserDeviceClass.current.prefersDesktopIdentity ? .desktop : .mobile
         )
 
-        let value = try? await webView.evaluateJavaScript("navigator.userAgent")
-        let identifier = value as? String ?? ""
-        let major = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-
-        XCTAssertTrue(identifier.contains("Safari/"), identifier)
-        XCTAssertTrue(identifier.contains("Version/\(major)."), identifier)
-        XCTAssertFalse(identifier.contains("Version/17.0"), identifier)
-
-        // What WebKit sends when nothing is appended...
-        let reference = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
-        let referenceValue = try? await reference.evaluateJavaScript("navigator.userAgent")
-        let referenceIdentifier = referenceValue as? String ?? ""
-        guard let marker = referenceIdentifier.range(of: "(KHTML, like Gecko) ") else {
-            return XCTFail("unexpected reference identifier: \(referenceIdentifier)")
+        let configuration = WKWebViewConfiguration()
+        configuration.defaultWebpagePreferences.preferredContentMode =
+            webView.configuration.defaultWebpagePreferences.preferredContentMode
+        let reference = WKWebView(frame: .zero, configuration: configuration)
+        reference.load(URLRequest(url: url("/one")))
+        for _ in 0..<100 where reference.isLoading || reference.title != "Page One" {
+            try? await Task.sleep(nanoseconds: 20_000_000)
         }
-        // ...must be the prefix of what a tab sends. Everything up to and
-        // including the marker is WebKit's, so if this project ever writes down a
-        // platform or engine token, this is where it shows.
-        let webKitPrefix = String(referenceIdentifier[referenceIdentifier.startIndex..<marker.upperBound])
-        XCTAssertTrue(BrowserDeviceClass.current.prefersDesktopIdentity ? identifier == BrowserUserAgent.desktopIdentifier : identifier.hasPrefix(webKitPrefix), identifier)
+        let expected = try? await reference.evaluateJavaScript("navigator.userAgent") as? String
+        let actual = try? await webView.evaluateJavaScript("navigator.userAgent") as? String
+        XCTAssertFalse(expected?.isEmpty ?? true)
+        XCTAssertEqual(actual, expected)
     }
 
     func testDesktopIdentifierPresentsADesktopPage() async {
@@ -689,7 +681,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
         let identifier = value as? String ?? ""
         XCTAssertEqual(identifier.contains("Macintosh"), BrowserDeviceClass.current.prefersDesktopIdentity, identifier)
         XCTAssertTrue(BrowserDeviceClass.current.prefersDesktopIdentity || identifier.contains("iPhone"), identifier)
-        XCTAssertTrue(identifier.contains("Safari/"), identifier)
+        XCTAssertEqual(webView.customUserAgent ?? "", "")
     }
 
     // MARK: - Privacy

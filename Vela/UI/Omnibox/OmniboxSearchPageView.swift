@@ -45,13 +45,15 @@ struct OmniboxSearchPageView: View {
                 Color.clear
                     .frame(height: topGap + BrowserChrome.barHeight + 14)
 
-                OmniboxSuggestionListView(
-                    viewModel: viewModel,
-                    maxHeight: cardMaxHeight,
-                    allowsThirdPartyLookup: viewModel.activePrivacyMode != .private
-                )
+                if cardMaxHeight > 0 {
+                    OmniboxSuggestionListView(
+                        viewModel: viewModel,
+                        maxHeight: cardMaxHeight,
+                        allowsThirdPartyLookup: viewModel.activePrivacyMode != .private
+                    )
                     .padding(.horizontal, BrowserChrome.sideInset)
                     .opacity(viewModel.text.isEmpty && viewModel.groups.isEmpty ? 0 : 1)
+                }
 
                 Spacer(minLength: 0)
             }

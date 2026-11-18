@@ -21,10 +21,6 @@ struct LoginWebSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let provider: WebAccountProvider
-    /// The browser's own identifier, when the user set one. Empty keeps
-    /// WebKit's default, which is what an in-app sign-in window normally
-    /// presents.
-    var userAgent: String = ""
     var onFinish: () -> Void
 
     @State private var isLoading = true
@@ -36,7 +32,6 @@ struct LoginWebSheet: View {
                     ZStack {
                         LoginWebView(
                             url: url,
-                            userAgent: userAgent,
                             isLoading: $isLoading
                         )
                         if isLoading {
@@ -54,6 +49,7 @@ struct LoginWebSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(provider.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -65,10 +61,8 @@ struct LoginWebSheet: View {
                 }
             }
         }
-        // A small window: half-height to start, full height when the page
-        // needs it. On iPad the system turns this into a form sheet.
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .presentationDetents([.large])
+        .presentationCompactAdaptation(.fullScreenCover)
     }
 }
 
@@ -80,7 +74,6 @@ struct LoginWebSheet: View {
 /// cookie jar, which is the whole point.
 private struct LoginWebView: UIViewRepresentable {
     let url: URL
-    let userAgent: String
     @Binding var isLoading: Bool
 
     func makeUIView(context: Context) -> WKWebView {
@@ -90,9 +83,7 @@ private struct LoginWebView: UIViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
-        if !userAgent.isEmpty {
-            webView.customUserAgent = userAgent
-        }
+        webView.scrollView.keyboardDismissMode = .interactive
         webView.load(URLRequest(url: url))
         return webView
     }
@@ -141,8 +132,8 @@ private struct LoginWebView: UIViewRepresentable {
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            if let url = navigationAction.request.url {
-                webView.load(URLRequest(url: url))
+            if navigationAction.request.url != nil {
+                webView.load(navigationAction.request)
             }
             return nil
         }

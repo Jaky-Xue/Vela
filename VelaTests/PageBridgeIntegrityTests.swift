@@ -217,20 +217,6 @@ final class PageBridgeIntegrityTests: XCTestCase {
         }
     }
 
-    func testADesktopClaimReplacesThePlatformOnlyWhenItDiffers() {
-        guard let script = WebPageScripts.identityConsistencyScript(
-            userAgent: BrowserUserAgent.desktopIdentifier
-        ) else {
-            return XCTFail("a desktop claim has to align the platform")
-        }
-        // The replacement is conditional: on an iPad the desktop content mode
-        // already answers MacIntel, and replacing an accessor with an identical
-        // answer is exactly the visible tampering the condition avoids.
-        XCTAssertTrue(script.contains("if (navigator.platform !== 'MacIntel')"), script)
-        XCTAssertTrue(script.contains("get: velaNative("), script)
-        XCTAssertFalse(script.contains("userAgentData"), script)
-    }
-
     /// Waits for the first report the predicate accepts.
     private func waitForReports(
         in collector: BridgeMessageCollector?,

@@ -349,7 +349,7 @@ final class BrowserUserAgentTests: XCTestCase {
         let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false, device: .phone)
         XCTAssertNil(identity.customUserAgent)
         XCTAssertFalse(identity.isDesktop)
-        XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.safariTail)
+        XCTAssertNil(identity.applicationNameForUserAgent)
     }
 
     /// An iPad's automatic identity is the desktop one, and it asks for the
@@ -362,11 +362,7 @@ final class BrowserUserAgentTests: XCTestCase {
     /// iPad presents the desktop page even without the desktop toggle.
     func testAnIPadPresentsTheDesktopIdentityAutomatically() {
         let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false, device: .pad)
-        guard let desktop = identity.customUserAgent else {
-            return XCTFail("an iPad has to name the desktop platform explicitly")
-        }
-        XCTAssertTrue(desktop.contains("Macintosh"), desktop)
-        XCTAssertFalse(desktop.contains("Mobile/"), desktop)
+        XCTAssertNil(identity.customUserAgent)
         XCTAssertTrue(identity.isDesktop)
         // The same identity the explicit desktop toggle produces.
         XCTAssertEqual(
@@ -420,7 +416,7 @@ final class BrowserUserAgentTests: XCTestCase {
             host: "www.youtube.com",
             device: .phone
         )
-        XCTAssertEqual(phone.customUserAgent, BrowserUserAgent.mobileIdentifier)
+        XCTAssertNil(phone.customUserAgent)
         XCTAssertFalse(phone.isDesktop)
 
         let pad = BrowserUserAgent.identity(
@@ -429,7 +425,7 @@ final class BrowserUserAgentTests: XCTestCase {
             host: "www.youtube.com",
             device: .pad
         )
-        XCTAssertEqual(pad.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertNil(pad.customUserAgent)
         XCTAssertTrue(pad.isDesktop)
 
         // The explicit desktop toggle on a phone gets the same answer.
@@ -439,7 +435,7 @@ final class BrowserUserAgentTests: XCTestCase {
             host: "www.youtube.com",
             device: .phone
         )
-        XCTAssertEqual(phoneDesktop.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertNil(phoneDesktop.customUserAgent)
         XCTAssertTrue(phoneDesktop.isDesktop)
     }
 
@@ -453,7 +449,7 @@ final class BrowserUserAgentTests: XCTestCase {
             device: .phone,
             siteMode: .desktop
         )
-        XCTAssertEqual(phoneDesktop.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertNil(phoneDesktop.customUserAgent)
         XCTAssertTrue(phoneDesktop.isDesktop)
 
         let padMobile = BrowserUserAgent.identity(
@@ -463,13 +459,13 @@ final class BrowserUserAgentTests: XCTestCase {
             device: .pad,
             siteMode: .mobile
         )
-        XCTAssertEqual(padMobile.customUserAgent, BrowserUserAgent.mobileIdentifier)
+        XCTAssertNil(padMobile.customUserAgent)
         XCTAssertFalse(padMobile.isDesktop)
     }
 
     /// The explicit iPad preset is the way back to a site's tablet page. The
     /// preset carries its own layout, so choosing it is the whole request.
-    func testTheIPadPresetKeepsTheTabletIdentity() {
+    func testTheLegacyIPadPresetUsesSystemMobileMode() {
         guard let preset = BrowserUserAgentPreset.all.first(where: { $0.id == "safari-ipad" }) else {
             return XCTFail("no iPad preset")
         }
@@ -478,7 +474,7 @@ final class BrowserUserAgentTests: XCTestCase {
             prefersDesktop: false,
             device: .pad
         )
-        XCTAssertTrue(identity.customUserAgent?.contains("(iPad;") == true)
+        XCTAssertNil(identity.customUserAgent)
         XCTAssertFalse(identity.isDesktop)
     }
 
@@ -527,7 +523,7 @@ final class BrowserUserAgentTests: XCTestCase {
         // The tail is still set, which is harmless because the override replaces
         // the whole identifier — and it is what makes the desktop toggle a
         // one-property change.
-        XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.safariTail)
+        XCTAssertNil(identity.applicationNameForUserAgent)
     }
 
     func testTheCustomIdentifierIsTrimmed() {
@@ -543,18 +539,11 @@ final class BrowserUserAgentTests: XCTestCase {
         )
     }
 
-    func testDesktopModeOverridesWithAMacIdentifier() {
+    func testDesktopModeUsesWebKitIdentity() {
         let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: true)
-        guard let desktop = identity.customUserAgent else {
-            return XCTFail("desktop mode has to write a whole identifier: a web view will not claim a Mac for us")
-        }
-        XCTAssertTrue(desktop.contains("Macintosh"), desktop)
-        XCTAssertTrue(desktop.contains("Mozilla/5.0"), desktop)
-        // ` Mobile/` is the token that makes a string read as mobile, and macOS
-        // Safari does not send it.
-        XCTAssertFalse(desktop.contains("Mobile/"), desktop)
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        XCTAssertTrue(desktop.contains("Version/\(version.majorVersion)."), desktop)
+        XCTAssertTrue(identity.isDesktop)
+        XCTAssertNil(identity.customUserAgent)
+        XCTAssertNil(identity.applicationNameForUserAgent)
     }
 
     /// The reconstruction used as the desktop base and shown in settings.
@@ -586,22 +575,7 @@ final class BrowserUserAgentTests: XCTestCase {
         XCTAssertEqual(BrowserUserAgent.desktopForm(of: mac), mac)
     }
 
-    /// A desktop Safari claim carries MacIntel to the page, so a site that
-    /// reads the platform rather than the header does not still see a tablet.
-    func testTheDesktopSafariClaimReportsAMacPlatform() {
-        guard let script = WebPageScripts.identityConsistencyScript(
-            userAgent: BrowserUserAgent.desktopIdentifier
-        ) else {
-            return XCTFail("a desktop claim has to align the platform")
-        }
-        XCTAssertTrue(script.contains("MacIntel"), script)
-        XCTAssertFalse(script.contains("userAgentData"), script)
 
-        // The phone identity is WebKit's own; nothing needs aligning.
-        XCTAssertNil(
-            WebPageScripts.identityConsistencyScript(userAgent: BrowserUserAgent.mobileIdentifier)
-        )
-    }
 }
 
 // MARK: - History normalisation
@@ -724,19 +698,16 @@ final class PresetSummaryTests: XCTestCase {
         }
     }
 
-    func testTheIPhonePresetNamesTheDeviceTheSystemAndTheEngine() {
+    func testTheIPhonePresetDescribesNativeMobileMode() {
         let preset = BrowserUserAgentPreset.all.first { $0.id == "safari-iphone" }
         guard let preset else { return XCTFail("the iPhone preset is gone") }
-        XCTAssertEqual(preset.claimedSummary, "iPhone · iOS 26.0 · Safari 26")
+        XCTAssertEqual(preset.claimedSummary, "由当前系统生成手机版标识")
     }
 
-    /// The iPad preset is the explicit tablet page — not the automatic identity
-    /// any more, but the one a site whose tablet layout is wanted receives.
-    func testTheIPadPresetNamesATabletAndItsEngine() {
+    func testTheLegacyIPadPresetDescribesNativeMobileMode() {
         let preset = BrowserUserAgentPreset.all.first { $0.id == "safari-ipad" }
         guard let preset else { return XCTFail("the iPad preset is gone") }
-        XCTAssertTrue(preset.claimedSummary.hasPrefix("iPad · iPadOS "), preset.claimedSummary)
-        XCTAssertTrue(preset.claimedSummary.contains("Safari "), preset.claimedSummary)
+        XCTAssertEqual(preset.claimedSummary, "由当前系统生成手机版标识")
         XCTAssertFalse(preset.isDesktop)
     }
 
@@ -753,10 +724,10 @@ final class PresetSummaryTests: XCTestCase {
         XCTAssertFalse(preset.claimedSummary.contains("Chrome"), preset.claimedSummary)
     }
 
-    func testTheMacPresetReadsAsMacOS() {
+    func testTheMacPresetDescribesNativeDesktopMode() {
         let preset = BrowserUserAgentPreset.all.first { $0.id == "safari-macos" }
         guard let preset else { return XCTFail("the macOS preset is gone") }
-        XCTAssertEqual(preset.claimedSummary, "macOS 10.15.7 · Safari 26")
+        XCTAssertEqual(preset.claimedSummary, "由当前系统生成桌面版标识")
     }
 }
 

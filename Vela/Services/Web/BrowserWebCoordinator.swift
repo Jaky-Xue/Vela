@@ -672,20 +672,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         }
 
 
-        // A hand-picked identifier makes a claim the rest of the page surface
-        // has to agree with — vendor, userAgentData, window.chrome. The
-        // default path sends no script: WebKit's own identity is consistent
-        // by construction. Main frame only, because the checks a site's risk
-        // control runs happen on the page itself, and per-frame injection
-        // would multiply the cost for no page that reads it in a subframe.
-        let pageIdentity = webIdentity(for: tab, url: url)
-        if let customAgent = pageIdentity.customUserAgent,
-           let consistency = WebPageScripts.identityConsistencyScript(userAgent: customAgent) {
-            controller.addUserScript(
-                WKUserScript(source: consistency, injectionTime: .atDocumentStart, forMainFrameOnly: true)
-            )
-        }
-
         if settings.preferences.allowsPinchZoom {
             // Remove the page's own zoom lock before and after its markup is
             // parsed: the viewport meta usually arrives with the document.
@@ -983,11 +969,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             preferences.isElementFullscreenEnabled = true
         }
 
-        // The tail of the identifier, appended to the one WebKit builds for
-        // itself. Set here rather than as a whole `customUserAgent` so the
-        // platform token and the WebKit version token come from the system that
-        // is actually running — which is what keeps the identifier correct on a
-        // new iOS without a change to this project.
         let identity = webIdentity(for: tab)
         configuration.applicationNameForUserAgent = identity.applicationNameForUserAgent
         // The rendering half of the identity, set before the first request so a

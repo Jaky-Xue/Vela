@@ -8,6 +8,7 @@ import WebKit
 struct ShellWindowMetrics: Equatable {
     var insets: UIEdgeInsets
     var originY: CGFloat
+    var windowFrameOnScreen: CGRect
     var windowHeight: CGFloat
 }
 
@@ -80,6 +81,7 @@ struct WindowSafeAreaReader: UIViewRepresentable {
             ShellWindowMetrics(
                 insets: window.safeAreaInsets,
                 originY: convert(CGPoint.zero, to: window).y,
+                windowFrameOnScreen: window.screen.coordinateSpace.convert(window.bounds, from: window),
                 windowHeight: window.bounds.height
             )
         }

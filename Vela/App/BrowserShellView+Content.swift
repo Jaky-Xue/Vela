@@ -85,8 +85,8 @@ extension BrowserShellView {
             : safeRectHeight + safeTop + safeBottom
         let fieldTop = shellOriginY + searchPageTopGap
         let listTop = fieldTop + BrowserChrome.barHeight + 14
-        let available = fullHeight - keyboardHeight - listTop - 6
-        return min(max(120, available), BrowserMetrics.omniboxCardMaxHeight)
+        let available = fullHeight - max(keyboardHeight, safeBottom) - listTop - 6
+        return min(max(0, available), BrowserMetrics.omniboxCardMaxHeight)
     }
 
     /// How one main surface replaces another.

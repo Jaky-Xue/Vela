@@ -436,8 +436,12 @@ struct TabsOverviewView: View {
             // rotation behind can only change the column COUNT, never push a
             // card past the screen edge. Fixed-width cells computed from a
             // stale number were the last layout failure left.
-            let minimum: CGFloat = horizontalSizeClass == .regular ? 240 : 170
-            let count = max(1, Int((geo.size.width + BrowserSpacing.loose) / (minimum + BrowserSpacing.loose)))
+            let minimum: CGFloat = horizontalSizeClass == .regular ? 240 : 150
+            let horizontalInset = horizontalSizeClass == .regular
+                ? BrowserSpacing.regular + 4 : BrowserSpacing.regular
+            let availableWidth = max(0, geo.size.width - 2 * horizontalInset)
+            let spacing = BrowserSpacing.regular
+            let count = max(1, Int((availableWidth + spacing) / (minimum + spacing)))
             // Wide cards in landscape, upright ones in portrait, clamped
             // where a wide card stops reading as a page and starts reading
             // as a letterbox.
@@ -468,7 +472,7 @@ struct TabsOverviewView: View {
                     }
                 }
                 .animation(BrowserMotion.layout(reduceMotion), value: unpinnedTabs.map(\.id))
-                .padding(.horizontal, BrowserSpacing.regular + 4)
+                .padding(.horizontal, horizontalInset)
                 .padding(.top, BrowserSpacing.regular - 6)
                 .padding(.bottom, BrowserSpacing.loose)
             }

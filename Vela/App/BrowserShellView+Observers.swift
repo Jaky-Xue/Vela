@@ -136,21 +136,12 @@ extension BrowserShellView {
     func handleKeyboardFrameChange(_ note: Notification) {
         let end = (note.userInfo?[UIApplication.keyboardFrameEndUserInfoKey] as? NSValue)?
             .cgRectValue ?? .zero
-        let screenHeight = max(UIScreen.main.bounds.height, end.maxY)
-        // Only a docked keyboard should resize the page. A floating iPad
-        // keyboard is draggable: it sends a frame notification on every drag
-        // frame, and treating each one as a new bottom inset made the search
-        // page follow the keyboard and stutter. A floating panel covers only
-        // itself; the page stays put underneath it.
-        let occlusion: CGFloat
-        if end.isEmpty {
-            occlusion = 0
-        } else if screenHeight - end.maxY < 40 {
-            // Docked: the keyboard runs from its top edge to the bottom.
-            occlusion = max(0, screenHeight - end.minY)
-        } else {
-            occlusion = 0
-        }
+        let window = shell.windowFrameOnScreen
+        let intersection = window.intersection(end)
+        let coversWindowBottom = !intersection.isNull
+            && intersection.maxY >= window.maxY - 1
+            && intersection.width >= window.width * 0.85
+        let occlusion = coversWindowBottom ? intersection.height : 0
         guard abs(occlusion - keyboardHeight) > 0.5 else { return }
         // No implicit animation here: this notification can arrive many times
         // while the keyboard is dragged, and animating every frame compounds
