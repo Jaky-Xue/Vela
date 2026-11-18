@@ -28,36 +28,59 @@ struct LoginWebSheet: View {
 
     @State private var isLoading = true
     @State private var keyboardVisible = false
+    /// The docked keyboard's height in points, measured here rather than read
+    /// from the keyboard safe area: SwiftUI's avoidance shrinks the layout by
+    /// an amount that also covers the accessory bar, and shrinking the web
+    /// view is exactly what re-flows the page.
+    @State private var keyboardHeight: CGFloat = 0
+
+    /// The window's size on iPad, in points. A size, not a maximum: the card
+    /// keeps it while the keyboard is up so the page inside never re-flows.
+    private static let cardSize = CGSize(width: 640, height: 620)
 
     /// A full-screen cover that *draws* the small window on iPad.
     ///
     /// It used to be a system sheet. UIKit moves a presented sheet up when a
     /// docked keyboard would cover its first responder, and with a web page
     /// inside that means the whole window jumps — the top slides under the
-    /// status bar and the bottom disappears behind the keyboard. Nothing
-    /// moves here: on iPad the card gives way to the keyboard by shrinking
-    /// (its height is a maximum, and the cover's content still respects the
-    /// keyboard safe area), so the form stays whole above it; on a phone the
-    /// page keeps its viewport and scrolls under the keyboard, as Safari's
-    /// does.
+    /// status bar and the bottom disappears behind the keyboard. Shrinking the
+    /// card instead, which an earlier build did, re-flows the page under the
+    /// user's finger. So the card keeps one size and *rises*: it is centred in
+    /// the part of the window the keyboard leaves free, and the web view's
+    /// viewport never changes. On a phone the page keeps its viewport and
+    /// scrolls under the keyboard, as Safari's does.
     var body: some View {
         Group {
             if sizeClass == .regular {
-                ZStack {
-                    Color.black.opacity(0.4).ignoresSafeArea()
-                    signInPage
-                        .frame(maxWidth: 640, maxHeight: 760)
-                        .background(Color(uiColor: .systemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                        .shadow(color: .black.opacity(0.4), radius: 34, y: 16)
-                        .padding(44)
+                GeometryReader { proxy in
+                    let cardWidth = min(Self.cardSize.width, proxy.size.width - 88)
+                    let cardHeight = min(Self.cardSize.height, proxy.size.height - 88)
+                    // Centre the card in the space above the keyboard, but never
+                    // push it past the window's top edge; whatever is left
+                    // over is covered by the page's own scrolling.
+                    let lift = min(keyboardHeight, max(0, proxy.size.height - cardHeight - 24))
+                    ZStack {
+                        Color.black.opacity(0.4).ignoresSafeArea()
+                        signInPage
+                            .frame(width: cardWidth, height: cardHeight)
+                            .background(Color(uiColor: .systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                            .shadow(color: .black.opacity(0.4), radius: 34, y: 16)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .offset(y: -lift / 2)
+                            .animation(.easeOut(duration: 0.24), value: lift)
+                    }
                 }
+                .ignoresSafeArea(.keyboard, edges: .bottom)
             } else {
                 signInPage
                     // A phone's page scrolls under the keyboard, the way
                     // Safari's does.
                     .ignoresSafeArea(.keyboard, edges: .bottom)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            keyboardHeight = dockedKeyboardHeight(from: note)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
             keyboardVisible = true
@@ -68,6 +91,28 @@ struct LoginWebSheet: View {
         // The window is drawn over the screen it was opened from, as the
         // system sheet did — a cover's own background would black it out.
         .presentationBackground(.clear)
+    }
+
+    /// How much of the window a bottom-anchored keyboard covers.
+    ///
+    /// A floating keyboard is a panel the user can park anywhere; moving the
+    /// window for it would be moving it for a corner. It has to touch the
+    /// screen's bottom edge and span a good part of its width to count. iPadOS
+    /// draws its keyboard a little narrower than the screen, which is why the
+    /// width share here is a half rather than the near-everything the browser
+    /// shell asks for.
+    private func dockedKeyboardHeight(from notification: Notification) -> CGFloat {
+        guard sizeClass == .regular,
+              let value = notification
+                  .userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue,
+              let screen = UIApplication.shared.connectedScenes
+                  .compactMap({ ($0 as? UIWindowScene)?.screen })
+                  .first else { return 0 }
+        let frame = value.cgRectValue
+        let bounds = screen.bounds
+        guard frame.maxY >= bounds.maxY - 1,
+              frame.width >= bounds.width * 0.5 else { return 0 }
+        return max(0, bounds.maxY - frame.minY)
     }
 
     private var signInPage: some View {
@@ -308,6 +353,6 @@ private final class LoginWebContainer: UIView {
         let intersection = windowOnScreen.intersection(keyboardOnScreen)
         guard !intersection.isNull else { return false }
         return intersection.maxY >= windowOnScreen.maxY - 1
-            && intersection.width >= windowOnScreen.width * 0.85
+            && intersection.width >= windowOnScreen.width * 0.5
     }
 }
