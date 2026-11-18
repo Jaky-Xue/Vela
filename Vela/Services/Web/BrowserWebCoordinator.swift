@@ -350,7 +350,8 @@ public final class BrowserWebCoordinator: NSObject {
         // `window.scrollY` has nothing to do with the tab's document.
         guard message.frameInfo.isMainFrame else { return }
         guard let payload = message.body as? [String: Any],
-              let offset = payload["offsetY"] as? Double else { return }
+              let offset = payload["offsetY"] as? Double,
+              offset.isFinite, tab.scrollOffsetY != offset else { return }
         tab.scrollOffsetY = offset
     }
 
@@ -695,8 +696,8 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // breakpoints instead of its tablet ones. Added after the forced-zoom
         // rewrite so it runs last at each injection time; it keeps
         // `user-scalable=yes`, so the two features agree.
-        if pageIdentity.isDesktop,
-           settings.preferences.desktopViewportEnabled ?? true {
+        if pageIdentity.contentMode == .desktop,
+           settings.preferences.desktopViewportEnabled ?? false {
             // Document end, once the site's own viewport declaration has been
             // parsed. The script re-checks on DOMContentLoaded and load for a
             // meta a site adds later.
@@ -719,6 +720,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                 forMainFrameOnly: true
             )
         )
+        controller.addUserScript(WebPageScripts.makeAppearanceScript())
         // The page ends above the command bar, so the strip the bar sits in is
         // painted by the shell. This is what tells it which colour the page
         // itself uses there.
@@ -987,7 +989,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // `BrowserWebCoordinator+Navigation.swift` keeps it right when the
         // identity changes site by site.
         configuration.defaultWebpagePreferences.preferredContentMode =
-            identity.isDesktop ? .desktop : .mobile
+            identity.contentMode
 
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true

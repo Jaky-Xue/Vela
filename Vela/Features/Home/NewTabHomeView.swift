@@ -609,9 +609,10 @@ struct NewTabHomeView: View {
         LongPressGesture(minimumDuration: 0.22, maximumDistance: 12)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.favoriteDragSpace)))
             .updating($heldFavoriteID) { value, held, _ in
-                switch value {
-                case .first(true), .second(true, _): held = favorite.id
-                default: break
+                // The first phase starts at touch-down. Only the second
+                // phase confirms that the minimum hold elapsed.
+                if case .second(true, _) = value {
+                    held = favorite.id
                 }
             }
             .onChanged { value in

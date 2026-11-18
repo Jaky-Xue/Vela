@@ -58,6 +58,11 @@ struct UserAgentSettingsView: View {
         currentIdentity.customUserAgent ?? observedIdentifier
     }
 
+    private var systemIdentityLabel: String {
+        if currentIdentity.usesRecommendedContentMode { return "系统自动" }
+        return currentIdentity.isDesktop ? "系统桌面版" : "系统手机版"
+    }
+
     var body: some View {
         List {
             Section {
@@ -65,7 +70,7 @@ struct UserAgentSettingsView: View {
             } header: {
                 Text("自动")
             } footer: {
-                Text("自动模式由系统 WebKit 生成标识。iPhone 优先手机版，iPad 与 Mac 优先桌面版。兼容预设只替换 User-Agent。")
+                Text("自动模式由 WebKit 根据设备和窗口选择标识及网页布局。兼容预设使用指定的 User-Agent。")
             }
 
             Section("移动端网页") {
@@ -109,7 +114,7 @@ struct UserAgentSettingsView: View {
 
             Section {
                 Toggle("桌面版按桌面宽度排版", isOn: Binding(
-                    get: { env.settings.preferences.desktopViewportEnabled ?? true },
+                    get: { env.settings.preferences.desktopViewportEnabled ?? false },
                     set: { value in
                         env.settings.update { $0.desktopViewportEnabled = value }
                         apply(reload: true)
@@ -119,7 +124,7 @@ struct UserAgentSettingsView: View {
             } header: {
                 Text("桌面排版")
             } footer: {
-                Text("桌面版下把 width=device-width 的页面按 1200 的桌面宽度排版并等比缩放，让 768–1024 宽的 iPad 也进入桌面断点。个别网站排版异常时可关闭。")
+                Text("兼容选项。开启后，明确选择桌面版时可将网页视口扩到 1200 CSS 像素。")
             }
 
             Section {
@@ -162,7 +167,7 @@ struct UserAgentSettingsView: View {
             }
 
             Section {
-                Text(effectiveOutgoingIdentifier ?? (currentIdentity.isDesktop ? "系统桌面版" : "系统手机版"))
+                Text(effectiveOutgoingIdentifier ?? systemIdentityLabel)
                     .font(.system(size: 12, design: .monospaced))
                     .textSelection(.enabled)
                     .foregroundStyle(palette.primaryText)

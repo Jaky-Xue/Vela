@@ -194,6 +194,8 @@ struct WebViewHost: UIViewRepresentable {
     final class Coordinator {
         private(set) var observedWebView: WKWebView?
         private var offsetObservation: NSKeyValueObservation?
+        private var pendingOffset: Double?
+        private var scrollDeliveryTask: Task<Void, Never>?
         private var progressObservation: NSKeyValueObservation?
         /// Progress arrives on every WebKit tick. The shell is an observable
         /// object, so writing each tick invalidates the whole view tree tens of
@@ -222,17 +224,26 @@ struct WebViewHost: UIViewRepresentable {
             originalZoomRange = nil
 
             if let onScroll {
-                offsetObservation = webView.scrollView.observe(\.contentOffset, options: [.new]) { scrollView, _ in
+                offsetObservation = webView.scrollView.observe(\.contentOffset, options: [.new]) { [weak self] scrollView, _ in
                     // Normalised against the top inset, so the number the shell
                     // sees is the distance from the document's own top rather
                     // than the raw offset — which starts at minus the inset,
                     // since the scroll view rests there when the page is at
                     // its top.
                     let offset = Double(scrollView.contentOffset.y + scrollView.contentInset.top)
-                    // WebKit reports the offset on the main thread; the hop makes
-                    // that explicit for the SwiftUI state write it triggers.
-                    Task { @MainActor in
-                        onScroll(offset)
+                    // UIKit reports these changes on the main thread. Coalesce
+                    // updates from the same layout pass before touching SwiftUI.
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.pendingOffset = offset
+                        guard self.scrollDeliveryTask == nil else { return }
+                        self.scrollDeliveryTask = Task { @MainActor [weak self] in
+                            guard !Task.isCancelled, let self else { return }
+                            let latest = self.pendingOffset
+                            self.pendingOffset = nil
+                            self.scrollDeliveryTask = nil
+                            if let latest { onScroll(latest) }
+                        }
                     }
                 }
             }
@@ -296,6 +307,9 @@ struct WebViewHost: UIViewRepresentable {
         func stopObserving() {
             offsetObservation?.invalidate()
             offsetObservation = nil
+            scrollDeliveryTask?.cancel()
+            scrollDeliveryTask = nil
+            pendingOffset = nil
             progressObservation?.invalidate()
             progressObservation = nil
             progressDeliveryTask?.cancel()
@@ -339,6 +353,7 @@ struct WebViewHost: UIViewRepresentable {
         }
 
         deinit {
+            scrollDeliveryTask?.cancel()
             offsetObservation?.invalidate()
             progressObservation?.invalidate()
             progressDeliveryTask?.cancel()
@@ -356,19 +371,19 @@ final class WebViewContainerView: UIView {
 
     /// Where the page's content should start, from the window's top edge.
     var topContentOffset: CGFloat = 0 {
-        didSet { updateTopLayout() }
+        didSet { if abs(topContentOffset - oldValue) > 0.5 { updateTopLayout() } }
     }
 
     /// Whether the page is held below the status bar.
     var protectsStatusBar: Bool = false {
-        didSet { updateTopLayout() }
+        didSet { if protectsStatusBar != oldValue { updateTopLayout() } }
     }
 
     /// The status-bar strip as the shell measured it. The window's own inset is
     /// used as well; the larger of the two wins, so a first pass that reads
     /// either as zero cannot leave the page under the clock.
     var statusBarStrip: CGFloat = 0 {
-        didSet { updateTopLayout() }
+        didSet { if abs(statusBarStrip - oldValue) > 0.5 { updateTopLayout() } }
     }
 
     /// The command bar's height plus its gap, or zero when the page owns the

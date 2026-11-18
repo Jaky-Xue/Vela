@@ -1216,14 +1216,22 @@ public struct BrowserWebIdentity: Equatable, Sendable {
     /// maps this onto `WKWebpagePreferences.preferredContentMode`, which is
     /// the same switch Safari's 请求桌面网站 uses.
     public var isDesktop: Bool
+    public var usesRecommendedContentMode: Bool
+
+    var contentMode: WKWebpagePreferences.ContentMode {
+        if usesRecommendedContentMode { return .recommended }
+        return isDesktop ? .desktop : .mobile
+    }
 
     public init(
         applicationNameForUserAgent: String? = nil,
         customUserAgent: String? = nil,
-        isDesktop: Bool = false
+        isDesktop: Bool = false,
+        usesRecommendedContentMode: Bool = false
     ) {
         self.applicationNameForUserAgent = applicationNameForUserAgent
         self.customUserAgent = customUserAgent
         self.isDesktop = isDesktop
+        self.usesRecommendedContentMode = usesRecommendedContentMode
     }
 }

@@ -156,6 +156,66 @@ public enum WebPageScripts {
     })();
     """
 
+    // MARK: - Web appearance
+
+    static func makeAppearanceScript() -> WKUserScript {
+        WKUserScript(
+            source: appearanceFallback,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true,
+            in: .defaultClient
+        )
+    }
+
+    private static let appearanceFallback = #"""
+    (() => {
+      const root = document.documentElement;
+      if (!root || document.contentType !== 'text/html') return;
+      const scheme = matchMedia('(prefers-color-scheme: dark)');
+      const marker = 'data-vela-dark-fallback';
+      let stylesheet;
+
+      function isDark(color) {
+        const channels = color.match(/^rgba?\(([^)]+)\)$/)?.[1].split(',').map(Number);
+        if (!channels || channels.length < 3 || channels[3] === 0) return null;
+        const [r, g, b, a = 1] = channels;
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) * a + 255 * (1 - a) < 128;
+      }
+
+      function update() {
+        root.removeAttribute(marker);
+        if (!scheme.matches) return;
+
+        const rootStyle = getComputedStyle(root);
+        const body = document.body;
+        const bodyStyle = body ? getComputedStyle(body) : null;
+        if (/\bdark\b/.test(rootStyle.colorScheme) || /\bdark\b/.test(bodyStyle?.colorScheme || '')) return;
+        if ((isDark(bodyStyle?.backgroundColor || '') ?? isDark(rootStyle.backgroundColor)) === true) return;
+
+        if (!stylesheet) {
+          stylesheet = new CSSStyleSheet();
+          stylesheet.replaceSync(`
+            @media (prefers-color-scheme: dark) {
+              html[data-vela-dark-fallback] {
+                background-color: white;
+                filter: invert(0.92) hue-rotate(180deg) !important;
+              }
+              html[data-vela-dark-fallback] :is(img, video, canvas, iframe) {
+                filter: hue-rotate(180deg) invert(0.92) !important;
+              }
+            }
+          `);
+          document.adoptedStyleSheets = [...document.adoptedStyleSheets, stylesheet];
+        }
+        root.setAttribute(marker, '');
+      }
+
+      update();
+      scheme.addEventListener('change', update);
+      window.addEventListener('pageshow', update);
+    })();
+    """#
+
     // MARK: - Page background
 
     /// Reports the colour the page paints behind itself.
@@ -233,6 +293,10 @@ public enum WebPageScripts {
 
       function sample() {
         try {
+          if (document.documentElement.hasAttribute('data-vela-dark-fallback') &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            return 'rgb(20, 20, 20)';
+          }
           // `body` and `html` first: when either paints a background it is
           // the page's own surface, not whatever content happens to sit at
           // the bottom edge at this instant.
@@ -290,49 +354,32 @@ public enum WebPageScripts {
 
     // MARK: - Scroll
 
-    /// Reports scroll offset and direction.
+    /// Samples the document offset for session restoration.
     public static let scrollReporter = """
     (function () {
       if (window.__velaScrollReporterInstalled === true) { return; }
       window.__velaScrollReporterInstalled = true;
 
       var lastY = window.scrollY || 0;
-      var lastEmitAt = 0;
-      var ticking = false;
+      var pending = null;
 
       function emit() {
-        ticking = false;
-        try {
-          var y = window.scrollY || 0;
-          var delta = y - lastY;
-          // A distance threshold plus a time gate keeps the script bridge quiet
-          // during a fling: the chrome only needs to know which side of its
-          // threshold the accumulated movement is on, not every frame.
-          if (Math.abs(delta) < 8) { return; }
-          var now = Date.now();
-          // Reaching the top is always reported: a thinned-out final frame
-          // must not leave the bar hidden on a page the user has returned to
-          // the start of.
-          if (y > 0 && now - lastEmitAt < 70) { return; }
-          lastEmitAt = now;
-          if (window.webkit && window.webkit.messageHandlers &&
-              window.webkit.messageHandlers.\(Handler.scroll.rawValue)) {
-            window.webkit.messageHandlers.\(Handler.scroll.rawValue).postMessage({
-              offsetY: y,
-              deltaY: delta,
-              direction: delta > 0 ? 'down' : 'up',
-              atTop: y <= 0
-            });
-          }
-          lastY = y;
-        } catch (_error) {
-        }
+        pending = null;
+        var y = window.scrollY || 0;
+        if (y === lastY) return;
+        var handler = window.webkit?.messageHandlers?.\(Handler.scroll.rawValue);
+        if (!handler) return;
+        handler.postMessage({ offsetY: y });
+        lastY = y;
       }
 
       window.addEventListener('scroll', function () {
-        if (ticking) { return; }
-        ticking = true;
-        window.requestAnimationFrame(emit);
+        if (window.scrollY <= 0 && lastY > 0) {
+          if (pending !== null) window.clearTimeout(pending);
+          emit();
+        } else if (pending === null) {
+          pending = window.setTimeout(emit, 100);
+        }
       }, { passive: true });
     })();
     """

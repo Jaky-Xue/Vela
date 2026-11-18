@@ -83,7 +83,7 @@ extension BrowserWebCoordinator: WKUIDelegate {
                 configuration.applicationNameForUserAgent = applicationName
             }
             configuration.defaultWebpagePreferences.preferredContentMode =
-                identity.isDesktop ? .desktop : .mobile
+                identity.contentMode
         }
 
         let popup = WKWebView(frame: .zero, configuration: configuration)

@@ -364,11 +364,10 @@ final class BrowserUserAgentTests: XCTestCase {
         let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false, device: .pad)
         XCTAssertNil(identity.customUserAgent)
         XCTAssertTrue(identity.isDesktop)
-        // The same identity the explicit desktop toggle produces.
-        XCTAssertEqual(
-            identity,
-            BrowserUserAgent.identity(custom: "", prefersDesktop: true, device: .phone)
-        )
+        XCTAssertTrue(identity.usesRecommendedContentMode)
+        let explicitDesktop = BrowserUserAgent.identity(custom: "", prefersDesktop: true, device: .phone)
+        XCTAssertTrue(explicitDesktop.isDesktop)
+        XCTAssertFalse(explicitDesktop.usesRecommendedContentMode)
     }
 
     /// The identifier decides the layout now: a typed Windows string on a

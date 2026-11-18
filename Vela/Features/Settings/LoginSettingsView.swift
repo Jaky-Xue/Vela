@@ -116,12 +116,14 @@ struct LoginSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    revealsAddresses.toggle()
-                } label: {
-                    Image(systemName: revealsAddresses ? "eye.slash" : "eye")
+                if !accounts.isEmpty {
+                    Button {
+                        revealsAddresses.toggle()
+                    } label: {
+                        Image(systemName: revealsAddresses ? "eye.slash" : "eye")
+                    }
+                    .accessibilityLabel(revealsAddresses ? "隐藏邮箱" : "显示邮箱")
                 }
-                .accessibilityLabel(revealsAddresses ? "隐藏邮箱" : "显示邮箱")
             }
         }
         .task {

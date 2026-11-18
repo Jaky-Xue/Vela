@@ -194,7 +194,10 @@ public enum BrowserUserAgent {
 
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return BrowserWebIdentity(isDesktop: prefersDesktop || device.prefersDesktopIdentity)
+            return BrowserWebIdentity(
+                isDesktop: prefersDesktop || device.prefersDesktopIdentity,
+                usesRecommendedContentMode: !prefersDesktop
+            )
         }
 
         let preset = BrowserUserAgentPreset.all.first { $0.userAgent == trimmed }

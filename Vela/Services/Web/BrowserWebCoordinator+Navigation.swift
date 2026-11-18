@@ -119,7 +119,7 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
         in webView: WKWebView
     ) -> WKWebpagePreferences.ContentMode {
         guard let tab = tab(for: webView) else { return .recommended }
-        return webIdentity(for: tab, url: url).isDesktop ? .desktop : .mobile
+        return webIdentity(for: tab, url: url).contentMode
     }
 
     @MainActor

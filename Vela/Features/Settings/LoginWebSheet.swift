@@ -10,20 +10,23 @@
 //  (`.default()`), so signing in here is signing in for the browser — the same
 //  cookies the tabs use, and the same state 「退出所有账号」 clears.
 //
-//  Nothing is injected into this page: no user scripts, no page bridges. It is
-//  a password form, and the browser's own plumbing has no business in it.
+//  The only injected code is the browser's visual appearance stylesheet.
+//  Sign-in pages have no userscript or message bridge.
 //
 
 import SwiftUI
+import UIKit
 import WebKit
 
 struct LoginWebSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     let provider: WebAccountProvider
     var onFinish: () -> Void
 
     @State private var isLoading = true
+    @State private var keyboardVisible = false
 
     var body: some View {
         NavigationStack {
@@ -32,6 +35,7 @@ struct LoginWebSheet: View {
                     ZStack {
                         LoginWebView(
                             url: url,
+                            style: colorScheme == .dark ? .dark : .light,
                             isLoading: $isLoading
                         )
                         if isLoading {
@@ -53,6 +57,16 @@ struct LoginWebSheet: View {
             .navigationTitle(provider.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if keyboardVisible {
+                        Button("收起键盘", systemImage: "keyboard.chevron.compact.down") {
+                            UIApplication.shared.sendAction(
+                                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+                            )
+                        }
+                        .labelStyle(.iconOnly)
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") {
                         onFinish()
@@ -60,6 +74,13 @@ struct LoginWebSheet: View {
                     }
                 }
             }
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+            keyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+            keyboardVisible = false
         }
         .presentationDetents([.large])
         .presentationCompactAdaptation(.fullScreenCover)
@@ -69,27 +90,34 @@ struct LoginWebSheet: View {
 /// The sign-in page itself.
 ///
 /// A bare `WKWebView` on purpose: the browser's coordinator carries the
-/// content blocker, the page bridges and the user-script worlds, none of which
-/// may run on a password form. It still reads and writes the browser's own
+/// content blocker, page bridges and installed userscripts. It still reads
+/// and writes the browser's own
 /// cookie jar, which is the whole point.
 private struct LoginWebView: UIViewRepresentable {
     let url: URL
+    let style: UIUserInterfaceStyle
     @Binding var isLoading: Bool
 
-    func makeUIView(context: Context) -> WKWebView {
+    func makeUIView(context: Context) -> LoginWebContainer {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
+        configuration.userContentController.addUserScript(WebPageScripts.makeAppearanceScript())
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.overrideUserInterfaceStyle = style
+        webView.backgroundColor = .systemBackground
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.keyboardDismissMode = .interactive
         webView.load(URLRequest(url: url))
-        return webView
+        return LoginWebContainer(webView: webView)
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {
+    func updateUIView(_ container: LoginWebContainer, context: Context) {
         context.coordinator.parent = self
+        if container.webView.overrideUserInterfaceStyle != style {
+            container.webView.overrideUserInterfaceStyle = style
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -137,5 +165,31 @@ private struct LoginWebView: UIViewRepresentable {
             }
             return nil
         }
+    }
+}
+
+
+private final class LoginWebContainer: UIView {
+    let webView: WKWebView
+
+    init(webView: WKWebView) {
+        self.webView = webView
+        super.init(frame: .zero)
+        backgroundColor = .systemBackground
+        keyboardLayoutGuide.followsUndockedKeyboard = false
+        keyboardLayoutGuide.usesBottomSafeArea = false
+
+        addSubview(webView)
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            webView.topAnchor.constraint(equalTo: topAnchor),
+            webView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            webView.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        return nil
     }
 }
