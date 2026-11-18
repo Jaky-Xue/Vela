@@ -93,6 +93,12 @@ struct LoginWebSheet: View {
 /// content blocker, page bridges and installed userscripts. It still reads
 /// and writes the browser's own
 /// cookie jar, which is the whole point.
+///
+/// It takes the system identity rather than the user's 网页标识 choice — a
+/// sign-in form has no business claiming to be Chrome — but the Safari tail is
+/// still appended. That tail is what makes the page see Safari rather than
+/// WebKit's bare string, and a form that answers 「浏览器版本过低」 is a
+/// sign-in the user cannot finish.
 private struct LoginWebView: UIViewRepresentable {
     let url: URL
     let style: UIUserInterfaceStyle
@@ -100,6 +106,7 @@ private struct LoginWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> LoginWebContainer {
         let configuration = WKWebViewConfiguration()
+        configuration.applicationNameForUserAgent = BrowserUserAgent.safariTail
         configuration.websiteDataStore = .default()
         configuration.userContentController.addUserScript(WebPageScripts.makeAppearanceScript())
         let webView = WKWebView(frame: .zero, configuration: configuration)

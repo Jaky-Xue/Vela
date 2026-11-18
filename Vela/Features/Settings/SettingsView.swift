@@ -289,7 +289,7 @@ struct SettingsView: View {
     private var userAgentDetail: String {
         let stored = env.settings.preferences.customUserAgent
         if !stored.isEmpty {
-            return BrowserUserAgentPreset.all.first { $0.userAgent == stored }?.title ?? "自定义"
+            return BrowserUserAgentPreset.matching(stored)?.title ?? "自定义"
         }
         return "自动"
     }

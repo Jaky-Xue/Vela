@@ -312,44 +312,56 @@ final class BrowserUrlResolverTests: XCTestCase {
 
 /// The identifier a tab presents.
 ///
-/// Two properties matter and both were wrong before. The version has to come from
-/// the running system rather than from a number written down when the string was
-/// authored: the app hardcoded `Version/17.0`, so on a later iOS every site was
-/// told the browser was Safari 17 and the ones that check answered
-/// 「浏览器版本太低」. And the string has to be Safari-shaped: a bare `WKWebView`
-/// sends neither `Version/` nor `Safari/`, and a site that looks for them treats
-/// their absence as an embedded browser.
+/// Three properties matter, and each of them was wrong at some point. The version
+/// has to be current: the app once hardcoded `Version/17.0`, so on a later iOS
+/// every site was told the browser was Safari 17 and the ones that check answered
+/// 「浏览器版本太低」. The string has to be Safari-shaped: a bare `WKWebView` sends
+/// neither `Version/` nor `Safari/`, and a site that looks for them treats their
+/// absence as an embedded browser — the same complaint from the other side, which
+/// is what dropping the tail produced.
 ///
-/// The third property is the one that makes the first survive an OS release: on a
-/// phone the default identity sets *no* custom identifier, so WebKit builds the
-/// whole string from its own platform and engine tokens and Vela only appends the
-/// Safari tail. An iPad is the exception it has to be — WebKit will not claim a
-/// Mac on its own — and there the platform token is the only part written down.
-/// Nothing here has to be revised for iOS 27.
+/// The third property is what makes the first survive both an OS release and an
+/// old device: on a phone the default identity sets *no* custom identifier, so
+/// WebKit builds the whole string from its own platform and engine tokens, and
+/// Vela appends only the Safari tail — with the newest version this build knows,
+/// which is the running system's when that is newer.
 @MainActor
 final class BrowserUserAgentTests: XCTestCase {
     /// What Vela adds, and the only part of the identifier it writes at all.
-    func testTheTailIsTheSafariPartAndReportsTheRunningSystem() {
+    func testTheTailIsTheSafariPartAndClaimsTheNewestSystem() {
         let tail = BrowserUserAgent.safariTail
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        XCTAssertTrue(tail.hasPrefix("Version/\(version.majorVersion).\(version.minorVersion)"), tail)
+        let claimed = BrowserUserAgent.claimedSystemVersion
+        XCTAssertTrue(tail.hasPrefix("Version/\(claimed)"), tail)
         XCTAssertTrue(tail.contains("Mobile/"), tail)
         XCTAssertTrue(tail.contains("Safari/"), tail)
         XCTAssertFalse(tail.contains("Version/17.0"))
+
+        // The claim is the running system's when that is newer, and this
+        // build's newest known version otherwise — never older than the
+        // device, which is what a page reads as a stale browser.
+        let running = ProcessInfo.processInfo.operatingSystemVersion
+        let runningText = "\(running.majorVersion).\(running.minorVersion)"
+        XCTAssertEqual(
+            BrowserUserAgent.claimedSystemVersion,
+            BrowserUserAgent.isVersion(runningText, newerThan: BrowserUserAgent.newestSystemVersion)
+                ? runningText
+                : BrowserUserAgent.newestSystemVersion
+        )
     }
 
-    /// The default leaves the whole prefix to WebKit — on a phone.
+    /// The default leaves the whole prefix to WebKit — on a phone — and adds
+    /// only the tokens a bare `WKWebView` does not send.
     ///
     /// This is the property that adapts to a new OS by itself: Vela does not name
     /// the platform, and it does not name the engine's version token either —
     /// writing that down is the same mistake as writing down `Version/17.0`, one
     /// layer down. The device is stated rather than read so the test says which
     /// device it means, not which simulator happens to run it.
-    func testTheDefaultIdentityWritesNoCustomIdentifier() {
+    func testTheDefaultIdentityKeepsWebKitsPrefixAndAddsTheSafariTail() {
         let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false, device: .phone)
         XCTAssertNil(identity.customUserAgent)
         XCTAssertFalse(identity.isDesktop)
-        XCTAssertNil(identity.applicationNameForUserAgent)
+        XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.safariTail)
     }
 
     /// An iPad's automatic identity is the desktop one, and it asks for the
@@ -362,7 +374,11 @@ final class BrowserUserAgentTests: XCTestCase {
     /// iPad presents the desktop page even without the desktop toggle.
     func testAnIPadPresentsTheDesktopIdentityAutomatically() {
         let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false, device: .pad)
-        XCTAssertNil(identity.customUserAgent)
+        // The desktop half needs the Mac platform token, which WebKit will not
+        // produce for an iPad on its own, so it is presented as the
+        // reconstructed desktop identifier — the same one a phone gets when it
+        // asks for the desktop page.
+        XCTAssertEqual(identity.customUserAgent, BrowserUserAgent.desktopIdentifier)
         XCTAssertTrue(identity.isDesktop)
         XCTAssertTrue(identity.usesRecommendedContentMode)
         let explicitDesktop = BrowserUserAgent.identity(custom: "", prefersDesktop: true, device: .phone)
@@ -424,7 +440,7 @@ final class BrowserUserAgentTests: XCTestCase {
             host: "www.youtube.com",
             device: .pad
         )
-        XCTAssertNil(pad.customUserAgent)
+        XCTAssertEqual(pad.customUserAgent, BrowserUserAgent.desktopIdentifier)
         XCTAssertTrue(pad.isDesktop)
 
         // The explicit desktop toggle on a phone gets the same answer.
@@ -434,7 +450,7 @@ final class BrowserUserAgentTests: XCTestCase {
             host: "www.youtube.com",
             device: .phone
         )
-        XCTAssertNil(phoneDesktop.customUserAgent)
+        XCTAssertEqual(phoneDesktop.customUserAgent, BrowserUserAgent.desktopIdentifier)
         XCTAssertTrue(phoneDesktop.isDesktop)
     }
 
@@ -448,7 +464,7 @@ final class BrowserUserAgentTests: XCTestCase {
             device: .phone,
             siteMode: .desktop
         )
-        XCTAssertNil(phoneDesktop.customUserAgent)
+        XCTAssertEqual(phoneDesktop.customUserAgent, BrowserUserAgent.desktopIdentifier)
         XCTAssertTrue(phoneDesktop.isDesktop)
 
         let padMobile = BrowserUserAgent.identity(
@@ -492,19 +508,23 @@ final class BrowserUserAgentTests: XCTestCase {
 
     /// A typed mobile identifier keeps a mobile layout even on an iPad, where
     /// the automatic identity would have been desktop.
-    func testATypedMobileIdentifierLaysOutAMobileDocumentOnAnIPad() {
+    func testAStoredMobileSystemIdentifierFollowsTheSystemOnAnIPad() {
         let identity = BrowserUserAgent.identity(
             custom: BrowserUserAgent.mobileIdentifier,
             prefersDesktop: false,
             device: .pad
         )
-        XCTAssertEqual(identity.customUserAgent, BrowserUserAgent.mobileIdentifier)
+        // The system presets are not values to send: the stored string means
+        // "the phone identity", so the page gets WebKit's own string with the
+        // current Safari tail rather than a frozen literal.
+        XCTAssertNil(identity.customUserAgent)
+        XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.safariTail)
         XCTAssertFalse(identity.isDesktop)
     }
 
-    /// A desktop identifier chosen on a phone is presented as typed and lays
-    /// the document out as a desktop one.
-    func testADesktopIdentifierOnAPhoneUsesTheDesktopLayout() {
+    /// A desktop identifier chosen on a phone lays the document out as a
+    /// desktop one, and claims the newest version with it.
+    func testAStoredDesktopSystemIdentifierUsesTheDesktopLayout() {
         let identity = BrowserUserAgent.identity(
             custom: BrowserUserAgent.desktopIdentifier,
             prefersDesktop: false,
@@ -512,6 +532,47 @@ final class BrowserUserAgentTests: XCTestCase {
         )
         XCTAssertEqual(identity.customUserAgent, BrowserUserAgent.desktopIdentifier)
         XCTAssertTrue(identity.isDesktop)
+        XCTAssertTrue(
+            identity.customUserAgent?.contains("Version/\(BrowserUserAgent.claimedSystemVersion)")
+                ?? false
+        )
+    }
+
+    /// A literal an earlier build stored for a system preset follows the system
+    /// again instead of being sent verbatim.
+    ///
+    /// Builds before 4.0.77 wrote the preset down as a string — `26_0`, `26_1`,
+    /// whatever the OS was when the user chose it. A literal is fine until the
+    /// OS moves; then it is exactly the stale label sites reject, and it was
+    /// never something the user typed.
+    func testALiteralStoredByAnEarlierBuildFollowsTheSystem() {
+        let stored = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+            + "Version/26.0 Mobile/15E148 Safari/604.1"
+        let identity = BrowserUserAgent.identity(custom: stored, prefersDesktop: false, device: .phone)
+        XCTAssertNil(identity.customUserAgent)
+        XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.safariTail)
+        XCTAssertFalse(identity.isDesktop)
+        XCTAssertEqual(BrowserUserAgentPreset.matching(stored)?.id, "safari-iphone")
+    }
+
+    func testALiteralStoredForTheDesktopPresetKeepsTheDesktopLayout() {
+        let stored = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+        let identity = BrowserUserAgent.identity(custom: stored, prefersDesktop: false, device: .phone)
+        XCTAssertEqual(identity.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertTrue(identity.isDesktop)
+        XCTAssertEqual(BrowserUserAgentPreset.matching(stored)?.id, "safari-macos")
+    }
+
+    /// A string naming another browser is a compatibility choice and is sent as
+    /// given; only Safari-shaped literals are read as system presets.
+    func testACompatibilityIdentifierIsNotReadAsASystemPreset() {
+        let chrome = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36"
+        let identity = BrowserUserAgent.identity(custom: chrome, prefersDesktop: false, device: .phone)
+        XCTAssertEqual(identity.customUserAgent, chrome)
+        XCTAssertNil(BrowserUserAgentPreset.matching(chrome))
     }
 
     func testACustomIdentifierBecomesTheOverride() {
@@ -519,10 +580,10 @@ final class BrowserUserAgentTests: XCTestCase {
         // A custom string wins outright, desktop toggle included: someone who
         // typed one asked for that exact value.
         XCTAssertEqual(identity.customUserAgent, "MyAgent/9")
-        // The tail is still set, which is harmless because the override replaces
-        // the whole identifier — and it is what makes the desktop toggle a
-        // one-property change.
-        XCTAssertNil(identity.applicationNameForUserAgent)
+        // The tail is still set, which is harmless because the override
+        // replaces the whole identifier — and it is what the tab falls back to
+        // when the string is cleared.
+        XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.safariTail)
     }
 
     func testTheCustomIdentifierIsTrimmed() {
@@ -538,11 +599,11 @@ final class BrowserUserAgentTests: XCTestCase {
         )
     }
 
-    func testDesktopModeUsesWebKitIdentity() {
+    func testDesktopModePresentsTheDesktopIdentifier() {
         let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: true)
         XCTAssertTrue(identity.isDesktop)
-        XCTAssertNil(identity.customUserAgent)
-        XCTAssertNil(identity.applicationNameForUserAgent)
+        XCTAssertEqual(identity.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertFalse(identity.usesRecommendedContentMode)
     }
 
     /// The reconstruction used as the desktop base and shown in settings.
@@ -713,13 +774,13 @@ final class PresetSummaryTests: XCTestCase {
     func testTheAndroidPresetNamesThePhoneAndTheEngine() {
         let preset = BrowserUserAgentPreset.all.first { $0.id == "chrome-android" }
         guard let preset else { return XCTFail("the Android preset is gone") }
-        XCTAssertEqual(preset.claimedSummary, "Pixel 10 · Android 16 · Chrome 146")
+        XCTAssertEqual(preset.claimedSummary, "Pixel 11 · Android 17 · Chrome 158")
     }
 
     func testAnEdgePresetIsNotMistakenForChrome() {
         let preset = BrowserUserAgentPreset.all.first { $0.id == "edge-windows" }
         guard let preset else { return XCTFail("the Edge preset is gone") }
-        XCTAssertTrue(preset.claimedSummary.hasPrefix("Windows 10.0 · Edge 146"), preset.claimedSummary)
+        XCTAssertTrue(preset.claimedSummary.hasPrefix("Windows 10.0 · Edge 157"), preset.claimedSummary)
         XCTAssertFalse(preset.claimedSummary.contains("Chrome"), preset.claimedSummary)
     }
 

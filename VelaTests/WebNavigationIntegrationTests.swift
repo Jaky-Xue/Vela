@@ -579,19 +579,21 @@ final class WebNavigationIntegrationTests: XCTestCase {
     ///
     /// Three properties, each of which was wrong before:
     ///
-    /// * The version is the device's, not a number written down when the string
-    ///   was authored. The app hardcoded `Version/17.0`, so on a later iOS every
-    ///   site was told the browser was Safari 17 and the ones that check answered
-    ///   「浏览器版本太低」.
+    /// * The version is the newest this build knows, not a number written down
+    ///   when the string was authored. The app once hardcoded `Version/17.0`, so
+    ///   on a later iOS every site was told the browser was Safari 17 and the ones
+    ///   that check answered 「浏览器版本太低」.
     /// * The identifier carries `Version/` and `Safari/`. A bare `WKWebView` sends
     ///   neither — they are tokens Safari adds for itself — and a site that looks
     ///   for them treats their absence as an embedded browser, which is the other
-    ///   way a site tells the user to go and open Safari.
-    /// * Its *prefix* is byte-identical to what WebKit builds unaided: the
-    ///   platform token and the engine's version token are the running system's,
-    ///   not this project's. That is what makes the identifier survive an OS
-    ///   release — the check against a throwaway web view is the whole point, and
-    ///   it is what a hardcoded `AppleWebKit/605.1.15` would fail.
+    ///   way a site tells the user to go and open Safari. The tail is what this
+    ///   test would fail on if it went missing again.
+    /// * On a phone its *prefix* is byte-identical to what WebKit builds
+    ///   unaided: the platform token and the engine's version token are the
+    ///   running system's, not this project's. That is what makes the mobile
+    ///   identity survive an OS release — the check against a throwaway web
+    ///   view is the whole point, and it is what a hardcoded
+    ///   `AppleWebKit/605.1.15` would fail.
     func testTheIdentifierIsSafarisOnThisDevice() async {
         let tab = harness.open(url("/one"))
         await waitForSettled(tab, expectingTitle: "Page One")
@@ -599,8 +601,9 @@ final class WebNavigationIntegrationTests: XCTestCase {
         guard let webView = harness.tabManager.webView(for: tab.id) else {
             return XCTFail("no web view")
         }
-        // The default sets no override at all: WebKit assembles the identifier
-        // and Vela only supplies the tail. Read back leniently — assigning nil
+        // A phone's default sets no override: WebKit assembles the identifier
+        // and Vela only supplies the tail. An iPad's default is the desktop
+        // identity, which does carry one. Read back leniently — assigning nil
         // to `customUserAgent` reads back as the empty string, not as nil, which
         // is a WebKit detail rather than a property of this code.
         XCTAssertTrue(
@@ -614,10 +617,28 @@ final class WebNavigationIntegrationTests: XCTestCase {
             .recommended
         )
 
+        XCTAssertEqual(
+            webView.configuration.applicationNameForUserAgent,
+            BrowserUserAgent.safariTail,
+            "a system identity has to append the Safari tail"
+        )
+
+        // The reference carries the same tail and nothing else, which is the
+        // claim being tested: WebKit builds the prefix, Vela adds Safari's
+        // tokens.
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.preferredContentMode =
             webView.configuration.defaultWebpagePreferences.preferredContentMode
+        configuration.applicationNameForUserAgent =
+            webView.configuration.applicationNameForUserAgent
         let reference = WKWebView(frame: .zero, configuration: configuration)
+        // An iPad's automatic identity is the desktop one, which does carry an
+        // override; the reference has to present the same one for this
+        // comparison to be about WebKit's prefix rather than about which
+        // identity was chosen.
+        if let override = webView.customUserAgent, !override.isEmpty {
+            reference.customUserAgent = override
+        }
         reference.load(URLRequest(url: url("/one")))
         for _ in 0..<100 where reference.isLoading || reference.title != "Page One" {
             try? await Task.sleep(nanoseconds: 20_000_000)
@@ -626,6 +647,17 @@ final class WebNavigationIntegrationTests: XCTestCase {
         let actual = try? await webView.evaluateJavaScript("navigator.userAgent") as? String
         XCTAssertFalse(expected?.isEmpty ?? true)
         XCTAssertEqual(actual, expected)
+
+        let identifier = actual ?? ""
+        XCTAssertTrue(
+            identifier.contains("Version/\(BrowserUserAgent.claimedSystemVersion)"),
+            identifier
+        )
+        XCTAssertTrue(identifier.contains("Safari/604.1"), identifier)
+        // The `Mobile/` marker belongs to the mobile identity: an iPad's
+        // automatic one is the desktop identity and must not claim it.
+        let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false)
+        XCTAssertEqual(identifier.contains("Mobile/"), !identity.isDesktop, identifier)
     }
 
     func testDesktopIdentifierPresentsADesktopPage() async {
@@ -637,9 +669,17 @@ final class WebNavigationIntegrationTests: XCTestCase {
         guard let webView = harness.tabManager.webView(for: tab.id) else {
             return XCTFail("no web view")
         }
-        XCTAssertEqual(webView.customUserAgent?.contains("Macintosh"), true)
+        // The desktop identity is the one override a system identity carries:
+        // the Mac platform token is the half WebKit will not produce for us.
+        XCTAssertEqual(webView.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertTrue(
+            webView.customUserAgent?.contains(
+                "Version/\(BrowserUserAgent.claimedSystemVersion)"
+            ) ?? false,
+            webView.customUserAgent ?? "-"
+        )
         // The other half of the claim: WebKit lays the document out as a
-        // desktop one. Without this a Mac identifier came with a mobile
+        // desktop one. Without this a desktop identity came with a mobile
         // viewport and a mobile `navigator.platform`.
         XCTAssertEqual(
             webView.configuration.defaultWebpagePreferences.preferredContentMode,
@@ -660,7 +700,7 @@ final class WebNavigationIntegrationTests: XCTestCase {
     /// emptying the stored string — and a cleared override that does not
     /// actually restore the default would leave the user stuck claiming to be a
     /// Mac with no way back except deleting the app's settings.
-    func testClearingTheDesktopIdentifierRestoresThePhoneIdentifier() async {
+    func testClearingTheDesktopIdentifierRestoresTheAutomaticIdentity() async {
         harness.settings.update { $0.customUserAgent = BrowserUserAgent.desktopIdentifier }
         let tab = harness.open(url("/one"))
         await waitForSettled(tab, expectingTitle: "Page One")
@@ -680,7 +720,10 @@ final class WebNavigationIntegrationTests: XCTestCase {
         value = try? await webView.evaluateJavaScript("navigator.userAgent")
         let identifier = value as? String ?? ""
         XCTAssertFalse(identifier.isEmpty)
-        XCTAssertEqual(webView.customUserAgent ?? "", "")
+        // The automatic identity, which is the phone's on a phone and the
+        // desktop one on an iPad — the answer that test states is the device's.
+        let automatic = BrowserUserAgent.identity(custom: "", prefersDesktop: false)
+        XCTAssertEqual(webView.customUserAgent ?? "", automatic.customUserAgent ?? "")
     }
 
     // MARK: - Privacy

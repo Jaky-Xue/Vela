@@ -19,6 +19,11 @@ enum NovelLoaderConfiguration {
     /// The configuration both novel loaders use for their off-screen view.
     static func make(dataStore: WKWebsiteDataStore) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
+        // The pages are fetched from the same sites the browser visits, so the
+        // loader claims the same Safari identity the tabs do. A site that
+        // answers the bare WebKit string with 「浏览器版本过低」 would hand the
+        // loader a page it cannot parse.
+        configuration.applicationNameForUserAgent = BrowserUserAgent.safariTail
         configuration.websiteDataStore = dataStore
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         return configuration

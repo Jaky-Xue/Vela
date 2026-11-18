@@ -859,6 +859,9 @@ private struct NovelChapterWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        // The chapter is local HTML, but its images come from the site, so the
+        // reader presents the same Safari identity a tab would.
+        configuration.applicationNameForUserAgent = BrowserUserAgent.safariTail
         configuration.websiteDataStore = dataStore()
 
         let controller = WKUserContentController()

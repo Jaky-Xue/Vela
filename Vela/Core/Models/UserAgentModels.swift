@@ -6,9 +6,10 @@
 //
 //  They live in Core rather than beside the screen because the tab's identity
 //  is decided in Core: `BrowserUserAgent.identity` has to know whether a stored
-//  string is one of these presets or a value the user typed, and the two are
-//  treated differently on video sites. Keeping one list here is what lets both
-//  sides agree.
+//  string is one of these presets or a value the user typed. A preset is a
+//  choice of identity — "let the system say who I am", or "claim Chrome" — while
+//  a typed value is the exact string to send. Keeping one list here is what lets
+//  both sides agree.
 //
 
 import Foundation
@@ -50,9 +51,10 @@ public enum BrowserDeviceClass: Sendable {
 
 /// A user-agent preset the identifier screen offers.
 ///
-/// `userAgent` is the literal string a page will receive; `nil` means the
-/// default, which WebKit assembles from its own platform tokens and is the one
-/// preset that never goes stale.
+/// `userAgent` is what choosing the preset stores, and for the system presets it
+/// is only a label: the resolver reads it back as "the system identity", not as
+/// a string to send. The compatibility presets are the ones whose literal a page
+/// actually receives. `nil` is the automatic choice, which follows the device.
 struct BrowserUserAgentPreset: Identifiable, Equatable {
     let id: String
     let title: String
@@ -129,6 +131,16 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
         return [device, engine].compactMap { $0 }.joined(separator: " · ")
     }
 
+    /// The presets the screen lists, newest first within each family.
+    ///
+    /// The two system presets name the string the current build would
+    /// reconstruct, and that value is only ever a label: choosing one stores
+    /// it, and the identity resolver reads it back as "let the system say who
+    /// I am" rather than as a string to send. The compatibility presets are
+    /// real overrides, so their versions are written down — and therefore
+    /// have to be bumped with a release, which is what keeps a site that
+    /// compares `Chrome/` against a minimum from answering
+    /// 「浏览器版本过低」.
     static let all: [BrowserUserAgentPreset] = [
         BrowserUserAgentPreset(
             id: "auto",
@@ -138,7 +150,7 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
         ),
         BrowserUserAgentPreset(
             id: "safari-iphone", title: "系统手机版",
-            userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",
+            userAgent: BrowserUserAgent.mobileIdentifier,
             isDesktop: false
         ),
         BrowserUserAgentPreset(
@@ -148,37 +160,118 @@ struct BrowserUserAgentPreset: Identifiable, Equatable {
         ),
         BrowserUserAgentPreset(
             id: "chrome-android", title: "Chrome Android",
-            userAgent: "Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36",
+            userAgent: "Mozilla/5.0 (Linux; Android 17; Pixel 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Mobile Safari/537.36",
             isDesktop: false
         ),
         BrowserUserAgentPreset(
             id: "chrome-windows", title: "Chrome Windows",
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
             isDesktop: true
         ),
         BrowserUserAgentPreset(
             id: "edge-windows", title: "Microsoft Edge Windows",
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0",
             isDesktop: true
         ),
         BrowserUserAgentPreset(
             id: "safari-macos", title: "系统桌面版",
-            userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+            userAgent: BrowserUserAgent.desktopIdentifier,
             isDesktop: true
         ),
         BrowserUserAgentPreset(
             id: "firefox-windows", title: "Firefox Windows",
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:146.0) Gecko/20100101 Firefox/146.0",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:160.0) Gecko/20100101 Firefox/160.0",
             isDesktop: true
         )
     ]
 
+    /// The preset a stored string stands for — the current literals, and the
+    /// strings earlier builds of this app wrote for the same choices.
+    ///
+    /// The system presets are not values a user types; they mean "let the
+    /// system say what I am". Builds before 4.0.77 stored such a choice as a
+    /// literal, and a literal carries the version it was written with: after
+    /// an OS update it is exactly the stale label that sites reject with
+    /// 「浏览器版本过低」. Recognising the shape — a Safari identifier with no
+    /// other browser's token in it — is what lets those stored strings follow
+    /// the system again instead of being sent verbatim forever.
+    static func matching(_ stored: String) -> BrowserUserAgentPreset? {
+        let trimmed = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return all.first }
+        if let exact = all.first(where: { $0.userAgent == trimmed }) { return exact }
+        guard let family = systemSafariPresetID(for: trimmed) else { return nil }
+        return all.first { $0.id == family }
+    }
+
+    /// The system preset a Safari-shaped identifier belongs to.
+    ///
+    /// A string that names another browser, or an Android device, is a
+    /// compatibility choice and is kept exactly as the user gave it.
+    static func systemSafariPresetID(for identifier: String) -> String? {
+        let lowered = identifier.lowercased()
+        guard lowered.contains("applewebkit/"),
+              lowered.contains("version/"),
+              lowered.contains("safari/") else { return nil }
+        let foreign = [
+            "chrome/", "crios/", "chromium", "edg/", "edgios/", "edga/",
+            "firefox/", "fxios/", "opr/", "opera", "samsungbrowser",
+            "micromessenger", "mqqbrowser", "qqbrowser", "ucbrowser",
+            "baiduboxapp", "alipayclient", "weibo", "aweme", "android"
+        ]
+        guard !foreign.contains(where: lowered.contains) else { return nil }
+        if lowered.contains("ipad") { return "safari-ipad" }
+        if lowered.contains("iphone") || lowered.contains("ipod") { return "safari-iphone" }
+        if lowered.contains("macintosh") { return "safari-macos" }
+        return nil
+    }
 }
 
 /// Resolves native WebKit display modes and explicit User-Agent overrides.
 public enum BrowserUserAgent {
-    /// Suffix retained for legacy and compatibility identifiers.
-    public static let safariTail = "Version/\(operatingSystemVersion) Mobile/15E148 Safari/604.1"
+    /// The newest system version this build claims: `27.2`.
+    ///
+    /// `Version/` is the token sites compare against a minimum, and it is the
+    /// one token a bare `WKWebView` does not send at all. An identifier that
+    /// only ever reported the running system would still read as an old
+    /// browser on a device left on an older iOS — which is the same complaint
+    /// the hardcoded `Version/17.0` produced, arrived at from the other side.
+    /// So the identifier claims the newest version this build knows: the
+    /// running one when that is newer, this value otherwise. Bump it with
+    /// each release; nothing else here has to change.
+    public static let newestSystemVersion = "27.2"
+
+    /// The version the identifier claims: the running system's when it is
+    /// newer than `newestSystemVersion`, and `newestSystemVersion` otherwise.
+    ///
+    /// Read once — the system cannot change while the app is running, and this
+    /// is asked for before every navigation and on every settings redraw.
+    public static let claimedSystemVersion: String = {
+        let running = ProcessInfo.processInfo.operatingSystemVersion
+        let text = "\(running.majorVersion).\(running.minorVersion)"
+        return isVersion(text, newerThan: newestSystemVersion) ? text : newestSystemVersion
+    }()
+
+    /// The same version in the platform token's spelling: `27_2`.
+    static let claimedSystemToken = claimedSystemVersion.replacingOccurrences(
+        of: ".", with: "_"
+    )
+
+    /// What WebKit appends to the identifier it builds for itself.
+    ///
+    /// A bare `WKWebView` sends neither `Version/` nor `Safari/` — they are
+    /// tokens Safari adds for itself — and a site that looks for them treats
+    /// their absence as an embedded browser: the other way a site tells the
+    /// user to go and open Safari, and one of the ways it answers
+    /// 「浏览器版本过低」. Dropping this tail is what produced the complaint
+    /// this build fixes.
+    ///
+    /// `Mobile/15E148` is repeated here on purpose: it is the token WebKit's
+    /// own string already ends with, and Safari's order
+    /// (`Version/ … Mobile/ … Safari/`) is the one parsers expect to find.
+    /// The tail is carried by every identity, including a compatibility
+    /// override — WebKit ignores it while an override is set, and it is what
+    /// the tab falls back to when the override is cleared.
+    public static let safariTail = "Version/\(claimedSystemVersion) Mobile/15E148 Safari/604.1"
 
     /// Resolves WebKit's content mode and any explicitly chosen User-Agent.
     public static func identity(
@@ -189,25 +282,68 @@ public enum BrowserUserAgent {
         siteMode: BrowserSiteDisplayMode? = nil
     ) -> BrowserWebIdentity {
         if let siteMode {
-            return BrowserWebIdentity(isDesktop: siteMode == .desktop)
+            return systemIdentity(desktop: siteMode == .desktop)
         }
 
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return BrowserWebIdentity(
-                isDesktop: prefersDesktop || device.prefersDesktopIdentity,
+            return systemIdentity(
+                desktop: prefersDesktop || device.prefersDesktopIdentity,
                 usesRecommendedContentMode: !prefersDesktop
             )
         }
 
-        let preset = BrowserUserAgentPreset.all.first { $0.userAgent == trimmed }
+        // A stored system preset — or a literal an earlier build wrote for one
+        // — is not a string to send: it means "let the system say who I am",
+        // at the newest version this build knows.
+        let preset = BrowserUserAgentPreset.matching(trimmed)
         if let preset, preset.usesWebKitIdentity {
-            return BrowserWebIdentity(isDesktop: preset.isDesktop)
+            return systemIdentity(desktop: preset.isDesktop)
         }
+
+        // Someone who typed a string asked for that exact value, and the
+        // layout follows the platform that string claims.
         return BrowserWebIdentity(
+            applicationNameForUserAgent: safariTail,
             customUserAgent: trimmed,
             isDesktop: preset?.isDesktop ?? isDesktopIdentifier(trimmed, device: device)
         )
+    }
+
+    /// One system identity: what the browser claims and how the page is laid
+    /// out, in the two halves the architecture separates.
+    ///
+    /// A mobile identity sets no override at all, so WebKit builds the whole
+    /// string from its own platform and engine tokens and the Safari tail is
+    /// appended to that. A desktop identity has to name the Mac platform
+    /// token — WebKit will not rewrite that half of the identifier for us — so
+    /// it presents the reconstructed desktop string instead. That string is
+    /// assigned per navigation like any other override, which is what lets a
+    /// tab move between 手机 and 桌面 on the same site without the tail and
+    /// the layout falling out of step.
+    static func systemIdentity(
+        desktop: Bool,
+        usesRecommendedContentMode: Bool = false
+    ) -> BrowserWebIdentity {
+        BrowserWebIdentity(
+            applicationNameForUserAgent: safariTail,
+            customUserAgent: desktop ? desktopIdentifier : nil,
+            isDesktop: desktop,
+            usesRecommendedContentMode: usesRecommendedContentMode
+        )
+    }
+
+    /// Whether `lhs` names a newer version than `rhs`, compared component by
+    /// component so `27.10` ranks above `27.2` rather than below it.
+    static func isVersion(_ lhs: String, newerThan rhs: String) -> Bool {
+        let left = lhs.split(separator: ".").map { Int($0) ?? 0 }
+        let right = rhs.split(separator: ".").map { Int($0) ?? 0 }
+        for index in 0..<max(left.count, right.count) {
+            let lhsPart = index < left.count ? left[index] : 0
+            let rhsPart = index < right.count ? right[index] : 0
+            if lhsPart != rhsPart { return lhsPart > rhsPart }
+        }
+        return false
     }
 
     /// Whether a hand-typed identifier describes a desktop browser.
@@ -247,64 +383,53 @@ public enum BrowserUserAgent {
     /// The automatic preset is the initial choice, and this is what makes it
     /// mean "the device you are holding": an iPhone claims a phone, and an
     /// iPad claims a Mac — the desktop identity its automatic mode uses. The
-    /// phone default path still lets WebKit build its own identifier (which is
-    /// the most current one); this value is used to show the user what that
-    /// identifier is and as the base for the explicit presets.
+    /// phone default path still lets WebKit build its own identifier and adds
+    /// only the Safari tail; this value is used to show the user what that
+    /// identifier claims and as the base for the explicit presets.
     public static var deviceIdentifier: String {
         BrowserDeviceClass.current.prefersDesktopIdentity ? desktopIdentifier : mobileIdentifier
     }
 
-    /// A complete iPad identifier, for the explicit Safari iPad preset.
+    /// A complete iPad identifier, for the explicit iPad preset.
     ///
     /// It is no longer the automatic identity on an iPad — that is the desktop
     /// one — but it stays available for a site whose tablet layout is what the
     /// user wants.
     public static let padIdentifier = "Mozilla/5.0 (iPad; CPU OS "
-        + "\(operatingSystemVersion.replacingOccurrences(of: ".", with: "_")) like Mac OS X) "
+        + "\(claimedSystemToken) like Mac OS X) "
         + "AppleWebKit/605.1.15 (KHTML, like Gecko) \(safariTail)"
 
-    /// A complete desktop identifier, for the desktop presets and the
-    /// automatic identity on an iPad or Mac.
+    /// A complete desktop identifier, for the desktop preset and for reading
+    /// back what a desktop identity claims.
     ///
-    /// The whole string is written out here, unlike the mobile case, because a web
-    /// view cannot be told to claim a different platform — the platform token is
-    /// the one part of the identifier WebKit will not rewrite for us. So this one
-    /// does contain written-down tokens: the Mac platform token (which is the lie
-    /// the user asked for) and `AppleWebKit/605.1.15`, which is an approximation.
-    ///
-    /// That approximation is acceptable and the default path does not share it:
-    /// sites compare the `Version/` token against a minimum, and that one is
-    /// derived from the running system. If WebKit's own version token ever moves,
-    /// desktop mode would be presenting the old one while the default path — the
-    /// mobile identifier, assembled by WebKit from its own prefix — stays correct
-    /// without a change here.
+    /// The whole string is written out because a web view cannot be told to
+    /// claim a different platform — the platform token is the one part of the
+    /// identifier WebKit will not rewrite for us — so this is what a desktop
+    /// identity actually sends. The version tokens in it are the claimed ones,
+    /// not numbers written down when the string was authored, so a desktop
+    /// page is never told it is running last year's Safari.
     public static let desktopIdentifier: String = desktopForm(of: mobileIdentifier)
 
-    /// The identifier a phone-sized tab presents, reconstructed.
+    /// The identifier a phone-sized tab claims, reconstructed.
     ///
-    /// WebKit assembles the real one from its own prefix plus `safariTail`; this
-    /// is that string written out. It is used as the base for the desktop form
-    /// above, and the settings screen compares it against the identifier a real
-    /// page reports so the two can be seen to agree.
+    /// WebKit assembles the real one from its own prefix; this is that string
+    /// written out, with the Safari tokens the system identity appends. It is
+    /// used as the base for the desktop form above, as the iPhone preset's
+    /// stored value, and on the settings screen as the description of what a
+    /// system identity claims.
     ///
     /// A constant because every token in it is fixed for the life of the
     /// process; the identity is read before every navigation and on every
     /// settings redraw, and rebuilding the string there bought nothing.
     public static let mobileIdentifier = "Mozilla/5.0 (iPhone; CPU iPhone OS "
-        + "\(operatingSystemVersion.replacingOccurrences(of: ".", with: "_")) like Mac OS X) "
+        + "\(claimedSystemToken) like Mac OS X) "
         + "AppleWebKit/605.1.15 (KHTML, like Gecko) \(safariTail)"
-
-    /// `26.1`, as the system reports it.
-    static let operatingSystemVersion: String = {
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        return "\(version.majorVersion).\(version.minorVersion)"
-    }()
 
     /// Rewrites a mobile Safari identifier into a desktop one.
     ///
-    /// Only the platform token and the `Mobile/` marker change. Rewriting the
-    /// version tokens as well is how the identifier goes stale, so they are left
-    /// describing the engine that is actually running.
+    /// Only the platform token and the `Mobile/` marker change. The version
+    /// tokens are already the claimed ones, so they are carried over as they
+    /// are — rewriting them here is how the two forms drift apart.
     static func desktopForm(of identifier: String) -> String {
         var text = identifier
 

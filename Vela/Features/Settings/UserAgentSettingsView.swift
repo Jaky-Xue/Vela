@@ -30,9 +30,11 @@ struct UserAgentSettingsView: View {
     /// or the default when none is stored. A stored string that matches no
     /// preset was typed by hand and is reported as such.
     private var selectedPreset: BrowserUserAgentPreset? {
+        // The same resolution the tab uses, so a string an earlier build
+        // stored for a system preset shows as that preset rather than as
+        // 自定义 — it is not an override, and it is no longer sent verbatim.
         let stored = env.settings.preferences.customUserAgent
-        guard !stored.isEmpty else { return BrowserUserAgentPreset.all[0] }
-        let preset = BrowserUserAgentPreset.all.first { $0.userAgent == stored }
+        let preset = BrowserUserAgentPreset.matching(stored)
         if preset?.id == "safari-ipad" {
             return BrowserUserAgentPreset.all.first { $0.id == "safari-iphone" }
         }
@@ -70,7 +72,7 @@ struct UserAgentSettingsView: View {
             } header: {
                 Text("自动")
             } footer: {
-                Text("自动模式由 WebKit 根据设备和窗口选择标识及网页布局。兼容预设使用指定的 User-Agent。")
+                Text("自动模式由 WebKit 根据设备和窗口选择标识及网页布局，并附带最新的系统浏览器版本，会检查版本的网站不会再提示版本过低。兼容预设使用指定的 User-Agent。")
             }
 
             Section("移动端网页") {

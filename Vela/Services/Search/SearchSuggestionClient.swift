@@ -257,9 +257,11 @@ final class SearchSuggestionClient: SearchSuggestionProviding {
 
     /// A browser identifier, because several suggestion services answer a
     /// scripted client with an empty body or a challenge page.
-    private static let userAgent = """
-    Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1
-    """
+    ///
+    /// It is the same claim the tabs make, so it can never present an iOS
+    /// version older than the browser — the hardcoded `Version/17.0` this
+    /// replaces was already four releases behind.
+    private static let userAgent = BrowserUserAgent.mobileIdentifier
 
     init(session: URLSession? = nil) {
         self.session = session ?? Self.makeSession()
