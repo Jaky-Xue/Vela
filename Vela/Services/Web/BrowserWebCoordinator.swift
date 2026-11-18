@@ -601,7 +601,8 @@ public final class BrowserWebCoordinator: NSObject {
 extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     private static let documentStartBridges = [
         WKUserScript(source: WebPageScripts.permissionBridge, injectionTime: .atDocumentStart, forMainFrameOnly: true),
-        WKUserScript(source: WebPageScripts.historyApiBridge, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        WKUserScript(source: WebPageScripts.historyApiBridge, injectionTime: .atDocumentStart, forMainFrameOnly: true),
+        WKUserScript(source: WebPageScripts.fullscreenBridge, injectionTime: .atDocumentStart, forMainFrameOnly: false)
     ]
 
     /// Attaches every page script a navigation needs: the browser's own
@@ -945,7 +946,8 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // `WKPreferences`; on iOS media playback is routed through the system
         // player, so there is no equivalent to set here.
 
-        // Let pages use WebKit's fullscreen APIs directly.
+        // Keep element fullscreen available for non-video requests and as a
+        // fallback when the native media player cannot enter fullscreen.
         if #available(iOS 15.4, *) {
             preferences.isElementFullscreenEnabled = true
         }
