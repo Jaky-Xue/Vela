@@ -240,18 +240,41 @@ private final class LoginWebContainer: UIView {
 
     /// Makes room for the keyboard without resizing the web view.
     ///
-    /// The scroll view's automatic adjustment already accounts for the bottom
-    /// safe area, and a docked keyboard covers that area too — counting it a
-    /// second time lifts the document by 34 points for no reason.
+    /// Only a *docked* keyboard takes space: one that sits on the window's
+    /// bottom edge and spans it. A floating iPad keyboard is a panel the user
+    /// can put anywhere, and making the page give way to its top edge would
+    /// lift a whole screen of content for a keyboard covering a corner — the
+    /// same rule the browser's own shell applies. The scroll view's automatic
+    /// adjustment already accounts for the bottom safe area, which a docked
+    /// keyboard covers too, so that part is subtracted rather than counted
+    /// twice.
     private func applyKeyboardFrame(from notification: Notification) {
         guard let value = notification
             .userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return }
-        let keyboard = convert(value.cgRectValue, from: nil)
-        let overlap = max(0, bounds.maxY - keyboard.minY)
-        let inset = max(0, overlap - safeAreaInsets.bottom)
+        let keyboardOnScreen = value.cgRectValue
+        let inset: CGFloat
+        if let window,
+           isDocked(keyboardOnScreen, in: window) {
+            let keyboard = convert(keyboardOnScreen, from: window.screen.coordinateSpace)
+            let overlap = max(0, bounds.maxY - keyboard.minY)
+            inset = max(0, overlap - safeAreaInsets.bottom)
+        } else {
+            inset = 0
+        }
         let scrollView = webView.scrollView
         guard abs(scrollView.contentInset.bottom - inset) > 0.5 else { return }
         scrollView.contentInset.bottom = inset
         scrollView.verticalScrollIndicatorInsets.bottom = inset
+    }
+
+    /// Whether the keyboard is attached to the bottom of the window and covers
+    /// it horizontally. The same test the shell's observers apply, so the two
+    /// surfaces agree about what "the keyboard is up" means.
+    private func isDocked(_ keyboardOnScreen: CGRect, in window: UIWindow) -> Bool {
+        let windowOnScreen = window.convert(window.bounds, to: window.screen.coordinateSpace)
+        let intersection = windowOnScreen.intersection(keyboardOnScreen)
+        guard !intersection.isNull else { return false }
+        return intersection.maxY >= windowOnScreen.maxY - 1
+            && intersection.width >= windowOnScreen.width * 0.85
     }
 }
