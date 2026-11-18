@@ -104,12 +104,16 @@ struct LoginWebSheet: View {
     private func dockedKeyboardHeight(from notification: Notification) -> CGFloat {
         guard sizeClass == .regular,
               let value = notification
-                  .userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue,
-              let screen = UIApplication.shared.connectedScenes
-                  .compactMap({ ($0 as? UIWindowScene)?.screen })
-                  .first else { return 0 }
+                  .userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return 0 }
+        // The window's frame, not the screen's: a window's frame is already in
+        // the keyboard's coordinate space in every orientation, while a
+        // screen's dimensions describe an iPad the window may not be using.
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return 0 }
         let frame = value.cgRectValue
-        let bounds = screen.bounds
+        let bounds = window.frame
         guard frame.maxY >= bounds.maxY - 1,
               frame.width >= bounds.width * 0.5 else { return 0 }
         return max(0, bounds.maxY - frame.minY)
