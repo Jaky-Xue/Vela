@@ -79,13 +79,19 @@ extension BrowserWebCoordinator: WKUIDelegate {
         // override string is a property of the view, set just after.
         let identity = openerTab.map { webIdentity(for: $0, url: navigationAction.request.url) }
         if let identity {
-            configuration.applicationNameForUserAgent = identity.applicationNameForUserAgent
+            if let applicationName = identity.applicationNameForUserAgent {
+                configuration.applicationNameForUserAgent = applicationName
+            }
             configuration.defaultWebpagePreferences.preferredContentMode =
                 identity.isDesktop ? .desktop : .mobile
         }
 
         let popup = WKWebView(frame: .zero, configuration: configuration)
-        popup.customUserAgent = identity?.customUserAgent
+        // Same rule as the tab's own view: a nil override is not written, so a
+        // system identity keeps the suffix WebKit appends.
+        if let customIdentifier = identity?.customUserAgent {
+            popup.customUserAgent = customIdentifier
+        }
         popup.navigationDelegate = self
         popup.uiDelegate = self
         // A private page's popups stay private, and a regular page's follow

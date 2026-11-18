@@ -975,7 +975,12 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         }
 
         let identity = webIdentity(for: tab)
-        configuration.applicationNameForUserAgent = identity.applicationNameForUserAgent
+        // Only a compatibility identifier names an application suffix. A
+        // system identity leaves the property alone, so WebKit's own suffix
+        // survives; assigning nil here takes it away.
+        if let applicationName = identity.applicationNameForUserAgent {
+            configuration.applicationNameForUserAgent = applicationName
+        }
         // The rendering half of the identity, set before the first request so a
         // tab's first page is laid out correctly rather than only after a
         // policy callback has run. The per-navigation callback in

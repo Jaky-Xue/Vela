@@ -743,7 +743,13 @@ public final class TabManager {
         let configuration = configurationProvider.makeConfiguration(for: tab)
         let webView = WKWebView(frame: .zero, configuration: configuration)
 
-        webView.customUserAgent = configurationProvider.webIdentity(for: tab).customUserAgent
+        // A system identity has no override: assigning nil still marks the
+        // view as carrying one, and WebKit then drops the suffix it would
+        // have appended itself (`Mobile/15E148`). Nothing is set unless the
+        // tab actually claims a string.
+        if let customIdentifier = configurationProvider.webIdentity(for: tab).customUserAgent {
+            webView.customUserAgent = customIdentifier
+        }
         // Zoom is applied by the document's forced root style, not by
         // `pageZoom`: a page with its own viewport can ignore the latter.
         webView.pageZoom = 1
@@ -817,7 +823,7 @@ public final class TabManager {
         // request goes out, is what makes the rule apply to every navigation
         // rather than only to a tab that started on the video site.
         let identity = configurationProvider.webIdentity(for: tab)
-        if webView.customUserAgent != identity.customUserAgent {
+        if (webView.customUserAgent ?? "") != (identity.customUserAgent ?? "") {
             webView.customUserAgent = identity.customUserAgent
         }
         webView.load(URLRequest(url: url))
@@ -951,7 +957,7 @@ public final class TabManager {
         for tab in tabs {
             guard let webView = webViews[tab.id] else { continue }
             let identity = configurationProvider.webIdentity(for: tab)
-            guard webView.customUserAgent != identity.customUserAgent else { continue }
+            guard (webView.customUserAgent ?? "") != (identity.customUserAgent ?? "") else { continue }
             webView.customUserAgent = identity.customUserAgent
         }
     }
