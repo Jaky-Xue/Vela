@@ -374,16 +374,19 @@ final class BrowserUserAgentTests: XCTestCase {
     /// iPad presents the desktop page even without the desktop toggle.
     func testAnIPadPresentsTheDesktopIdentityAutomatically() {
         let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false, device: .pad)
-        // The desktop half needs the Mac platform token, which WebKit will not
-        // produce for an iPad on its own, so it is presented as the
-        // reconstructed desktop identifier — the same one a phone gets when it
-        // asks for the desktop page.
-        XCTAssertEqual(identity.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        // The automatic identity stays WebKit's own on both layouts — an iPad
+        // already shows the desktop page under `.recommended` — and adds only
+        // macOS Safari's tokens. A reconstructed Mac string here would be an
+        // override the app does not need, and every script and site that reads
+        // the identifier would see a Mac where the device is a tablet.
+        XCTAssertNil(identity.customUserAgent)
+        XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.desktopSafariTail)
         XCTAssertTrue(identity.isDesktop)
         XCTAssertTrue(identity.usesRecommendedContentMode)
         let explicitDesktop = BrowserUserAgent.identity(custom: "", prefersDesktop: true, device: .phone)
         XCTAssertTrue(explicitDesktop.isDesktop)
         XCTAssertFalse(explicitDesktop.usesRecommendedContentMode)
+        XCTAssertNil(explicitDesktop.customUserAgent)
     }
 
     /// The identifier decides the layout now: a typed Windows string on a
@@ -440,7 +443,8 @@ final class BrowserUserAgentTests: XCTestCase {
             host: "www.youtube.com",
             device: .pad
         )
-        XCTAssertEqual(pad.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertNil(pad.customUserAgent)
+        XCTAssertEqual(pad.applicationNameForUserAgent, BrowserUserAgent.desktopSafariTail)
         XCTAssertTrue(pad.isDesktop)
 
         // The explicit desktop toggle on a phone gets the same answer.
@@ -450,7 +454,11 @@ final class BrowserUserAgentTests: XCTestCase {
             host: "www.youtube.com",
             device: .phone
         )
-        XCTAssertEqual(phoneDesktop.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertNil(phoneDesktop.customUserAgent)
+        XCTAssertEqual(
+            phoneDesktop.applicationNameForUserAgent,
+            BrowserUserAgent.desktopSafariTail
+        )
         XCTAssertTrue(phoneDesktop.isDesktop)
     }
 
@@ -614,11 +622,22 @@ final class BrowserUserAgentTests: XCTestCase {
         )
     }
 
-    func testDesktopModePresentsTheDesktopIdentifier() {
+    func testDesktopModeKeepsWebKitsIdentityWithTheDesktopTail() {
         let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: true)
         XCTAssertTrue(identity.isDesktop)
-        XCTAssertEqual(identity.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertNil(identity.customUserAgent)
+        XCTAssertEqual(identity.applicationNameForUserAgent, BrowserUserAgent.desktopSafariTail)
         XCTAssertFalse(identity.usesRecommendedContentMode)
+
+        // An explicit 系统桌面版 choice still sends the reconstructed Mac
+        // string, because that one has to be swapped in and out of a live tab.
+        guard let preset = BrowserUserAgentPreset.all.first(where: { $0.id == "safari-macos" }),
+              let stored = preset.userAgent else {
+            return XCTFail("no 系统桌面版 preset")
+        }
+        let explicit = BrowserUserAgent.identity(custom: stored, prefersDesktop: false, device: .pad)
+        XCTAssertEqual(explicit.customUserAgent, BrowserUserAgent.desktopIdentifier)
+        XCTAssertTrue(explicit.isDesktop)
     }
 
     /// The reconstruction used as the desktop base and shown in settings.

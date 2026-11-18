@@ -178,13 +178,12 @@ private struct LoginWebView: UIViewRepresentable {
 
 private final class LoginWebContainer: UIView {
     let webView: WKWebView
+    private var keyboardObserver: NSObjectProtocol?
 
     init(webView: WKWebView) {
         self.webView = webView
         super.init(frame: .zero)
         backgroundColor = .systemBackground
-        keyboardLayoutGuide.followsUndockedKeyboard = false
-        keyboardLayoutGuide.usesBottomSafeArea = false
 
         addSubview(webView)
         webView.translatesAutoresizingMaskIntoConstraints = false
@@ -192,11 +191,49 @@ private final class LoginWebContainer: UIView {
             webView.topAnchor.constraint(equalTo: topAnchor),
             webView.leadingAnchor.constraint(equalTo: leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor)
+            webView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+
+        // The page keeps its viewport while the keyboard is up, and the
+        // keyboard becomes a scroll inset the way Safari treats it. Pinning
+        // the web view to `keyboardLayoutGuide.top` instead shrank the
+        // viewport: every keyboard change re-flowed the document under the
+        // finger, so Google's form jumped as soon as a field was focused and
+        // an undocked keyboard looked like it was eating more of the page the
+        // further it was dragged.
+        keyboardObserver = NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.applyKeyboardFrame(from: notification)
+        }
     }
 
     required init?(coder: NSCoder) {
         return nil
+    }
+
+    deinit {
+        if let keyboardObserver {
+            NotificationCenter.default.removeObserver(keyboardObserver)
+        }
+    }
+
+    /// Makes room for the keyboard without resizing the web view.
+    ///
+    /// The scroll view's automatic adjustment already accounts for the bottom
+    /// safe area, and a docked keyboard covers that area too — counting it a
+    /// second time lifts the document by 34 points for no reason.
+    private func applyKeyboardFrame(from notification: Notification) {
+        guard let value = notification
+            .userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return }
+        let keyboard = convert(value.cgRectValue, from: nil)
+        let overlap = max(0, bounds.maxY - keyboard.minY)
+        let inset = max(0, overlap - safeAreaInsets.bottom)
+        let scrollView = webView.scrollView
+        guard abs(scrollView.contentInset.bottom - inset) > 0.5 else { return }
+        scrollView.contentInset.bottom = inset
+        scrollView.verticalScrollIndicatorInsets.bottom = inset
     }
 }

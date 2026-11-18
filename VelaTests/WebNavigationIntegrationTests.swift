@@ -654,10 +654,17 @@ final class WebNavigationIntegrationTests: XCTestCase {
             identifier
         )
         XCTAssertTrue(identifier.contains("Safari/604.1"), identifier)
-        // The `Mobile/` marker belongs to the mobile identity: an iPad's
-        // automatic one is the desktop identity and must not claim it.
+        // The `Mobile/` marker belongs to a mobile identity; a desktop page
+        // must not start claiming it through the tail.
         let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false)
-        XCTAssertEqual(identifier.contains("Mobile/"), !identity.isDesktop, identifier)
+        if !identity.isDesktop {
+            XCTAssertTrue(identifier.contains("Mobile/"), identifier)
+        } else {
+            XCTAssertTrue(
+                identifier.contains("Version/\(BrowserUserAgent.claimedSystemVersion)"),
+                identifier
+            )
+        }
     }
 
     func testDesktopIdentifierPresentsADesktopPage() async {

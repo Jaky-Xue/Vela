@@ -287,8 +287,17 @@ public enum BrowserUserAgent {
 
         let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return systemIdentity(
-                desktop: prefersDesktop || device.prefersDesktopIdentity,
+            let isDesktop = prefersDesktop || device.prefersDesktopIdentity
+            // The automatic identity leaves the string to WebKit on both
+            // layouts — on an iPad that is already the desktop page — and adds
+            // only the Safari tokens. Only an explicit desktop choice (the
+            // 系统桌面版 preset, a site's 桌面网站) sends the reconstructed Mac
+            // string, because that one has to be swappable while the tab stays
+            // open and WebKit's own identifier cannot be talked into a Mac
+            // platform token.
+            return BrowserWebIdentity(
+                applicationNameForUserAgent: isDesktop ? desktopSafariTail : safariTail,
+                isDesktop: isDesktop,
                 usesRecommendedContentMode: !prefersDesktop
             )
         }
@@ -313,14 +322,14 @@ public enum BrowserUserAgent {
     /// One system identity: what the browser claims and how the page is laid
     /// out, in the two halves the architecture separates.
     ///
-    /// A mobile identity sets no override at all, so WebKit builds the whole
-    /// string from its own platform and engine tokens and the Safari tail is
-    /// appended to that. A desktop identity has to name the Mac platform
-    /// token — WebKit will not rewrite that half of the identifier for us — so
-    /// it presents the reconstructed desktop string instead. That string is
-    /// assigned per navigation like any other override, which is what lets a
-    /// tab move between 手机 and 桌面 on the same site without the tail and
-    /// the layout falling out of step.
+    /// An explicit mobile choice sets no override at all, so WebKit builds the
+    /// whole string from its own platform and engine tokens and the automatic
+    /// identity's Safari tail is appended to that. An explicit desktop choice
+    /// has to name the Mac platform token — WebKit will not rewrite that half
+    /// of the identifier for us — so it presents the reconstructed desktop
+    /// string instead. That string is assigned per navigation like any other
+    /// override, which is what lets a tab move between 手机 and 桌面 on the
+    /// same site without the tail and the layout falling out of step.
     static func systemIdentity(
         desktop: Bool,
         usesRecommendedContentMode: Bool = false
