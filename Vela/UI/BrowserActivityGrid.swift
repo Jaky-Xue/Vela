@@ -55,33 +55,20 @@ struct BrowserActivityGrid: View {
         return blue.opacity([0, 0.28, 0.48, 0.72, 1][level])
     }
 
-    /// The heat map is a grid of rounded squares, the way every contribution
-    /// graph is read: a square says "one day, one cell", and a rectangle lying
-    /// on its side reads as a bar chart instead. The side follows the row's
-    /// width so the grid fills it — a capped grid left grown-up columns with
-    /// empty margins on both sides.
+    /// Twelve weeks by seven days of rounded cells that share the row's width
+    /// and keep a fixed, modest height. Square cells were tried and made the
+    /// block as tall as a card of its own — the row is a glance, not a chart —
+    /// while a capped grid left the column's sides empty. A cell that fills
+    /// its share of the width and stays short does both jobs.
     private static let spacing: CGFloat = 5
     private static let columns = 12
     private static let rows = 7
-    private static let minimumSide: CGFloat = 10
+    private static let cellHeight: CGFloat = 18
+    private static let cellRadius: CGFloat = 5
 
-    @State private var measuredWidth: CGFloat = 0
     @State private var hasLoaded = false
 
-    private var side: CGFloat {
-        let fit = (measuredWidth - Self.spacing * CGFloat(Self.columns - 1))
-            / CGFloat(Self.columns)
-        guard measuredWidth > 0 else { return Self.minimumSide * 2 }
-        return max(Self.minimumSide, fit)
-    }
-
-    private var gridHeight: CGFloat {
-        side * CGFloat(Self.rows) + Self.spacing * CGFloat(Self.rows - 1)
-    }
-
     var body: some View {
-        let cellSide = side
-        let radius = max(3, cellSide * 0.22)
         HStack(spacing: Self.spacing) {
             ForEach(0..<Self.columns, id: \.self) { week in
                 VStack(spacing: Self.spacing) {
@@ -89,14 +76,15 @@ struct BrowserActivityGrid: View {
                         let date = calendar.date(byAdding: .day, value: week * 7 + day - 83,
                                                  to: calendar.startOfDay(for: Date()))!
                         let count = days[String(Int(date.timeIntervalSince1970))] ?? 0
-                        RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        RoundedRectangle(cornerRadius: Self.cellRadius, style: .continuous)
                             .fill(color(level(count)))
-                            .frame(width: cellSide, height: cellSide)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: Self.cellHeight)
                             .opacity(count > 0 && glowing ? 0.82 : 1)
                             .animation(animates ? .easeInOut(duration: 4).repeatForever(autoreverses: true).delay(Double((week + day) % 5) * 0.35) : nil, value: glowing)
                             .overlay {
                                 if week == 11 && day == 6 {
-                                    RoundedRectangle(cornerRadius: radius + 2, style: .continuous)
+                                    RoundedRectangle(cornerRadius: Self.cellRadius + 2, style: .continuous)
                                         .strokeBorder(blue.opacity(0.9), lineWidth: 1.5)
                                         .padding(-2.5)
                                 }
@@ -107,14 +95,6 @@ struct BrowserActivityGrid: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: gridHeight)
-        .background {
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(key: ActivityGridWidthKey.self, value: proxy.size.width)
-            }
-        }
-        .onPreferenceChange(ActivityGridWidthKey.self) { measuredWidth = $0 }
         // A sign-in records a day. The cell moves from its empty tone towards
         // the blue over the animation, so the tap is answered where it
         // happened rather than only after the next visit to this screen.
@@ -148,10 +128,3 @@ struct BrowserActivityGrid: View {
     }
 }
 
-private struct ActivityGridWidthKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}

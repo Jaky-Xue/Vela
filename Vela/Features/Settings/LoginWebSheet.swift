@@ -34,9 +34,12 @@ struct LoginWebSheet: View {
     /// It used to be a system sheet. UIKit moves a presented sheet up when a
     /// docked keyboard would cover its first responder, and with a web page
     /// inside that means the whole window jumps — the top slides under the
-    /// status bar and the bottom disappears behind the keyboard. A cover has
-    /// nothing to move: the card stays centred, the keyboard overlays it, and
-    /// the page scrolls inside its own viewport.
+    /// status bar and the bottom disappears behind the keyboard. Nothing
+    /// moves here: on iPad the card gives way to the keyboard by shrinking
+    /// (its height is a maximum, and the cover's content still respects the
+    /// keyboard safe area), so the form stays whole above it; on a phone the
+    /// page keeps its viewport and scrolls under the keyboard, as Safari's
+    /// does.
     var body: some View {
         Group {
             if sizeClass == .regular {
@@ -51,9 +54,11 @@ struct LoginWebSheet: View {
                 }
             } else {
                 signInPage
+                    // A phone's page scrolls under the keyboard, the way
+                    // Safari's does.
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
             }
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
             keyboardVisible = true
         }
