@@ -33,6 +33,7 @@ public final class BrowserWebCoordinator: NSObject {
 
     let settings: SettingsService
     let contentBlocker: ContentBlocker
+    private let attachedContentRules = NSMapTable<WKUserContentController, WKContentRuleList>.weakToStrongObjects()
     let history: HistoryService
     let downloads: DownloadService
     let userScripts: UserScriptRepository
@@ -598,6 +599,13 @@ public final class BrowserWebCoordinator: NSObject {
 // MARK: - Configuration providing
 
 extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
+    private static let documentStartBridges = [
+        WKUserScript(source: WebPageScripts.permissionBridge, injectionTime: .atDocumentStart, forMainFrameOnly: true),
+        WKUserScript(source: WebPageScripts.historyApiBridge, injectionTime: .atDocumentStart, forMainFrameOnly: true),
+        WKUserScript(source: WebPageScripts.fullscreenBridge, injectionTime: .atDocumentStart, forMainFrameOnly: false),
+        WKUserScript(source: WebPageScripts.inlineVideoControlsScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+    ]
+
     /// Attaches every page script a navigation needs: the browser's own
     /// bridges, the cosmetic filter for this host, and the user scripts that
     /// match this URL.
@@ -629,40 +637,18 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             )
         }
 
-        // The page-side permission gate. Main frame only: a site's permission
-        // is the document's, and the APIs it wraps are the top document's own.
-        controller.addUserScript(
-            WKUserScript(
-                source: WebPageScripts.permissionBridge,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true
-            )
-        )
-
-        // Every script added here is parsed and run by every frame the page
-        // creates, and the sites this scoping exists for — assistant apps and
-        // other heavy single-page products — run dozens of frames each. So each
-        // bridge is attached only where it can do its job:
+        // Limit each bridge to the frames where its work is needed.
         //
+        // * Permissions belong to the top document.
         // * The history bridge writes the tab's address, and a frame's own
         //   `pushState` is not the page's address: the top document only.
         // * The video bridges act on the site's player in the top document, so
         //   they are attached for a video host and nowhere else. Their
-        //   quality watcher is a repeating timer, and running that timer in
-        //   every frame of every page is cost with no possible benefit.
+        //   quality watcher only needs events from the top document.
         // * The fullscreen bridge and tap-to-controls stay in every frame: an
         //   embedded player is exactly the case they exist for.
-        controller.addUserScript(
-            WKUserScript(
-                source: WebPageScripts.historyApiBridge,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true
-            )
-        )
-        for source in [WebPageScripts.fullscreenBridge, WebPageScripts.inlineVideoControlsScript] {
-            controller.addUserScript(
-                WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-            )
+        for script in Self.documentStartBridges {
+            controller.addUserScript(script)
         }
         if url?.host.map({ BrowserUserAgent.isVideoSiteHost($0) }) ?? false {
             for source in [WebPageScripts.youtubeTapControlsScript, WebPageScripts.youtubeQualityScript] {
@@ -735,12 +721,10 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // hidden immediately. Frames only need it when manual rules exist at
         // all. The default empty rule set otherwise causes a native round trip
         // and a JavaScript evaluation for every iframe on every page.
-        controller.removeScriptMessageHandler(forName: "velaManualStyle", contentWorld: .defaultClient)
-        controller.add(MessageBridge(coordinator: self), contentWorld: .defaultClient, name: "velaManualStyle")
         manualHideFrames = manualHideFrames.filter { !$0.key.hasPrefix(tab.id + "|") }
         let manualBootstrap = """
         (function(){
-          window.__velaManualDocument = '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,function(c){return (Number(c)^crypto.getRandomValues(new Uint8Array(1))[0]&15>>Number(c)/4).toString(16);});
+          window.__velaManualDocument = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,function(c){return (Number(c)^crypto.getRandomValues(new Uint8Array(1))[0]&15>>Number(c)/4).toString(16);});
           window.__velaApplyManualCSS = function(selectors) {
             var css=(selectors||[]).filter(function(selector){try{document.querySelector(selector);return true;}catch(_){return false;}}).map(function(selector){return selector+' {display:none!important;}';}).join('\\n');
             var apply=function(){
@@ -794,13 +778,13 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
            let pageURL = url,
            !WebAccountProvider.isProtectedSignInHost(pageURL.host ?? "") {
             let installed = (try? userScripts.enabledScripts()) ?? []
-            let matching = installed.sorted { lhs, rhs in
+            let injectable = installed.filter(UserScriptInjector.hasCompleteDependencies).sorted { lhs, rhs in
                 if lhs.createdAt == rhs.createdAt { return lhs.id < rhs.id }
                 return lhs.createdAt < rhs.createdAt
             }
-            if !matching.isEmpty {
+            if !injectable.isEmpty {
                 var worlds: [String: String] = [:]
-                for script in matching {
+                for script in injectable {
                     let key = tab.id + "|" + script.id
                     let name = "org.vela.script." + UUID().uuidString
                     worlds[script.id] = name
@@ -810,7 +794,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                                    name: UserScriptInjector.messageHandlerName)
                 }
                 let built = UserScriptInjector.makeUserScripts(
-                    for: matching,
+                    for: injectable,
                     url: pageURL,
                     valuesByScriptId: [:],
                     tabId: tab.id,
@@ -914,13 +898,22 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     public func reloadContentBlockerIntoOpenWebViews() {
         guard let tabManager else { return }
         for webView in tabManager.allWebViews() {
-            let controller = webView.configuration.userContentController
-            controller.removeAllContentRuleLists()
-            guard let tab = tab(for: webView),
-                  let list = contentBlocker.ruleList(forHost: URL(string: tab.url)?.host) else {
-                continue
-            }
-            controller.add(list)
+            guard let tab = tab(for: webView) else { continue }
+            syncContentBlocker(forHost: URL(string: tab.url)?.host, in: webView)
+        }
+    }
+
+    func updateContentRules(forHost host: String?, in controller: WKUserContentController) {
+        let current = attachedContentRules.object(forKey: controller)
+        let desired = contentBlocker.ruleList(forHost: host)
+        guard current !== desired else { return }
+
+        if let current { controller.remove(current) }
+        if let desired {
+            controller.add(desired)
+            attachedContentRules.setObject(desired, forKey: controller)
+        } else {
+            attachedContentRules.removeObject(forKey: controller)
         }
     }
 
@@ -944,9 +937,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         configuration.userContentController = controller
         // 广告拦截. Attached before the first request, from the list compiled
         // at launch; a page whose host is whitelisted gets nothing.
-        if let list = contentBlocker.ruleList(forHost: URL(string: tab.url)?.host) {
-            controller.add(list)
-        }
+        updateContentRules(forHost: URL(string: tab.url)?.host, in: controller)
 
         // Message handlers. The coordinator is the handler for all of them; the
         // name on the message decides the branch.
@@ -954,6 +945,8 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
             guard handler.rawValue != UserScriptInjector.messageHandlerName else { continue }
             controller.add(MessageBridge(coordinator: self), name: handler.rawValue)
         }
+
+        controller.add(MessageBridge(coordinator: self), contentWorld: .defaultClient, name: "velaManualStyle")
 
         attachPageScripts(to: controller, tab: tab, url: URL(string: tab.url))
 

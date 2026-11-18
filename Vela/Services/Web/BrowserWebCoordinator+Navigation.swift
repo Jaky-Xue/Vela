@@ -98,17 +98,11 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
 
     /// Makes this web view's rule list match the page it is navigating to.
     ///
-    /// WebKit copies the attached lists when a web view is built, and there is
-    /// no public way to read them back. Rebuilding the attachment from the
-    /// destination host is therefore the only way to honour a whitelist entry
-    /// for a site reached in a tab that already existed.
+    /// The destination host may have a different whitelist policy from the
+    /// current page even when both reuse the same web view.
     @MainActor
     func syncContentBlocker(forHost host: String?, in webView: WKWebView) {
-        let controller = webView.configuration.userContentController
-        controller.removeAllContentRuleLists()
-        if let list = contentBlocker.ruleList(forHost: host) {
-            controller.add(list)
-        }
+        updateContentRules(forHost: host, in: webView.configuration.userContentController)
     }
 
     /// The layout WebKit should give a navigation, read from the identity the

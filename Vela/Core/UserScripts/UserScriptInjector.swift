@@ -31,6 +31,12 @@ public enum UserScriptInjector {
     /// object the bridge hangs itself off.
     public static let bridgeGlobalName = "__velaUserScriptBridge"
 
+    static func hasCompleteDependencies(_ script: InstalledUserScriptState) -> Bool {
+        script.requireSources.count == script.requireUrls.count
+            && !script.requireSources.contains("")
+            && script.resources.count == script.resourceDeclarations.count
+    }
+
     /// Builds the `WKUserScript` set for one navigation.
     ///
     /// - Parameter valuesByScriptId: the GM_ store snapshot per script id.
@@ -51,8 +57,7 @@ public enum UserScriptInjector {
         let failed: [String] = []
 
         for script in scripts {
-            guard script.requireSources.count == script.requireUrls.count,
-                  !script.requireSources.contains(""), script.resources.count == script.resourceDeclarations.count else { continue }
+            guard hasCompleteDependencies(script) else { continue }
 
             let values = valuesByScriptId[script.id] ?? [:]
             let source = requiresNativeAuthorization ? "" : bootstrapSource(

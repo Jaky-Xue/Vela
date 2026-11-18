@@ -234,6 +234,23 @@ struct BrowserFloatingChrome: ViewModifier {
 }
 
 extension View {
+    /// Uses the browser chrome as the presentation background, with the sheet
+    /// supplying its own clipping and the presenting page supplying the backdrop.
+    func browserGlassSheet() -> some View {
+        presentationBackground {
+            Color.clear
+                .browserFloatingChrome(
+                    radius: BrowserRadius.floating,
+                    material: .thinMaterial,
+                    tintStrength: 0.22,
+                    interactive: false
+                )
+                .luminousSheen(shape: RoundedRectangle(cornerRadius: BrowserRadius.floating))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
     /// Wraps the receiver in the floating-chrome treatment.
     func browserFloatingChrome(
         radius: CGFloat = BrowserRadius.floating,

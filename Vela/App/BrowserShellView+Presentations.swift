@@ -114,7 +114,6 @@ extension BrowserShellView {
                 onOpenShortcut: handleMenuShortcut
             )
             .environment(env)
-            .browserAmbientSheet()
         }
         .sheet(isPresented: shell.binding(forKind: .addBookmarkChoice)) {
             AddBookmarkChoiceSheet(
@@ -293,7 +292,7 @@ extension BrowserShellView {
                     .environment(env)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
-                    .presentationBackground(.thinMaterial)
+                    .browserGlassSheet()
             }
     }
 

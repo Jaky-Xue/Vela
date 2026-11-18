@@ -77,7 +77,8 @@ extension WebPageScripts {
       var ceiling = 'highres';
       var sourceKey = null;
       var attempts = 0;
-      var lastAttemptAt = 0;
+      var retryTimer = null;
+      var retriesRemaining = 0;
 
       // Seed the player's own stored quality preference when the site has not
       // recorded one. The range call below handles the current source; this is
@@ -95,57 +96,71 @@ extension WebPageScripts {
         }
       } catch (error) {}
 
+      function supportsQuality(player) {
+        return player && (typeof player.setPlaybackQualityRange === 'function' ||
+                          typeof player.setPlaybackQuality === 'function');
+      }
+
       function currentPlayer() {
-        var candidates = [
-          document.getElementById('movie_player'),
-          document.querySelector('.html5-video-player')
-        ];
-        for (var i = 0; i < candidates.length; i++) {
-          var player = candidates[i];
-          if (!player) { continue; }
-          if (typeof player.setPlaybackQualityRange === 'function') { return player; }
-          if (typeof player.setPlaybackQuality === 'function') { return player; }
-        }
-        return null;
+        var player = document.getElementById('movie_player');
+        if (supportsQuality(player)) { return player; }
+        player = document.querySelector('.html5-video-player');
+        return supportsQuality(player) ? player : null;
       }
 
       function tick() {
+        retryTimer = null;
+        if (document.hidden) { return; }
         var player = currentPlayer();
-        if (!player) { return; }
-        var video = player.querySelector('video');
-        if (!video) { return; }
-        var key = video.currentSrc || video.src || '';
-        if (!key) { return; }
-        if (key !== sourceKey) {
+        var video = player && player.querySelector('video');
+        var key = video && (video.currentSrc || video.src);
+        if (key && key !== sourceKey) {
           sourceKey = key;
           attempts = 0;
-          lastAttemptAt = 0;
         }
-        if (attempts >= 5) { return; }
-        var now = Date.now();
-        if (now - lastAttemptAt < 1200) { return; }
-        attempts += 1;
-        lastAttemptAt = now;
-        try {
-          if (typeof player.setPlaybackQualityRange === 'function') {
-            player.setPlaybackQualityRange(floor, ceiling);
-          } else if (typeof player.setPlaybackQuality === 'function') {
-            player.setPlaybackQuality(floor);
-          }
-        } catch (error) {}
+        if (key && attempts < 5) {
+          attempts += 1;
+          try {
+            if (typeof player.setPlaybackQualityRange === 'function') {
+              player.setPlaybackQualityRange(floor, ceiling);
+            } else {
+              player.setPlaybackQuality(floor);
+            }
+          } catch (error) {}
+        }
+        if ((!key || attempts < 5) && retriesRemaining > 0) {
+          retriesRemaining -= 1;
+          retryTimer = setTimeout(tick, 1200);
+        }
       }
 
-      setInterval(tick, 700);
+      function wake() {
+        if (document.hidden || retryTimer !== null) { return; }
+        retriesRemaining = 5;
+        tick();
+      }
 
-      // A new watch page reuses the player element but a different source; the
-      // source key already notices that, and the navigation event only makes
-      // the first attempt immediate.
+      function wakeForVideo(event) {
+        if (event.target && event.target.tagName === 'VIDEO') { wake(); }
+      }
+
+      document.addEventListener('loadedmetadata', wakeForVideo, true);
+      document.addEventListener('playing', wakeForVideo, true);
       document.addEventListener('yt-navigate-finish', function () {
         sourceKey = null;
         attempts = 0;
-        lastAttemptAt = 0;
-        tick();
+        clearTimeout(retryTimer);
+        retryTimer = null;
+        wake();
       }, true);
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+          clearTimeout(retryTimer);
+          retryTimer = null;
+        } else {
+          wake();
+        }
+      });
     })();
     """
 

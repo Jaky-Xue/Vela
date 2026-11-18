@@ -56,8 +56,9 @@ struct BookmarksView: View {
     }
 
     var body: some View {
-        List {
-            if currentItems.isEmpty {
+        let items = currentItems
+        return List {
+            if items.isEmpty {
                 EmptyState(
                     systemImage: "bookmark",
                     title: isSearching ? "没有匹配的书签" : "还没有书签",
@@ -72,14 +73,14 @@ struct BookmarksView: View {
                     // the folder view's control, and hiding rows a search just
                     // found is a list that answers a question with nothing.
                     if isSearching || contentsExpanded || currentFolderId == nil {
-                        ForEach(currentItems) { item in
+                        ForEach(items) { item in
                             row(for: item)
                         }
                         .onDelete(perform: deleteItems)
                         .onMove(perform: moveItems)
                     }
                 } header: {
-                    contentsHeader
+                    contentsHeader(count: items.count)
                 }
             }
         }
@@ -174,7 +175,7 @@ struct BookmarksView: View {
     /// root it is a plain label, because the list *is* the two roots and folding
     /// it would hide the only two rows there are.
     @ViewBuilder
-    private var contentsHeader: some View {
+    private func contentsHeader(count: Int) -> some View {
         if currentFolderId == nil && !isSearching {
             Text("书签")
                 .font(.system(size: 13, weight: .semibold))
@@ -184,7 +185,7 @@ struct BookmarksView: View {
         } else {
             CollapsibleSectionHeader(
                 title: isSearching ? "搜索结果" : currentTitle,
-                count: currentItems.count,
+                count: count,
                 isExpanded: contentsExpanded,
                 onToggle: {
                     withAnimation(.snappy(duration: 0.22)) { contentsExpanded.toggle() }
@@ -242,7 +243,7 @@ struct BookmarksView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .contentShape(Rectangle())
-            .browserFloatingChrome(radius: 14, material: .thinMaterial, tintStrength: 0.2, elevation: .card, interactive: false)
+            .background(palette.primaryText.opacity(0.05), in: .rect(cornerRadius: 14))
         }
         .buttonStyle(BookmarkGlassButtonStyle())
         .listRowBackground(Color.clear)
