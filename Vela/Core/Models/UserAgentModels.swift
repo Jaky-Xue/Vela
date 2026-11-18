@@ -273,6 +273,13 @@ public enum BrowserUserAgent {
     /// the tab falls back to when the override is cleared.
     public static let safariTail = "Version/\(claimedSystemVersion) Mobile/15E148 Safari/604.1"
 
+    /// What a desktop page appends: macOS Safari's shape, which carries no
+    /// `Mobile/` marker — that token is what makes a string read as mobile.
+    /// An iPad's automatic identity uses this one, because the page WebKit
+    /// shows there is already the desktop one and a mobile tail would claim
+    /// otherwise.
+    public static let desktopSafariTail = "Version/\(claimedSystemVersion) Safari/605.1.15"
+
     /// Resolves WebKit's content mode and any explicitly chosen User-Agent.
     public static func identity(
         custom: String,
