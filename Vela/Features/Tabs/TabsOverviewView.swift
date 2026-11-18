@@ -30,6 +30,7 @@ struct TabsOverviewView: View {
     var onClose: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.browserReduceTransparency) private var reduceTransparency
     @State private var showPrivateTabs = false
     @State private var didSyncMode = false
     @State private var pendingPrivateUnlock = false
@@ -120,18 +121,25 @@ struct TabsOverviewView: View {
 
     // MARK: - Background
 
-    /// The page you came from, blurred hard under a scrim. Safari's overview
-    /// does this rather than a flat fill, and the result is what makes the
-    /// take-over read as "the same place, pulled back" instead of a new screen.
+    /// The page you came from, under frosted glass. Safari's overview does
+    /// this rather than a flat fill, and the result is what makes the
+    /// take-over read as "the same place, pulled back" instead of a new
+    /// screen. The material is what does the blurring: the page is still in
+    /// the window behind this layer, so a system blur is the honest way to
+    /// show it dimmed rather than replacing it with a gradient that has
+    /// nothing to do with what the user was reading.
     private var backgroundLayer: some View {
-        // The reader pins the picture to the window's size and swallows the
-        // overflow: `scaledToFill` answers with the size it would like to be,
-        // and a background that told its container how big to be is exactly
-        // the bug this layer used to be.
         ZStack {
-            AmbientBackgroundView()
-            AmbientSurfaceFill(opacity: palette.visualStyle.menuVeil)
-        }.ignoresSafeArea()
+            if reduceTransparency {
+                palette.surface
+            } else {
+                Rectangle().fill(.ultraThinMaterial)
+                // A whisper of the palette surface keeps cards and labels
+                // readable over a busy page.
+                palette.surface.opacity(0.12)
+            }
+        }
+        .ignoresSafeArea()
     }
 
     // MARK: - Content

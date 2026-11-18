@@ -29,6 +29,7 @@ import UIKit
 struct MenuPanelView: View {
     var settings: SettingsService
     @Environment(\.browserPalette) private var palette
+    @Environment(\.browserReduceTransparency) private var reduceTransparency
 
     /// Whether the panel's target is a loaded page — `false` greys out every
     /// action that needs one.
@@ -160,7 +161,17 @@ struct MenuPanelView: View {
         // Drawn above the scroll view rather than inside it, so a tile carried
         // to the panel's edge is not cut off by the scroll view's clip.
         .overlay(alignment: .topLeading) { floatingTileLayer }
-        .background { AmbientSurfaceFill(opacity: palette.visualStyle.menuVeil) }
+        // Frosted glass rather than a flat veil: the panel's own background is
+        // the sheet's, and a material background lets the page behind it show
+        // through blurred — the menu reads as a pane over the browser, not as
+        // a second screen that replaced it.
+        .presentationBackground {
+            if reduceTransparency {
+                AmbientSurfaceFill(opacity: 1)
+            } else {
+                Rectangle().fill(.thinMaterial)
+            }
+        }
         .presentationDetents(panelDetents)
         .presentationDragIndicator(.hidden)
         .sheet(isPresented: $showingShortcutEditor) {
