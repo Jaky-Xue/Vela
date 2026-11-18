@@ -568,11 +568,26 @@ final class BrowserUserAgentTests: XCTestCase {
     /// A string naming another browser is a compatibility choice and is sent as
     /// given; only Safari-shaped literals are read as system presets.
     func testACompatibilityIdentifierIsNotReadAsASystemPreset() {
+        // A version the preset list does not carry, so this is about the
+        // shape — not about landing on the exact literal of a preset.
         let chrome = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            + "(KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36"
+            + "(KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
         let identity = BrowserUserAgent.identity(custom: chrome, prefersDesktop: false, device: .phone)
         XCTAssertEqual(identity.customUserAgent, chrome)
-        XCTAssertNil(BrowserUserAgentPreset.matching(chrome))
+        XCTAssertTrue(identity.isDesktop)
+        XCTAssertNil(BrowserUserAgentPreset.systemSafariPresetID(for: chrome))
+    }
+
+    /// The Chrome preset itself is a real override: it is sent as written, and
+    /// no Safari tail is appended to it.
+    func testACompatibilityPresetIsSentExactlyAsWritten() {
+        guard let preset = BrowserUserAgentPreset.all.first(where: { $0.id == "chrome-windows" }),
+              let chrome = preset.userAgent else {
+            return XCTFail("no Chrome Windows preset")
+        }
+        let identity = BrowserUserAgent.identity(custom: chrome, prefersDesktop: false, device: .phone)
+        XCTAssertEqual(identity.customUserAgent, chrome)
+        XCTAssertEqual(identity.isDesktop, preset.isDesktop)
     }
 
     func testACustomIdentifierBecomesTheOverride() {
