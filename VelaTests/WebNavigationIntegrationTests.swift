@@ -601,11 +601,11 @@ final class WebNavigationIntegrationTests: XCTestCase {
         guard let webView = harness.tabManager.webView(for: tab.id) else {
             return XCTFail("no web view")
         }
-        // A phone's default sets no override: WebKit assembles the identifier
-        // and Vela only supplies the tail. An iPad's default is the desktop
-        // identity, which does carry one. Read back leniently — assigning nil
-        // to `customUserAgent` reads back as the empty string, not as nil, which
-        // is a WebKit detail rather than a property of this code.
+        // The default sets no override on either device: WebKit assembles the
+        // identifier and Vela only supplies the tail. Read back leniently —
+        // assigning nil to `customUserAgent` reads back as the empty string,
+        // not as nil, which is a WebKit detail rather than a property of this
+        // code.
         XCTAssertTrue(
             (webView.customUserAgent ?? "") == (BrowserUserAgent.identity(custom: "", prefersDesktop: false).customUserAgent ?? ""),
             "the default must follow the device: \(webView.customUserAgent ?? "-")"
@@ -617,9 +617,10 @@ final class WebNavigationIntegrationTests: XCTestCase {
             .recommended
         )
 
+        let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false)
         XCTAssertEqual(
             webView.configuration.applicationNameForUserAgent,
-            BrowserUserAgent.safariTail,
+            identity.applicationNameForUserAgent,
             "a system identity has to append the Safari tail"
         )
 
@@ -632,10 +633,9 @@ final class WebNavigationIntegrationTests: XCTestCase {
         configuration.applicationNameForUserAgent =
             webView.configuration.applicationNameForUserAgent
         let reference = WKWebView(frame: .zero, configuration: configuration)
-        // An iPad's automatic identity is the desktop one, which does carry an
-        // override; the reference has to present the same one for this
-        // comparison to be about WebKit's prefix rather than about which
-        // identity was chosen.
+        // An explicit identity can carry an override; the reference has to
+        // present the same one for this comparison to be about WebKit's prefix
+        // rather than about which identity was chosen.
         if let override = webView.customUserAgent, !override.isEmpty {
             reference.customUserAgent = override
         }
@@ -653,17 +653,17 @@ final class WebNavigationIntegrationTests: XCTestCase {
             identifier.contains("Version/\(BrowserUserAgent.claimedSystemVersion)"),
             identifier
         )
-        XCTAssertTrue(identifier.contains("Safari/604.1"), identifier)
+        // A phone's tail carries iOS Safari's build token; a desktop page
+        // carries macOS Safari's.
+        XCTAssertTrue(
+            identifier.contains(identity.isDesktop ? "Safari/605.1.15" : "Safari/604.1"),
+            identifier
+        )
         // The `Mobile/` marker belongs to a mobile identity; a desktop page
-        // must not start claiming it through the tail.
-        let identity = BrowserUserAgent.identity(custom: "", prefersDesktop: false)
+        // must not start claiming it through the tail. WebKit's own iPad
+        // identifier may already carry one, so only the mobile case asserts it.
         if !identity.isDesktop {
             XCTAssertTrue(identifier.contains("Mobile/"), identifier)
-        } else {
-            XCTAssertTrue(
-                identifier.contains("Version/\(BrowserUserAgent.claimedSystemVersion)"),
-                identifier
-            )
         }
     }
 
