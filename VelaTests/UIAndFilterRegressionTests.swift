@@ -209,7 +209,7 @@ final class UIAndFilterRegressionTests: XCTestCase {
         let server = try LocalHTTPServer(routes: [
             "/one": .html("<meta name=viewport content=width=device-width><title>阅读 · 测试页面</title><body style='background:#f7faff;color:#20314b;font:24px system-ui;padding:24px'><h1>阅读时刻</h1><p>保持专注，轻松浏览。</p>"),
             "/two": .html("<meta name=viewport content=width=device-width><title>灵感 · 测试页面</title><body style='background:#fff8ef;color:#4e342e;font:24px system-ui;padding:24px'><h1>灵感笔记</h1><p>让好想法留下来。</p>"),
-            "/three": .html("<meta name=viewport content=width=device-width><title>探索 · 测试页面</title><body style='background:#f2fbf5;color:#244235;font:24px system-ui;padding:24px'><h1>发现新意</h1><p>开启下一段旅程。</p><div style='position:fixed;left:0;right:0;bottom:0;height:130px;background:linear-gradient(90deg,#efaaa2,#88b5ed,#91d6bd);pointer-events:none'></div>")
+            "/three": .html("<meta name=viewport content=width=device-width><meta name=color-scheme content='light dark'><title>探索 · 测试页面</title><style>body{background:#f2fbf5;color:#244235}@media(prefers-color-scheme:dark){body{background:#243850;color:#f2fbf5}}</style><body style='font:24px system-ui;padding:24px'><h1>发现新意</h1><p>开启下一段旅程。</p><div style='position:fixed;left:0;right:0;bottom:0;height:130px;background:linear-gradient(90deg,#efaaa2,#88b5ed,#91d6bd);pointer-events:none'></div>")
         ])
         let base = try await server.start(); defer { server.stop() }
         let env = AppEnvironment(services:AppServices(),windowId:"OverviewQA-"+UUID().uuidString)
@@ -250,6 +250,7 @@ final class UIAndFilterRegressionTests: XCTestCase {
             let content=view.environment(env).environment(\.browserPalette,BrowserPalette.default).environment(\.colorScheme,scheme)
             let controller=UIHostingController(rootView:content)
             window.overrideUserInterfaceStyle=scheme == .dark ? .dark : .light
+            env.tabManager.applyAppearanceToAllWebViews(window.overrideUserInterfaceStyle)
             window.rootViewController=controller;window.frame=CGRect(x:0,y:0,width:width,height:780)
             controller.view.frame=window.bounds;controller.view.layoutIfNeeded()
             try await Task.sleep(nanoseconds:700_000_000)
@@ -260,13 +261,14 @@ final class UIAndFilterRegressionTests: XCTestCase {
             var image = render()
             if name.hasPrefix("browser-page") {
                 let web = try XCTUnwrap(env.tabManager.activeTab.flatMap { env.tabManager.webView(for: $0.id) })
+                let expectedBackground: [UInt8] = scheme == .dark ? [36, 56, 80] : [242, 251, 245]
                 for _ in 0..<30 {
-                    if fixtureBackgroundIsVisible(image, rgb: [242,251,245]) { break }
+                    if fixtureBackgroundIsVisible(image, rgb: expectedBackground) { break }
                     await waitForFixturePaint(web)
                     try await Task.sleep(nanoseconds:100_000_000)
                     image = render()
                 }
-                XCTAssertTrue(fixtureBackgroundIsVisible(image, rgb: [242,251,245]), "Browser content must be visible, not a reattachment white frame")
+                XCTAssertTrue(fixtureBackgroundIsVisible(image, rgb: expectedBackground), "\(name) must render the fixture's background")
             }
             let attachment=XCTAttachment(image:image);attachment.name=name;attachment.lifetime = .keepAlways;add(attachment)
         }
