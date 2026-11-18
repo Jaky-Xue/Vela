@@ -464,9 +464,15 @@ final class PageBridgeIntegrityTests: XCTestCase {
                 value: true, configurable: true
               });
               document.body.appendChild(video);
+              // A track without loaded media does not build an active-cue
+              // list, so the test states the cues directly: what is under
+              // test is which layer stands down, not when WebKit marks a cue
+              // active.
               function trackFor(label, text) {
                 var track = video.addTextTrack('subtitles', label, 'zh');
-                track.addCue(new VTTCue(0, 1000, text));
+                Object.defineProperty(track, 'activeCues', {
+                  value: [{ text: text }], configurable: true
+                });
                 track.mode = 'showing';
                 return track;
               }
@@ -474,7 +480,9 @@ final class PageBridgeIntegrityTests: XCTestCase {
               // language that must not be touched.
               var page = trackFor('中文', '你好，世界');
               var mirror = video.addTextTrack('forced', 'YouTube Captions');
-              mirror.addCue(new VTTCue(0, 1000, '你好， 世界'));
+              Object.defineProperty(mirror, 'activeCues', {
+                value: [{ text: '你好， 世界' }], configurable: true
+              });
               mirror.mode = 'showing';
               var other = trackFor('English', 'Hello, world');
               window.__velaTestTracks = [page, mirror, other];
