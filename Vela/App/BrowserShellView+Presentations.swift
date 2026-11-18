@@ -12,25 +12,11 @@ import WebKit
 
 extension BrowserShellView {
     func presentations() -> some View {
-        shellRoot
+        bookmarksPresentations()
         .sheet(isPresented: shell.binding(forKind: .siteCapabilities)) {
             if let tab = activeTab {
                 NavigationStack { SiteCapabilitiesView(tab: tab) }.environment(env).browserAmbientSheet()
             }
-        }
-        .overlay {
-            if usesPadLayout && showBookmarks {
-                bookmarksSidebarLayer
-            }
-        }
-        .animation(reduceMotion ? nil : BrowserMotion.jelly(false), value: showBookmarks)
-        .sheet(isPresented: Binding(
-            get: { !usesPadLayout && showBookmarks },
-            set: { if !$0 && !usesPadLayout { showBookmarks = false } }
-        )) {
-            NavigationStack { BookmarksView(onClose: { showBookmarks = false }) }
-                .environment(env)
-                .presentationBackground(.thinMaterial)
         }
         .sheet(isPresented: shell.binding(forKind: .history)) {
             NavigationStack { HistoryView() }
@@ -286,6 +272,36 @@ extension BrowserShellView {
         // arriving) uses the softer sheet curve rather than each screen
         // picking its own spring.
         .animation(BrowserMotion.sheet(reduceMotion), value: shell.overlays)
+    }
+
+    /// The bookmarks surface — the iPad sidebar, the phone sheet, and the jelly
+    /// that carries either one in and out.
+    ///
+    /// Split out of `presentations()` because these three modifiers put that
+    /// single chain past the type checker's budget; the failure lands on an
+    /// unrelated alert far down the chain, which reads like the alert's fault.
+    private func bookmarksPresentations() -> some View {
+        shellRoot
+            .overlay {
+                if usesPadLayout && showBookmarks {
+                    bookmarksSidebarLayer
+                }
+            }
+            .animation(reduceMotion ? nil : BrowserMotion.jelly(false), value: showBookmarks)
+            .sheet(isPresented: bookmarksSheetBinding) {
+                NavigationStack { BookmarksView(onClose: { showBookmarks = false }) }
+                    .environment(env)
+                    .presentationBackground(.thinMaterial)
+            }
+    }
+
+    /// The bookmarks sheet exists on phone only; on iPad the same flag drives
+    /// the overlay, so the binding must never ask for a sheet there.
+    private var bookmarksSheetBinding: Binding<Bool> {
+        Binding(
+            get: { !usesPadLayout && showBookmarks },
+            set: { if !$0 && !usesPadLayout { showBookmarks = false } }
+        )
     }
 
 }
