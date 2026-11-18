@@ -217,6 +217,286 @@ final class PageBridgeIntegrityTests: XCTestCase {
         }
     }
 
+    /// The two things a page must not do to a film that is in the system
+    /// player: raise a keyboard over it, and paint its caption twice.
+    func testAFullscreenFilmTakesThePagesKeyboardAndReportsThePresentation() async throws {
+        let (webView, collector) = try await load(
+            script: WebPageScripts.fullscreenBridge,
+            handlerName: WebPageScripts.Handler.mediaFullscreen.rawValue
+        )
+
+        // The field stands in for a search box or a player's hidden input. Its
+        // blur is counted rather than observed, so the test reads the guard's
+        // decision and not whether a web view in a test host can hold focus.
+        let observed = try await webView.evaluateJavaScript("""
+            (function () {
+              var field = document.createElement('input');
+              field.type = 'search';
+              document.body.appendChild(field);
+              var video = document.createElement('video');
+              // The real player reports fullscreen through this flag; the
+              // test sets it so the guard does not depend on timer timing.
+              Object.defineProperty(video, 'webkitDisplayingFullscreen', {
+                value: true, configurable: true
+              });
+              document.body.appendChild(video);
+
+              var blurs = 0;
+              field.blur = function () {
+                blurs += 1;
+                HTMLInputElement.prototype.blur.call(this);
+              };
+              function announce(name) {
+                video.dispatchEvent(new Event(name));
+              }
+              function focusWithoutATap() {
+                field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+              }
+              function tapThenFocus() {
+                var touch = new Event('touchstart', { bubbles: true });
+                Object.defineProperty(touch, 'composedPath', {
+                  value: function () { return [field]; }
+                });
+                field.dispatchEvent(touch);
+                field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+              }
+
+              field.focus();
+              announce('webkitbeginfullscreen');
+              var afterBegin = blurs;
+
+              focusWithoutATap();
+              var afterUnaskedFocus = blurs;
+
+              tapThenFocus();
+              var afterTappedFocus = blurs;
+
+              announce('webkitendfullscreen');
+              focusWithoutATap();
+              var afterEnd = blurs;
+
+              return {
+                afterBegin: afterBegin,
+                afterUnaskedFocus: afterUnaskedFocus,
+                afterTappedFocus: afterTappedFocus,
+                afterEnd: afterEnd
+              };
+            })();
+            """) as? [String: Any]
+
+        let afterBegin = observed?["afterBegin"] as? Int ?? -1
+        let afterUnaskedFocus = observed?["afterUnaskedFocus"] as? Int ?? -2
+        let afterTappedFocus = observed?["afterTappedFocus"] as? Int ?? -3
+        let afterEnd = observed?["afterEnd"] as? Int ?? -4
+
+        XCTAssertEqual(
+            afterUnaskedFocus,
+            afterBegin + 1,
+            "a focus the viewer did not tap must be let go while the film is up"
+        )
+        XCTAssertEqual(
+            afterTappedFocus,
+            afterUnaskedFocus + 1,
+            "over the system player the page is not on screen, so no field may take focus"
+        )
+        XCTAssertEqual(
+            afterEnd,
+            afterTappedFocus,
+            "the guard ends with the presentation"
+        )
+
+        var reports: [[String: Any]] = []
+        for _ in 0..<200 {
+            reports = collector?.messages ?? []
+            if reports.count >= 2 { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(reports.first?["active"] as? Bool, true)
+        XCTAssertEqual(reports.last?["active"] as? Bool, false)
+    }
+
+    /// A site's own player in element fullscreen still shows its page, so a
+    /// field the viewer taps keeps the keyboard — but a field the player
+    /// focuses for them does not. A fullscreen element with no video in it is
+    /// not a film and must not touch fields at all.
+    func testElementFullscreenOnlyRefusesFocusNoTapAskedFor() async throws {
+        let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
+
+        let observed = try await webView.evaluateJavaScript("""
+            (function () {
+              var field = document.createElement('input');
+              field.type = 'search';
+              document.body.appendChild(field);
+              var video = document.createElement('video');
+              document.body.appendChild(video);
+              var player = document.createElement('div');
+              player.appendChild(video);
+              document.body.appendChild(player);
+
+              var blurs = 0;
+              field.blur = function () {
+                blurs += 1;
+                HTMLInputElement.prototype.blur.call(this);
+              };
+              function focusWithoutATap() {
+                field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+              }
+              function tapThenFocus() {
+                var touch = new Event('touchstart', { bubbles: true });
+                Object.defineProperty(touch, 'composedPath', {
+                  value: function () { return [field]; }
+                });
+                field.dispatchEvent(touch);
+                field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+              }
+
+              Object.defineProperty(document, 'fullscreenElement', {
+                value: player, configurable: true
+              });
+              document.dispatchEvent(new Event('fullscreenchange'));
+              var afterEntry = blurs;
+
+              focusWithoutATap();
+              var afterUnaskedFocus = blurs;
+
+              tapThenFocus();
+              var afterTappedFocus = blurs;
+
+              // An image viewer, a document: no video, so no guard.
+              var image = document.createElement('img');
+              Object.defineProperty(document, 'fullscreenElement', {
+                value: image, configurable: true
+              });
+              document.dispatchEvent(new Event('fullscreenchange'));
+              focusWithoutATap();
+              var afterNonVideoFullscreen = blurs;
+
+              return {
+                afterEntry: afterEntry,
+                afterUnaskedFocus: afterUnaskedFocus,
+                afterTappedFocus: afterTappedFocus,
+                afterNonVideoFullscreen: afterNonVideoFullscreen
+              };
+            })();
+            """) as? [String: Any]
+
+        let afterEntry = observed?["afterEntry"] as? Int ?? -1
+        let afterUnaskedFocus = observed?["afterUnaskedFocus"] as? Int ?? -2
+        let afterTappedFocus = observed?["afterTappedFocus"] as? Int ?? -3
+        let afterNonVideoFullscreen = observed?["afterNonVideoFullscreen"] as? Int ?? -4
+
+        XCTAssertEqual(
+            afterUnaskedFocus,
+            afterEntry + 1,
+            "a player that focuses a field for the viewer must be refused in fullscreen"
+        )
+        XCTAssertEqual(
+            afterTappedFocus,
+            afterUnaskedFocus,
+            "a field the viewer tapped keeps the keyboard in element fullscreen"
+        )
+        XCTAssertEqual(
+            afterNonVideoFullscreen,
+            afterTappedFocus,
+            "only a fullscreen video is a film; an image viewer leaves fields alone"
+        )
+    }
+
+    func testAFullscreenFilmLaysItsCaptionLayerDownAgain() async throws {
+        let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
+
+        // `mode` is read back through an own accessor that records every
+        // write, so the test sees the bridge's hidden/shown cycle without
+        // needing a cue layer to inspect.
+        let initial = try await webView.evaluateJavaScript("""
+            (function () {
+              var video = document.createElement('video');
+              Object.defineProperty(video, 'webkitDisplayingFullscreen', {
+                value: true, configurable: true
+              });
+              document.body.appendChild(video);
+              var track = video.addTextTrack('subtitles', '字幕', 'zh');
+              var descriptor = Object.getOwnPropertyDescriptor(
+                Object.getPrototypeOf(track), 'mode'
+              );
+              var writes = [];
+              Object.defineProperty(track, 'mode', {
+                get: function () { return descriptor.get.call(this); },
+                set: function (value) {
+                  writes.push(String(value));
+                  descriptor.set.call(this, value);
+                }
+              });
+              track.mode = 'showing';
+              window.__velaCaptionWrites = writes;
+              video.dispatchEvent(new Event('webkitbeginfullscreen'));
+              return writes.slice();
+            })();
+            """) as? [String]
+
+        XCTAssertEqual(initial, ["showing"])
+
+        var recorded: [String] = []
+        for _ in 0..<200 {
+            recorded = (try? await webView.evaluateJavaScript("window.__velaCaptionWrites")) as? [String] ?? []
+            if recorded.count >= 3, recorded.last == "showing" { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(recorded.first, "showing")
+        XCTAssertEqual(
+            recorded.dropFirst().prefix(2).map { $0 },
+            ["hidden", "showing"],
+            "the showing track must be taken down and put back so WebKit rebuilds the layer"
+        )
+    }
+
+    /// WebKit's own YouTube caption mirror and the page's caption track can
+    /// both be showing the same sentence in the system player. One has to
+    /// stand down; two different sentences (two languages) must both stay.
+    func testTwoTracksCarryingTheSameSentenceAreDrawnOnce() async throws {
+        let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
+
+        let initial = try await webView.evaluateJavaScript("""
+            (function () {
+              var video = document.createElement('video');
+              Object.defineProperty(video, 'webkitDisplayingFullscreen', {
+                value: true, configurable: true
+              });
+              document.body.appendChild(video);
+              function trackFor(label, text) {
+                var track = video.addTextTrack('subtitles', label, 'zh');
+                track.addCue(new VTTCue(0, 1000, text));
+                track.mode = 'showing';
+                return track;
+              }
+              // The page's own track and WebKit's mirror, then a second
+              // language that must not be touched.
+              var page = trackFor('中文', '你好，世界');
+              var mirror = video.addTextTrack('forced', 'YouTube Captions');
+              mirror.addCue(new VTTCue(0, 1000, '你好， 世界'));
+              mirror.mode = 'showing';
+              var other = trackFor('English', 'Hello, world');
+              window.__velaTestTracks = [page, mirror, other];
+              video.dispatchEvent(new Event('webkitbeginfullscreen'));
+              return [page.mode, mirror.mode, other.mode];
+            })();
+            """) as? [String]
+
+        XCTAssertEqual(initial, ["showing", "showing", "showing"])
+
+        var modes: [String] = []
+        for _ in 0..<200 {
+            modes = (try? await webView.evaluateJavaScript("""
+                window.__velaTestTracks.map(function (track) { return track.mode; })
+                """)) as? [String] ?? []
+            if modes == ["showing", "hidden", "showing"] { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(modes, ["showing", "hidden", "showing"])
+    }
+
     /// Waits for the first report the predicate accepts.
     private func waitForReports(
         in collector: BridgeMessageCollector?,

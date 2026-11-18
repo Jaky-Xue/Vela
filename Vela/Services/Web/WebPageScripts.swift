@@ -29,6 +29,9 @@ public enum WebPageScripts {
         /// notification bridge. Camera, microphone and motion arrive through
         /// `WKUIDelegate` instead.
         case permissionAsk = "velaPermissionAsk"
+        /// A video entering or leaving the system player's full-screen
+        /// presentation, which is what keeps the keyboard off the film.
+        case mediaFullscreen = "velaMediaFullscreen"
     }
 
     // MARK: - Native-looking wrappers

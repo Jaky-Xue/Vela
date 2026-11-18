@@ -130,6 +130,20 @@ public final class BrowserWebCoordinator: NSObject {
     /// settings takes precedence over this map.
     var permissionSessionDecisions: [String: SitePermissionRule] = [:]
 
+    /// The web views whose page reported a video in the system player's
+    /// full-screen presentation.
+    ///
+    /// Held weakly — a closed tab's web view must not be kept alive by this —
+    /// and cleared when the web view starts a navigation, because a page that
+    /// goes away with the player up never gets to report that it ended.
+    @ObservationIgnored
+    var fullscreenMediaWebViews = NSHashTable<WKWebView>.weakObjects()
+
+    /// The keyboard observer that keeps a full-screen film clear of the
+    /// keyboard. Boxed so the token is removed with the coordinator.
+    @ObservationIgnored
+    private let fullscreenKeyboardObserver = NotificationObserverToken()
+
     public init(
         overlays: WebPageOverlays,
         settings: SettingsService,
@@ -150,6 +164,13 @@ public final class BrowserWebCoordinator: NSObject {
         self.navigationLog = navigationLog
         super.init()
         observeScriptPolicy()
+        fullscreenKeyboardObserver.token = NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillShowNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.dismissKeyboardOverFullscreenMedia()
+            }
+        }
         userScriptValueObserver.token = NotificationCenter.default.addObserver(
             forName: .velaScriptValueChanged, object: nil, queue: nil
         ) { [weak self] notification in
@@ -279,6 +300,8 @@ public final class BrowserWebCoordinator: NSObject {
             handleElementPickMessage(message, tab: tab)
         case .permissionAsk:
             handlePermissionAsk(message, webView: webView)
+        case .mediaFullscreen:
+            handleMediaFullscreenMessage(message, webView: webView)
         case .userScript:
             handleUserScriptMessage(message, tab: tab, webView: webView)
         case .console:
@@ -372,6 +395,35 @@ public final class BrowserWebCoordinator: NSObject {
            !background.isEmpty,
            tab.pageBackground != background {
             tab.pageBackground = background
+        }
+    }
+
+    /// A page reported that a video entered or left the system player's
+    /// full-screen presentation.
+    ///
+    /// The keyboard has no place over a full-screen film. A text field the
+    /// page focused before the film started — or one focused in another frame
+    /// of the same page — can have its keyboard restored on top of the system
+    /// player the first time the player's own controls take and release the
+    /// first responder, which is what a tap on 倍速 looked like. The page's
+    /// bridge blurs its own editors and refuses unasked focus; this side ends
+    /// the editing the page cannot see, including a field in another frame.
+    func handleMediaFullscreenMessage(_ message: WKScriptMessage, webView: WKWebView) {
+        guard let payload = message.body as? [String: Any],
+              let active = payload["active"] as? Bool else { return }
+        if active {
+            fullscreenMediaWebViews.add(webView)
+            webView.endEditing(true)
+        } else {
+            fullscreenMediaWebViews.remove(webView)
+        }
+    }
+
+    /// Keeps the keyboard off a full-screen film, whoever asked for it.
+    func dismissKeyboardOverFullscreenMedia() {
+        guard !fullscreenMediaWebViews.allObjects.isEmpty else { return }
+        for webView in fullscreenMediaWebViews.allObjects {
+            webView.endEditing(true)
         }
     }
 
@@ -1098,6 +1150,13 @@ extension BrowserWebCoordinator {
 }
 
 // MARK: - Script message bridge
+
+/// Holds a `NotificationCenter` observer token and removes it when the object
+/// owning the box goes away.
+final class NotificationObserverToken: @unchecked Sendable {
+    var token: NSObjectProtocol?
+    deinit { if let token { NotificationCenter.default.removeObserver(token) } }
+}
 
 /// Bridges a `WKScriptMessageHandler` back to the coordinator.
 ///

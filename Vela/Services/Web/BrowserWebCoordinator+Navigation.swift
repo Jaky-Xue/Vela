@@ -500,6 +500,11 @@ extension BrowserWebCoordinator: WKNavigationDelegate {
     func beginNavigation(_ navigation: WKNavigation?, in webView: WKWebView) {
         guard let tab = tab(for: webView) else { return }
         pruneTraces()
+        // A film fullscreen belongs to the document that is leaving. The new
+        // document cannot report the end of a presentation it never saw, and a
+        // web view left marked as fullscreen would keep the keyboard away from
+        // every field it has.
+        fullscreenMediaWebViews.remove(webView)
         // A permission sheet belongs to the document that asked. Navigating
         // away without answering leaves WebKit or the page bridge blocked
         // forever, so a start retires it as a denial.
