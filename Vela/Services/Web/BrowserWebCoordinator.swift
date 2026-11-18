@@ -601,9 +601,7 @@ public final class BrowserWebCoordinator: NSObject {
 extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
     private static let documentStartBridges = [
         WKUserScript(source: WebPageScripts.permissionBridge, injectionTime: .atDocumentStart, forMainFrameOnly: true),
-        WKUserScript(source: WebPageScripts.historyApiBridge, injectionTime: .atDocumentStart, forMainFrameOnly: true),
-        WKUserScript(source: WebPageScripts.fullscreenBridge, injectionTime: .atDocumentStart, forMainFrameOnly: false),
-        WKUserScript(source: WebPageScripts.inlineVideoControlsScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        WKUserScript(source: WebPageScripts.historyApiBridge, injectionTime: .atDocumentStart, forMainFrameOnly: true)
     ]
 
     /// Attaches every page script a navigation needs: the browser's own
@@ -642,22 +640,9 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // * Permissions belong to the top document.
         // * The history bridge writes the tab's address, and a frame's own
         //   `pushState` is not the page's address: the top document only.
-        // * The video bridges act on the site's player in the top document, so
-        //   they are attached for a video host and nowhere else. Their
-        //   quality watcher only needs events from the top document.
-        // * The fullscreen bridge and tap-to-controls stay in every frame: an
-        //   embedded player is exactly the case they exist for.
         for script in Self.documentStartBridges {
             controller.addUserScript(script)
         }
-        if url?.host.map({ BrowserUserAgent.isVideoSiteHost($0) }) ?? false {
-            for source in [WebPageScripts.youtubeTapControlsScript, WebPageScripts.youtubeQualityScript] {
-                controller.addUserScript(
-                    WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
-                )
-            }
-        }
-
 
         if settings.preferences.allowsPinchZoom {
             // Remove the page's own zoom lock before and after its markup is
@@ -960,11 +945,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
         // `WKPreferences`; on iOS media playback is routed through the system
         // player, so there is no equivalent to set here.
 
-        // Element fullscreen stays enabled for non-video content — an image
-        // viewer, a document, a canvas — and picture-in-picture stays opt-in.
-        // Video fullscreen is Apple's own player: the fullscreen bridge routes
-        // a page's Fullscreen API request on a video-bearing element to the
-        // video's native presentation, and WebKit draws the system player.
+        // Let pages use WebKit's fullscreen APIs directly.
         if #available(iOS 15.4, *) {
             preferences.isElementFullscreenEnabled = true
         }
@@ -986,11 +967,7 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
 
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
-        // Audible playback starts from a gesture; silent media may autoplay.
-        // This is Safari's own policy, and it is what YouTube's player is
-        // built against — a webview that permits everything lets the player
-        // initialise paths Safari never runs, which is one of the shapes its
-        // generic "出了点问题" error takes.
+        // Audible playback requires a gesture. Silent media may autoplay.
         configuration.mediaTypesRequiringUserActionForPlayback = .audio
 
         // A description is what a `target="_blank"` popup inherits; without it

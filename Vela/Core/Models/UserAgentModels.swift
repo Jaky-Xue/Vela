@@ -384,16 +384,6 @@ public enum BrowserUserAgent {
         return device.prefersDesktopIdentity
     }
 
-    /// The video-site hosts that receive the mobile identifier.
-    ///
-    /// Domain-or-subdomain matching, the same shape the page scripts apply
-    /// when they stand down for a site's own player.
-    public static func isVideoSiteHost(_ host: String) -> Bool {
-        let lowered = host.lowercased()
-        let domains = ["youtube.com", "youtube-nocookie.com", "youtubekids.com", "youtu.be"]
-        return domains.contains { lowered == $0 || lowered.hasSuffix(".\($0)") }
-    }
-
     /// The identifier the running device should present by default.
     ///
     /// The automatic preset is the initial choice, and this is what makes it
