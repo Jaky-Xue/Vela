@@ -29,22 +29,15 @@ extension BrowserShellView {
         palette.primaryText
     }
 
-    /// The bar's three glass pieces riding one coordinated layer.
+    /// The bar's three glass pieces, each with its own glass.
     ///
-    /// `glassEffect` on separate shapes can leave a layer parked at its
-    /// pre-rotation frame; the container samples the page once for the whole
-    /// bar and moves it as one piece. The offset and the fade stay outside the
-    /// container so a hide takes the glass with it.
+    /// A `GlassEffectContainer` around them was tried and removed: on iOS 26
+    /// the container paints its own full-width backdrop across the bar,
+    /// which reads as a grey strip between the page and the bar and does not
+    /// belong to either. The pieces carry their own glass, so the page shows
+    /// between and around them the way the layout promises.
     @ViewBuilder var commandBar: some View {
-        Group {
-            if #available(iOS 26.0, *) {
-                GlassEffectContainer(spacing: BrowserChrome.barGap) {
-                    commandBarContent
-                }
-            } else {
-                commandBarContent
-            }
-        }
+        commandBarContent
         .padding(.horizontal, BrowserChrome.sideInset)
         // The bottom-aligned overlay already lays the bar out above the
         // home-indicator inset; adding the inset again here lifted the bar a
@@ -186,14 +179,12 @@ extension BrowserShellView {
         }
     }
 
+    /// The floating tools, each carrying its own glass.
+    ///
+    /// No `GlassEffectContainer` here either: the container's own backdrop
+    /// would paint a strip across the page under the tools (see `commandBar`).
     @ViewBuilder var floatingToolsInGlassContainer: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: BrowserChrome.barGap) {
-                floatingTools
-            }
-        } else {
-            floatingTools
-        }
+        floatingTools
     }
 
     var toolbarLayout: ToolbarLayout { env.settings.toolbarLayout }
@@ -452,11 +443,8 @@ extension BrowserShellView {
 
     /// Whether the floating tools have anything to show.
     ///
-    /// An empty one is not inserted at all. On iOS 26 it is wrapped in a
-    /// `GlassEffectContainer`, and that container owns a hit-testing surface
-    /// over the page's bottom edge even with no glass in it — which is what
-    /// made a page's own last row — a bottom sheet's 详细统计信息, a menu's last
-    /// item — untappable across every site.
+    /// An empty one is not inserted at all: there is nothing to draw, and an
+    /// overlay with no tool in it would only sit over the page.
     var hasFloatingTools: Bool {
         if env.overlays.isElementPickerArmed { return true }
         if showFindBar { return true }
