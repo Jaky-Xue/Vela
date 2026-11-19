@@ -149,7 +149,15 @@ extension BrowserShellView {
             // header and chapter controls are the chrome. The iPad layout has
             // its navigation in the top bar, so the phone command bar is not
             // drawn there at all.
-            if novelSession == nil && !usesPadLayout {
+            //
+            // A hidden bar is *removed*, not slid away. On iOS 26 each glass
+            // piece carries a `UIPlatformGlassInteractionView`, and that
+            // UIKit layer keeps taking touches even when SwiftUI offsets the
+            // bar off-screen and turns hit testing off — so the strip the bar
+            // had occupied swallowed every touch meant for the page's own
+            // bottom row, on every site. Taking the bar out of the hierarchy
+            // is the only way to give that strip back.
+            if novelSession == nil, !usesPadLayout, !chromeHidden, !omnibox.isEditing {
                 commandBar
                     // The bar leaves on the reader's own curve, a beat behind
                     // its arrival, so the two read as one movement.

@@ -29,14 +29,6 @@ extension BrowserShellView {
         palette.primaryText
     }
 
-    /// How far the bar travels when it hides: its own height, the gap under
-    /// it, and the safe-area inset. The overlay already holds the bar above
-    /// the inset, so this is the whole distance from its resting edge to the
-    /// bottom of the screen, plus a little slack.
-    var hiddenChromeOffset: CGFloat {
-        BrowserChrome.barHeight + BrowserChrome.barGap + safeBottom + 16
-    }
-
     /// The bar's three glass pieces riding one coordinated layer.
     ///
     /// `glassEffect` on separate shapes can leave a layer parked at its
@@ -58,19 +50,13 @@ extension BrowserShellView {
         // home-indicator inset; adding the inset again here lifted the bar a
         // whole safe area off the edge. The gap is all this padding owes.
         .padding(.bottom, BrowserChrome.barGap)
-        // Sliding fully out — past the bottom edge — with a fade reads as the
-        // bar dissolving into the page rather than parking behind the home
-        // indicator. Mid-drag the bar follows the finger downward and fades
-        // with distance; dragged upward it lifts a little, promising the home
-        // surface on release.
-        .offset(y: chromeHidden
-            ? hiddenChromeOffset
-            : (chromeDragOffset > 0 ? chromeDragOffset : chromeLiftOffset))
-        // The search page covers the screen completely, so the bar yields to it
-        // while the omnibox session is open — a bottom bar under a search page
-        // is chrome the user did not ask for.
-        .opacity(omnibox.isEditing ? 0 : chromeHidden ? 0 : max(0, 1 - chromeDragOffset / 140))
-        .allowsHitTesting(!chromeHidden && !omnibox.isEditing)
+        // Mid-drag the bar follows the finger downward and fades with
+        // distance; dragged upward it lifts a little, promising the home
+        // surface on release. A *hidden* bar is not offset — it is removed
+        // from the hierarchy by the shell, because the glass interaction
+        // layers would otherwise keep taking touches in that strip.
+        .offset(y: chromeDragOffset > 0 ? chromeDragOffset : chromeLiftOffset)
+        .opacity(max(0, 1 - chromeDragOffset / 140))
         // The bar's transparent gaps and its margins are part of the drag
         // surface. Without a content shape the gesture began only on the
         // rendered pieces — the omnibox and the two button clusters — so a
