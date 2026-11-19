@@ -336,38 +336,61 @@ final class PageBridgeIntegrityTests: XCTestCase {
     }
 
     /// A site's own player in element fullscreen still shows its page, so a
-    /// field the viewer taps keeps the keyboard — but a field the player
-    /// focuses for them does not. A fullscreen element with no video in it is
-    /// not a film and must not touch fields at all.
+    /// field the viewer can see and taps keeps the keyboard — but a field the
+    /// player focuses for them, or one parked off screen, does not. A
+    /// fullscreen element with no video in it is not a film and must not touch
+    /// fields at all.
     func testElementFullscreenOnlyRefusesFocusNoTapAskedFor() async throws {
         let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
 
         let observed = try await webView.evaluateJavaScript("""
             (function () {
+              // The harness web view has no layout, so the viewport and the
+              // fields' geometry are stated: a search box the viewer can see,
+              // and one the player keeps off screen.
+              Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+              Object.defineProperty(window, 'innerHeight', { value: 700, configurable: true });
+
+              function place(element, rect) {
+                element.getBoundingClientRect = function () { return rect; };
+                element.getClientRects = function () { return rect.width > 0 ? [rect] : []; };
+              }
+
               var field = document.createElement('input');
               field.type = 'search';
               document.body.appendChild(field);
+              place(field, { left: 10, top: 600, right: 210, bottom: 632, width: 200, height: 32 });
               var video = document.createElement('video');
               document.body.appendChild(video);
               var player = document.createElement('div');
               player.appendChild(video);
               document.body.appendChild(player);
 
+              var hidden = document.createElement('input');
+              hidden.type = 'text';
+              player.appendChild(hidden);
+              place(hidden, { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
+
               var blurs = 0;
               field.blur = function () {
                 blurs += 1;
                 HTMLInputElement.prototype.blur.call(this);
               };
+              var hiddenBlurs = 0;
+              hidden.blur = function () {
+                hiddenBlurs += 1;
+                HTMLInputElement.prototype.blur.call(this);
+              };
               function focusWithoutATap() {
                 field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
               }
-              function tapThenFocus() {
+              function tapThenFocus(element) {
                 var touch = new Event('touchstart', { bubbles: true });
                 Object.defineProperty(touch, 'composedPath', {
-                  value: function () { return [field]; }
+                  value: function () { return [element]; }
                 });
-                field.dispatchEvent(touch);
-                field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+                element.dispatchEvent(touch);
+                element.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
               }
 
               Object.defineProperty(document, 'fullscreenElement', {
@@ -379,8 +402,11 @@ final class PageBridgeIntegrityTests: XCTestCase {
               focusWithoutATap();
               var afterUnaskedFocus = blurs;
 
-              tapThenFocus();
+              tapThenFocus(field);
               var afterTappedFocus = blurs;
+
+              tapThenFocus(hidden);
+              var afterHiddenTap = hiddenBlurs;
 
               // An image viewer, a document: no video, so no guard.
               var image = document.createElement('img');
@@ -395,6 +421,7 @@ final class PageBridgeIntegrityTests: XCTestCase {
                 afterEntry: afterEntry,
                 afterUnaskedFocus: afterUnaskedFocus,
                 afterTappedFocus: afterTappedFocus,
+                afterHiddenTap: afterHiddenTap,
                 afterNonVideoFullscreen: afterNonVideoFullscreen
               };
             })();
@@ -403,7 +430,8 @@ final class PageBridgeIntegrityTests: XCTestCase {
         let afterEntry = observed?["afterEntry"] as? Int ?? -1
         let afterUnaskedFocus = observed?["afterUnaskedFocus"] as? Int ?? -2
         let afterTappedFocus = observed?["afterTappedFocus"] as? Int ?? -3
-        let afterNonVideoFullscreen = observed?["afterNonVideoFullscreen"] as? Int ?? -4
+        let afterHiddenTap = observed?["afterHiddenTap"] as? Int ?? -4
+        let afterNonVideoFullscreen = observed?["afterNonVideoFullscreen"] as? Int ?? -5
 
         XCTAssertEqual(
             afterUnaskedFocus,
@@ -413,7 +441,12 @@ final class PageBridgeIntegrityTests: XCTestCase {
         XCTAssertEqual(
             afterTappedFocus,
             afterUnaskedFocus,
-            "a field the viewer tapped keeps the keyboard in element fullscreen"
+            "a field the viewer can see and tapped keeps the keyboard in element fullscreen"
+        )
+        XCTAssertEqual(
+            afterHiddenTap,
+            1,
+            "a field parked off screen cannot be the one the viewer tapped"
         )
         XCTAssertEqual(
             afterNonVideoFullscreen,
