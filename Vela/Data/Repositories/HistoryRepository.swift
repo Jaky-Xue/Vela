@@ -94,6 +94,26 @@ public final class HistoryRepository: @unchecked Sendable {
         let scheme = parsed.scheme?.lowercased() ?? ""
         guard scheme == "http" || scheme == "https" else { return nil }
 
+        return try database.transaction {
+            let entry = try recordNormalizedVisit(
+                normalized, parsed: parsed, title: title, transition: transition,
+                boundary: boundary, sessionId: sessionId, fromVisitId: fromVisitId, visitId: visitId
+            )
+            try purgeIfNeeded()
+            return entry
+        }
+    }
+
+    private func recordNormalizedVisit(
+        _ normalized: String,
+        parsed: URL,
+        title: String,
+        transition: HistoryTransition,
+        boundary: BrowserDataBoundary,
+        sessionId: String,
+        fromVisitId: String?,
+        visitId: String?
+    ) throws -> HistoryUrl {
         let hash = HistoryUrlNormalizer.hash(normalized)
         let now = Date()
         let host = parsed.host?.lowercased() ?? ""
@@ -230,7 +250,6 @@ public final class HistoryRepository: @unchecked Sendable {
             }
         }
 
-        try purgeIfNeeded(profileId: boundary.profileId)
         return urlRow
     }
 
@@ -373,6 +392,19 @@ public final class HistoryRepository: @unchecked Sendable {
         )
     }
 
+    func updateTitle(forUrl url: String, title: String) throws {
+        guard let normalized = HistoryUrlNormalizer.normalize(url) else { return }
+        try database.execute(
+            """
+            UPDATE \(BrowserSchema.historyUrlsTable)
+            SET title = ?, updated_at = ?
+            WHERE url_hash = ? AND title <> ?
+            """,
+            [.text(title), .integer(Date().milliseconds),
+             .text(HistoryUrlNormalizer.hash(normalized)), .text(title)]
+        )
+    }
+
     public func count(profileId: BrowserProfileId) throws -> Int {
         Int(try database.scalarInt(
             "SELECT COUNT(*) FROM \(BrowserSchema.historyUrlsTable) WHERE hidden = 0"
@@ -461,26 +493,23 @@ public final class HistoryRepository: @unchecked Sendable {
     /// write rather than on a timer because iOS gives no reliable background
     /// execution window for a maintenance task; pruning the tail of the history
     /// during a visit is bounded and needs no scheduler.
-    private func purgeIfNeeded(profileId: BrowserProfileId) throws {
+    private func purgeIfNeeded() throws {
         let days = UserDefaults.standard.object(forKey: "org.vela.browser.history-retention-days") as? Int
         guard let days, days > 0 else { return }
 
         let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-        try database.transaction {
-            let ids = try database.query(
-                "SELECT id FROM \(BrowserSchema.historyUrlsTable) WHERE last_visit_at < ?",
-                [.integer(cutoff.milliseconds)]
-            ) { $0.string(at: 0) }
-            for id in ids {
-                try database.execute(
-                    "DELETE FROM \(BrowserSchema.historyVisitsTable) WHERE url_id = ?",
-                    [.text(id)]
-                )
-                try database.execute(
-                    "DELETE FROM \(BrowserSchema.historyUrlsTable) WHERE id = ?",
-                    [.text(id)]
-                )
-            }
-        }
+        let cutoffValue = SQLiteValue.integer(cutoff.milliseconds)
+        try database.execute(
+            """
+            DELETE FROM \(BrowserSchema.historyVisitsTable) WHERE url_id IN (
+                SELECT id FROM \(BrowserSchema.historyUrlsTable) WHERE last_visit_at < ?
+            )
+            """,
+            [cutoffValue]
+        )
+        try database.execute(
+            "DELETE FROM \(BrowserSchema.historyUrlsTable) WHERE last_visit_at < ?",
+            [cutoffValue]
+        )
     }
 }

@@ -69,9 +69,7 @@ public final class HistoryService {
     /// Records a page view for a tab.
     ///
     /// - Parameter title: the page title, which may still be empty when the
-    ///   navigation commits. The caller is expected to call this again once the
-    ///   title arrives; the repository upserts by URL hash, so the second call
-    ///   fills in the title rather than creating a second row.
+    ///   navigation commits. Call `updateTitle` when the title arrives.
     public func recordVisit(
         url: URL,
         title: String,
@@ -134,10 +132,7 @@ public final class HistoryService {
         let repository = self.repository
         let rawUrl = url.absoluteString
         writeQueue.async {
-            guard let existingTitle = try? repository.title(forUrl: rawUrl),
-                  existingTitle != trimmed else { return }
-            guard let urlId = try? repository.urlId(forUrl: rawUrl) else { return }
-            try? repository.updateTitle(urlId: urlId, title: trimmed)
+            try? repository.updateTitle(forUrl: rawUrl, title: trimmed)
         }
         // No reload: this fires on every page finish, and the history list
         // reloads in `onAppear` when someone is actually looking at it.
