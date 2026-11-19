@@ -192,22 +192,24 @@ extension BrowserShellView {
                             protectsStatusBar: protectsTop,
                             statusBarStrip: safeTop,
                             // The page stays full bleed and keeps painting under
-                            // the glass — to the screen's bottom edge, not to
-                            // the bar's. The host adds the home-indicator inset
-                            // and keeps a scroll inset for the bar's strip while
-                            // the bar is up, which is what lets the document's
-                            // last lines be scrolled clear of it. The page's
-                            // frame and layout are untouched, so a site's own
-                            // bottom sheet still reaches the edge.
+                            // the glass. The host adds the home-indicator inset
+                            // and tells WebKit which part the bar covers.
                             //
-                            // The reserve goes with the bar: while it is away the
-                            // page holds nothing back for it, so that strip stays
-                            // live — the row a bottom sheet keeps there is
-                            // tappable. (Shrinking it changes the scrollable
-                            // range, and a document resting at its end clamps to
-                            // the new range the instant it shrinks; `handleScroll`
-                            // ignores those samples for a moment so the clamp
-                            // cannot put the bar straight back.)
+                            // How it tells it depends on the system, and the
+                            // difference is what makes a page's own bottom sheet
+                            // usable. On iOS 26 `obscuredContentInsets` shrinks
+                            // the layout viewport, so a fixed footer, a sticky bar
+                            // or a `100vh` sheet ends above the bar — and when the
+                            // bar slides away the page takes the strip back, which
+                            // is what lets the sheet's last row be tapped. Before
+                            // iOS 26 the only lever is the scroll view's inset, and
+                            // that one deliberately does *not* follow
+                            // `chromeHidden`: reserving it only while the bar is up
+                            // made hiding the bar change the document's scrollable
+                            // range, and a scroll view resting at the end of a
+                            // document clamps to the new range the instant the
+                            // inset shrinks — the page jumped, the jump arrived as
+                            // an upward scroll, and the bar was put straight back.
                             bottomChromeHeight: usesPadLayout
                                 ? 0
                                 : BrowserChrome.barHeight + BrowserChrome.barGap,

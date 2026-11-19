@@ -84,17 +84,24 @@ struct WebViewHost: UIViewRepresentable {
     /// bottom edge, and the bar floats translucently over it, so the document
     /// is visible through the glass rather than ending above a reserved band.
     /// The container adds the window's home-indicator inset, so the number
-    /// stays right on the first layout pass and through a rotation. Only the
-    /// scroll view's bottom inset is reserved — enough for the document's own
-    /// last lines to be scrolled clear of the bar while it is up. The page's
-    /// frame and layout are not touched, so a fixed footer or a `100vh` sheet
-    /// still reaches the screen's bottom edge.
+    /// stays right on the first layout pass and through a rotation.
+    ///
+    /// How that area is told to WebKit decides whether the page's own bottom
+    /// UI can be used. On iOS 26 the strip is described with
+    /// `obscuredContentInsets`, which shrinks the layout viewport: a fixed
+    /// footer, a sticky bar or a `100vh` sheet ends above the bar the way it
+    /// does in Safari, and the hole at the bottom of the page — a settings
+    /// sheet whose last row could not be reached — closes. Older systems only
+    /// have the scroll view's bottom inset, which reserves scroll range but
+    /// leaves fixed elements where they were.
     let bottomChromeHeight: CGFloat
     /// Whether the command bar is currently slid away.
     ///
-    /// The reserve goes with the bar: while it is out of the way the page
-    /// holds nothing back for it, and its own bottom UI owns the strip to the
-    /// edge.
+    /// The page's layout viewport follows the bar on iOS 26: while the bar is
+    /// up its strip is obscured, and when it leaves the page takes the strip
+    /// back. Kept separate from `bottomChromeHeight` because the older scroll
+    /// inset must *not* follow the bar — shrinking it at the end of a document
+    /// clamps the scroll position, and that clamp reads as a scroll gesture.
     let isChromeHidden: Bool
     /// The colour the page paints behind itself, used behind the document
     /// while it bounces. The page itself covers the screen, so the bar samples
@@ -404,16 +411,22 @@ final class WebViewContainerView: UIView {
         }
     }
 
-    /// Whether the command bar has slid away.
-    ///
-    /// While it is away the page owns the bottom strip again: no reserve is
-    /// kept for a bar that is not there, so the last rows of the page — a
-    /// site's own bottom sheet, a settings list — are live all the way to the
-    /// edge. Nothing about the page's *painting* changes either way; the
-    /// reserve is a scroll inset, not a frame.
+    /// Whether the command bar has slid away. On iOS 26 the page's layout
+    /// viewport takes the bar's strip back when it does.
     var isChromeHidden: Bool = false {
         didSet { if isChromeHidden != oldValue { updateBottomLayout() } }
     }
+
+    /// iOS 26 lets a web view be told what its own chrome covers, in the
+    /// layout's own terms: the layout viewport shrinks, so a fixed footer, a
+    /// sticky bar or a `100vh` section ends above the bar instead of running
+    /// under it — and the value can follow the bar out and back without
+    /// disturbing the scroll position. Older systems have no such statement;
+    /// their only lever is the scroll view's content inset.
+    static let usesObscuredContentInsets: Bool = {
+        if #available(iOS 26.0, *) { return true }
+        return false
+    }()
 
     /// The part of the web view's bottom the command bar and the home
     /// indicator cover.
@@ -471,7 +484,8 @@ final class WebViewContainerView: UIView {
             safeBottom: window.safeAreaInsets.bottom,
             chromeHeight: bottomChromeHeight,
             chromeHidden: isChromeHidden,
-            containerBottomFromWindow: containerBottomFromWindow
+            containerBottomFromWindow: containerBottomFromWindow,
+            followsChrome: Self.usesObscuredContentInsets
         )
         if abs(resolvedBottomInset - resolved) > 0.5 {
             resolvedBottomInset = resolved
@@ -479,35 +493,54 @@ final class WebViewContainerView: UIView {
         }
     }
 
-    /// The arithmetic behind the bottom reserve, split out so it is pinned by
-    /// tests rather than only by trying it on a device.
+    /// The arithmetic behind the bottom layout, split out so the two systems
+    /// are pinned by tests rather than only by trying them on a device.
     ///
-    /// The reserve is a *scroll* inset: it lets the document's own last lines
-    /// be scrolled clear of the bar while it is up. It never shrinks the
-    /// layout viewport and never moves the page's fixed footers — a page's
-    /// bottom sheet still reaches the screen's bottom edge, and its rows stay
-    /// live. The reserve is released while the bar is away, because a strip
-    /// held for a bar that is not there is exactly the area a page's own
-    /// bottom row needs.
+    /// * `followsChrome` is what `obscuredContentInsets` can do and the legacy
+    ///   scroll inset cannot. With the bar up, the obscured area is the home
+    ///   indicator plus the bar; with it away, only the home indicator — the
+    ///   page's own bottom sheet takes the strip back and becomes usable.
+    /// * Below iOS 26 the reserve stays constant while the bar is shown. A
+    ///   scroll inset that shrank with the bar clamped the document's end, and
+    ///   that clamp arrived as a scroll the shell reads as a gesture.
     nonisolated static func bottomLayout(
         safeBottom: CGFloat,
         chromeHeight: CGFloat,
         chromeHidden: Bool,
-        containerBottomFromWindow: CGFloat
+        containerBottomFromWindow: CGFloat,
+        followsChrome: Bool
     ) -> CGFloat {
-        guard chromeHeight > 0, !chromeHidden else { return 0 }
-        return max(0, safeBottom + chromeHeight - containerBottomFromWindow)
+        guard chromeHeight > 0 else { return 0 }
+        let chrome = followsChrome && chromeHidden ? 0 : chromeHeight
+        return max(0, safeBottom + chrome - containerBottomFromWindow)
     }
 
     /// Applies the resolved bottom reserve to the web view.
     ///
-    /// Only the scroll view's inset moves; the page's frame stays the whole
-    /// screen. An inset is enough for the tail of a document — the rule this
-    /// replaces also shrank the layout viewport, which lifted every fixed
-    /// footer off the bottom edge and left a band the page could not paint.
+    /// On iOS 26 the reserve is `obscuredContentInsets`: the layout viewport
+    /// shrinks, so fixed footers and `100vh` sheets end above the bar, and the
+    /// scroll view keeps no extra bottom inset — the viewport change already
+    /// keeps the document's end reachable. Older systems get the scroll inset
+    /// they always had.
     private func applyBottomInsets() {
-        guard let scrollView = attachedWebView?.scrollView,
-              abs(scrollView.contentInset.bottom - resolvedBottomInset) > 0.5 else { return }
+        guard let webView = attachedWebView else { return }
+        let scrollView = webView.scrollView
+        if Self.usesObscuredContentInsets {
+            if #available(iOS 26.0, *) {
+                let insets = UIEdgeInsets(
+                    top: 0, left: 0, bottom: resolvedBottomInset, right: 0
+                )
+                if webView.obscuredContentInsets != insets {
+                    webView.obscuredContentInsets = insets
+                }
+            }
+            if abs(scrollView.contentInset.bottom) > 0.5 {
+                scrollView.contentInset.bottom = 0
+                scrollView.verticalScrollIndicatorInsets.bottom = 0
+            }
+            return
+        }
+        guard abs(scrollView.contentInset.bottom - resolvedBottomInset) > 0.5 else { return }
         scrollView.contentInset.bottom = resolvedBottomInset
         scrollView.verticalScrollIndicatorInsets.bottom = resolvedBottomInset
     }

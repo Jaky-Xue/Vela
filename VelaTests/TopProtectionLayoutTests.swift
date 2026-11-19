@@ -6,8 +6,9 @@
 //  host can be laid out edge to edge or inside the safe area depending on how
 //  SwiftUI places the representable; the same desired content offset has to
 //  produce the right strip and inset in both, without counting the status bar
-//  twice. The bottom reserve is a scroll inset for the bar's strip — it follows
-//  the bar, so the page owns that strip entirely while the bar is away.
+//  twice. The bottom reserve has the same job in the other direction: the
+//  page's own footers must end above the bar, and — where the system can be
+//  told about it — the strip must come back to the page when the bar leaves.
 //
 
 import XCTest
@@ -97,29 +98,56 @@ final class TopProtectionLayoutTests: XCTestCase {
 
     // MARK: - The command bar's bottom reserve
 
-    /// The reserve is a scroll inset for the bar's strip: the document's last
-    /// lines can be scrolled clear of the bar while it is up.
-    func testTheReserveCoversTheBarAndTheHomeIndicator() {
-        let resolved = WebViewContainerView.bottomLayout(
+    /// The system that can describe its chrome to the layout viewport follows
+    /// the bar: while the bar is up the page's fixed footers end above it, and
+    /// when it slides away the page takes the strip back — which is what makes
+    /// a bottom sheet's last row usable.
+    func testTheReserveFollowsTheChromeWhereTheLayoutViewportCan() {
+        let shown = WebViewContainerView.bottomLayout(
             safeBottom: 34,
             chromeHeight: 46,
             chromeHidden: false,
-            containerBottomFromWindow: 0
+            containerBottomFromWindow: 0,
+            followsChrome: true
         )
-        XCTAssertEqual(resolved, 80, accuracy: 0.001)
-    }
-
-    /// The strip belongs to the page when the bar is away. Nothing is held for
-    /// a bar that is not there — that strip is where a site's own bottom sheet
-    /// keeps its last row.
-    func testTheReserveIsReleasedWhileTheBarIsAway() {
-        let resolved = WebViewContainerView.bottomLayout(
+        let hidden = WebViewContainerView.bottomLayout(
             safeBottom: 34,
             chromeHeight: 46,
             chromeHidden: true,
-            containerBottomFromWindow: 0
+            containerBottomFromWindow: 0,
+            followsChrome: true
         )
-        XCTAssertEqual(resolved, 0, accuracy: 0.001)
+
+        XCTAssertEqual(shown, 80, accuracy: 0.001)
+        XCTAssertEqual(
+            hidden,
+            34,
+            accuracy: 0.001,
+            "the home indicator is still covered; the bar's strip is the page's again"
+        )
+    }
+
+    /// The legacy scroll inset cannot follow the bar: shrinking it at the end
+    /// of a document clamps the scroll position, and the shell reads that
+    /// clamp as a gesture. The reserve therefore stays constant.
+    func testTheScrollInsetStaysConstantWhileTheBarIsShown() {
+        let shown = WebViewContainerView.bottomLayout(
+            safeBottom: 34,
+            chromeHeight: 46,
+            chromeHidden: false,
+            containerBottomFromWindow: 0,
+            followsChrome: false
+        )
+        let hidden = WebViewContainerView.bottomLayout(
+            safeBottom: 34,
+            chromeHeight: 46,
+            chromeHidden: true,
+            containerBottomFromWindow: 0,
+            followsChrome: false
+        )
+
+        XCTAssertEqual(shown, 80, accuracy: 0.001)
+        XCTAssertEqual(hidden, 80, accuracy: 0.001)
     }
 
     /// The iPad layout has no bottom bar, and a surface with no bar reserves
@@ -129,7 +157,8 @@ final class TopProtectionLayoutTests: XCTestCase {
             safeBottom: 34,
             chromeHeight: 0,
             chromeHidden: false,
-            containerBottomFromWindow: 0
+            containerBottomFromWindow: 0,
+            followsChrome: true
         )
         XCTAssertEqual(resolved, 0, accuracy: 0.001)
     }
@@ -141,7 +170,8 @@ final class TopProtectionLayoutTests: XCTestCase {
             safeBottom: 34,
             chromeHeight: 46,
             chromeHidden: false,
-            containerBottomFromWindow: 20
+            containerBottomFromWindow: 20,
+            followsChrome: true
         )
         XCTAssertEqual(resolved, 60, accuracy: 0.001)
     }
