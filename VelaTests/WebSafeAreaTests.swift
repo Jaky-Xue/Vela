@@ -61,14 +61,18 @@ final class WebSafeAreaTests: XCTestCase {
             baseURL: URL(string: "https://example.com/")
         )
 
+        // The probe, not `readyState`: the initial empty document reports
+        // complete before the string's markup has committed, and reading it
+        // there measures the wrong document.
         var ready: Bool?
         for _ in 0..<300 {
             ready = (try? await webView.evaluateJavaScript(
-                "document.readyState === 'complete'"
+                "!!document.getElementById('probe')"
             )) as? Bool
             if ready == true { break }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
+        try await Task.sleep(nanoseconds: 300_000_000)
         controller.view.layoutIfNeeded()
 
         let page = try? await webView.evaluateJavaScript(
