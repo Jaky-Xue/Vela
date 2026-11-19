@@ -10,8 +10,7 @@
 //  (`.default()`), so signing in here is signing in for the browser — the same
 //  cookies the tabs use, and the same state 「退出所有账号」 clears.
 //
-//  The only injected code is the browser's visual appearance stylesheet.
-//  Sign-in pages have no userscript or message bridge.
+//  Sign-in pages have no userscript, message bridge or page script at all.
 //
 
 import SwiftUI
@@ -174,8 +173,8 @@ struct LoginWebSheet: View {
 /// Deliberately bare, and the one place in the browser that must stay that
 /// way: the browser's own coordinator carries the content blocker, the GM
 /// bridge and every installed userscript, and none of them belongs on a
-/// password form. The only script injected here is the appearance
-/// stylesheet; the Safari tail is a header, not code.
+/// password form. No script is injected here; the Safari tail is a header,
+/// not code.
 ///
 /// It is a factory rather than a literal inside the view so a test can hold
 /// this line — "the sign-in page injects nothing" is a promise that only a
@@ -185,7 +184,6 @@ enum LoginWebConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.applicationNameForUserAgent = BrowserUserAgent.safariTail
         configuration.websiteDataStore = .default()
-        configuration.userContentController.addUserScript(WebPageScripts.makeAppearanceScript())
         return configuration
     }
 }

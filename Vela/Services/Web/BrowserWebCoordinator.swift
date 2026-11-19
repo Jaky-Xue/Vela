@@ -744,7 +744,6 @@ extension BrowserWebCoordinator: BrowserWebViewConfigurationProviding {
                 forMainFrameOnly: true
             )
         )
-        controller.addUserScript(WebPageScripts.makeAppearanceScript())
         // The page ends above the command bar, so the strip the bar sits in is
         // painted by the shell. This is what tells it which colour the page
         // itself uses there.

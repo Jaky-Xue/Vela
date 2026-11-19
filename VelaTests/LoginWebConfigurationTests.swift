@@ -3,9 +3,8 @@
 //  VelaTests
 //
 //  The sign-in page is the one web view in the app that runs no third-party
-//  code: no userscripts, no GM bridge, no page scripts beyond the appearance
-//  stylesheet. That promise is easy to lose while adding a feature, so this
-//  test is what keeps it.
+//  code: no userscripts, no GM bridge, no page scripts at all. That promise is
+//  easy to lose while adding a feature, so this test is what keeps it.
 //
 
 import XCTest
@@ -14,17 +13,9 @@ import WebKit
 
 @MainActor
 final class LoginWebConfigurationTests: XCTestCase {
-    func testTheSignInPageInjectsNothingButTheAppearanceStylesheet() {
+    func testTheSignInPageInjectsNothing() {
         let scripts = LoginWebConfiguration.make().userContentController.userScripts
-        XCTAssertEqual(
-            scripts.count,
-            1,
-            "a password form gets the appearance stylesheet and nothing else"
-        )
-        XCTAssertEqual(
-            scripts.first?.source,
-            WebPageScripts.makeAppearanceScript().source
-        )
+        XCTAssertTrue(scripts.isEmpty, "a password form gets no script at all")
     }
 
     func testTheSignInPageKeepsTheBrowsersOwnCookieJar() {
