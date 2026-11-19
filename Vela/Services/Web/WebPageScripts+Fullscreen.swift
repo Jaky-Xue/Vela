@@ -7,8 +7,8 @@
 //
 
 extension WebPageScripts {
-    /// Routes fullscreen requests for the video itself to the iOS media player.
-    /// A site's player container keeps element fullscreen and its own controls.
+    /// Routes fullscreen requests for a video or its player container to the
+    /// iOS media player. WebKit's element fullscreen remains the fallback.
     ///
     /// The redirect is only half of the job. The system player is a separate
     /// presentation drawn over the page, so two things the page does to its own
@@ -61,7 +61,7 @@ extension WebPageScripts {
 
         Element.prototype[name] = function () {
           if (document.fullscreenEnabled !== false && this instanceof Element) {
-            var video = this.tagName === 'VIDEO' ? this : null;
+            var video = findVideo(this);
             if (video && video.webkitSupportsFullscreen !== false &&
                 typeof video.webkitEnterFullscreen === 'function') {
               try {

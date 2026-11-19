@@ -217,8 +217,28 @@ final class PageBridgeIntegrityTests: XCTestCase {
         }
     }
 
-    /// The two things a page must not do to a film that is in the system
-    /// player: raise a keyboard over it, and paint its caption twice.
+    func testFullscreeningAPlayerContainerOpensItsVideoInTheSystemPlayer() async throws {
+        let webKitStub = """
+            Object.defineProperty(document, 'fullscreenEnabled', { value: true });
+            Element.prototype.requestFullscreen = function () {
+              return Promise.resolve('element fullscreen');
+            };
+            """
+        let (webView, _) = try await load(script: webKitStub + "\n" + WebPageScripts.fullscreenBridge)
+        let observed = try await webView.callAsyncJavaScript("""
+            var player = document.body.appendChild(document.createElement('div'));
+            var video = player.appendChild(document.createElement('video'));
+            var requested = 0;
+            Object.defineProperty(video, 'webkitSupportsFullscreen', { value: true });
+            video.webkitEnterFullscreen = function () { requested += 1; };
+            var result = await player.requestFullscreen();
+            return requested === 1 && result === undefined;
+            """, arguments: [:], in: nil, contentWorld: .page) as? Bool
+
+        XCTAssertEqual(observed, true)
+    }
+
+    /// The system player keeps the page keyboard and duplicate captions out.
     func testAFullscreenFilmTakesThePagesKeyboardAndReportsThePresentation() async throws {
         let (webView, collector) = try await load(
             script: WebPageScripts.fullscreenBridge,
