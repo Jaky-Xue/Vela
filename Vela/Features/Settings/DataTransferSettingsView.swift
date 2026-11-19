@@ -29,13 +29,13 @@ struct DataTransferSettingsView: View {
                 Button {
                     exportBookmarks()
                 } label: {
-                    Label("导出书签（HTML）", systemImage: "square.and.arrow.up")
+                    SettingsActionLabel(title: "导出书签（HTML）", systemImage: "square.and.arrow.up")
                 }
 
                 Button {
                     showingBookmarkImporter = true
                 } label: {
-                    Label("导入书签（HTML）", systemImage: "square.and.arrow.down")
+                    SettingsActionLabel(title: "导入书签（HTML）", systemImage: "square.and.arrow.down")
                 }
             } header: {
                 Text("书签")
@@ -47,13 +47,13 @@ struct DataTransferSettingsView: View {
                 Button {
                     exportHistory()
                 } label: {
-                    Label("导出历史（JSON）", systemImage: "square.and.arrow.up")
+                    SettingsActionLabel(title: "导出历史（JSON）", systemImage: "square.and.arrow.up")
                 }
 
                 Button {
                     showingHistoryImporter = true
                 } label: {
-                    Label("导入历史（JSON）", systemImage: "square.and.arrow.down")
+                    SettingsActionLabel(title: "导入历史（JSON）", systemImage: "square.and.arrow.down")
                 }
             } header: {
                 Text("历史记录")

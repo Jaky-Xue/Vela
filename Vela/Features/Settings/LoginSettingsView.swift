@@ -81,7 +81,7 @@ struct LoginSettingsView: View {
                     addLabel = ""
                     showingAddAccount = true
                 } label: {
-                    Label("添加账号", systemImage: "plus.circle")
+                    SettingsActionLabel(title: "添加账号", systemImage: "plus.circle")
                 }
             } header: {
                 Text("账号")
@@ -96,15 +96,12 @@ struct LoginSettingsView: View {
                     confirmingSignOut = true
                 } label: {
                     HStack {
-                        Spacer(minLength: 0)
+                        SettingsActionLabel(title: "退出所有账号", systemImage: "rectangle.portrait.and.arrow.right", isDestructive: true)
                         if service.signingOutProvider != nil {
+                            Spacer()
                             ProgressView().controlSize(.small)
                         }
-                        Text("退出所有账号")
-                            .font(.body.weight(.semibold))
-                        Spacer(minLength: 0)
                     }
-                    .frame(height: 26)
                 }
                 .disabled(service.signingOutProvider != nil)
             } footer: {

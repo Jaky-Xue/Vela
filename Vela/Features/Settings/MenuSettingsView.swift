@@ -86,9 +86,11 @@ struct MenuSettingsView: View {
                                 env.settings.menuLayout = layout.removingShortcut(id: shortcut.id)
                             } label: {
                                 Image(systemName: "trash")
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color(uiColor: .systemRed))
                             .accessibilityLabel("删除快捷方式")
                         }
                     }
@@ -96,10 +98,11 @@ struct MenuSettingsView: View {
             }
 
             Section {
-                Button("恢复默认菜单", systemImage: "arrow.counterclockwise") {
+                Button {
                     env.settings.menuLayout = layout.reset()
+                } label: {
+                    SettingsActionLabel(title: "恢复默认菜单", systemImage: "arrow.counterclockwise")
                 }
-                .foregroundStyle(palette.accent)
             }
         }
         .navigationTitle("菜单面板")

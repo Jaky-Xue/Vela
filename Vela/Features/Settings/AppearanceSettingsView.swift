@@ -101,8 +101,8 @@ struct AppearanceSettingsView: View {
                     Button {
                         showPhotoPicker = true
                     } label: {
-                        Label(
-                            backgroundImageStamp == nil ? "从相册选择图片" : "更换图片",
+                        SettingsActionLabel(
+                            title: backgroundImageStamp == nil ? "从相册选择图片" : "更换图片",
                             systemImage: "photo"
                         )
                     }
@@ -112,7 +112,7 @@ struct AppearanceSettingsView: View {
                             BackgroundImageStore.clear()
                             env.settings.update { $0.backgroundImageStamp = nil }
                         } label: {
-                            Label("移除图片", systemImage: "trash")
+                            SettingsActionLabel(title: "移除图片", systemImage: "trash", isDestructive: true)
                         }
                     }
                     if backgroundImageStamp == nil && env.settings.backgroundStyle != palette.visualStyle.recommendedBackground {
@@ -120,7 +120,7 @@ struct AppearanceSettingsView: View {
                             env.settings.backgroundStyle = palette.visualStyle.recommendedBackground
                         } label: {
                             HStack {
-                                Label("配套背景", systemImage: "sparkles")
+                                SettingsActionLabel(title: "配套背景", systemImage: "sparkles")
                                 Spacer()
                                 Text(palette.visualStyle.recommendedBackground.displayName)
                                     .font(.footnote)

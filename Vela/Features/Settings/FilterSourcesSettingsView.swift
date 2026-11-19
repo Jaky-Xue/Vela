@@ -9,6 +9,7 @@ struct FilterSourcesSettingsView: View {
     @State private var sourceURL = ""
     @State private var customText = ""
     @State private var message: String?
+    @State private var subscriptionToRemove: FilterSubscription?
     private var blocker: ContentBlocker { env.services.contentBlocker }
     private var sources: [FilterSubscription] { env.settings.contentBlocker.subscriptions ?? [] }
 
@@ -39,17 +40,33 @@ struct FilterSourcesSettingsView: View {
                         Text(source.url)
                         if source.previousCacheHash != nil {
                             Button("回滚来源", systemImage: "arrow.uturn.backward") { Task { await blocker.rollbackSubscription(source.id) } }
+                                .disabled(blocker.isCompiling)
                         }
-                        Button("移除订阅", role: .destructive) { Task { await blocker.removeSubscription(source.id) } }
+                        Button("移除订阅", systemImage: "trash", role: .destructive) { subscriptionToRemove = source }
+                            .disabled(blocker.isCompiling)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button("移除", systemImage: "trash", role: .destructive) { subscriptionToRemove = source }
+                            .disabled(blocker.isCompiling)
                     }
                 }
-                Button("添加订阅", systemImage: "plus") { sourceName = ""; sourceURL = ""; message = nil; showAddSource = true }
-                Button("更新订阅", systemImage: "arrow.clockwise") { Task { await blocker.refreshSubscriptions() } }
-                    .disabled(blocker.isCompiling || sources.isEmpty)
+                Button {
+                    sourceName = ""; sourceURL = ""; message = nil; showAddSource = true
+                } label: {
+                    SettingsActionLabel(title: "添加订阅", systemImage: "plus")
+                }
+                Button {
+                    Task { await blocker.refreshSubscriptions() }
+                } label: {
+                    SettingsActionLabel(title: "更新订阅", systemImage: "arrow.clockwise")
+                }
+                .disabled(blocker.isCompiling || sources.isEmpty)
             }
             Section("自定义") {
-                Button("编辑规则", systemImage: "square.and.pencil") {
+                Button {
                     customText = env.settings.contentBlocker.customRules ?? ""; message = nil; showRules = true
+                } label: {
+                    SettingsActionLabel(title: "编辑规则", systemImage: "square.and.pencil")
                 }
             }
             Section("规则状态") {
@@ -82,6 +99,17 @@ struct FilterSourcesSettingsView: View {
         .settingsList()
         .sheet(isPresented: $showAddSource) { addSourceSheet }
         .sheet(isPresented: $showRules) { ruleSheet }
+        .alert("移除订阅？", isPresented: Binding(
+            get: { subscriptionToRemove != nil },
+            set: { if !$0 { subscriptionToRemove = nil } }
+        ), presenting: subscriptionToRemove) { source in
+            Button("取消", role: .cancel) {}
+            Button("移除", role: .destructive) {
+                Task { await blocker.removeSubscription(source.id) }
+            }
+        } message: { source in
+            Text("「\(source.name)」及其过滤规则将被移除。")
+        }
     }
 
     private var addSourceSheet: some View {

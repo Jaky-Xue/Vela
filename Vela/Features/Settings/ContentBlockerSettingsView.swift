@@ -68,12 +68,12 @@ struct ContentBlockerSettingsView: View {
                 NavigationLink {
                     FilterSourcesSettingsView()
                 } label: {
-                    Label("过滤规则", systemImage: "line.3.horizontal.decrease.circle")
+                    SettingsActionLabel(title: "过滤规则", systemImage: "line.3.horizontal.decrease.circle")
                 }
                 Button {
                     blocker.prepare()
                 } label: {
-                    Label("更新规则", systemImage: "arrow.clockwise")
+                    SettingsActionLabel(title: "更新规则", systemImage: "arrow.clockwise")
                 }
                 .disabled(blocker.isCompiling)
             } header: {
@@ -104,12 +104,16 @@ struct ContentBlockerSettingsView: View {
                     }
                 }
 
-                Button("添加网站", systemImage: "plus") { newHost = ""; showAddHost = true }
+                Button {
+                    newHost = ""; showAddHost = true
+                } label: {
+                    SettingsActionLabel(title: "添加网站", systemImage: "plus")
+                }
 
                 Button {
                     addActiveSite()
                 } label: {
-                    Label("添加当前网站", systemImage: "plus.circle")
+                    SettingsActionLabel(title: "添加当前网站", systemImage: "plus.circle")
                 }
                 .disabled(activeHost == nil || isWhitelisted(activeHost))
             } header: {

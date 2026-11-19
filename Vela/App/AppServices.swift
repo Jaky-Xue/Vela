@@ -232,16 +232,30 @@ public final class AppServices {
     /// bookmarks are reloaded afterwards so the list screens re-read
     /// whatever the caller removed.
     public func clearAllBrowsingData(includeWebKitData: Bool = true) async {
+        if includeWebKitData {
+            await clearWebsiteData(includeSiteData: true, includeCache: true)
+        }
         history.reload()
         bookmarks.reload()
+    }
 
-        if includeWebKitData {
-            let store = WKWebsiteDataStore.default()
-            let types = WKWebsiteDataStore.allWebsiteDataTypes()
-            await withCheckedContinuation { continuation in
-                store.removeData(ofTypes: types, modifiedSince: Date(timeIntervalSince1970: 0)) {
-                    continuation.resume()
-                }
+    func clearWebsiteData(includeSiteData: Bool, includeCache: Bool) async {
+        let cacheTypes: Set<String> = [
+            WKWebsiteDataTypeDiskCache,
+            WKWebsiteDataTypeMemoryCache,
+            WKWebsiteDataTypeOfflineWebApplicationCache
+        ]
+        var types: Set<String> = includeCache ? cacheTypes : []
+        if includeSiteData {
+            types.formUnion(WKWebsiteDataStore.allWebsiteDataTypes().subtracting(cacheTypes))
+        }
+        guard !types.isEmpty else { return }
+        await withCheckedContinuation { continuation in
+            WKWebsiteDataStore.default().removeData(
+                ofTypes: types,
+                modifiedSince: Date(timeIntervalSince1970: 0)
+            ) {
+                continuation.resume()
             }
         }
     }

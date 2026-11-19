@@ -14,6 +14,7 @@ import WebKit
 struct SitePermissionsSettingsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.browserPalette) private var palette
+    @State private var confirmClearingAudit = false
 
     private var siteRules: [SitePermissionSiteRule] {
         env.settings.preferences.sitePermissionRules ?? []
@@ -60,11 +61,13 @@ struct SitePermissionsSettingsView: View {
                             Text(rule.rule.displayName)
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(rule.rule == .allow ? .green : .red)
-                            Button {
+                            Button(role: .destructive) {
                                 env.settings.removeSitePermissionRule(id: rule.id)
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color(uiColor: .systemRed))
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("移除这条权限")
@@ -102,8 +105,10 @@ struct SitePermissionsSettingsView: View {
                                 .multilineTextAlignment(.trailing)
                         }
                     }
-                    Button("清除访问记录", role: .destructive) {
-                        env.permissionAudit.clear()
+                    Button(role: .destructive) {
+                        confirmClearingAudit = true
+                    } label: {
+                        SettingsActionLabel(title: "清除访问记录", systemImage: "trash", isDestructive: true)
                     }
                 }
             } header: {
@@ -119,6 +124,12 @@ struct SitePermissionsSettingsView: View {
         .navigationTitle("网站权限")
         .navigationBarTitleDisplayMode(.inline)
         .settingsList()
+        .alert("清除访问记录？", isPresented: $confirmClearingAudit) {
+            Button("取消", role: .cancel) {}
+            Button("清除", role: .destructive) { env.permissionAudit.clear() }
+        } message: {
+            Text("将移除此设备上的网站权限访问记录。")
+        }
     }
 }
 
@@ -150,7 +161,7 @@ struct ElementHideSettingsView: View {
                                     .font(.system(.caption, design: .monospaced))
                                     .lineLimit(2)
                                 Spacer(minLength: 6)
-                                Button {
+                                Button(role: .destructive) {
                                     env.settings.removeManualElementHide(
                                         ruleId: rule.id,
                                         host: site.host
@@ -158,7 +169,9 @@ struct ElementHideSettingsView: View {
                                     if let tab = env.tabManager.activeTab { env.webCoordinator.applyManualElementHides(to: env.tabManager.webView(for: tab.id), host: site.host) }
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(Color(uiColor: .systemRed))
+                                        .frame(minWidth: 44, minHeight: 44)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("移除这条隐藏规则")
@@ -276,6 +289,16 @@ struct ClearDataView: View {
     @State private var clearBookmarks = false
     @State private var showConfirm = false
     @State private var isClearing = false
+    @State private var didClear = false
+
+    private var selectedItems: [String] {
+        [
+            clearHistory ? "浏览历史与搜索记录" : nil,
+            clearCookies ? "Cookie 与网站数据" : nil,
+            clearCache ? "缓存" : nil,
+            clearBookmarks ? "书签" : nil
+        ].compactMap { $0 }
+    }
 
     var body: some View {
         List {
@@ -289,17 +312,26 @@ struct ClearDataView: View {
             } footer: {
                 Text("密码由系统钥匙串保存，不在此清除。")
             }
+            .disabled(isClearing)
 
             Section {
                 Button(role: .destructive) {
                     showConfirm = true
                 } label: {
                     HStack {
-                        if isClearing { ProgressView() }
-                        Text("立即清除")
+                        SettingsActionLabel(title: isClearing ? "正在清除…" : "立即清除", systemImage: "trash", isDestructive: true)
+                        if isClearing {
+                            Spacer()
+                            ProgressView()
+                        }
                     }
                 }
-                .disabled(isClearing)
+                .disabled(isClearing || selectedItems.isEmpty)
+                if didClear {
+                    Label("已完成清除", systemImage: "checkmark.circle")
+                        .foregroundStyle(.secondary)
+                        .font(.footnote)
+                }
             }
 
             Section {
@@ -322,12 +354,13 @@ struct ClearDataView: View {
             Button("取消", role: .cancel) {}
             Button("清除", role: .destructive, action: performClear)
         } message: {
-            Text("此操作无法撤销。")
+            Text("将清除：\(selectedItems.joined(separator: "、"))。此操作无法撤销。")
         }
     }
 
     private func performClear() {
         isClearing = true
+        didClear = false
         Task {
             if clearHistory {
                 env.history.removeAll()
@@ -337,34 +370,10 @@ struct ClearDataView: View {
                 env.bookmarks.clearRoot(.other)
             }
             if clearCookies || clearCache {
-                await env.clearAllBrowsingData(includeWebKitData: clearCookies)
-                // The cache-only case still needs WebKit's transient data cleared.
-                if clearCache, !clearCookies {
-                    await clearCacheOnly()
-                }
-            }
-            if clearHistory, !clearBookmarks {
-                // `eraseAllData` is deliberately not used here: it would take
-                // the bookmarks with it.
-                env.history.reload()
+                await env.services.clearWebsiteData(includeSiteData: clearCookies, includeCache: clearCache)
             }
             isClearing = false
-        }
-    }
-
-    private func clearCacheOnly() async {
-        let types: Set<String> = [
-            WKWebsiteDataTypeDiskCache,
-            WKWebsiteDataTypeMemoryCache,
-            WKWebsiteDataTypeOfflineWebApplicationCache
-        ]
-        await withCheckedContinuation { continuation in
-            WKWebsiteDataStore.default().removeData(
-                ofTypes: types,
-                modifiedSince: Date(timeIntervalSince1970: 0)
-            ) {
-                continuation.resume()
-            }
+            didClear = true
         }
     }
 }

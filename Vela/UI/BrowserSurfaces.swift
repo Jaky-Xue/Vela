@@ -143,6 +143,29 @@ struct SettingsListStyle: ViewModifier {
     }
 }
 
+struct SettingsActionLabel: View {
+    @Environment(\.browserPalette) private var palette
+
+    let title: String
+    let systemImage: String
+    var isDestructive = false
+
+    private var color: Color { isDestructive ? Color(uiColor: .systemRed) : palette.accent }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .frame(minWidth: 30, minHeight: 30)
+                .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.body.weight(.medium))
+        }
+        .foregroundStyle(color)
+    }
+}
+
 /// Search and surrounding controls share one glass recipe.
 struct BrowserSearchFieldStyle: ViewModifier {
     func body(content: Content) -> some View {

@@ -77,8 +77,10 @@ struct SearchEngineSettingsView: View {
                     }
                 }
 
-                Button("添加自定义引擎", systemImage: "plus") {
+                Button {
                     showingCustomEngineForm = true
+                } label: {
+                    SettingsActionLabel(title: "添加自定义引擎", systemImage: "plus")
                 }
             } header: {
                 Text("自定义引擎")

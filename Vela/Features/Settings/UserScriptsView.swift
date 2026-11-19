@@ -144,9 +144,11 @@ struct UserScriptsView: View {
             }
 
             Section {
-                Button("安装新脚本", systemImage: "plus") {
+                Button {
                     resetInstallForm()
                     showingInstall = true
+                } label: {
+                    SettingsActionLabel(title: "安装新脚本", systemImage: "plus")
                 }
             }
 
@@ -305,8 +307,10 @@ struct UserScriptsView: View {
 
                 case .file:
                     Section {
-                        Button("选择 .user.js 文件", systemImage: "doc.badge.plus") {
+                        Button {
                             showingFilePicker = true
+                        } label: {
+                            SettingsActionLabel(title: "选择 .user.js 文件", systemImage: "doc.badge.plus")
                         }
                     }
                 }
@@ -593,7 +597,7 @@ struct UserScriptDetailView: View {
                     ruleError = nil
                     showRuleEditor = true
                 } label: {
-                    Label("编辑匹配规则", systemImage: "slider.horizontal.3")
+                    SettingsActionLabel(title: "编辑匹配规则", systemImage: "slider.horizontal.3")
                 }
             } header: {
                 Text("运行于")
@@ -658,7 +662,7 @@ struct UserScriptDetailView: View {
                 } label: {
                     HStack {
                         if isRefreshingDependencies { ProgressView().controlSize(.small) }
-                        Label("重新下载依赖", systemImage: "arrow.triangle.2.circlepath")
+                        SettingsActionLabel(title: "重新下载依赖", systemImage: "arrow.triangle.2.circlepath")
                     }
                 }
                 .disabled(isRefreshingDependencies)
@@ -685,33 +689,39 @@ struct UserScriptDetailView: View {
                 } label: {
                     HStack {
                         if isChecking { ProgressView().controlSize(.small) }
-                        Label("检查更新", systemImage: "arrow.clockwise")
+                        SettingsActionLabel(title: "检查更新", systemImage: "arrow.clockwise")
                     }
                 }
                 .disabled(isChecking)
 
-                Button("设置更新地址", systemImage: "link") {
+                Button {
                     updateURLText = current.updateUrl
                     updateURLError = nil
                     showUpdateURLSheet = true
+                } label: {
+                    SettingsActionLabel(title: "设置更新地址", systemImage: "link")
                 }
             } header: {
                 Text("更新")
             }
 
             Section {
-                Button("编辑代码", systemImage: "square.and.pencil") {
+                Button {
                     // The stored source is the body alone; the editor needs the
                     // metadata block too, or every save fails to re-parse.
                     editedSource = env.userScripts.draftSource(for: current) ?? env.userScripts.editableSource(for: current)
                     showEditor = true
+                } label: {
+                    SettingsActionLabel(title: "编辑代码", systemImage: "square.and.pencil")
                 }
                 Menu {
                     Button("原始声明与当前源码") { shareIncludesLocalRules = false; showSourceShare = true }
                     Button("包含本地运行规则") { shareIncludesLocalRules = true; showSourceShare = true }
-                } label: { Label("分享脚本源码", systemImage: "square.and.arrow.up") }
-                Button("删除脚本", systemImage: "trash", role: .destructive) {
+                } label: { SettingsActionLabel(title: "分享脚本源码", systemImage: "square.and.arrow.up") }
+                Button(role: .destructive) {
                     showDeleteConfirm = true
+                } label: {
+                    SettingsActionLabel(title: "删除脚本", systemImage: "trash", isDestructive: true)
                 }
             }
 

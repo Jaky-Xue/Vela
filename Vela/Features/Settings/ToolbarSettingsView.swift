@@ -62,7 +62,7 @@ struct ToolbarSettingsView: View {
             }
 
             Section {
-                Button("恢复默认布局", systemImage: "arrow.counterclockwise") {
+                Button {
                     if placement == .bottom {
                         env.settings.toolbarLayout = ToolbarLayout()
                     } else {
@@ -71,6 +71,8 @@ struct ToolbarSettingsView: View {
                             trailing: ToolbarLayout.defaultPadTrailing
                         )
                     }
+                } label: {
+                    SettingsActionLabel(title: "恢复默认布局", systemImage: "arrow.counterclockwise")
                 }
                 .foregroundStyle(palette.accent)
             }

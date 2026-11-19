@@ -52,7 +52,11 @@ struct AboutView: View {
             }
 
             Section {
-                Button("重新查看使用指南", systemImage: "sparkles") { showsWelcome = true }
+                Button {
+                    showsWelcome = true
+                } label: {
+                    SettingsActionLabel(title: "重新查看使用指南", systemImage: "sparkles")
+                }
             }
 
             Section {

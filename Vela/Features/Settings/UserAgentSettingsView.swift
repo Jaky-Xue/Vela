@@ -25,6 +25,7 @@ struct UserAgentSettingsView: View {
     /// the button's own confirmation.
     @State private var didCopyIdentity = false
     @State private var observedIdentifier: String?
+    @State private var confirmsClearingSites = false
 
     /// The preset currently in force: the match for the stored custom string,
     /// or the default when none is stored. A stored string that matches no
@@ -103,11 +104,13 @@ struct UserAgentSettingsView: View {
                 .font(.system(size: 13, design: .monospaced))
                 .lineLimit(3...6)
 
-                Button("恢复默认") {
+                Button {
                     // The per-site choices live in their own section and are
                     // left where the user put them.
                     env.settings.update { $0.customUserAgent = "" }
                     apply(reload: true)
+                } label: {
+                    SettingsActionLabel(title: "恢复默认", systemImage: "arrow.counterclockwise")
                 }
                 }
             } header: {
@@ -157,9 +160,10 @@ struct UserAgentSettingsView: View {
                         apply(reload: true)
                     }
 
-                    Button("清除所有站点设置", role: .destructive) {
-                        env.settings.clearSiteDisplayModes()
-                        apply(reload: true)
+                    Button(role: .destructive) {
+                        confirmsClearingSites = true
+                    } label: {
+                        SettingsActionLabel(title: "清除所有站点设置", systemImage: "trash", isDestructive: true)
                     }
                 }
             } header: {
@@ -186,8 +190,8 @@ struct UserAgentSettingsView: View {
                         didCopyIdentity = false
                     }
                 } label: {
-                    Label(
-                        didCopyIdentity ? "已复制" : "复制标识",
+                    SettingsActionLabel(
+                        title: didCopyIdentity ? "已复制" : "复制标识",
                         systemImage: didCopyIdentity ? "checkmark" : "doc.on.doc"
                     )
                 }
@@ -209,6 +213,15 @@ struct UserAgentSettingsView: View {
         .navigationTitle("网页标识")
         .navigationBarTitleDisplayMode(.inline)
         .settingsList()
+        .alert("清除所有站点设置？", isPresented: $confirmsClearingSites) {
+            Button("取消", role: .cancel) {}
+            Button("清除", role: .destructive) {
+                env.settings.clearSiteDisplayModes()
+                apply(reload: true)
+            }
+        } message: {
+            Text("所有网站将恢复为自动选择网页标识。")
+        }
     }
 
     /// One preset row with the reference screen's radio affordance: an empty
