@@ -98,13 +98,17 @@ final class TapDeliveryTests: XCTestCase {
         probe("bottom-30", CGPoint(x: window.bounds.midX, y: window.bounds.maxY - 30))
         probe("bottom-70", CGPoint(x: window.bounds.midX, y: window.bounds.maxY - 70))
 
-        // Hide the bar the way scrolling does: the page itself scrolls down,
-        // which is what the shell's tracker turns into a hide.
-        _ = try? await webView.evaluateJavaScript("window.scrollTo(0, 400)")
-        try await Task.sleep(nanoseconds: 300_000_000)
-        _ = try? await webView.evaluateJavaScript("window.scrollTo(0, 900)")
+        // Hide the bar the way a finger does: several small downward steps.
+        // A single jump is the document re-laying itself out, which the
+        // tracker deliberately ignores.
+        for step in stride(from: 60, through: 480, by: 60) {
+            _ = try? await webView.evaluateJavaScript("window.scrollTo(0, \(step))")
+            try await Task.sleep(nanoseconds: 80_000_000)
+        }
         try await Task.sleep(nanoseconds: 700_000_000)
         controller.view.layoutIfNeeded()
+        let offset = webView.scrollView.contentOffset.y
+        print("VELA-TAP scrolled offset=\(offset)")
 
         let topHit = window.hitTest(
             CGPoint(x: window.bounds.midX, y: window.bounds.maxY - 30), with: nil
