@@ -25,21 +25,19 @@ extension WebPageScripts {
     ///   video is fullscreen; the host dismisses the keyboard as well, which is
     ///   what covers a field living in another frame.
     ///
-    /// * **The caption layer.** WebKit builds a text-track representation layer
-    ///   while the video is inline and, on the way into the system player, can
-    ///   leave that layer painted beside the one the player draws — the same
-    ///   sentence on two rows. Taking a showing track out of `showing` and
-    ///   putting it back makes WebKit lay the layer down again, which is what
-    ///   the viewer does by hand when closing and reopening the player's 字幕
-    ///   switch clears the duplicate.
-    ///
-    ///   YouTube has a second way to double the sentence. WebKit's own caption
-    ///   mirror adds a forced track named 'YouTube Captions', shows it for the
-    ///   native presentation and hides YouTube's DOM paint — but it never turns
-    ///   YouTube's own caption track off, so when both are showing the player
-    ///   draws both. Two showing tracks carrying the same sentence are stood
-    ///   down to one for the length of the presentation; two languages are
-    ///   different sentences and are left alone.
+    /// * **The captions.** The system player draws every text track left
+    ///   `showing`, so a page that leaves two languages — or a page track
+    ///   beside WebKit's own YouTube caption mirror — produces the same
+    ///   sentence twice. The bridge settles on the one track the page is
+    ///   actually showing before the player opens: the page's own showing
+    ///   track when there is one, and when the page paints its captions into
+    ///   the DOM instead the track whose cues carry the painted sentence. Every
+    ///   other language is hidden and the mirror is held out of `showing` in
+    ///   its own setter, so the extra caption is never produced rather than
+    ///   hidden after it has drawn. The selection follows the page while the
+    ///   film runs — a language switch changes the painted sentence or the
+    ///   showing track — and a choice the viewer makes in the system player's
+    ///   字幕 menu is left alone and reaches the page when the film ends.
     ///
     /// Only videos are treated as fullscreen here. Element fullscreen of any
     /// other content — an image viewer, a document — falls through untouched,
@@ -68,6 +66,7 @@ extension WebPageScripts {
             if (video && video.webkitSupportsFullscreen !== false &&
                 typeof video.webkitEnterFullscreen === 'function') {
               try {
+                prepareNativeCaptions(video);
                 video.webkitEnterFullscreen();
               } catch (error) {
                 // WebKit can reject native fullscreen before media is ready.
@@ -86,6 +85,32 @@ extension WebPageScripts {
 
       patch('requestFullscreen', true);
       patch('webkitRequestFullscreen', false);
+
+      // The page's own fullscreen roads — the video's legacy method and the
+      // presentation-mode API — reach the system player without passing the
+      // Element wrappers above. Caption preparation runs before each so the
+      // player opens on a single caption track, not beside a second one it
+      // would have to be repaired after the fact.
+      try {
+        var videoProto = window.HTMLVideoElement && HTMLVideoElement.prototype;
+        if (videoProto && typeof videoProto.webkitEnterFullscreen === 'function') {
+          var nativeEnterFullscreen = videoProto.webkitEnterFullscreen;
+          videoProto.webkitEnterFullscreen = function () {
+            try { prepareNativeCaptions(this); } catch (error) {}
+            return nativeEnterFullscreen.apply(this, arguments);
+          };
+        }
+        if (videoProto && typeof videoProto.webkitSetPresentationMode === 'function') {
+          var nativeSetPresentationMode = videoProto.webkitSetPresentationMode;
+          videoProto.webkitSetPresentationMode = function (mode) {
+            if (String(mode) === 'fullscreen') {
+              try { prepareNativeCaptions(this); } catch (error) {}
+            }
+            return nativeSetPresentationMode.apply(this, arguments);
+          };
+        }
+      } catch (error) {
+      }
 
       // MARK: - Which presentation is up
 
@@ -217,169 +242,329 @@ extension WebPageScripts {
 
       // MARK: - The caption layer
 
-      function captionTracks(video) {
+      // The sentence the page is painting itself: YouTube's caption windows,
+      // Bilibili's strip, the common JavaScript players. A page with its own
+      // caption UI usually keeps its text tracks hidden, so the language on
+      // screen is not written on any track — the painted sentence is the only
+      // statement of which language the viewer is reading.
+      var paintedCaptionSelectors = [
+        '.ytp-caption-segment',
+        '.caption-window .captions-text',
+        '.bpx-player-subtitle-panel-text',
+        '.bpx-player-video-subtitle',
+        '.vjs-text-track-cue',
+        '.jw-text-track-cue',
+        '.plyr__captions',
+        '.dplayer-subtitle',
+        '.art-subtitle'
+      ];
+
+      // Spacing and zero-width marks differ between a track's cue text and the
+      // page's painted copy of the same sentence; they are not what tells two
+      // captions apart.
+      function normalizeCaptionText(text) {
+        var raw = String(text || '');
+        var out = '';
+        for (var i = 0; i < raw.length; i++) {
+          var code = raw.charCodeAt(i);
+          if (code <= 32 || code === 0x200B || code === 0x200C ||
+              code === 0x200D || code === 0xFEFF) { continue; }
+          out += raw.charAt(i);
+        }
+        return out;
+      }
+
+      function paintedCaptionText() {
+        for (var s = 0; s < paintedCaptionSelectors.length; s++) {
+          var nodes = document.querySelectorAll(paintedCaptionSelectors[s]);
+          var parts = [];
+          for (var i = 0; i < nodes.length; i++) {
+            // `textContent`, not a visibility test: the system presentation
+            // hides the page's caption container and the text has to stay
+            // readable there.
+            var text = normalizeCaptionText(nodes[i].textContent);
+            if (text && parts.indexOf(text) === -1) { parts.push(text); }
+          }
+          if (parts.length > 0) { return parts.join(''); }
+        }
+        return '';
+      }
+
+      // WebKit's own YouTube caption mirror. It draws beside the page's
+      // caption track in the system player; it is a duplicate layer whenever
+      // the page already has a track carrying the same sentence.
+      function isMirrorTrack(track) {
+        return String(track.label || '') === 'YouTube Captions';
+      }
+
+      // The page's own caption languages. `forced` tracks are the player's
+      // signs and songs, not the subtitle the viewer picked, and are left
+      // alone; the mirror is handled separately.
+      function pageCaptionTracks(video) {
         var tracks = video && video.textTracks;
         var list = [];
         if (!tracks) { return list; }
         for (var i = 0; i < tracks.length; i++) {
-          var kind = tracks[i].kind;
-          if (kind === 'subtitles' || kind === 'captions' || kind === 'forced') {
-            list.push(tracks[i]);
+          var track = tracks[i];
+          if (isMirrorTrack(track)) { continue; }
+          if (track.kind === 'subtitles' || track.kind === 'captions') {
+            list.push(track);
           }
         }
         return list;
       }
 
-      function relayoutCaptionLayers(video) {
-        var tracks = captionTracks(video);
-        for (var i = 0; i < tracks.length; i++) {
-          var track = tracks[i];
-          if (track.mode !== 'showing') { continue; }
-          try { track.mode = 'hidden'; } catch (error) { continue; }
-          (function (restore) {
-            setTimeout(function () {
-              try { restore.mode = 'showing'; } catch (error) {}
-            }, 60);
-          })(track);
-        }
-      }
-
-      function captionPresentationActive() {
-        return nativeFullscreenActive() || elementFullscreenVideo() !== null;
-      }
-
-      function scheduleCaptionRepaint(video) {
-        if (!captionTracks(video).length) { return; }
-        var generation = (video.__velaCaptionRepaint || 0) + 1;
-        video.__velaCaptionRepaint = generation;
-        var delays = [350, 1600];
-        for (var i = 0; i < delays.length; i++) {
-          (function (delay) {
-            setTimeout(function () {
-              if (video.__velaCaptionRepaint !== generation) { return; }
-              if (!captionPresentationActive()) { return; }
-              relayoutCaptionLayers(video);
-            }, delay);
-          })(delays[i]);
-        }
-      }
-
-      // A player often adds its subtitle track only once the film is under
-      // way, which can be after the presentation opened.
-      function watchCaptionTracks(video) {
+      function mirrorTracks(video) {
         var tracks = video && video.textTracks;
-        if (!tracks || video.__velaCaptionWatch === true) { return; }
-        video.__velaCaptionWatch = true;
+        var list = [];
+        if (!tracks) { return list; }
+        for (var i = 0; i < tracks.length; i++) {
+          if (isMirrorTrack(tracks[i])) { list.push(tracks[i]); }
+        }
+        return list;
+      }
+
+      function activeCaptionText(track) {
+        var cues = track && track.activeCues;
+        if (!cues || cues.length === 0) { return ''; }
+        var text = '';
+        for (var i = 0; i < cues.length; i++) {
+          text += String(cues[i].text || '');
+        }
+        return normalizeCaptionText(text);
+      }
+
+      function matchingTrack(tracks, painted) {
+        if (!painted) { return null; }
+        for (var i = 0; i < tracks.length; i++) {
+          var cue = activeCaptionText(tracks[i]);
+          if (!cue) { continue; }
+          if (cue === painted || cue.indexOf(painted) >= 0 || painted.indexOf(cue) >= 0) {
+            return tracks[i];
+          }
+        }
+        return null;
+      }
+
+      function captionState(video) {
+        var state = video.__velaCaptions;
+        if (!state) {
+          state = {
+            original: [],
+            chosen: null,
+            painted: '',
+            timer: null,
+            debounce: null,
+            changeHandler: null,
+            addHandler: null,
+            removeHandler: null
+          };
+          video.__velaCaptions = state;
+        }
+        return state;
+      }
+
+      // Records a track's mode the first time the bridge writes it, and what
+      // the bridge wrote, so leaving the film puts the page back the way it
+      // was unless the viewer changed the track themselves in the meantime.
+      function setCaptionMode(state, track, mode) {
+        if (track.mode === mode) { return; }
+        var entry = null;
+        for (var i = 0; i < state.original.length; i++) {
+          if (state.original[i].track === track) { entry = state.original[i]; break; }
+        }
+        if (!entry) {
+          entry = { track: track, mode: track.mode, set: null };
+          state.original.push(entry);
+        }
+        try { track.mode = mode; } catch (error) { return; }
+        entry.set = mode;
+      }
+
+      // The page's own caption track is the source. The bridge keeps exactly
+      // that one `showing` and every other language `hidden`, so the system
+      // player never receives two captions to draw; the mirror is the one
+      // extra layer that can appear beside it, and it is held out below.
+      function enforceCaptionSelection(video, state) {
+        var tracks = pageCaptionTracks(video);
+        for (var i = 0; i < tracks.length; i++) {
+          setCaptionMode(state, tracks[i], tracks[i] === state.chosen ? 'showing' : 'hidden');
+        }
+        if (state.chosen !== null) {
+          var mirrors = mirrorTracks(video);
+          for (var j = 0; j < mirrors.length; j++) {
+            setCaptionMode(state, mirrors[j], 'hidden');
+          }
+        }
+      }
+
+      // A track the system player draws regardless of the page: while the
+      // page's own caption is showing, the mirror must not enter `showing` at
+      // all. Blocking it in its own mode setter is what keeps the duplicate
+      // from ever being produced; turning it down after it has drawn would
+      // only hide the extra, which is exactly what the viewer still sees
+      // flicker.
+      function mirrorShouldStayHidden(video) {
+        var tracks = pageCaptionTracks(video);
+        for (var i = 0; i < tracks.length; i++) {
+          if (tracks[i].mode === 'showing') { return true; }
+        }
+        return false;
+      }
+
+      function suppressMirrorTrack(video, track) {
+        if (!track || track.__velaMirrorSuppressed === true) { return; }
+        var proto = Object.getPrototypeOf(track);
+        var descriptor = proto ? Object.getOwnPropertyDescriptor(proto, 'mode') : null;
+        if (!descriptor || typeof descriptor.set !== 'function') { return; }
+        track.__velaMirrorSuppressed = true;
         try {
-          tracks.addEventListener('addtrack', function (event) {
-            var track = event.track;
-            if (!track || (track.kind !== 'subtitles' &&
-                           track.kind !== 'captions' &&
-                           track.kind !== 'forced')) { return; }
-            setTimeout(function () {
-              if (!captionPresentationActive()) { return; }
-              relayoutCaptionLayers(video);
-            }, 300);
+          Object.defineProperty(track, 'mode', {
+            configurable: true,
+            get: function () { return descriptor.get.call(this); },
+            set: function (value) {
+              if (String(value) === 'showing' && mirrorShouldStayHidden(video)) {
+                // The page's own caption is the one on screen. The mirror has
+                // nothing of its own to add, so it never becomes visible.
+                try { descriptor.set.call(this, 'hidden'); } catch (error) {}
+                return;
+              }
+              descriptor.set.call(this, value);
+            }
           });
         } catch (error) {
         }
       }
 
-      // The sentence is compared without the spacing and the zero-width marks
-      // a page or WebKit may put between segments: two tracks drawing the same
-      // words are a duplicate whatever the spacing.
-      function captionText(track) {
-        var cues = track && track.activeCues;
-        if (!cues || cues.length === 0) { return ''; }
-        var raw = '';
-        for (var i = 0; i < cues.length; i++) {
-          raw += String(cues[i].text || '');
+      function suppressExistingMirrors(video) {
+        var mirrors = mirrorTracks(video);
+        for (var i = 0; i < mirrors.length; i++) {
+          suppressMirrorTrack(video, mirrors[i]);
         }
-        var out = '';
-        for (var j = 0; j < raw.length; j++) {
-          var code = raw.charCodeAt(j);
-          if (code <= 32 || code === 0x200B || code === 0x200C ||
-              code === 0x200D || code === 0xFEFF) { continue; }
-          out += raw.charAt(j);
-        }
-        return out;
       }
 
-      function isMirrorTrack(track) {
-        return String(track.label || '') === 'YouTube Captions';
+      // Decides which single track the native player may draw, and applies it.
+      //
+      // The page's own showing track wins. When no track is showing — a page
+      // that paints captions into the DOM and keeps its tracks hidden — the
+      // painted sentence picks the language, but only when that sentence
+      // changes: a poll must not resurrect captions the viewer switched off in
+      // the system player's own 字幕 menu.
+      function syncNativeCaptions(video) {
+        var state = captionState(video);
+        var tracks = pageCaptionTracks(video);
+
+        var painted = paintedCaptionText();
+        var paintedChanged = painted !== state.painted;
+        state.painted = painted;
+
+        var showing = [];
+        for (var i = 0; i < tracks.length; i++) {
+          if (tracks[i].mode === 'showing') { showing.push(tracks[i]); }
+        }
+
+        var chosen = null;
+        if (paintedChanged && painted) {
+          chosen = matchingTrack(tracks, painted);
+        }
+        if (!chosen) {
+          if (showing.length === 1) {
+            chosen = showing[0];
+          } else if (showing.length > 1) {
+            // The page left more than one language showing. One of them is
+            // the caption on screen and the rest are extras the player must
+            // not receive; the painted sentence says which one is real.
+            chosen = matchingTrack(showing, painted) || showing[0];
+          }
+        }
+
+        state.chosen = chosen;
+        enforceCaptionSelection(video, state);
+        suppressExistingMirrors(video);
       }
 
-      // WebKit's mirror is the layer to stand down: the page's own track keeps
-      // its cues, and the mirror's mode is WebKit's to set back on the way out.
-      // A page track that has to yield is remembered so its own state is
-      // restored when the presentation ends.
-      function suppressDuplicateCaptionTracks(video) {
-        var tracks = captionTracks(video);
-        // A null prototype: a caption that happens to read "constructor" is a
-        // sentence, not a property of Object.
-        var groups = Object.create(null);
-        var keys = [];
-        var i;
-        for (i = 0; i < tracks.length; i++) {
-          if (tracks[i].mode !== 'showing') { continue; }
-          var key = captionText(tracks[i]);
-          if (!key) { continue; }
-          if (!groups[key]) {
-            groups[key] = [];
-            keys.push(key);
-          }
-          groups[key].push(tracks[i]);
-        }
-        for (i = 0; i < keys.length; i++) {
-          var group = groups[keys[i]];
-          if (group.length < 2) { continue; }
-          var keep = null;
-          for (var j = 0; j < group.length; j++) {
-            if (!isMirrorTrack(group[j])) { keep = group[j]; break; }
-          }
-          if (!keep) { keep = group[0]; }
-          for (var k = 0; k < group.length; k++) {
-            var track = group[k];
-            if (track === keep) { continue; }
-            try {
-              track.mode = 'hidden';
-              if (!isMirrorTrack(track)) {
-                if (!video.__velaSuppressedCaptionTracks) {
-                  video.__velaSuppressedCaptionTracks = [];
-                }
-                video.__velaSuppressedCaptionTracks.push(track);
-              }
-            } catch (error) {
+      function scheduleCaptionSync(video) {
+        var state = video.__velaCaptions;
+        if (!state) { return; }
+        if (state.debounce !== null) { clearTimeout(state.debounce); }
+        state.debounce = setTimeout(function () {
+          state.debounce = null;
+          if (nativeVideo !== video) { return; }
+          syncNativeCaptions(video);
+        }, 60);
+      }
+
+      function startCaptionSync(video) {
+        var state = captionState(video);
+        var tracks = video && video.textTracks;
+        suppressExistingMirrors(video);
+        if (tracks && state.changeHandler === null) {
+          state.changeHandler = function () { scheduleCaptionSync(video); };
+          state.addHandler = function (event) {
+            if (event && isMirrorTrack(event.track)) {
+              suppressMirrorTrack(video, event.track);
             }
+            scheduleCaptionSync(video);
+          };
+          state.removeHandler = function () { scheduleCaptionSync(video); };
+          try {
+            tracks.addEventListener('change', state.changeHandler);
+            tracks.addEventListener('addtrack', state.addHandler);
+            tracks.addEventListener('removetrack', state.removeHandler);
+          } catch (error) {
           }
         }
+        if (state.timer === null) {
+          state.timer = setInterval(function () {
+            if (nativeVideo !== video) {
+              stopCaptionSync(video);
+              return;
+            }
+            syncNativeCaptions(video);
+          }, 500);
+        }
+        syncNativeCaptions(video);
       }
 
-      function restoreSuppressedCaptionTracks(video) {
-        var list = video.__velaSuppressedCaptionTracks || [];
-        video.__velaSuppressedCaptionTracks = [];
-        for (var i = 0; i < list.length; i++) {
-          if (list[i].mode === 'hidden') {
-            try { list[i].mode = 'showing'; } catch (error) {}
+      // The page gets its own modes back. A track whose mode is no longer the
+      // one the bridge wrote belongs to the viewer's choice in the system
+      // player's menu and is left where they put it, which is how that choice
+      // reaches the page after the film ends.
+      function stopCaptionSync(video) {
+        var state = video.__velaCaptions;
+        if (!state) { return; }
+        if (state.timer !== null) { clearInterval(state.timer); state.timer = null; }
+        if (state.debounce !== null) { clearTimeout(state.debounce); state.debounce = null; }
+        if (video && video.textTracks) {
+          try {
+            if (state.changeHandler) { video.textTracks.removeEventListener('change', state.changeHandler); }
+            if (state.addHandler) { video.textTracks.removeEventListener('addtrack', state.addHandler); }
+            if (state.removeHandler) { video.textTracks.removeEventListener('removetrack', state.removeHandler); }
+          } catch (error) {
           }
         }
+        for (var i = 0; i < state.original.length; i++) {
+          var entry = state.original[i];
+          if (entry.set === null) { continue; }
+          // The mirror's mode belongs to WebKit; restoring it would put a
+          // duplicate caption back on an inline page.
+          if (isMirrorTrack(entry.track)) { continue; }
+          if (entry.track.mode !== entry.set) { continue; }
+          try { entry.track.mode = entry.mode; } catch (error) {}
+        }
+        video.__velaCaptions = null;
       }
 
-      function startCaptionDedupe(video) {
-        if (video.__velaCaptionDedupeTimer) { return; }
-        video.__velaCaptionDedupeTimer = setInterval(function () {
-          if (nativeVideo !== video || video.isConnected === false) {
-            stopCaptionDedupe(video);
-            return;
-          }
-          suppressDuplicateCaptionTracks(video);
-        }, 500);
-      }
-
-      function stopCaptionDedupe(video) {
-        if (!video.__velaCaptionDedupeTimer) { return; }
-        clearInterval(video.__velaCaptionDedupeTimer);
-        video.__velaCaptionDedupeTimer = null;
+      // Runs before the system player opens, on every road in: the page's
+      // requestFullscreen, its own webkitEnterFullscreen / presentation mode,
+      // and the system controls. Trimming the page's tracks here is what
+      // keeps the presentation from receiving two captions in the first
+      // place, rather than repairing the picture after it has drawn.
+      function prepareNativeCaptions(video) {
+        if (!video) { return; }
+        var tracks = pageCaptionTracks(video);
+        if (tracks.length === 0 && mirrorTracks(video).length === 0) { return; }
+        startCaptionSync(video);
       }
 
       // MARK: - The presentations
@@ -406,9 +591,7 @@ extension WebPageScripts {
         nativeStartedAt = Date.now();
         blurPageEditors();
         reportNative(true);
-        watchCaptionTracks(video);
-        scheduleCaptionRepaint(video);
-        startCaptionDedupe(video);
+        startCaptionSync(video);
         scheduleNativeVerification(video);
       }
 
@@ -419,8 +602,7 @@ extension WebPageScripts {
           nativeVerifyTimer = null;
         }
         if (video) {
-          stopCaptionDedupe(video);
-          restoreSuppressedCaptionTracks(video);
+          stopCaptionSync(video);
         }
         reportNative(nativeVideo !== null);
       }
@@ -453,8 +635,6 @@ extension WebPageScripts {
         var video = elementFullscreenVideo();
         if (!video) { return; }
         blurPageEditors();
-        watchCaptionTracks(video);
-        scheduleCaptionRepaint(video);
       }
 
       document.addEventListener('fullscreenchange', handleElementFullscreenChange, true);

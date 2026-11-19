@@ -402,59 +402,10 @@ final class PageBridgeIntegrityTests: XCTestCase {
         )
     }
 
-    func testAFullscreenFilmLaysItsCaptionLayerDownAgain() async throws {
-        let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
-
-        // `mode` is read back through an own accessor that records every
-        // write, so the test sees the bridge's hidden/shown cycle without
-        // needing a cue layer to inspect.
-        let initial = try await webView.evaluateJavaScript("""
-            (function () {
-              var video = document.createElement('video');
-              Object.defineProperty(video, 'webkitDisplayingFullscreen', {
-                value: true, configurable: true
-              });
-              document.body.appendChild(video);
-              var track = video.addTextTrack('subtitles', '字幕', 'zh');
-              var descriptor = Object.getOwnPropertyDescriptor(
-                Object.getPrototypeOf(track), 'mode'
-              );
-              var writes = [];
-              Object.defineProperty(track, 'mode', {
-                get: function () { return descriptor.get.call(this); },
-                set: function (value) {
-                  writes.push(String(value));
-                  descriptor.set.call(this, value);
-                }
-              });
-              track.mode = 'showing';
-              window.__velaCaptionWrites = writes;
-              video.dispatchEvent(new Event('webkitbeginfullscreen'));
-              return writes.slice();
-            })();
-            """) as? [String]
-
-        XCTAssertEqual(initial, ["showing"])
-
-        var recorded: [String] = []
-        for _ in 0..<200 {
-            recorded = (try? await webView.evaluateJavaScript("window.__velaCaptionWrites")) as? [String] ?? []
-            if recorded.count >= 3, recorded.last == "showing" { break }
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-
-        XCTAssertEqual(recorded.first, "showing")
-        XCTAssertEqual(
-            recorded.dropFirst().prefix(2).map { $0 },
-            ["hidden", "showing"],
-            "the showing track must be taken down and put back so WebKit rebuilds the layer"
-        )
-    }
-
-    /// WebKit's own YouTube caption mirror and the page's caption track can
-    /// both be showing the same sentence in the system player. One has to
-    /// stand down; two different sentences (two languages) must both stay.
-    func testTwoTracksCarryingTheSameSentenceAreDrawnOnce() async throws {
+    /// The page leaves two languages showing. The system player must receive
+    /// only the one the page is painting, so the second caption is never
+    /// produced — not produced and then hidden.
+    func testTwoShowingCaptionTracksReachThePlayerAsOne() async throws {
         let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
 
         let initial = try await webView.evaluateJavaScript("""
@@ -464,10 +415,10 @@ final class PageBridgeIntegrityTests: XCTestCase {
                 value: true, configurable: true
               });
               document.body.appendChild(video);
-              // A track without loaded media does not build an active-cue
-              // list, so the test states the cues directly: what is under
-              // test is which layer stands down, not when WebKit marks a cue
-              // active.
+              var painted = document.createElement('div');
+              painted.className = 'ytp-caption-segment';
+              painted.textContent = 'Hello, world';
+              document.body.appendChild(painted);
               function trackFor(label, text) {
                 var track = video.addTextTrack('subtitles', label, 'zh');
                 Object.defineProperty(track, 'activeCues', {
@@ -476,33 +427,165 @@ final class PageBridgeIntegrityTests: XCTestCase {
                 track.mode = 'showing';
                 return track;
               }
-              // The page's own track and WebKit's mirror, then a second
-              // language that must not be touched.
-              var page = trackFor('中文', '你好，世界');
-              var mirror = video.addTextTrack('forced', 'YouTube Captions');
-              Object.defineProperty(mirror, 'activeCues', {
-                value: [{ text: '你好， 世界' }], configurable: true
-              });
-              mirror.mode = 'showing';
-              var other = trackFor('English', 'Hello, world');
-              window.__velaTestTracks = [page, mirror, other];
+              var chinese = trackFor('中文', '你好，世界');
+              var english = trackFor('English', 'Hello, world');
+              window.__velaTestTracks = [chinese, english];
               video.dispatchEvent(new Event('webkitbeginfullscreen'));
-              return [page.mode, mirror.mode, other.mode];
+              return [chinese.mode, english.mode];
             })();
             """) as? [String]
 
-        XCTAssertEqual(initial, ["showing", "showing", "showing"])
+        XCTAssertEqual(
+            initial,
+            ["hidden", "showing"],
+            "the track carrying the painted sentence is the only one that may draw"
+        )
+    }
+
+    /// A language switch on the page changes the painted sentence while the
+    /// tracks stay as they were. The player follows the sentence.
+    func testALanguageSwitchFollowsThePaintedSentence() async throws {
+        let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
+
+        let initial = try await webView.evaluateJavaScript("""
+            (function () {
+              var video = document.createElement('video');
+              Object.defineProperty(video, 'webkitDisplayingFullscreen', {
+                value: true, configurable: true
+              });
+              document.body.appendChild(video);
+              var painted = document.createElement('div');
+              painted.className = 'ytp-caption-segment';
+              painted.textContent = 'Hello, world';
+              document.body.appendChild(painted);
+              function trackFor(label, text) {
+                var track = video.addTextTrack('subtitles', label, 'zh');
+                Object.defineProperty(track, 'activeCues', {
+                  value: [{ text: text }], configurable: true
+                });
+                track.mode = 'hidden';
+                return track;
+              }
+              var chinese = trackFor('中文', '你好，世界');
+              var english = trackFor('English', 'Hello, world');
+              window.__velaTestTracks = [chinese, english];
+              window.__velaPainted = painted;
+              video.dispatchEvent(new Event('webkitbeginfullscreen'));
+              return [chinese.mode, english.mode];
+            })();
+            """) as? [String]
+        XCTAssertEqual(initial, ["hidden", "showing"])
+
+        // The site switches its caption language; only the painted text moves.
+        _ = try await webView.evaluateJavaScript("""
+            window.__velaPainted.textContent = '你好，世界';
+            """)
 
         var modes: [String] = []
         for _ in 0..<200 {
             modes = (try? await webView.evaluateJavaScript("""
                 window.__velaTestTracks.map(function (track) { return track.mode; })
                 """)) as? [String] ?? []
-            if modes == ["showing", "hidden", "showing"] { break }
+            if modes == ["showing", "hidden"] { break }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
+        XCTAssertEqual(modes, ["showing", "hidden"])
+    }
 
-        XCTAssertEqual(modes, ["showing", "hidden", "showing"])
+    /// WebKit's own YouTube caption mirror never becomes visible beside the
+    /// page's track: the extra layer is refused at the setter, before it can
+    /// be drawn.
+    func testTheWebKitCaptionMirrorNeverBecomesVisibleBesideAPageTrack() async throws {
+        let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
+
+        let observed = try await webView.evaluateJavaScript("""
+            (function () {
+              var video = document.createElement('video');
+              Object.defineProperty(video, 'webkitDisplayingFullscreen', {
+                value: true, configurable: true
+              });
+              document.body.appendChild(video);
+              var page = video.addTextTrack('subtitles', '中文', 'zh');
+              page.mode = 'showing';
+              var mirror = video.addTextTrack('forced', 'YouTube Captions', 'und');
+              video.dispatchEvent(new Event('webkitbeginfullscreen'));
+              // WebKit's quirk switches its mirror on when the presentation
+              // opens; the setter is where the duplicate is refused.
+              mirror.mode = 'showing';
+              return mirror.mode;
+            })();
+            """) as? String
+
+        XCTAssertEqual(observed, "hidden")
+    }
+
+    /// The page's own modes come back when the film ends: a track the bridge
+    /// switched on for the presentation is hidden again afterwards.
+    func testLeavingFullscreenRestoresThePagesOwnCaptionState() async throws {
+        let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
+
+        let observed = try await webView.evaluateJavaScript("""
+            (function () {
+              var video = document.createElement('video');
+              Object.defineProperty(video, 'webkitDisplayingFullscreen', {
+                value: true, configurable: true
+              });
+              document.body.appendChild(video);
+              var painted = document.createElement('div');
+              painted.className = 'ytp-caption-segment';
+              painted.textContent = 'Hello, world';
+              document.body.appendChild(painted);
+              var track = video.addTextTrack('subtitles', 'English', 'zh');
+              Object.defineProperty(track, 'activeCues', {
+                value: [{ text: 'Hello, world' }], configurable: true
+              });
+              track.mode = 'hidden';
+              video.dispatchEvent(new Event('webkitbeginfullscreen'));
+              var during = track.mode;
+              video.dispatchEvent(new Event('webkitendfullscreen'));
+              return { during: during, after: track.mode };
+            })();
+            """) as? [String: String]
+
+        XCTAssertEqual(observed?["during"], "showing")
+        XCTAssertEqual(observed?["after"], "hidden")
+    }
+
+    /// Turning captions off in the system player's own menu is the viewer's
+    /// decision. A painted sentence the page has not changed must not switch
+    /// them back on.
+    func testTurningCaptionsOffInThePlayerIsNotUndone() async throws {
+        let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
+
+        let initial = try await webView.evaluateJavaScript("""
+            (function () {
+              var video = document.createElement('video');
+              Object.defineProperty(video, 'webkitDisplayingFullscreen', {
+                value: true, configurable: true
+              });
+              document.body.appendChild(video);
+              var painted = document.createElement('div');
+              painted.className = 'ytp-caption-segment';
+              painted.textContent = 'Hello, world';
+              document.body.appendChild(painted);
+              var track = video.addTextTrack('subtitles', 'English', 'zh');
+              Object.defineProperty(track, 'activeCues', {
+                value: [{ text: 'Hello, world' }], configurable: true
+              });
+              track.mode = 'hidden';
+              window.__velaTestTrack = track;
+              video.dispatchEvent(new Event('webkitbeginfullscreen'));
+              var on = track.mode;
+              // The viewer takes the caption off in the system player.
+              track.mode = 'hidden';
+              return on;
+            })();
+            """) as? String
+        XCTAssertEqual(initial, "showing")
+
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+        let mode = try await webView.evaluateJavaScript("window.__velaTestTrack.mode") as? String
+        XCTAssertEqual(mode, "hidden", "the poll must not resurrect a caption the viewer turned off")
     }
 
     /// Waits for the first report the predicate accepts.
