@@ -29,15 +29,6 @@ final class ShellScrollTracker {
     /// -1 when no run is in progress. A reversal has to hold for a moment —
     /// one frame of drift must not bring the bar back.
     var upwardBeganAt: CFTimeInterval = -1
-    /// When the chrome last changed state, in `CACurrentMediaTime` seconds.
-    ///
-    /// The page's layout viewport changes with the bar on iOS 26: the strip the
-    /// bar covered is handed back to the page, and a document resting at its
-    /// end clamps to the new range. Those samples are the layout settling, not
-    /// the finger — reading them as a gesture is what would throw the bar
-    /// straight back out and in.
-    var chromeChangedAt: CFTimeInterval = -1
-
     /// Downward travel that commits a hide. Small enough that a flick hides
     /// the bar in a couple of frames, large enough that a single jiggle does
     /// not.

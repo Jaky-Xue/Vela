@@ -191,29 +191,13 @@ extension BrowserShellView {
                                 : safeTop,
                             protectsStatusBar: protectsTop,
                             statusBarStrip: safeTop,
-                            // The page stays full bleed and keeps painting under
-                            // the glass. The host adds the home-indicator inset
-                            // and tells WebKit which part the bar covers.
+                            // The page is full bleed: it paints to the
+                            // screen's bottom edge and its own bottom UI —
+                            // a fixed footer, a sheet's last row — reaches
+                            // the edge. The bar floats over it and the page
+                            // shows through the glass; nothing is reserved
+                            // for the bar underneath the page.
                             //
-                            // How it tells it depends on the system, and the
-                            // difference is what makes a page's own bottom sheet
-                            // usable. On iOS 26 `obscuredContentInsets` shrinks
-                            // the layout viewport, so a fixed footer, a sticky bar
-                            // or a `100vh` sheet ends above the bar — and when the
-                            // bar slides away the page takes the strip back, which
-                            // is what lets the sheet's last row be tapped. Before
-                            // iOS 26 the only lever is the scroll view's inset, and
-                            // that one deliberately does *not* follow
-                            // `chromeHidden`: reserving it only while the bar is up
-                            // made hiding the bar change the document's scrollable
-                            // range, and a scroll view resting at the end of a
-                            // document clamps to the new range the instant the
-                            // inset shrinks — the page jumped, the jump arrived as
-                            // an upward scroll, and the bar was put straight back.
-                            bottomChromeHeight: usesPadLayout
-                                ? 0
-                                : BrowserChrome.barHeight + BrowserChrome.barGap,
-                            isChromeHidden: chromeHidden,
                             // Behind the page while it bounces. Chrome keeps its
                             // own palette surface rather than sampling this color.
                             pageColor: Color(cssColor: tab.pageBackground) ?? palette.surface,

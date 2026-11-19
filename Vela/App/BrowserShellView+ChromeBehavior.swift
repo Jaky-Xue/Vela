@@ -9,9 +9,6 @@ extension BrowserShellView {
         chromeLiftOffset = 0
         chromeHomeArmed = false
         chromeDragIsVertical = false
-        // Whatever reset this was belongs with a move of the chrome, and the
-        // page's layout settles after one (see `handleScroll`).
-        scrollTracker.chromeChangedAt = CACurrentMediaTime()
     }
 
     /// Reacts to the bar's drag starting and finishing, including the finish
@@ -62,20 +59,6 @@ extension BrowserShellView {
             return
         }
 
-        // The page is still settling from a chrome move. The bar's strip
-        // changes the page's layout viewport on iOS 26, and a document resting
-        // at its end clamps as the viewport grows or shrinks; those samples
-        // are the layout moving, not the finger. Reading them as a gesture is
-        // what would throw the bar straight back out and in — the occasional
-        // bar that reappeared on its own while the page was still reflowing.
-        // The window outlasts WebKit's layout pass rather than just the bar's
-        // animation, because the clamp arrives with the former.
-        if CACurrentMediaTime() - scrollTracker.chromeChangedAt < 0.9 {
-            scrollTracker.lastOffset = offset
-            scrollTracker.resetTravel()
-            return
-        }
-
         switch scrollTracker.consume(offset: offset, now: CACurrentMediaTime()) {
         case .hide:
             setChromeHidden(true)
@@ -92,10 +75,6 @@ extension BrowserShellView {
         // ended; carrying it into the next one would let a few stray points
         // flip the bar straight back.
         scrollTracker.resetTravel()
-        // The page's layout viewport moves with the bar on iOS 26, and the
-        // samples that follow a move are the layout settling rather than the
-        // finger. `handleScroll` ignores them for a moment.
-        scrollTracker.chromeChangedAt = CACurrentMediaTime()
         if !hidden {
             // A drag that was interrupted (an edge swipe, a tab switch, a
             // call banner) never reaches `onEnded`. Leaving its offset behind
