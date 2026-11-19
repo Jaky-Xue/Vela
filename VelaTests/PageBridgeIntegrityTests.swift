@@ -551,6 +551,34 @@ final class PageBridgeIntegrityTests: XCTestCase {
         XCTAssertEqual(observed?["after"], "hidden")
     }
 
+    func testReturningInlineReleasesCaptionMirrorAndIgnoresOtherVideos() async throws {
+        let (webView, _) = try await load(script: WebPageScripts.fullscreenBridge)
+
+        let observed = try await webView.evaluateJavaScript("""
+            (function () {
+              var video = document.body.appendChild(document.createElement('video'));
+              var other = document.body.appendChild(document.createElement('video'));
+              var page = video.addTextTrack('subtitles', 'English', 'en');
+              var mirror = video.addTextTrack('forced', 'YouTube Captions', 'und');
+              page.mode = 'showing';
+              mirror.mode = 'showing';
+
+              video.dispatchEvent(new Event('webkitbeginfullscreen'));
+              other.dispatchEvent(new Event('webkitpresentationmodechanged'));
+              mirror.mode = 'showing';
+              var during = mirror.mode;
+
+              video.dispatchEvent(new Event('webkitendfullscreen'));
+              return { during: during, after: mirror.mode,
+                hasOverride: String(Object.hasOwn(mirror, 'mode')) };
+            })();
+            """) as? [String: String]
+
+        XCTAssertEqual(observed?["during"], "hidden")
+        XCTAssertEqual(observed?["after"], "showing")
+        XCTAssertEqual(observed?["hasOverride"], "false")
+    }
+
     /// Turning captions off in the system player's own menu is the viewer's
     /// decision. A painted sentence the page has not changed must not switch
     /// them back on.

@@ -26,10 +26,7 @@ extension BrowserShellView {
         if tab.isHome { return !tab.url.isEmpty }
         if tab.loadState.isFailure { return true }
         guard tabManager.webView(for: tab.id) != nil else { return false }
-        // Every page has a back step — its own history, the tab that opened
-        // it, or the home fallback — and WebKit's interactive gesture is off,
-        // so the arrow owns the edge in all of them.
-        return true
+        return !tab.canGoBack
     }
 
     /// The swipe's progress as a fraction of the window's width. Drives the

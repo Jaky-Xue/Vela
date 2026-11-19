@@ -7,9 +7,8 @@
 //
 
 extension WebPageScripts {
-    /// Routes fullscreen requests for a video or its player container to the
-    /// iOS media player. Requests that WebKit cannot promote use the original
-    /// API.
+    /// Routes fullscreen requests for the video itself to the iOS media player.
+    /// A site's player container keeps element fullscreen and its own controls.
     ///
     /// The redirect is only half of the job. The system player is a separate
     /// presentation drawn over the page, so two things the page does to its own
@@ -62,20 +61,15 @@ extension WebPageScripts {
 
         Element.prototype[name] = function () {
           if (document.fullscreenEnabled !== false && this instanceof Element) {
-            var video = findVideo(this);
+            var video = this.tagName === 'VIDEO' ? this : null;
             if (video && video.webkitSupportsFullscreen !== false &&
                 typeof video.webkitEnterFullscreen === 'function') {
               try {
-                prepareNativeCaptions(video);
                 video.webkitEnterFullscreen();
               } catch (error) {
                 // WebKit can reject native fullscreen before media is ready.
                 return original.apply(this, arguments);
               }
-              // The page's `requestFullscreen` continuation runs in the
-              // microtask after this returns. Arming the guard before that is
-              // what keeps a field the continuation focuses off the screen.
-              try { beginNative(video); } catch (error) {}
               return returnsPromise ? Promise.resolve() : undefined;
             }
           }
@@ -91,20 +85,34 @@ extension WebPageScripts {
       // Element wrappers above. Caption preparation runs before each so the
       // player opens on a single caption track, not beside a second one it
       // would have to be repaired after the fact.
+      function openNative(video, method, args) {
+        try { prepareNativeCaptions(video); } catch (error) {}
+        var result;
+        try {
+          result = method.apply(video, args);
+        } catch (error) {
+          if (nativeVideo !== video) { stopCaptionSync(video); }
+          throw error;
+        }
+        // A requestFullscreen continuation can focus an editor before
+        // WebKit delivers the presentation event.
+        try { beginNative(video); } catch (error) {}
+        return result;
+      }
+
       try {
         var videoProto = window.HTMLVideoElement && HTMLVideoElement.prototype;
         if (videoProto && typeof videoProto.webkitEnterFullscreen === 'function') {
           var nativeEnterFullscreen = videoProto.webkitEnterFullscreen;
           videoProto.webkitEnterFullscreen = function () {
-            try { prepareNativeCaptions(this); } catch (error) {}
-            return nativeEnterFullscreen.apply(this, arguments);
+            return openNative(this, nativeEnterFullscreen, arguments);
           };
         }
         if (videoProto && typeof videoProto.webkitSetPresentationMode === 'function') {
           var nativeSetPresentationMode = videoProto.webkitSetPresentationMode;
           videoProto.webkitSetPresentationMode = function (mode) {
             if (String(mode) === 'fullscreen') {
-              try { prepareNativeCaptions(this); } catch (error) {}
+              return openNative(this, nativeSetPresentationMode, arguments);
             }
             return nativeSetPresentationMode.apply(this, arguments);
           };
@@ -274,9 +282,19 @@ extension WebPageScripts {
         return out;
       }
 
-      function paintedCaptionText() {
+      function paintedCaptionText(video) {
+        for (var container = video.parentElement; container; container = container.parentElement) {
+          // Beyond this point, captions could belong to another player.
+          if (container.querySelectorAll('video').length > 1) { break; }
+          var text = captionTextIn(container);
+          if (text) { return text; }
+        }
+        return '';
+      }
+
+      function captionTextIn(container) {
         for (var s = 0; s < paintedCaptionSelectors.length; s++) {
-          var nodes = document.querySelectorAll(paintedCaptionSelectors[s]);
+          var nodes = container.querySelectorAll(paintedCaptionSelectors[s]);
           var parts = [];
           for (var i = 0; i < nodes.length; i++) {
             // `textContent`, not a visibility test: the system presentation
@@ -351,6 +369,7 @@ extension WebPageScripts {
         if (!state) {
           state = {
             original: [],
+            mirrors: [],
             chosen: null,
             painted: '',
             timer: null,
@@ -413,11 +432,12 @@ extension WebPageScripts {
       }
 
       function suppressMirrorTrack(video, track) {
-        if (!track || track.__velaMirrorSuppressed === true) { return; }
+        var state = captionState(video);
+        if (!track || state.mirrors.indexOf(track) !== -1 ||
+            Object.prototype.hasOwnProperty.call(track, 'mode')) { return; }
         var proto = Object.getPrototypeOf(track);
         var descriptor = proto ? Object.getOwnPropertyDescriptor(proto, 'mode') : null;
         if (!descriptor || typeof descriptor.set !== 'function') { return; }
-        track.__velaMirrorSuppressed = true;
         try {
           Object.defineProperty(track, 'mode', {
             configurable: true,
@@ -432,6 +452,7 @@ extension WebPageScripts {
               descriptor.set.call(this, value);
             }
           });
+          state.mirrors.push(track);
         } catch (error) {
         }
       }
@@ -454,7 +475,7 @@ extension WebPageScripts {
         var state = captionState(video);
         var tracks = pageCaptionTracks(video);
 
-        var painted = paintedCaptionText();
+        var painted = paintedCaptionText(video);
         var paintedChanged = painted !== state.painted;
         state.painted = painted;
 
@@ -516,6 +537,10 @@ extension WebPageScripts {
         }
         if (state.timer === null) {
           state.timer = setInterval(function () {
+            if (nativeVideo === video && video.isConnected === false) {
+              endNative(video);
+              return;
+            }
             if (nativeVideo !== video) {
               stopCaptionSync(video);
               return;
@@ -543,12 +568,12 @@ extension WebPageScripts {
           } catch (error) {
           }
         }
+        for (var j = 0; j < state.mirrors.length; j++) {
+          delete state.mirrors[j].mode;
+        }
         for (var i = 0; i < state.original.length; i++) {
           var entry = state.original[i];
           if (entry.set === null) { continue; }
-          // The mirror's mode belongs to WebKit; restoring it would put a
-          // duplicate caption back on an inline page.
-          if (isMirrorTrack(entry.track)) { continue; }
           if (entry.track.mode !== entry.set) { continue; }
           try { entry.track.mode = entry.mode; } catch (error) {}
         }
@@ -564,7 +589,7 @@ extension WebPageScripts {
         if (!video) { return; }
         var tracks = pageCaptionTracks(video);
         if (tracks.length === 0 && mirrorTracks(video).length === 0) { return; }
-        startCaptionSync(video);
+        syncNativeCaptions(video);
       }
 
       // MARK: - The presentations
@@ -587,6 +612,8 @@ extension WebPageScripts {
 
       function beginNative(video) {
         if (!video) { return; }
+        if (nativeVideo === video) { return; }
+        if (nativeVideo) { stopCaptionSync(nativeVideo); }
         nativeVideo = video;
         nativeStartedAt = Date.now();
         blurPageEditors();
@@ -596,7 +623,8 @@ extension WebPageScripts {
       }
 
       function endNative(video) {
-        if (nativeVideo === video) { nativeVideo = null; }
+        if (nativeVideo !== video) { return; }
+        nativeVideo = null;
         if (nativeVerifyTimer) {
           clearTimeout(nativeVerifyTimer);
           nativeVerifyTimer = null;
@@ -604,7 +632,7 @@ extension WebPageScripts {
         if (video) {
           stopCaptionSync(video);
         }
-        reportNative(nativeVideo !== null);
+        reportNative(false);
       }
 
       document.addEventListener('webkitbeginfullscreen', function (event) {
