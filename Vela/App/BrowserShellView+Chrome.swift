@@ -464,6 +464,20 @@ extension BrowserShellView {
         .accessibilityLabel("标签页，\(tabCountForActiveMode) 个")
     }
 
+    /// Whether the floating tools have anything to show.
+    ///
+    /// An empty one is not inserted at all. On iOS 26 it is wrapped in a
+    /// `GlassEffectContainer`, and that container owns a hit-testing surface
+    /// over the page's bottom edge even with no glass in it — which is what
+    /// made a page's own last row — a bottom sheet's 详细统计信息, a menu's last
+    /// item — untappable across every site.
+    var hasFloatingTools: Bool {
+        if env.overlays.isElementPickerArmed { return true }
+        if showFindBar { return true }
+        if let tab = activeTab, !tab.isHome, tab.serverStatus >= 400 { return true }
+        return false
+    }
+
     /// The find bar and the server-status notice, pinned under the chrome.
     ///
     /// They are tools for the page in view, so they do not take part in the

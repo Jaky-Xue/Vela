@@ -157,7 +157,13 @@ extension BrowserShellView {
             }
         }
         .overlay(alignment: .bottom) {
-            if novelSession == nil {
+            // Only when a tool is actually in it. The container is a
+            // `GlassEffectContainer` on iOS 26, and an empty one still owns a
+            // hit-testing surface over the bottom of the page: a tap there —
+            // a page's own last row, a site's last menu item — never reached
+            // the page, on every site. With nothing to show, nothing is
+            // inserted.
+            if novelSession == nil, hasFloatingTools {
                 floatingToolsInGlassContainer
                     // The tools enter from the bar they belong to and leave
                     // upward when the reader takes the screen.
