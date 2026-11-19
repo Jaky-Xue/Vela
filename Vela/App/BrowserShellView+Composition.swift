@@ -145,6 +145,14 @@ extension BrowserShellView {
     var shellOverlays: some View {
         shellBase
         .overlay(alignment: .bottom) {
+            // The page's own background in the strip the bar sits in, so the
+            // page reads as one surface down to the screen's edge. Sits under
+            // the bar and over the page: see `commandBarBackdrop`.
+            if novelSession == nil && !usesPadLayout {
+                commandBarBackdrop
+            }
+        }
+        .overlay(alignment: .bottom) {
             // The novel reader owns the screen while it is open: its own
             // header and chapter controls are the chrome. The iPad layout has
             // its navigation in the top bar, so the phone command bar is not

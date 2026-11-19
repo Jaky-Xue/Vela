@@ -166,6 +166,39 @@ extension BrowserShellView {
         .accessibilityHidden(chromeHidden)
     }
 
+    /// The strip the command bar sits in, painted in the page's own background.
+    ///
+    /// The bar's area is described to WebKit as obscured, so the page's layout
+    /// ends above it; what WebKit leaves in that strip is not the page's paint,
+    /// and on a page whose bottom edge carries its own fixed container it read
+    /// as a grey band under the bar. Filling the strip with the page's declared
+    /// background colour makes the page read as one surface down to the
+    /// screen's edge — and the strip follows the bar, so a hidden bar leaves
+    /// the page only the home indicator's band.
+    @ViewBuilder var commandBarBackdrop: some View {
+        if let tab = activeTab,
+           !tab.isHome,
+           !tab.loadState.isFailure,
+           tabManager.webView(for: tab.id) != nil {
+            (Color(cssColor: tab.pageBackground) ?? palette.surface)
+                // A point of overlap: the page's last row and the strip's top
+                // edge would otherwise leave a hairline of the canvas between
+                // them.
+                .frame(height: commandBarBackdropHeight + 1)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(false)
+                .animation(BrowserMotion.chrome(reduceMotion), value: chromeHidden)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// How much of the bottom the strip covers: the bar's own height and gap
+    /// while it is up, and the home indicator's inset once it is away.
+    var commandBarBackdropHeight: CGFloat {
+        safeBottom + (chromeHidden ? 0 : BrowserChrome.barHeight + BrowserChrome.barGap)
+    }
+
     /// The promise shown while the command bar is dragged: 释放后收起工具栏 for
     /// a downward drag, 释放后返回首页 for an upward one, the same readout the
     /// iPad top bar shows. It fills once releasing will commit, so the gesture
