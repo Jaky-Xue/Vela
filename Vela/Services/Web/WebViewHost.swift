@@ -77,13 +77,13 @@ struct WebViewHost: UIViewRepresentable {
     /// deciding there is no strip to reserve and leaving the page under the
     /// clock.
     let statusBarStrip: CGFloat
-    // The page owns the whole bottom edge. Nothing is reserved for the
-    // command bar: the page's frame and layout are the screen, and its own
-    // bottom UI — a fixed footer, a sheet's last row — reaches the edge and
-    // stays live. The bar floats over it, and the page shows through the
-    // glass. Reserving the strip instead either lifted every bottom sheet off
-    // the edge (an obscured inset) or painted a band in a colour that was not
-    // the page's.
+    // The page owns the bottom edge, apart from the home indicator's strip.
+    //
+    // Nothing is reserved for the command bar: it floats over the page and
+    // the page shows through the glass. What *is* reserved is the system's
+    // bottom gesture band (see `updateBottomSafeArea`) — a page's own bottom
+    // row resting there can be seen but not tapped, and no site can know the
+    // band is deeper than the safe area it does read.
     /// The colour the page paints behind itself, used behind the document
     /// while it bounces. The page itself covers the screen, so the bar samples
     /// the document rather than a painted strip.
@@ -395,6 +395,7 @@ final class WebViewContainerView: UIView {
             }
         }
         updateTopLayout()
+        updateBottomSafeArea()
     }
 
     override func layoutSubviews() {
@@ -403,6 +404,33 @@ final class WebViewContainerView: UIView {
         // without a window change: rotation, a call banner, the status bar
         // coming back from a fullscreen video, a Stage Manager resize.
         updateTopLayout()
+        updateBottomSafeArea()
+    }
+
+    /// Ends the page's layout above the home indicator's gesture band.
+    ///
+    /// The system claims the bottom edge of the screen: on iPad the band is
+    /// deeper than the safe area itself, and a tap that drifts even a little
+    /// is taken as a Home swipe. A page whose own bottom row rests there — a
+    /// site's tab bar, a sheet's last item — can be seen but not used, on
+    /// every site at once. Sites keep themselves clear of the *safe area*
+    /// (`env(safe-area-inset-bottom)` reads it correctly); what they cannot
+    /// know is that the band is deeper than that. Ending the layout viewport
+    /// at the safe area puts their bottom row above the band, which is the
+    /// same promise Safari makes. The strip below is the home indicator's
+    /// own, and WebKit paints the page's background across it.
+    private func updateBottomSafeArea() {
+        guard let window, let webView = attachedWebView else { return }
+        let bottom = max(0, window.safeAreaInsets.bottom)
+        if #available(iOS 26.0, *) {
+            let insets = UIEdgeInsets(top: 0, left: 0, bottom: bottom, right: 0)
+            if webView.obscuredContentInsets != insets {
+                webView.obscuredContentInsets = insets
+            }
+        } else if abs(webView.scrollView.contentInset.bottom - bottom) > 0.5 {
+            webView.scrollView.contentInset.bottom = bottom
+            webView.scrollView.verticalScrollIndicatorInsets.bottom = bottom
+        }
     }
 
     /// Resolves both halves of the top layout from the window.
@@ -484,8 +512,7 @@ final class WebViewContainerView: UIView {
         // Its bottom edge belongs to the page, so any scroll inset an earlier
         // container left on it is cleared.
         updateTopLayout()
-        webView.scrollView.contentInset.bottom = 0
-        webView.scrollView.verticalScrollIndicatorInsets.bottom = 0
+        updateBottomSafeArea()
     }
 
     /// Removes the web view from the hierarchy without releasing it.
