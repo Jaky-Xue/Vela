@@ -75,7 +75,8 @@ final class TapDeliveryTests: XCTestCase {
         let tab = env.tabManager.openTab(url: base, privacyMode: .regular)
         for _ in 0..<300 {
             if let webView = env.tabManager.webView(for: tab.id), webView.isLoading == false,
-               webView.url != nil {
+               webView.url != nil,
+               (try? await webView.evaluateJavaScript("document.body.scrollHeight")) as? Double ?? 0 > 1000 {
                 break
             }
             try await Task.sleep(nanoseconds: 20_000_000)
@@ -97,12 +98,12 @@ final class TapDeliveryTests: XCTestCase {
         probe("bottom-30", CGPoint(x: window.bounds.midX, y: window.bounds.maxY - 30))
         probe("bottom-70", CGPoint(x: window.bounds.midX, y: window.bounds.maxY - 70))
 
-        // Hide the bar the way scrolling does: two downward samples past the
-        // tracker's threshold.
-        webView.scrollView.setContentOffset(CGPoint(x: 0, y: 120), animated: false)
-        try await Task.sleep(nanoseconds: 200_000_000)
-        webView.scrollView.setContentOffset(CGPoint(x: 0, y: 320), animated: false)
-        try await Task.sleep(nanoseconds: 600_000_000)
+        // Hide the bar the way scrolling does: the page itself scrolls down,
+        // which is what the shell's tracker turns into a hide.
+        _ = try? await webView.evaluateJavaScript("window.scrollTo(0, 400)")
+        try await Task.sleep(nanoseconds: 300_000_000)
+        _ = try? await webView.evaluateJavaScript("window.scrollTo(0, 900)")
+        try await Task.sleep(nanoseconds: 700_000_000)
         controller.view.layoutIfNeeded()
 
         let topHit = window.hitTest(
