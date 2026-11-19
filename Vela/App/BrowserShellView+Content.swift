@@ -193,27 +193,27 @@ extension BrowserShellView {
                             statusBarStrip: safeTop,
                             // The page stays full bleed and keeps painting under
                             // the glass. The host adds the home-indicator inset
-                            // and tells WebKit which part the bar covers, so fixed
-                            // footers, sticky bars and `100vh` layouts end above
-                            // it; the scroll inset keeps the document's own last
-                            // lines reachable.
+                            // and tells WebKit which part the bar covers.
                             //
-                            // The inset deliberately does *not* follow
-                            // `chromeHidden`. Reserving it only while the bar is up
+                            // How it tells it depends on the system, and the
+                            // difference is what makes a page's own bottom sheet
+                            // usable. On iOS 26 `obscuredContentInsets` shrinks
+                            // the layout viewport, so a fixed footer, a sticky bar
+                            // or a `100vh` sheet ends above the bar — and when the
+                            // bar slides away the page takes the strip back, which
+                            // is what lets the sheet's last row be tapped. Before
+                            // iOS 26 the only lever is the scroll view's inset, and
+                            // that one deliberately does *not* follow
+                            // `chromeHidden`: reserving it only while the bar is up
                             // made hiding the bar change the document's scrollable
                             // range, and a scroll view resting at the end of a
                             // document clamps to the new range the instant the
-                            // inset shrinks: the page jumped up, that jump arrived
-                            // as an upward scroll, the shell read it as "the user
-                            // wants the controls" and put the bar straight back.
-                            // On a long page scrolled to its end — exactly where
-                            // people hide the bar — the two fed each other and the
-                            // bar flickered. A constant inset keeps the page still
-                            // when the bar leaves, at the cost of a little extra
-                            // scroll range past the last line.
+                            // inset shrinks — the page jumped, the jump arrived as
+                            // an upward scroll, and the bar was put straight back.
                             bottomChromeHeight: usesPadLayout
                                 ? 0
                                 : BrowserChrome.barHeight + BrowserChrome.barGap,
+                            isChromeHidden: chromeHidden,
                             // Behind the page while it bounces. Chrome keeps its
                             // own palette surface rather than sampling this color.
                             pageColor: Color(cssColor: tab.pageBackground) ?? palette.surface,

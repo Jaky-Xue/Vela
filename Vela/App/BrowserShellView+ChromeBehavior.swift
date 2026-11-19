@@ -34,6 +34,17 @@ extension BrowserShellView {
             return
         }
 
+        // The page is still settling from a chrome move. The bar's strip
+        // changes the page's layout viewport on iOS 26, and a document resting
+        // at its end clamps as the viewport grows or shrinks; those samples
+        // are the layout moving, not the finger. Reading them as a gesture is
+        // what would throw the bar straight back out and in.
+        if CACurrentMediaTime() - scrollTracker.chromeChangedAt < 0.45 {
+            scrollTracker.lastOffset = offset
+            scrollTracker.resetTravel()
+            return
+        }
+
         switch scrollTracker.consume(offset: offset, now: CACurrentMediaTime()) {
         case .hide:
             setChromeHidden(true)
@@ -48,7 +59,8 @@ extension BrowserShellView {
         guard chromeHidden != hidden else { return }
         // Whatever distance was being counted belonged to the state that just
         // ended; carrying it into the next one would let a few stray points
-        // flip the bar straight back.
+        // flip the bar straight back. `ShellState` stamps the move itself, so
+        // `handleScroll` can tell the layout settling from the finger.
         scrollTracker.resetTravel()
         if !hidden {
             // A drag that was interrupted (an edge swipe, a tab switch, a

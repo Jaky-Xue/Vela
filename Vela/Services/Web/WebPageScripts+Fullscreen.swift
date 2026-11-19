@@ -38,8 +38,15 @@ extension WebPageScripts {
     ///   showing track — and a choice the viewer makes in the system player's
     ///   字幕 menu is left alone and reaches the page when the film ends.
     ///
-    /// Only videos are treated as fullscreen here. Element fullscreen of any
-    /// other content — an image viewer, a document — falls through untouched,
+    /// Not every page reaches the system player, and the ones that do not are
+    /// where both problems came back for a non-default 网页标识: the site
+    /// answers that identifier with its own player and puts that player
+    /// fullscreen through the element API. The page is still on screen there,
+    /// so the same two rules are applied to it — no keyboard a tap did not ask
+    /// for, and no second caption — while a field the viewer can see and did
+    /// tap stays usable, which is what a fullscreen player's own comment box
+    /// needs. Only videos are treated that way. Element fullscreen of any other
+    /// content — an image viewer, a document — falls through untouched,
     /// including its text fields.
     static let fullscreenBridge = """
     (function () {
@@ -48,11 +55,39 @@ extension WebPageScripts {
 
       // MARK: - The fullscreen request goes to the system player
 
+      // The video a player container is actually presenting.
+      //
+      // A container can hold more than one video — a preview, an ad frame, a
+      // background loop — and `querySelector('video')` returns whichever the
+      // page happened to write first. Handing the system player the wrong
+      // element is why a fullscreen request could look like it did nothing:
+      // the element that carries the picture is the one with loaded media,
+      // and among those the one that covers the container.
       function findVideo(element) {
         if (!element) { return null; }
         if (element.tagName === 'VIDEO') { return element; }
-        if (element.querySelector) { return element.querySelector('video'); }
-        return null;
+        if (!element.querySelectorAll) { return null; }
+        var videos = element.querySelectorAll('video');
+        if (videos.length === 0) { return null; }
+        if (videos.length === 1) { return videos[0]; }
+        var best = videos[0];
+        var bestScore = -1;
+        for (var i = 0; i < videos.length; i++) {
+          var video = videos[i];
+          var score = 0;
+          if (video.readyState > 0) { score += 1e9; }
+          if (video.paused === false || video.currentTime > 0) { score += 1e8; }
+          try {
+            var rect = video.getBoundingClientRect();
+            score += Math.max(0, rect.width) * Math.max(0, rect.height);
+          } catch (error) {
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            best = video;
+          }
+        }
+        return best;
       }
 
       function patch(name, returnsPromise) {
@@ -129,6 +164,13 @@ extension WebPageScripts {
       var nativeVideo = null;
       var nativeStartedAt = 0;
 
+      // A video the page has put fullscreen through the element Fullscreen
+      // API. The page stays on screen there, so this is not the system player
+      // — but the film still owns the screen, and the page can still raise a
+      // keyboard and a second caption over it. It is held like a native
+      // presentation for exactly those two jobs.
+      var elementFilmVideo = null;
+
       function nativeFullscreenActive() {
         if (nativeVideo === null || nativeVideo.isConnected === false) { return false; }
         // Both fullscreen roads have a flag: the legacy one reports
@@ -149,11 +191,48 @@ extension WebPageScripts {
         return element ? findVideo(element) : null;
       }
 
-      function reportNative(active) {
+      // Which presentation is showing `video`: '' when it owns no screen,
+      // 'native' for the system player, 'element' for the page's own
+      // fullscreen. The caption rules below depend on the difference — over
+      // the system player the page is not visible, while element fullscreen
+      // still paints it.
+      function filmMode(video) {
+        if (!video) { return ''; }
+        if (nativeVideo === video && nativeFullscreenActive()) { return 'native'; }
+        if (elementFilmVideo === video) { return 'element'; }
+        return '';
+      }
+
+      function anyFilmActive() {
+        return nativeFullscreenActive() || elementFilmVideo !== null;
+      }
+
+      // The host keeps the keyboard off the film, including a field in another
+      // frame that no page-side script can reach. The two presentations are
+      // reported apart: over the system player the page is invisible, so the
+      // host may keep dismissing the keyboard for the whole film; an element
+      // film keeps the page on screen, and a field the viewer taps there is
+      // theirs to type into. One report per state change; repeating it would
+      // cost the host a round trip per tap.
+      var reportedFilm = 'none';
+
+      function reportFilmActive() {
+        var state = nativeFullscreenActive()
+            ? 'native'
+            : (elementFilmVideo !== null ? 'element' : 'none');
+        if (state === reportedFilm) { return; }
+        var wasActive = reportedFilm !== 'none';
+        reportedFilm = state;
         try {
           var handlers = window.webkit && window.webkit.messageHandlers;
           if (handlers && handlers.\(Handler.mediaFullscreen.rawValue)) {
-            handlers.\(Handler.mediaFullscreen.rawValue).postMessage({ active: !!active });
+            handlers.\(Handler.mediaFullscreen.rawValue).postMessage({
+              active: state !== 'none',
+              native: state === 'native',
+              // A film that is still up but has changed kind (the system
+              // player taking over the page's fullscreen) is not a new start.
+              started: state !== 'none' && !wasActive
+            });
           }
         } catch (error) {
         }
@@ -218,27 +297,50 @@ extension WebPageScripts {
         if (!target || Date.now() - lastTap.at > 1200) { return false; }
         if (target === field) { return true; }
         if (field.contains && field.contains(target)) { return true; }
-        // A player's input often sits inside a button-like wrapper the tap
-        // lands on. The immediate parent is the one relationship to accept;
-        // anything further up is the page, which would let every tap through.
-        if (field.parentElement && field.parentElement === target) { return true; }
         // A label is the field's own tap target by convention.
         if (target.tagName === 'LABEL' && target.control === field) { return true; }
+        // A wrapper the field merely sits inside is not the field. This was
+        // the hole a player's hidden input took a keyboard through: the input
+        // sat inside the very control the finger landed on, and the parent
+        // rule read that control as the field's own tap target.
         return false;
       }
 
+      // Whether a field could be the one the viewer typed into. A player's
+      // hidden input is usually invisible or parked off screen; the guard
+      // only lets a focus through for a field the viewer can actually see.
+      function fieldIsOnScreen(field) {
+        try {
+          if (field.getClientRects().length === 0) { return false; }
+          var rect = field.getBoundingClientRect();
+          if (rect.width < 1 || rect.height < 1) { return false; }
+          if (rect.bottom <= 0 || rect.right <= 0) { return false; }
+          if (rect.top >= window.innerHeight || rect.left >= window.innerWidth) { return false; }
+          var style = window.getComputedStyle(field);
+          if (style.visibility === 'hidden' || style.display === 'none') { return false; }
+          if (parseFloat(style.opacity) === 0) { return false; }
+          return true;
+        } catch (error) {
+          return false;
+        }
+      }
+
       document.addEventListener('focusin', function (event) {
-        var native = nativeFullscreenActive();
-        if (!native && !elementFullscreenVideo()) { return; }
+        if (!anyFilmActive()) { return; }
         var field = textFieldInEvent(event);
         if (!field) { return; }
         // Over the system player the page is not on screen at all, so no text
         // field there can be the one being typed into.
-        if (native) {
+        if (nativeFullscreenActive()) {
           try { field.blur(); } catch (error) {}
           return;
         }
-        if (tapLandedOn(field)) { return; }
+        // Element fullscreen keeps the page visible: its controls are on it,
+        // and a field the viewer can see and tapped — a player's search box, a
+        // comment box in a fullscreen player — is one the page may focus. A
+        // field the tap did not land on, or one that is not on screen, is the
+        // page typing for the viewer.
+        if (tapLandedOn(field) && fieldIsOnScreen(field)) { return; }
         try { field.blur(); } catch (error) {}
       }, true);
 
@@ -471,7 +573,7 @@ extension WebPageScripts {
       // painted sentence picks the language, but only when that sentence
       // changes: a poll must not resurrect captions the viewer switched off in
       // the system player's own 字幕 menu.
-      function syncNativeCaptions(video) {
+      function syncCaptions(video, mode) {
         var state = captionState(video);
         var tracks = pageCaptionTracks(video);
 
@@ -479,9 +581,28 @@ extension WebPageScripts {
         var paintedChanged = painted !== state.painted;
         state.painted = painted;
 
+        // Element fullscreen keeps the page on screen. When the page paints
+        // its own caption, a text track left showing is drawn by WebKit on top
+        // of that paint and the same sentence appears twice; the paint is the
+        // caption there, so every track — the mirror included — stands down
+        // while the film is up. With no paint, one showing track is the
+        // caption and the rules below still apply.
+        if (mode === 'element' && painted) {
+          state.chosen = null;
+          for (var i = 0; i < tracks.length; i++) {
+            setCaptionMode(state, tracks[i], 'hidden');
+          }
+          var mirrors = mirrorTracks(video);
+          for (var j = 0; j < mirrors.length; j++) {
+            setCaptionMode(state, mirrors[j], 'hidden');
+          }
+          suppressExistingMirrors(video);
+          return;
+        }
+
         var showing = [];
-        for (var i = 0; i < tracks.length; i++) {
-          if (tracks[i].mode === 'showing') { showing.push(tracks[i]); }
+        for (var k = 0; k < tracks.length; k++) {
+          if (tracks[k].mode === 'showing') { showing.push(tracks[k]); }
         }
 
         var chosen = null;
@@ -510,8 +631,9 @@ extension WebPageScripts {
         if (state.debounce !== null) { clearTimeout(state.debounce); }
         state.debounce = setTimeout(function () {
           state.debounce = null;
-          if (nativeVideo !== video) { return; }
-          syncNativeCaptions(video);
+          var mode = filmMode(video);
+          if (!mode) { return; }
+          syncCaptions(video, mode);
         }, 60);
       }
 
@@ -537,18 +659,29 @@ extension WebPageScripts {
         }
         if (state.timer === null) {
           state.timer = setInterval(function () {
-            if (nativeVideo === video && video.isConnected === false) {
-              endNative(video);
-              return;
+            // The page can drop its own fullscreen presentation without an
+            // event the bridge hears — a player that swaps itself out, a
+            // document that is taken down. The state is checked here so a
+            // film cannot outlive the screen it owned.
+            if (elementFilmVideo === video && nativeVideo !== video) {
+              var element = document.fullscreenElement || document.webkitFullscreenElement;
+              if (!element || findVideo(element) !== video) {
+                endElementFilm();
+                return;
+              }
             }
-            if (nativeVideo !== video) {
+            var mode = filmMode(video);
+            if (!mode) {
+              // The film this sync belonged to is gone.
+              if (nativeVideo === video) { endNative(video); }
+              if (elementFilmVideo === video) { endElementFilm(); }
               stopCaptionSync(video);
               return;
             }
-            syncNativeCaptions(video);
+            syncCaptions(video, mode);
           }, 500);
         }
-        syncNativeCaptions(video);
+        syncCaptions(video, filmMode(video) || 'native');
       }
 
       // The page gets its own modes back. A track whose mode is no longer the
@@ -589,7 +722,7 @@ extension WebPageScripts {
         if (!video) { return; }
         var tracks = pageCaptionTracks(video);
         if (tracks.length === 0 && mirrorTracks(video).length === 0) { return; }
-        syncNativeCaptions(video);
+        syncCaptions(video, 'native');
       }
 
       // MARK: - The presentations
@@ -614,10 +747,16 @@ extension WebPageScripts {
         if (!video) { return; }
         if (nativeVideo === video) { return; }
         if (nativeVideo) { stopCaptionSync(nativeVideo); }
+        if (elementFilmVideo !== null) {
+          // The system player has taken the screen from the page's own
+          // fullscreen presentation.
+          if (elementFilmVideo !== video) { stopCaptionSync(elementFilmVideo); }
+          elementFilmVideo = null;
+        }
         nativeVideo = video;
         nativeStartedAt = Date.now();
         blurPageEditors();
-        reportNative(true);
+        reportFilmActive();
         startCaptionSync(video);
         scheduleNativeVerification(video);
       }
@@ -632,7 +771,33 @@ extension WebPageScripts {
         if (video) {
           stopCaptionSync(video);
         }
-        reportNative(false);
+        reportFilmActive();
+        // The system player can close back into a page that is still in its
+        // own element fullscreen — the page's player stayed up underneath.
+        // That is a film again, not an unguarded page.
+        var elementVideo = elementFullscreenVideo();
+        if (elementVideo) { beginElementFilm(elementVideo); }
+      }
+
+      // The page's own fullscreen. The page is still drawn, but the film owns
+      // the screen: it may not take a keyboard the viewer did not ask for and
+      // it may not draw a caption twice.
+      function beginElementFilm(video) {
+        if (!video) { return; }
+        if (elementFilmVideo === video) { return; }
+        if (elementFilmVideo !== null) { stopCaptionSync(elementFilmVideo); }
+        elementFilmVideo = video;
+        blurPageEditors();
+        reportFilmActive();
+        startCaptionSync(video);
+      }
+
+      function endElementFilm() {
+        var video = elementFilmVideo;
+        if (video === null) { return; }
+        elementFilmVideo = null;
+        stopCaptionSync(video);
+        reportFilmActive();
       }
 
       document.addEventListener('webkitbeginfullscreen', function (event) {
@@ -661,7 +826,13 @@ extension WebPageScripts {
 
       function handleElementFullscreenChange() {
         var video = elementFullscreenVideo();
-        if (!video) { return; }
+        if (!video) {
+          // An image viewer, a document: not a film. A native presentation is
+          // tracked by its own events and is left alone.
+          endElementFilm();
+          return;
+        }
+        beginElementFilm(video);
         blurPageEditors();
       }
 

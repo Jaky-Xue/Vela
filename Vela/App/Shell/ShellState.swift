@@ -32,6 +32,7 @@
 
 import Foundation
 import Observation
+import QuartzCore
 import SwiftUI
 import UIKit
 
@@ -110,7 +111,19 @@ final class ShellState {
     // MARK: - Chrome
 
     /// Whether the command bar has slid out of the way.
-    var chromeHidden = false
+    ///
+    /// Every write is stamped, not only the animated one: the page's layout
+    /// viewport moves with the bar on iOS 26, and the scroll samples that
+    /// follow a move are the layout settling rather than the finger. The
+    /// stamp is what `handleScroll` uses to tell the two apart, and assigning
+    /// the flag directly — a navigation, a tab switch — moves the page too.
+    var chromeHidden = false {
+        didSet {
+            if chromeHidden != oldValue {
+                scrollTracker.chromeChangedAt = CACurrentMediaTime()
+            }
+        }
+    }
     /// How far the user has dragged the bar downward, mid-gesture.
     var chromeDragOffset: CGFloat = 0
     /// How far the user has dragged the bar upward, mid-gesture — the gesture

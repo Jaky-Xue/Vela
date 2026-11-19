@@ -398,22 +398,36 @@ public final class BrowserWebCoordinator: NSObject {
         }
     }
 
-    /// A page reported that a video entered or left the system player's
-    /// full-screen presentation.
+    /// A page reported that a video entered or left a full-screen presentation.
     ///
-    /// The keyboard has no place over a full-screen film. A text field the
-    /// page focused before the film started — or one focused in another frame
-    /// of the same page — can have its keyboard restored on top of the system
-    /// player the first time the player's own controls take and release the
-    /// first responder, which is what a tap on 倍速 looked like. The page's
-    /// bridge blurs its own editors and refuses unasked focus; this side ends
-    /// the editing the page cannot see, including a field in another frame.
+    /// Two presentations reach this: the system player, which covers the page,
+    /// and the page's own element fullscreen, which keeps the page on screen.
+    /// The keyboard has no place over either one at the moment it opens — a
+    /// text field the page focused before the film started, or one focused in
+    /// another frame of the same page, can have its keyboard restored the first
+    /// time the player's own controls take and release the first responder,
+    /// which is what a tap on 倍速 looked like. The page's bridge blurs its own
+    /// editors and refuses unasked focus; this side ends the editing the page
+    /// cannot see, including a field in another frame.
+    ///
+    /// Only the system player is held for the life of the film: its page is
+    /// invisible, so a keyboard raised then belongs to nothing. Element
+    /// fullscreen draws the page, and a field the viewer taps there — a
+    /// fullscreen player's comment box — keeps its keyboard.
     func handleMediaFullscreenMessage(_ message: WKScriptMessage, webView: WKWebView) {
         guard let payload = message.body as? [String: Any],
               let active = payload["active"] as? Bool else { return }
         if active {
-            fullscreenMediaWebViews.add(webView)
-            webView.endEditing(true)
+            // The system player is what the page cannot be shown to be under.
+            let native = payload["native"] as? Bool ?? true
+            if payload["started"] as? Bool ?? true {
+                webView.endEditing(true)
+            }
+            if native {
+                fullscreenMediaWebViews.add(webView)
+            } else {
+                fullscreenMediaWebViews.remove(webView)
+            }
         } else {
             fullscreenMediaWebViews.remove(webView)
         }
