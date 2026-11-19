@@ -170,6 +170,17 @@ public enum WebPageScripts {
         )
     }
 
+    /// The dark fallback for pages that ship no dark theme of their own.
+    ///
+    /// The filter is a last resort, and the decision to apply it is the whole
+    /// difficulty: a page whose own theme is dark, but which paints it on a
+    /// wrapper with `body` and `html` left transparent, was inverted by the
+    /// first version — the dark surface turned light and every colour in it
+    /// turned inside out. The paint is sampled across the viewport instead of
+    /// read off the two document backgrounds once, the text colour covers a
+    /// surface painted by an image, and the decision is re-checked after the
+    /// page has had time to hand itself its theme (hydration, a stored
+    /// preference, a class the site adds after load).
     private static let appearanceFallback = #"""
     (() => {
       const root = document.documentElement;
@@ -185,16 +196,63 @@ public enum WebPageScripts {
         return (0.2126 * r + 0.7152 * g + 0.0722 * b) * a + 255 * (1 - a) < 128;
       }
 
-      function update() {
-        root.removeAttribute(marker);
-        if (!scheme.matches) return;
+      // The colour painted behind a point on screen: the nearest ancestor with
+      // an opaque background. `null` means the paint is not a colour the
+      // script can read — an image or a gradient — and is left unknown.
+      function paintedBackground(element) {
+        let node = element;
+        for (let depth = 0; node && node.nodeType === 1 && depth < 60; depth += 1) {
+          const style = getComputedStyle(node);
+          if (style.backgroundImage && style.backgroundImage !== 'none') return null;
+          const dark = isDark(style.backgroundColor);
+          if (dark !== null) return dark;
+          if (node === root) break;
+          node = node.parentElement;
+        }
+        return null;
+      }
 
+      // A page can be dark without saying so on `body`: a full-height wrapper,
+      // a fixed layer, a theme class added after load. What counts is the
+      // paint, not where the page puts its declaration.
+      function pageLooksDark() {
         const rootStyle = getComputedStyle(root);
+        if (/\bdark\b/.test(rootStyle.colorScheme || '')) return true;
         const body = document.body;
         const bodyStyle = body ? getComputedStyle(body) : null;
-        if (/\bdark\b/.test(rootStyle.colorScheme) || /\bdark\b/.test(bodyStyle?.colorScheme || '')) return;
-        if ((isDark(bodyStyle?.backgroundColor || '') ?? isDark(rootStyle.backgroundColor)) === true) return;
+        if (/\bdark\b/.test(bodyStyle?.colorScheme || '')) return true;
 
+        const width = window.innerWidth || root.clientWidth || 0;
+        const height = window.innerHeight || root.clientHeight || 0;
+        let dark = 0;
+        let light = 0;
+        if (width > 0 && height > 0) {
+          const points = [
+            [0.5, 0.04], [0.5, 0.5], [0.5, 0.96],
+            [0.05, 0.5], [0.95, 0.5],
+            [0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]
+          ];
+          for (const [x, y] of points) {
+            const element = document.elementFromPoint(width * x, height * y);
+            const painted = element ? paintedBackground(element) : null;
+            if (painted === true) dark += 1;
+            if (painted === false) light += 1;
+          }
+        }
+        if (dark > 0 && dark >= light) return true;
+        if (light > 0) return false;
+        // Nothing could be read as a colour: light text on a page with no
+        // light paint is a dark theme, whatever surface it is painted on.
+        return isDark((bodyStyle || rootStyle).color) === false;
+      }
+
+      function update() {
+        const invert = scheme.matches && !pageLooksDark();
+        if (invert === root.hasAttribute(marker)) return;
+        if (!invert) {
+          root.removeAttribute(marker);
+          return;
+        }
         if (!stylesheet) {
           stylesheet = new CSSStyleSheet();
           stylesheet.replaceSync(`
@@ -214,8 +272,34 @@ public enum WebPageScripts {
       }
 
       update();
-      scheme.addEventListener('change', update);
+      // The first pass runs before a framework has hydrated, before a stored
+      // theme has been replayed, and often before the page's real background
+      // has been painted. These re-checks both apply the filter once a light
+      // page has settled and take it off a page that turns out dark.
+      for (const delay of [400, 1400, 3200]) {
+        window.setTimeout(update, delay);
+      }
+      document.addEventListener('DOMContentLoaded', update);
+      window.addEventListener('load', update);
       window.addEventListener('pageshow', update);
+      scheme.addEventListener('change', update);
+
+      // A theme toggle is a class or an attribute on `html` or `body`; watch
+      // for one while the page is still finding its colours, then stand down.
+      try {
+        let pending = null;
+        const observer = new MutationObserver(() => {
+          if (pending !== null) return;
+          pending = window.setTimeout(() => { pending = null; update(); }, 250);
+        });
+        const filter = ['class', 'style', 'data-theme', 'data-color-mode'];
+        observer.observe(root, { attributes: true, attributeFilter: filter });
+        if (document.body) {
+          observer.observe(document.body, { attributes: true, attributeFilter: filter });
+        }
+        window.setTimeout(() => observer.disconnect(), 15000);
+      } catch (_error) {
+      }
     })();
     """#
 

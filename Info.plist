@@ -51,6 +51,18 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 
+	<!-- 画中画与背景音频.
+
+	     Safari keeps a web video playing in the floating window after the app
+	     is backgrounded because its media session is allowed to run there. A
+	     web view's media is suspended with the app without this mode, so the
+	     小窗 stops the moment Vela leaves the foreground — the difference this
+	     mode closes. WebKit sets the playback audio session itself. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+
 	<!-- Multiple scenes, which is what lets Stage Manager open a second Vela
 	     window instead of raising the first one. Each scene builds its own
 	     AppEnvironment and therefore its own tab session; the database and the
