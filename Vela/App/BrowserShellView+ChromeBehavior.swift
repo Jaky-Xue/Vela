@@ -8,6 +8,34 @@ extension BrowserShellView {
         chromeDragOffset = 0
         chromeLiftOffset = 0
         chromeHomeArmed = false
+        chromeDragIsVertical = false
+        // Whatever reset this was belongs with a move of the chrome, and the
+        // page's layout settles after one (see `handleScroll`).
+        scrollTracker.chromeChangedAt = CACurrentMediaTime()
+    }
+
+    /// Reacts to the bar's drag starting and finishing, including the finish
+    /// SwiftUI never reports through `onEnded`.
+    ///
+    /// A cancelled drag — a tab switch, a call banner, another recogniser
+    /// taking the finger — never reaches `onEnded`. Without this the bar kept
+    /// the distance it had followed, or the fade it had reached, and read as
+    /// having gone missing or drifted off its edge; the next drag also skipped
+    /// its axis test, because the interrupted one had already decided the axis.
+    /// A fresh drag starts clean, and one that ends without `onEnded` springs
+    /// home here.
+    func handleChromeDragFlight(_ inFlight: Bool) {
+        if inFlight {
+            chromeDragIsVertical = false
+            return
+        }
+        // `onEnded` springs the offsets back itself; only a drag that never
+        // got there still has anything left to put away.
+        if chromeDragOffset != 0 || chromeLiftOffset != 0 || chromeHomeArmed {
+            withAnimation(BrowserMotion.settle(reduceMotion)) {
+                resetChromeDrag()
+            }
+        }
     }
 
     // MARK: - Scrolling
@@ -38,8 +66,11 @@ extension BrowserShellView {
         // changes the page's layout viewport on iOS 26, and a document resting
         // at its end clamps as the viewport grows or shrinks; those samples
         // are the layout moving, not the finger. Reading them as a gesture is
-        // what would throw the bar straight back out and in.
-        if CACurrentMediaTime() - scrollTracker.chromeChangedAt < 0.45 {
+        // what would throw the bar straight back out and in — the occasional
+        // bar that reappeared on its own while the page was still reflowing.
+        // The window outlasts WebKit's layout pass rather than just the bar's
+        // animation, because the clamp arrives with the former.
+        if CACurrentMediaTime() - scrollTracker.chromeChangedAt < 0.9 {
             scrollTracker.lastOffset = offset
             scrollTracker.resetTravel()
             return

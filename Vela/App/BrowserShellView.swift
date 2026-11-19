@@ -59,6 +59,16 @@ struct BrowserShellView: View {
 
     @Environment(\.accessibilityReduceMotion) var reduceMotion
 
+    /// Whether the command bar is under the finger right now.
+    ///
+    /// SwiftUI resets a gesture state when the gesture ends *or is cancelled*,
+    /// which is the one signal the drag itself never gets: a cancelled drag
+    /// never reaches `onEnded`. The bar's gesture uses this to clear its
+    /// bookkeeping when a drag starts or is taken away — a drag that was
+    /// interrupted used to leave the bar parked where the finger left it, or
+    /// fully faded, which read as the bar having gone missing.
+    @GestureState var chromeDragInFlight = false
+
     @MainActor
     init(environment: AppEnvironment) {
         _shell = State(initialValue: ShellState())

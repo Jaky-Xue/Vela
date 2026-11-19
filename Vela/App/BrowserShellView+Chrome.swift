@@ -90,6 +90,9 @@ extension BrowserShellView {
         // while the omnibox session is open, so the gesture cannot fire then.
         .simultaneousGesture(
             DragGesture(minimumDistance: 10)
+                .updating($chromeDragInFlight) { _, inFlight, _ in
+                    inFlight = true
+                }
                 .onChanged { value in
                     guard canDragChromeAway, !chromeHidden else { return }
                     let vertical = value.translation.height
@@ -153,6 +156,12 @@ extension BrowserShellView {
                     }
                 }
         )
+        // A cancelled drag — a tab switch, a call banner, another recogniser
+        // taking the finger — never reaches `onEnded`. See
+        // `handleChromeDragFlight`.
+        .onChange(of: chromeDragInFlight) { _, inFlight in
+            handleChromeDragFlight(inFlight)
+        }
         .overlay(alignment: .top) { chromeDragHint }
         .accessibilityHidden(chromeHidden)
     }
