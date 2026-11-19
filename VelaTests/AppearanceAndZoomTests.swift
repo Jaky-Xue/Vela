@@ -57,6 +57,17 @@ final class AppearanceAndZoomTests: XCTestCase {
     }
 
     @MainActor
+    func testADarkPageWithALightSectionStaysDark() async throws {
+        let marker = try await darkFallbackMarker(html: """
+            <!doctype html><html><body style="margin:0;background:#111;color:#eee">
+              <div style="height:35vh;background:#fff;color:#111">light card</div>
+              <div style="height:65vh;background:#111;color:#eee">dark page</div>
+            </body></html>
+            """)
+        XCTAssertFalse(marker, "a mostly dark page must keep its own appearance")
+    }
+
+    @MainActor
     func testTheDarkFallbackInvertsAPageThatPaintsLight() async throws {
         let marker = try await darkFallbackMarker(html: """
             <!doctype html><html><body style="margin:0;background:#fff;color:#111">

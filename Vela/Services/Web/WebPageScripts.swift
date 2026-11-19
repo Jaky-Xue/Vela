@@ -227,16 +227,18 @@ public enum WebPageScripts {
         let dark = 0;
         let light = 0;
         if (width > 0 && height > 0) {
-          const points = [
-            [0.5, 0.04], [0.5, 0.5], [0.5, 0.96],
-            [0.05, 0.5], [0.95, 0.5],
-            [0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]
-          ];
-          for (const [x, y] of points) {
-            const element = document.elementFromPoint(width * x, height * y);
-            const painted = element ? paintedBackground(element) : null;
-            if (painted === true) dark += 1;
-            if (painted === false) light += 1;
+          // A grid rather than a handful of points: a dark site with a light
+          // strip or a light card must out-vote those patches, not be misread
+          // from one of them. Ties go to dark — leaving a page alone is the
+          // safe mistake; forcing an already dark site light is not.
+          const grid = [0.1, 0.3, 0.5, 0.7, 0.9];
+          for (const y of grid) {
+            for (const x of grid) {
+              const element = document.elementFromPoint(width * x, height * y);
+              const painted = element ? paintedBackground(element) : null;
+              if (painted === true) dark += 1;
+              if (painted === false) light += 1;
+            }
           }
         }
         if (dark > 0 && dark >= light) return true;
